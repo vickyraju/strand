@@ -112,7 +112,7 @@ export function CommandPalette() {
       <Button
         variant="outline"
         aria-label="Search or jump to…"
-        className="h-8 w-full justify-center gap-2 border-border bg-background px-0 text-muted-foreground font-normal hover:bg-muted sm:justify-start sm:px-3"
+        className="h-8 w-full justify-center gap-2 border-border bg-muted px-0 text-muted-foreground font-normal hover:bg-[#EEEEEC] sm:justify-start sm:px-3"
         onClick={() => setOpen(true)}
       >
         <Search className="size-3.5 shrink-0" />

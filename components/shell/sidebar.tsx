@@ -4,18 +4,18 @@ import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  Bell,
+  BarChart2,
+  Columns2,
+  GitBranch,
   Hash,
   HelpCircle,
-  House,
-  KanbanSquare,
-  ListTodo,
+  Inbox,
+  LayoutGrid,
+  List,
   PanelLeftClose,
   PanelLeftOpen,
-  Search,
+  SearchCode,
   Settings,
-  SquareChartGantt,
-  Workflow,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { CommandPalette } from "@/components/shell/command-palette";
@@ -39,19 +39,19 @@ export function Sidebar({ activeProject }: { activeProject?: string }) {
 
   const projectForViews = activeProject ?? "ENG";
   const viewItems = [
-    { href: "/", label: "Your work", icon: House, badge: undefined as number | undefined, disabled: false },
+    { href: "/", label: "Your work", icon: LayoutGrid, badge: undefined as number | undefined, disabled: false },
     {
       href: "/notifications",
       label: "Inbox",
-      icon: Bell,
+      icon: Inbox,
       badge: initialUnreadNotificationCount as number | undefined,
       disabled: false,
     },
-    { href: `/${projectForViews}/board`, label: "Boards", icon: KanbanSquare, badge: undefined, disabled: false },
-    { href: `/${projectForViews}/backlog`, label: "Backlog", icon: ListTodo, badge: undefined, disabled: false },
-    { href: "#", label: "Search & query", icon: Search, badge: undefined, disabled: false, isSearch: true },
-    { href: "#", label: "Reports", icon: SquareChartGantt, badge: undefined, disabled: true },
-    { href: "#", label: "Workflows", icon: Workflow, badge: undefined, disabled: true },
+    { href: `/${projectForViews}/board`, label: "Boards", icon: Columns2, badge: undefined, disabled: false },
+    { href: `/${projectForViews}/backlog`, label: "Backlog", icon: List, badge: undefined, disabled: false },
+    { href: "#", label: "Search & query", icon: SearchCode, badge: undefined, disabled: false, isSearch: true },
+    { href: "#", label: "Reports", icon: BarChart2, badge: undefined, disabled: true },
+    { href: "#", label: "Workflows", icon: GitBranch, badge: undefined, disabled: true },
   ] as const;
 
   return (
@@ -85,7 +85,7 @@ export function Sidebar({ activeProject }: { activeProject?: string }) {
       <nav className="flex flex-1 flex-col gap-4 overflow-y-auto px-2 pb-2">
         <div className="space-y-0.5">
           {!collapsed && (
-            <p className={cn("px-2 pb-1 text-[11px] font-medium tracking-wide text-muted-foreground", label)}>
+            <p className={cn("px-2.5 pb-0.5 pt-2 text-[10px] font-semibold uppercase tracking-[0.07em] text-[#A8A29E]", label)}>
               Views
             </p>
           )}
@@ -93,9 +93,11 @@ export function Sidebar({ activeProject }: { activeProject?: string }) {
             const isActive = !("isSearch" in view) && pathname === view.href;
             const Icon = view.icon;
             const commonClasses = cn(
-              "flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm font-medium",
+              "flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm",
               view.disabled && "pointer-events-none opacity-45",
-              isActive ? "bg-accent font-semibold text-accent-foreground" : "text-foreground hover:bg-muted"
+              isActive
+                ? "bg-accent font-medium text-accent-foreground"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground"
             );
             const content = (
               <>
@@ -130,7 +132,7 @@ export function Sidebar({ activeProject }: { activeProject?: string }) {
 
         {!collapsed && (
           <div className="space-y-0.5">
-            <p className={cn("px-2 pb-1 text-[11px] font-medium tracking-wide text-muted-foreground", label)}>
+            <p className={cn("px-2.5 pb-0.5 pt-2 text-[10px] font-semibold uppercase tracking-[0.07em] text-[#A8A29E]", label)}>
               Recent
             </p>
             {recentItems.length === 0 ? (
@@ -140,12 +142,12 @@ export function Sidebar({ activeProject }: { activeProject?: string }) {
                 <Link
                   key={item.key}
                   href={`/${item.projectKey}/item/${item.key}`}
-                  className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-foreground hover:bg-muted"
+                  className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
                 >
-                  <Hash className="size-3.5 shrink-0 text-muted-foreground" />
+                  <Hash className="size-3.5 shrink-0 text-[#A8A29E]" />
                   <span className={cn("truncate", label)}>
-                    <span className="font-medium">{item.key}</span>{" "}
-                    <span className="text-muted-foreground">{item.title}</span>
+                    <span className="font-mono text-[11px] text-[#A8A29E]">{item.key}</span>{" "}
+                    <span className="text-[12px]">{item.title}</span>
                   </span>
                 </Link>
               ))
@@ -176,7 +178,7 @@ export function Sidebar({ activeProject }: { activeProject?: string }) {
         <div className="flex items-center gap-2 rounded-md px-1 py-1">
           <span className="relative shrink-0">
             <UserAvatar user={currentUser} className="size-7" />
-            <span className="absolute -bottom-0.5 -right-0.5 size-2 rounded-full bg-primary ring-2 ring-sidebar" />
+            <span className="absolute -bottom-0.5 -right-0.5 size-2 rounded-full bg-[#16A34A] ring-2 ring-sidebar" />
           </span>
           {!collapsed && (
             <div className={cn("min-w-0 leading-tight", label)}>
