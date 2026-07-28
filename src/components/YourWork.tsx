@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import {
   BookOpen, Bug, CheckSquare, ShieldAlert,
-  Calendar, Clock, ChevronRight, Eye, UserPlus,
+  Eye, UserPlus,
 } from 'lucide-react'
 import { useForge } from '../App'
 
@@ -99,7 +99,7 @@ function WorkRow({ item }: { item: WorkItem }) {
 // YourWork root
 // ════════════════════════════════════════════════════════════
 
-const TABS = ['Assigned (8)', 'Created', 'Watching', 'Recent']
+const TABS = ['Assigned (8)', 'Created', 'Watching', 'Recently viewed']
 
 export default function YourWork() {
   const { } = useForge()
@@ -187,66 +187,31 @@ export default function YourWork() {
           </div>
 
           {/* Column headers */}
-          <div className="yw-col-hdr">
-            <span style={{ width: 13, flexShrink: 0 }} />
-            <span style={{ width: 72, flexShrink: 0 }}>Key</span>
-            <span style={{ flex: 1 }}>Title</span>
-            <span style={{ width: 96, flexShrink: 0 }}>Status</span>
-            <span style={{ width: 80, flexShrink: 0 }}>Sprint</span>
-            <span style={{ width: 72, flexShrink: 0, textAlign: 'right' }}>Updated</span>
-          </div>
+          {activeTab !== 3 && (
+            <div className="yw-col-hdr">
+              <span style={{ width: 13, flexShrink: 0 }} />
+              <span style={{ width: 72, flexShrink: 0 }}>Key</span>
+              <span style={{ flex: 1 }}>Title</span>
+              <span style={{ width: 96, flexShrink: 0 }}>Status</span>
+              <span style={{ width: 80, flexShrink: 0 }}>Sprint</span>
+              <span style={{ width: 72, flexShrink: 0, textAlign: 'right' }}>Updated</span>
+            </div>
+          )}
 
           {/* Rows */}
           <div className="yw-list">
             {activeTab === 0 && ASSIGNED.map(item => (
               <WorkRow key={item.id} item={item} />
             ))}
-            {activeTab !== 0 && (
-              <div className="yw-empty-tab">No items to show.</div>
-            )}
-          </div>
-        </div>
-
-        {/* Right: sidebar */}
-        <div className="yw-sidebar">
-          {/* Up next */}
-          <div className="yw-sidebar-section">
-            <div className="yw-sidebar-title">Up next</div>
-
-            <div className="yw-agenda-row">
-              <div className="yw-agenda-icon" style={{ background: '#FEF3C7', color: '#B45309' }}>
-                <Clock size={12} strokeWidth={1.5} />
-              </div>
-              <div className="yw-agenda-body">
-                <div className="yw-agenda-label">Sprint 42 ends in 8 days</div>
-                <div className="yw-agenda-sub">31 Jul deadline</div>
-              </div>
-              <ChevronRight size={12} strokeWidth={1.5} color="#A8A29E" />
-            </div>
-
-            <div className="yw-agenda-row yw-agenda-row-hover">
-              <div className="yw-agenda-icon" style={{ background: '#ECFDF5', color: '#006044' }}>
-                <Calendar size={12} strokeWidth={1.5} />
-              </div>
-              <div className="yw-agenda-body">
-                <div className="yw-agenda-label">Standup</div>
-                <div className="yw-agenda-sub">9:30 AM · #payments-eng</div>
-              </div>
-              <ChevronRight size={12} strokeWidth={1.5} color="#A8A29E" />
-            </div>
-          </div>
-
-          <div className="yw-sidebar-divider" />
-
-          {/* Recently viewed */}
-          <div className="yw-sidebar-section">
-            <div className="yw-sidebar-title">Recently viewed</div>
-            {RECENT_VIEWED.map(item => (
+            {activeTab === 3 && RECENT_VIEWED.map(item => (
               <button key={item.key} className="yw-recent-row">
                 <span className="yw-recent-key">{item.key}</span>
                 <span className="yw-recent-title">{item.title}</span>
               </button>
             ))}
+            {activeTab !== 0 && activeTab !== 3 && (
+              <div className="yw-empty-tab">No items to show.</div>
+            )}
           </div>
         </div>
       </div>
