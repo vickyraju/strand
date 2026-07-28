@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { ChevronDown, ChevronRight, MoreHorizontal, Plus, Rows3, LayoutGrid, Flag } from 'lucide-react'
 import { BOARD_CARDS, EPICS, STATUS_TOTALS, STATUS_COLOR, STATUS_LABEL, type CardStatus, type BoardCard as CardType } from '../data/board'
 import BoardCard from './BoardCard'
-import { useForge } from '../App'
 
 // ── Column definitions ───────────────────────────────────────
 const COLUMNS: { id: CardStatus; wipLimit?: number }[] = [
@@ -271,10 +270,9 @@ function SwimlaneView({ cards, onMoveStatus, compact }: { cards: CardType[]; onM
 
 // ── Root board view ──────────────────────────────────────────
 export default function BoardView({ onCardClick }: { onCardClick?: () => void }) {
-  const { density } = useForge()
   const [cards,       setCards]       = useState(BOARD_CARDS)
   const [swimlanes,   setSwimlanes]   = useState(false)
-  const [compact,     setCompact]     = useState(density === 'compact')
+  const [compact,     setCompact]     = useState(false)
   const [draggingId,  setDraggingId]  = useState<string | null>(null)
 
   const handleDragToggle = (id: string) =>

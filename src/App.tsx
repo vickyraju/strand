@@ -14,10 +14,9 @@ import WorkItemDetail from './components/WorkItemDetail'
 
 // ── App-wide context ────────────────────────────────────────
 interface ForgeCtx {
-  aiOn:    boolean
-  density: 'comfortable' | 'compact'
+  aiOn: boolean
 }
-export const ForgeContext = createContext<ForgeCtx>({ aiOn: true, density: 'comfortable' })
+export const ForgeContext = createContext<ForgeCtx>({ aiOn: true })
 export const useForge = () => useContext(ForgeContext)
 
 export type AppView = 'board' | 'backlog' | 'search' | 'my-work' | 'inbox' | 'reports' | 'workflow'
@@ -26,7 +25,6 @@ export default function App() {
   const [railCollapsed, setRailCollapsed] = useState(false)
   const [aiOn]                             = useState(true)
   const [paletteOpen,   setPaletteOpen]   = useState(false)
-  const [density,       setDensity]       = useState<'comfortable' | 'compact'>('comfortable')
   const [currentView,   setCurrentView]   = useState<AppView>('my-work')
 
   // Work item detail state
@@ -65,7 +63,7 @@ export default function App() {
   }, [paletteOpen, detailOpen])
 
   return (
-    <ForgeContext.Provider value={{ aiOn, density }}>
+    <ForgeContext.Provider value={{ aiOn }}>
       <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: '#FAFAF9' }}>
 
         <NavRail
@@ -82,10 +80,7 @@ export default function App() {
           overflow: 'hidden', minWidth: 0,
           position: 'relative',
         }}>
-          <TopBar
-            density={density}
-            onDensityToggle={() => setDensity(d => d === 'comfortable' ? 'compact' : 'comfortable')}
-          />
+          <TopBar />
 
           {/* View routing */}
           {currentView === 'workflow' ? (

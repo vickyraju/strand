@@ -84,7 +84,7 @@ export default function NavRail({ collapsed, onCollapseToggle, onCmdK, currentVi
 
       {/* ── Search / Cmd+K ──────────────────────────────── */}
       <button className="nav-search" onClick={onCmdK} title="Search or jump to… ⌘K">
-        <Search size={13} strokeWidth={1.5} style={{ flexShrink: 0 }} />
+        <Search size={15} strokeWidth={1.5} style={{ flexShrink: 0 }} />
         <span className="nav-search-text" style={{ flex: 1, fontSize: 12, color: '#A8A29E' }}>
           Search or jump to…
         </span>
@@ -166,38 +166,6 @@ export default function NavRail({ collapsed, onCollapseToggle, onCmdK, currentVi
           <button className="nav-icon-btn" title="Help & support">
             <HelpCircle size={15} strokeWidth={1.5} />
           </button>
-        </div>
-
-        {/* User */}
-        <div style={{
-          display:       'flex',
-          alignItems:    'center',
-          gap:           8,
-          paddingTop:    collapsed ? 0 : 4,
-          flexDirection: collapsed ? 'column' : 'row',
-        }}>
-          {/* Avatar with presence dot */}
-          <div style={{ position: 'relative', flexShrink: 0 }}>
-            <div style={{
-              width:           28, height: 28, borderRadius: '50%',
-              background:      '#368727',
-              display:         'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize:        10, fontWeight: 600, color: 'white',
-            }}>PR</div>
-            <div style={{
-              position:   'absolute', bottom: 0, right: 0,
-              width:      8, height: 8, borderRadius: '50%',
-              background: '#16A34A',
-              border:     '1.5px solid #FFFFFF',
-            }} />
-          </div>
-
-          {!collapsed && (
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 12, fontWeight: 500, color: '#1C1917', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Priya Raman</div>
-              <div style={{ fontSize: 11, color: '#A8A29E', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>p.raman@meridian.com</div>
-            </div>
-          )}
         </div>
       </div>
     </nav>

@@ -1,12 +1,7 @@
-import { Filter, ChevronRight, Share2, Plus, Bell, AlignJustify, StretchHorizontal, Sparkles } from 'lucide-react'
+import { Filter, ChevronRight, Share2, Plus, Sparkles } from 'lucide-react'
 import { useForge } from '../App'
 
-interface TopBarProps {
-  density:         'comfortable' | 'compact'
-  onDensityToggle: () => void
-}
-
-export default function TopBar({ density, onDensityToggle }: TopBarProps) {
+export default function TopBar() {
   const { aiOn } = useForge()
 
   return (
@@ -38,18 +33,6 @@ export default function TopBar({ density, onDensityToggle }: TopBarProps) {
           <Filter size={14} strokeWidth={1.5} />
         </button>
 
-        {/* Density toggle */}
-        <button
-          className="density-btn"
-          onClick={onDensityToggle}
-          title={density === 'comfortable' ? 'Switch to compact density' : 'Switch to comfortable density'}
-        >
-          {density === 'comfortable'
-            ? <><AlignJustify size={12} strokeWidth={1.5} /> Comfortable</>
-            : <><StretchHorizontal size={12} strokeWidth={1.5} /> Compact</>
-          }
-        </button>
-
         <button className="topbar-icon-btn" title="Share this view">
           <Share2 size={14} strokeWidth={1.5} />
         </button>
@@ -70,17 +53,6 @@ export default function TopBar({ density, onDensityToggle }: TopBarProps) {
         </button>
 
         <div className="topbar-divider" />
-
-        {/* Bell */}
-        <button className="topbar-icon-btn" title="Notifications" style={{ position: 'relative' }}>
-          <Bell size={14} strokeWidth={1.5} />
-          {/* unread dot */}
-          <span style={{
-            position: 'absolute', top: 6, right: 7,
-            width: 5, height: 5, borderRadius: '50%',
-            background: '#DC2626', border: '1px solid white',
-          }} />
-        </button>
 
         {/* Avatar */}
         <div style={{ position: 'relative', marginLeft: 2 }}>

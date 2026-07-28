@@ -178,9 +178,16 @@ body {
   transition:  opacity var(--dur-micro) var(--ease);
 }
 .nav-rail.collapsed .nav-search {
+  width:           32px;
+  height:          32px;
+  margin:          8px auto 4px;
+  padding:         0;
   justify-content: center;
-  padding:         6px;
+  background:      transparent;
+  border-color:    transparent;
 }
+.nav-rail.collapsed .nav-search:hover  { background: #F5F5F4; border-color: transparent }
+.nav-rail.collapsed .nav-search:active { background: #E7E5E4 }
 .nav-rail.collapsed .nav-search-text { opacity: 0; width: 0; pointer-events: none }
 .nav-rail.collapsed .nav-search-kbd  { opacity: 0; width: 0; pointer-events: none }
 
