@@ -23,11 +23,11 @@ export const useForge = () => useContext(ForgeContext)
 export type AppView = 'board' | 'backlog' | 'search' | 'my-work' | 'inbox' | 'reports' | 'workflow'
 
 export default function App() {
-  const [railCollapsed, setRailCollapsed] = useState(true)
+  const [railCollapsed, setRailCollapsed] = useState(false)
   const [aiOn]                             = useState(true)
   const [paletteOpen,   setPaletteOpen]   = useState(false)
   const [density,       setDensity]       = useState<'comfortable' | 'compact'>('comfortable')
-  const [currentView,   setCurrentView]   = useState<AppView>('board')
+  const [currentView,   setCurrentView]   = useState<AppView>('my-work')
 
   // Work item detail state
   const [detailOpen, setDetailOpen] = useState<'none' | 'peek' | 'full'>('none')
