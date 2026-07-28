@@ -1,5 +1,5 @@
-import { YourWorkView } from "@/components/your-work/your-work-view";
+import { redirect } from "next/navigation";
 
 export default function YourWorkPage() {
-  return <YourWorkView />;
+  redirect("/");
 }

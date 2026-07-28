@@ -2,8 +2,6 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CommandPalette } from "@/components/shell/command-palette";
-import { ThemeToggle } from "@/components/shell/theme-toggle";
 import { UserAvatar } from "@/components/shared/work-item-meta";
 import {
   DropdownMenu,
@@ -19,7 +17,7 @@ import { getProject } from "@/lib/mock-data/projects";
 const currentUser = getUser("u1");
 
 const globalTitles: Record<string, string> = {
-  "your-work": "Your Work",
+  "": "Home",
   notifications: "Notifications",
 };
 
@@ -42,8 +40,6 @@ export function Topbar({ activeProject }: { activeProject?: string }) {
       </nav>
 
       <div className="flex shrink-0 items-center gap-2">
-        <CommandPalette />
-        <ThemeToggle />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button aria-label="Account menu" className="rounded-full">

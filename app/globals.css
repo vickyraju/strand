@@ -49,76 +49,78 @@
 }
 
 :root {
-  /* Strand — Structured Neutral, light */
-  --background: #f8fafc;
-  --foreground: #0f172a;
+  /* Strand design tokens — brand accent #0f57c2, flat white/gray surfaces, black ink.
+     Dark mode intentionally not maintained right now (see .dark below) — the
+     ThemeToggle UI still exists but is currently a no-op until dark is revisited. */
+  --background: #ffffff;
+  --foreground: #000000;
   --card: #ffffff;
-  --card-foreground: #0f172a;
+  --card-foreground: #000000;
   --popover: #ffffff;
-  --popover-foreground: #0f172a;
-  --primary: #4f46e5;
+  --popover-foreground: #000000;
+  --primary: #0f57c2;
   --primary-foreground: #ffffff;
-  --secondary: #f1f5f9;
-  --secondary-foreground: #0f172a;
-  --muted: #f1f5f9;
-  --muted-foreground: #64748b;
-  --accent: #eef2ff;
-  --accent-foreground: #4338ca;
+  --secondary: #eeeeee;
+  --secondary-foreground: #000000;
+  --muted: #eeeeee;
+  --muted-foreground: #666666;
+  --accent: #eeeeee;
+  --accent-foreground: #0f57c2;
   --destructive: #dc2626;
   --destructive-foreground: #ffffff;
-  --border: #e2e8f0;
-  --input: #e2e8f0;
-  --ring: #4f46e5;
-  --chart-1: #4f46e5;
-  --chart-2: #6366f1;
-  --chart-3: #818cf8;
-  --chart-4: #a5b4fc;
-  --chart-5: #c7d2fe;
+  --border: #e0e0e0;
+  --input: #e0e0e0;
+  --ring: #0f57c2;
+  --chart-1: #0f57c2;
+  --chart-2: #3b7fd6;
+  --chart-3: #6ba3e5;
+  --chart-4: #a3c6f0;
+  --chart-5: #d1e3f7;
   --radius: 0.375rem;
-  --sidebar: #ffffff;
-  --sidebar-foreground: #0f172a;
-  --sidebar-primary: #4f46e5;
+  --sidebar: #eeeeee;
+  --sidebar-foreground: #000000;
+  --sidebar-primary: #0f57c2;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #eef2ff;
-  --sidebar-accent-foreground: #4338ca;
-  --sidebar-border: #e2e8f0;
-  --sidebar-ring: #4f46e5;
+  --sidebar-accent: #ffffff;
+  --sidebar-accent-foreground: #0f57c2;
+  --sidebar-border: #e0e0e0;
+  --sidebar-ring: #0f57c2;
 }
 
 .dark {
-  /* Strand — Structured Neutral, dark */
-  --background: #0b0f17;
-  --foreground: #e2e8f0;
-  --card: #111827;
-  --card-foreground: #e2e8f0;
-  --popover: #111827;
-  --popover-foreground: #e2e8f0;
-  --primary: #6366f1;
-  --primary-foreground: #f8fafc;
-  --secondary: #1e293b;
-  --secondary-foreground: #e2e8f0;
-  --muted: #111827;
-  --muted-foreground: #94a3b8;
-  --accent: #1e1b4b;
-  --accent-foreground: #a5b4fc;
-  --destructive: #ef4444;
-  --destructive-foreground: #f8fafc;
-  --border: #1e293b;
-  --input: #1e293b;
-  --ring: #6366f1;
-  --chart-1: #818cf8;
-  --chart-2: #6366f1;
-  --chart-3: #4f46e5;
-  --chart-4: #4338ca;
-  --chart-5: #3730a3;
-  --sidebar: #0b0f17;
-  --sidebar-foreground: #e2e8f0;
-  --sidebar-primary: #6366f1;
-  --sidebar-primary-foreground: #f8fafc;
-  --sidebar-accent: #1e1b4b;
-  --sidebar-accent-foreground: #a5b4fc;
-  --sidebar-border: #1e293b;
-  --sidebar-ring: #6366f1;
+  /* Same as :root — dark mode not maintained in this pass. */
+  --background: #ffffff;
+  --foreground: #000000;
+  --card: #ffffff;
+  --card-foreground: #000000;
+  --popover: #ffffff;
+  --popover-foreground: #000000;
+  --primary: #0f57c2;
+  --primary-foreground: #ffffff;
+  --secondary: #eeeeee;
+  --secondary-foreground: #000000;
+  --muted: #eeeeee;
+  --muted-foreground: #666666;
+  --accent: #eeeeee;
+  --accent-foreground: #0f57c2;
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --border: #e0e0e0;
+  --input: #e0e0e0;
+  --ring: #0f57c2;
+  --chart-1: #0f57c2;
+  --chart-2: #3b7fd6;
+  --chart-3: #6ba3e5;
+  --chart-4: #a3c6f0;
+  --chart-5: #d1e3f7;
+  --sidebar: #eeeeee;
+  --sidebar-foreground: #000000;
+  --sidebar-primary: #0f57c2;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #ffffff;
+  --sidebar-accent-foreground: #0f57c2;
+  --sidebar-border: #e0e0e0;
+  --sidebar-ring: #0f57c2;
 }
 
 @layer base {

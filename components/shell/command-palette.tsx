@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { SlidersHorizontal, X } from "lucide-react";
+import { Search, X } from "lucide-react";
 import {
   Command,
   CommandDialog,
@@ -68,8 +68,15 @@ export function CommandPalette() {
         setOpen((prev) => !prev);
       }
     }
+    function onOpenRequest() {
+      setOpen(true);
+    }
     document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
+    window.addEventListener("strand:open-search", onOpenRequest);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("strand:open-search", onOpenRequest);
+    };
   }, []);
 
   function toggleToken(t: Token) {
@@ -104,13 +111,13 @@ export function CommandPalette() {
     <>
       <Button
         variant="outline"
-        aria-label="Search work items"
-        className="h-8 w-8 justify-center gap-2 px-0 text-muted-foreground font-normal sm:w-56 sm:justify-start sm:px-3"
+        aria-label="Search or jump to…"
+        className="h-8 w-full justify-center gap-2 border-border bg-background px-0 text-muted-foreground font-normal hover:bg-muted sm:justify-start sm:px-3"
         onClick={() => setOpen(true)}
       >
-        <SlidersHorizontal className="size-3.5 shrink-0" />
-        <span className="hidden sm:inline">Search work items…</span>
-        <kbd className="ml-auto hidden rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground sm:inline">
+        <Search className="size-3.5 shrink-0" />
+        <span className="hidden sm:inline">Search or jump to…</span>
+        <kbd className="ml-auto hidden rounded border border-border bg-card px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground sm:inline">
           ⌘K
         </kbd>
       </Button>

@@ -1,5 +1,6 @@
 import { TriangleAlert } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ProjectSummaryRow } from "@/components/home/project-summary-row";
 import { WorkRow } from "@/components/your-work/work-row";
 import { getIssue, issues } from "@/lib/mock-data/issues";
 import { getStatus } from "@/lib/mock-data/projects";
@@ -47,10 +48,14 @@ export function YourWorkView() {
   const blockedAssigned = assigned.filter((i) => getBlockingItem(i));
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4 px-4 py-4">
+    <div className="mx-auto max-w-3xl px-4 py-4">
+      <h1 className="mb-3 text-[15px] font-semibold">Home</h1>
+
+      <ProjectSummaryRow />
+
       {blockedAssigned.length > 0 && (
-        <section className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3">
-          <h2 className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-amber-700 dark:text-amber-400">
+        <section className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3">
+          <h2 className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-amber-700">
             <TriangleAlert className="size-4" />
             Blocked — needs your attention
           </h2>

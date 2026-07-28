@@ -9,6 +9,7 @@ import { ItemSidebar } from "@/components/item/item-sidebar";
 import { LinkedItems } from "@/components/item/linked-items";
 import { SubtaskList } from "@/components/item/subtask-list";
 import { IssueKey } from "@/components/shared/work-item-meta";
+import { addRecentItem } from "@/lib/use-recent-items";
 import type { Comment, Epic, Sprint, WorkItem, WorkflowStatus } from "@/lib/types";
 
 export function ItemDetailView({
@@ -36,6 +37,10 @@ export function ItemDetailView({
   const [subtasks, setSubtasks] = React.useState(initialSubtasks);
   const [comments, setComments] = React.useState(initialComments);
   const nextNumber = React.useRef(nextSubtaskNumber);
+
+  React.useEffect(() => {
+    addRecentItem(initialItem.key);
+  }, [initialItem.key]);
 
   function updateField<K extends keyof WorkItem>(field: K, value: WorkItem[K]) {
     setItem((prev) => ({ ...prev, [field]: value, updatedAt: new Date().toISOString() }));

@@ -40,7 +40,7 @@ export function SprintPanel({
         </div>
       </header>
       {overCommitted && (
-        <p className="flex items-center gap-1.5 border-b border-border bg-amber-500/10 px-3 py-1.5 text-xs text-amber-700 dark:text-amber-400">
+        <p className="flex items-center gap-1.5 border-b border-border bg-amber-500/10 px-3 py-1.5 text-xs text-amber-700">
           <TriangleAlert className="size-3.5 shrink-0" />
           Committed scope exceeds team velocity ({sprint.velocity} pts). This won&apos;t block planning — just
           flagging it.
