@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useSearchParams } from "next/navigation";
 import { BacklogRow } from "@/components/backlog/backlog-row";
 import { BulkActionBar } from "@/components/backlog/bulk-action-bar";
 import { QuickCreate } from "@/components/backlog/quick-create";
@@ -23,6 +24,7 @@ export function BacklogView({
   const [items, setItems] = React.useState(initialItems);
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
   const [draggedKey, setDraggedKey] = React.useState<string | null>(null);
+  const autoFocusCreate = useSearchParams().get("create") === "1";
 
   const backlogItems = items
     .filter((i) => i.sprintId === null && i.parentKey === null)
@@ -161,7 +163,7 @@ export function BacklogView({
           />
         )}
 
-        <QuickCreate onCreate={createItem} />
+        <QuickCreate onCreate={createItem} autoFocus={autoFocusCreate} />
 
         <div>
           {backlogItems.map((item, idx) => (

@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { IssueKey, TypeIcon } from "@/components/shared/work-item-meta";
 import { getStatus } from "@/lib/mock-data/projects";
+import { getStatusColor } from "@/lib/status-color";
 import type { LinkType, WorkItem, WorkItemLink } from "@/lib/types";
 
 const linkLabels: Record<LinkType, string> = {
@@ -58,7 +59,10 @@ export function LinkedItems({
                       {target.title}
                     </Link>
                     {status && (
-                      <Badge variant="outline" className="shrink-0 text-[10px] font-normal">
+                      <Badge
+                        variant="outline"
+                        className={`shrink-0 border-transparent text-[10px] font-normal ${getStatusColor(status).badgeBg} ${getStatusColor(status).badgeText}`}
+                      >
                         {status.name}
                       </Badge>
                     )}

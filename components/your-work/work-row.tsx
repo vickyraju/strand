@@ -3,10 +3,12 @@ import { TriangleAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { IssueKey, PriorityIcon, TypeIcon } from "@/components/shared/work-item-meta";
 import { getStatus } from "@/lib/mock-data/projects";
+import { getStatusColor } from "@/lib/status-color";
 import type { WorkItem } from "@/lib/types";
 
 export function WorkRow({ item, blockedBy }: { item: WorkItem; blockedBy?: WorkItem }) {
   const status = getStatus(item.statusId);
+  const color = status ? getStatusColor(status) : null;
   return (
     <div className="flex items-center gap-2 border-b border-border px-2 py-1.5 last:border-0 hover:bg-muted/40">
       <Badge variant="outline" className="w-12 shrink-0 justify-center text-[10px] font-medium">
@@ -25,8 +27,11 @@ export function WorkRow({ item, blockedBy }: { item: WorkItem; blockedBy?: WorkI
           </p>
         )}
       </div>
-      {status && (
-        <Badge variant="secondary" className="hidden shrink-0 text-[10px] font-normal sm:inline-flex">
+      {status && color && (
+        <Badge
+          variant="outline"
+          className={`hidden shrink-0 border-transparent text-[10px] font-normal sm:inline-flex ${color.badgeBg} ${color.badgeText}`}
+        >
           {status.name}
         </Badge>
       )}

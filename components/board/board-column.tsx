@@ -1,6 +1,7 @@
 "use client";
 
 import { BoardCard } from "@/components/board/board-card";
+import { getStatusColor } from "@/lib/status-color";
 import type { WorkItem, WorkflowStatus } from "@/lib/types";
 
 export function BoardColumn({
@@ -27,6 +28,7 @@ export function BoardColumn({
   onMoveToStatus: (key: string, statusId: string) => void;
 }) {
   const overLimit = wipLimit !== null && items.length > wipLimit;
+  const color = getStatusColor(status);
 
   return (
     <div
@@ -35,10 +37,12 @@ export function BoardColumn({
         e.preventDefault();
         onDropItem(status.id);
       }}
-      className="flex min-w-60 flex-1 flex-col rounded-lg bg-muted/40"
+      className="flex min-w-60 flex-1 flex-col overflow-hidden rounded-lg bg-muted/40"
     >
+      <div className={`h-0.5 shrink-0 ${color.dot}`} />
       <div className="flex items-center justify-between gap-2 px-2.5 pb-2 pt-2.5">
         <div className="flex items-center gap-1.5">
+          <span className={`size-1.5 rounded-full ${color.dot}`} aria-hidden />
           <h3 className="text-xs font-semibold uppercase tracking-wide text-foreground">{status.name}</h3>
           <span className="text-xs tabular-nums text-muted-foreground">{items.length}</span>
         </div>

@@ -4,7 +4,13 @@ import * as React from "react";
 import { Plus } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
-export function QuickCreate({ onCreate }: { onCreate: (title: string) => void }) {
+export function QuickCreate({
+  onCreate,
+  autoFocus = false,
+}: {
+  onCreate: (title: string) => void;
+  autoFocus?: boolean;
+}) {
   const [value, setValue] = React.useState("");
 
   function submit() {
@@ -18,6 +24,7 @@ export function QuickCreate({ onCreate }: { onCreate: (title: string) => void })
     <div className="flex items-center gap-2 border-b border-border bg-muted/30 px-2 py-1.5">
       <Plus className="size-3.5 shrink-0 text-muted-foreground" />
       <Input
+        autoFocus={autoFocus}
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={(e) => {

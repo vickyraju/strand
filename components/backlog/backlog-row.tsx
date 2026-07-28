@@ -5,7 +5,9 @@ import { ChevronDown, ChevronUp, GripVertical } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { IssueKey, PriorityIcon, TypeIcon, UserAvatar } from "@/components/shared/work-item-meta";
+import { getStatus } from "@/lib/mock-data/projects";
 import { getUser } from "@/lib/mock-data/users";
+import { getStatusColor } from "@/lib/status-color";
 import type { WorkItem } from "@/lib/types";
 
 export function BacklogRow({
@@ -34,6 +36,9 @@ export function BacklogRow({
   onMoveUp?: () => void;
   onMoveDown?: () => void;
 }) {
+  const status = getStatus(item.statusId);
+  const color = status ? getStatusColor(status) : null;
+
   return (
     <div
       draggable={draggable}
@@ -84,6 +89,14 @@ export function BacklogRow({
       >
         {item.title}
       </Link>
+      {status && color && (
+        <Badge
+          variant="outline"
+          className={`hidden shrink-0 border-transparent text-[10px] font-normal sm:inline-flex ${color.badgeBg} ${color.badgeText}`}
+        >
+          {status.name}
+        </Badge>
+      )}
       <div className="hidden shrink-0 gap-1 sm:flex">
         {item.labels.slice(0, 2).map((label) => (
           <Badge key={label} variant="secondary" className="text-[10px] font-normal">
