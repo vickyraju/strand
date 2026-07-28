@@ -25,7 +25,7 @@ const LABEL_TEXT: Record<string, string> = {
   Performance: '#4338CA', Security: '#B45309', Reliability: '#15803D',
   Cleanup: '#78716C', Accessibility: '#7C3AED', Dependencies: '#0369A1',
   Bug: '#DC2626', Infrastructure: '#15803D', Compliance: '#B45309',
-  ML: '#7C3AED', Architecture: '#004833',
+  ML: '#7C3AED', Architecture: '#0F766E',
 }
 
 interface IssueRowProps { issue: Issue }

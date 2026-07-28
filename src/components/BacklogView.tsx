@@ -231,8 +231,8 @@ export default function BacklogView() {
           display: 'flex', alignItems: 'center', gap: 5,
           padding: '4px 9px', borderRadius: 6,
           border: `1px solid ${epicPanelOpen ? '#C7D2FE' : '#E7E5E4'}`,
-          background: epicPanelOpen ? '#ECFDF5' : '#FFFFFF',
-          color: epicPanelOpen ? '#004833' : '#78716C',
+          background: epicPanelOpen ? '#EAF6E6' : '#FFFFFF',
+          color: epicPanelOpen ? '#2A691E' : '#78716C',
           fontSize: 12, fontFamily: 'inherit', cursor: 'pointer',
           fontWeight: epicPanelOpen ? 500 : 400,
           transition: 'all var(--dur-micro) var(--ease)',
@@ -270,8 +270,8 @@ export default function BacklogView() {
         <span style={{
           display: 'inline-flex', alignItems: 'center', gap: 5,
           padding: '3px 8px', borderRadius: 5,
-          border: '1px solid #86C5A8', background: '#ECFDF5',
-          fontSize: 12, color: '#004833',
+          border: '1px solid #8FCB7C', background: '#EAF6E6',
+          fontSize: 12, color: '#2A691E',
         }}>
           <span style={{ fontWeight: 500 }}>epic</span>
           <span style={{ color: '#818CF8' }}>=</span>
@@ -304,8 +304,8 @@ export default function BacklogView() {
           display: 'flex', alignItems: 'center', gap: 4,
           padding: '4px 9px', borderRadius: 5,
           border: `1px solid ${multiSelect ? '#C7D2FE' : '#E7E5E4'}`,
-          background: multiSelect ? '#ECFDF5' : 'transparent',
-          color: multiSelect ? '#004833' : '#78716C',
+          background: multiSelect ? '#EAF6E6' : 'transparent',
+          color: multiSelect ? '#2A691E' : '#78716C',
           fontSize: 12, fontFamily: 'inherit', cursor: 'pointer', fontWeight: multiSelect ? 500 : 400,
         }}
         title="Toggle multi-select demo"
@@ -318,7 +318,7 @@ export default function BacklogView() {
       <button style={{
         display: 'inline-flex', alignItems: 'center', gap: 5,
         padding: '6px 14px', borderRadius: 6,
-        border: 'none', background: '#006044',
+        border: 'none', background: '#368727',
         color: 'white', fontSize: 13, fontWeight: 500,
         fontFamily: 'inherit', cursor: 'pointer',
       }}>
@@ -466,7 +466,7 @@ export default function BacklogView() {
   // ── Quick-create row ──────────────────────────────────────
   const quickCreate = qcActive ? (
     /* Active state */
-    <div className="qc-row" style={{ background: '#F5F5F4', borderLeft: '2px solid #006044' }}>
+    <div className="qc-row" style={{ background: '#F5F5F4', borderLeft: '2px solid #368727' }}>
       <div className="bl-drag-handle" style={{ opacity: 0 }}>
         <GripVertical size={13} strokeWidth={1.5} />
       </div>

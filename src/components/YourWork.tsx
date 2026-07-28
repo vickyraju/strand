@@ -157,7 +157,7 @@ export default function YourWork() {
           >
             <div className="yw-stat-label">Due this sprint</div>
             <div className="yw-stat-val">
-              <span style={{ color: '#006044' }}>5</span>
+              <span style={{ color: '#368727' }}>5</span>
               <span style={{ color: '#A8A29E', fontWeight: 400, fontSize: 14 }}> / 8 done</span>
             </div>
             <div className="yw-cap-bar-wrap">

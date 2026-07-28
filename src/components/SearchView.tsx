@@ -288,7 +288,7 @@ export default function SearchView() {
         <span style={{ color: '#A8A29E' }}>&nbsp;=&nbsp;</span>
         <span style={{ color: '#86EFAC' }}>priya</span>
         <span style={{
-          display: 'inline-block', width: 2, height: 16, background: '#006044',
+          display: 'inline-block', width: 2, height: 16, background: '#368727',
           marginLeft: 2, verticalAlign: 'middle',
           animation: 'fade-in 0.8s step-end infinite alternate',
         }} />
@@ -354,7 +354,7 @@ export default function SearchView() {
       <AlertCircle size={11} strokeWidth={2} />
       Unknown field <code style={{ fontFamily: 'monospace', background: '#FEF2F2', padding: '0 4px', borderRadius: 3 }}>statsu</code>
       — did you mean <button
-        style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#006044', fontSize: 11, fontFamily: 'inherit', padding: 0, textDecoration: 'underline' }}
+        style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#368727', fontSize: 11, fontFamily: 'inherit', padding: 0, textDecoration: 'underline' }}
         onClick={() => setSyntaxVal(syntaxVal.replace('statsu', 'status'))}
       >status</button>?
     </div>
@@ -384,7 +384,7 @@ export default function SearchView() {
       <div style={{ display: 'flex', gap: 8 }}>
         <button style={{
           padding: '5px 14px', borderRadius: 6, border: 'none',
-          background: '#006044', color: 'white', fontSize: 13,
+          background: '#368727', color: 'white', fontSize: 13,
           fontWeight: 500, fontFamily: 'inherit', cursor: 'pointer',
         }}>Run</button>
         <button style={{
@@ -537,7 +537,7 @@ export default function SearchView() {
             setTimeout(() => setTokens(ts => ts.map(t => ({ ...t, highlight: false }))), 2200)
             setEmptyState(false)
           }}
-          style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#006044', fontSize: 13, fontFamily: 'inherit', padding: 0, textDecoration: 'underline' }}
+          style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#368727', fontSize: 13, fontFamily: 'inherit', padding: 0, textDecoration: 'underline' }}
         >Remove status filter</button>
       </span>
     </div>
@@ -636,7 +636,7 @@ export default function SearchView() {
             onClick={() => setSaveModalOpen(false)}
             style={{
               padding: '7px 16px', borderRadius: 6, border: 'none',
-              background: '#006044', color: 'white', fontSize: 13,
+              background: '#368727', color: 'white', fontSize: 13,
               fontWeight: 500, fontFamily: 'inherit', cursor: 'pointer',
             }}
           >Save view</button>

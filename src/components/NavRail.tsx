@@ -8,7 +8,7 @@ import {
 function Logomark({ size = 28 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 28 28" fill="none">
-      <rect width="28" height="28" rx="6" fill="#006044" />
+      <rect width="28" height="28" rx="6" fill="#368727" />
       {/* Bold geometric F — three rectangles */}
       <rect x="8"  y="8"  width="2.5" height="12" fill="white" />
       <rect x="8"  y="8"  width="10"  height="2.5" fill="white" />
@@ -180,7 +180,7 @@ export default function NavRail({ collapsed, onCollapseToggle, onCmdK, currentVi
           <div style={{ position: 'relative', flexShrink: 0 }}>
             <div style={{
               width:           28, height: 28, borderRadius: '50%',
-              background:      '#006044',
+              background:      '#368727',
               display:         'flex', alignItems: 'center', justifyContent: 'center',
               fontSize:        10, fontWeight: 600, color: 'white',
             }}>PR</div>

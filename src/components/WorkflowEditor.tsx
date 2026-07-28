@@ -100,7 +100,7 @@ function Arrow({ t, nodes, selected, onClick, simToken }: {
   const midX = (p1.x + p2.x) / 2
   const midY = (p1.y + p2.y) / 2
   const path = `M${p1.x},${p1.y} C${midX},${p1.y} ${midX},${p2.y} ${p2.x},${p2.y}`
-  const stroke = selected ? '#006044' : '#C8C4C0'
+  const stroke = selected ? '#368727' : '#C8C4C0'
   const sw = selected ? 2 : 1.5
 
   return (
@@ -112,14 +112,14 @@ function Arrow({ t, nodes, selected, onClick, simToken }: {
       <foreignObject x={midX - 44} y={midY - 11} width={88} height={22} style={{ overflow: 'visible', pointerEvents: 'none' }}>
         <div style={{
           display: 'inline-flex', alignItems: 'center', gap: 4,
-          background: selected ? '#ECFDF5' : '#FFFFFF',
-          border: `1px solid ${selected ? '#86C5A8' : '#E7E5E4'}`,
+          background: selected ? '#EAF6E6' : '#FFFFFF',
+          border: `1px solid ${selected ? '#8FCB7C' : '#E7E5E4'}`,
           borderRadius: 100, padding: '1px 8px',
           fontSize: 10, fontWeight: selected ? 500 : 400,
-          color: selected ? '#006044' : '#78716C',
+          color: selected ? '#368727' : '#78716C',
           whiteSpace: 'nowrap', boxSizing: 'border-box',
         }}>
-          {t.hasCondition && <Shield size={8} color={selected ? '#006044' : '#A8A29E'} />}
+          {t.hasCondition && <Shield size={8} color={selected ? '#368727' : '#A8A29E'} />}
           {t.label}
         </div>
       </foreignObject>
@@ -152,7 +152,7 @@ function NodeCard({ node, selected, simCurrent, onSelect, onDragStart }: {
         left: node.x, top: node.y,
         width: NODE_W, height: NODE_H,
         background: s.bg,
-        border: `${simCurrent ? 2 : selected ? 2 : 1}px solid ${simCurrent ? '#D97706' : selected ? '#006044' : s.border}`,
+        border: `${simCurrent ? 2 : selected ? 2 : 1}px solid ${simCurrent ? '#D97706' : selected ? '#368727' : s.border}`,
         boxShadow: simCurrent ? '0 0 0 3px rgba(217,119,6,0.2)' : selected ? '0 0 0 3px rgba(0,96,68,0.12)' : undefined,
       }}
     >
@@ -168,7 +168,7 @@ function NodeCard({ node, selected, simCurrent, onSelect, onDragStart }: {
       <StatusDot category={node.category} />
       <span style={{
         fontSize: 12, fontWeight: selected ? 500 : 400,
-        color: selected ? '#006044' : '#1C1917',
+        color: selected ? '#368727' : '#1C1917',
         flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
       }}>{node.label}</span>
       {simCurrent && <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#D97706', flexShrink: 0, animation: 'wfe-pulse 1.2s ease-in-out infinite' }} />}
@@ -320,9 +320,9 @@ function NodeInspector({ node, onClose }: { node: WFNode; onClose: () => void })
               return (
                 <button key={c} style={{
                   display: 'flex', alignItems: 'center', gap: 5, padding: '4px 10px',
-                  borderRadius: 6, border: `1px solid ${node.category === c ? '#006044' : '#E7E5E4'}`,
-                  background: node.category === c ? '#ECFDF5' : '#FFFFFF',
-                  color: node.category === c ? '#006044' : '#78716C',
+                  borderRadius: 6, border: `1px solid ${node.category === c ? '#368727' : '#E7E5E4'}`,
+                  background: node.category === c ? '#EAF6E6' : '#FFFFFF',
+                  color: node.category === c ? '#368727' : '#78716C',
                   fontSize: 11, cursor: 'pointer',
                 }}>
                   <div style={{ width: 7, height: 7, borderRadius: '50%', background: cs.dot }} />
@@ -367,7 +367,7 @@ function PublishModal({ onClose }: { onClose: () => void }) {
     <div className="wfe-modal-backdrop" onClick={onClose}>
       <div className="wfe-modal" style={{ width: 560 }} onClick={e => e.stopPropagation()}>
         <div className="wfe-modal-hdr">
-          <Upload size={16} strokeWidth={1.5} style={{ color: '#006044' }} />
+          <Upload size={16} strokeWidth={1.5} style={{ color: '#368727' }} />
           <span>Publish workflow</span>
           <button className="wfe-insp-close" onClick={onClose}><X size={14} strokeWidth={1.5} /></button>
         </div>
@@ -523,10 +523,10 @@ function EmptyWorkflow({ onCreate }: { onCreate: () => void }) {
       background: '#FAFAF9', gap: 12,
     }}>
       <div style={{
-        width: 56, height: 56, borderRadius: 12, background: '#ECFDF5',
+        width: 56, height: 56, borderRadius: 12, background: '#EAF6E6',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}>
-        <GitBranch size={24} strokeWidth={1.5} color="#006044" />
+        <GitBranch size={24} strokeWidth={1.5} color="#368727" />
       </div>
       <div style={{ fontSize: 15, fontWeight: 600, color: '#1C1917' }}>No workflow yet</div>
       <div style={{ fontSize: 13, color: '#78716C', maxWidth: 320, textAlign: 'center', lineHeight: 1.5 }}>
@@ -543,7 +543,7 @@ function EmptyWorkflow({ onCreate }: { onCreate: () => void }) {
       <button onClick={onCreate} style={{
         display: 'flex', alignItems: 'center', gap: 6,
         padding: '8px 16px', borderRadius: 6, border: 'none',
-        background: '#006044', color: 'white', fontSize: 12, fontWeight: 500, cursor: 'pointer',
+        background: '#368727', color: 'white', fontSize: 12, fontWeight: 500, cursor: 'pointer',
       }}>
         <Plus size={13} strokeWidth={2} />
         Start from scratch
@@ -615,7 +615,7 @@ export default function WorkflowEditor() {
       {/* Floating header bar */}
       <div className="wfe-header-bar">
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <GitBranch size={14} strokeWidth={1.5} color="#006044" />
+          <GitBranch size={14} strokeWidth={1.5} color="#368727" />
           <span style={{ fontSize: 13, fontWeight: 500, color: '#1C1917' }}>{workflowName}</span>
           <span className="wfe-version-chip">v7 draft</span>
         </div>
@@ -665,7 +665,7 @@ export default function WorkflowEditor() {
                 <path d="M0,0 L0,6 L8,3 z" fill="#C8C4C0" />
               </marker>
               <marker id="arrow-sel" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
-                <path d="M0,0 L0,6 L8,3 z" fill="#006044" />
+                <path d="M0,0 L0,6 L8,3 z" fill="#368727" />
               </marker>
             </defs>
             {transitions.map(t => (

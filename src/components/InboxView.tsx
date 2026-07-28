@@ -79,7 +79,7 @@ const ROWS: NRow[] = [
     id: 'n7', key: 'PAY-422', type: 'task', state: 'read',
     title: 'Structured retry logging: add correlation IDs to all attempt entries',
     eventLine: 'Status changed to Done',
-    actors: [{ initials: 'PR', color: '#006044' }],
+    actors: [{ initials: 'PR', color: '#368727' }],
     timeAgo: '2d ago',
   },
   {
@@ -188,12 +188,12 @@ function AiSummaryCard({ onDismiss }: { onDismiss: () => void }) {
         </div>
         <div className="inbox-ai-card-items">
           <div className="inbox-ai-item">
-            <ChevronRight size={11} strokeWidth={2} color="#006044" />
+            <ChevronRight size={11} strokeWidth={2} color="#368727" />
             <span><strong>PAY-393</strong> is blocked — you are the last reviewer</span>
             <button className="inbox-ai-open">Open</button>
           </div>
           <div className="inbox-ai-item">
-            <ChevronRight size={11} strokeWidth={2} color="#006044" />
+            <ChevronRight size={11} strokeWidth={2} color="#368727" />
             <span><strong>RISK-1204</strong> review requested by Marcus Chen</span>
             <button className="inbox-ai-open">Open</button>
           </div>
@@ -248,7 +248,7 @@ function NotifSettings({ onClose }: NotifSettingsProps) {
         {/* Instant section */}
         <div className="notif-section">
           <div className="notif-section-hdr">
-            <Bell size={13} strokeWidth={1.5} color="#006044" />
+            <Bell size={13} strokeWidth={1.5} color="#368727" />
             <span>Instant</span>
           </div>
           <div className="notif-col-hdr">

@@ -15,7 +15,7 @@ import { useForge } from '../App'
 const BLOCKED_ITEMS = [
   { key: 'PAY-393',   title: 'Settlement webhook retries exhausted after 3rd-party timeout',  days: 8, av: { i: 'DO', c: '#0891B2' } },
   { key: 'PLAT-4825', title: 'Memory leak in reconciliation job under high-cardinality load',  days: 5, av: { i: 'MC', c: '#EA580C' } },
-  { key: 'RISK-1204', title: 'SOC 2 audit trail quarterly review — scope unclear',             days: 3, av: { i: 'PR', c: '#006044' } },
+  { key: 'RISK-1204', title: 'SOC 2 audit trail quarterly review — scope unclear',             days: 3, av: { i: 'PR', c: '#368727' } },
   { key: 'PAY-416',   title: 'Webhook delivery log retention: enforce 90-day default policy',  days: 1, av: { i: 'SM', c: '#16A34A' } },
 ]
 
@@ -29,7 +29,7 @@ const SCOPE_CHANGES = [
 const WIP_COLS = [
   { name: 'Todo',        count: 12, limit: null, color: '#A8A29E' },
   { name: 'In progress', count: 6,  limit: 6,    color: '#F59E0B' }, // at limit
-  { name: 'In review',   count: 3,  limit: 5,    color: '#006044' },
+  { name: 'In review',   count: 3,  limit: 5,    color: '#368727' },
   { name: 'Done',        count: 24, limit: null, color: '#16A34A' },
 ]
 
@@ -126,19 +126,19 @@ function BurnupChart({ compact = false }: { compact?: boolean }) {
       <path d={stepsPath(SCOPE_STEPS)} fill="none"
         stroke="#C8C4C0" strokeWidth="2" strokeLinejoin="round" />
       {/* Completed area */}
-      <path d={areaPath(COMPLETED)} fill="#006044" fillOpacity="0.07" />
+      <path d={areaPath(COMPLETED)} fill="#368727" fillOpacity="0.07" />
       {/* Completed line */}
       <path d={linePath(COMPLETED)} fill="none"
-        stroke="#006044" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
+        stroke="#368727" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
       {/* Today marker */}
       <line x1={px(29)} y1={PAD.t} x2={px(29)} y2={PAD.t + PLOT_H}
-        stroke="#006044" strokeWidth="1" strokeDasharray="3 3" strokeOpacity="0.4" />
+        stroke="#368727" strokeWidth="1" strokeDasharray="3 3" strokeOpacity="0.4" />
       {/* Legend */}
       {!compact && (
         <g transform={`translate(${PAD.l + 8},${PAD.t + 6})`}>
           <line x1={0} y1={5} x2={14} y2={5} stroke="#C8C4C0" strokeWidth="2" />
           <text x={18} y={8} fill="#78716C" fontSize={10}>Scope</text>
-          <line x1={52} y1={5} x2={66} y2={5} stroke="#006044" strokeWidth="2.5" />
+          <line x1={52} y1={5} x2={66} y2={5} stroke="#368727" strokeWidth="2.5" />
           <text x={70} y={8} fill="#78716C" fontSize={10}>Completed</text>
           <line x1={128} y1={5} x2={142} y2={5} stroke="#D4D0CE" strokeWidth="1.5" strokeDasharray="4 3" />
           <text x={146} y={8} fill="#78716C" fontSize={10}>Ideal</text>
@@ -376,7 +376,7 @@ function ReportCatalog({ onClose }: { onClose: () => void }) {
               className={`rcat-card${selected === id ? ' selected' : ''}`}
               onClick={() => setSelected(id)}
             >
-              <Icon size={18} strokeWidth={1.5} color={selected === id ? '#006044' : '#78716C'} />
+              <Icon size={18} strokeWidth={1.5} color={selected === id ? '#368727' : '#78716C'} />
               <div className="rcat-card-name">{name}</div>
               <div className="rcat-card-desc">{desc}</div>
             </button>
@@ -422,7 +422,7 @@ function SubscribePopover({ onClose }: { onClose: () => void }) {
       {['PDF snapshot', 'Inline HTML'].map(fmt => (
         <label key={fmt} className="sub-radio">
           <input type="radio" name="subfmt" defaultChecked={fmt === 'PDF snapshot'}
-            style={{ accentColor: '#006044' }} />
+            style={{ accentColor: '#368727' }} />
           {fmt}
         </label>
       ))}
