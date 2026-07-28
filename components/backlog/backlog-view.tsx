@@ -87,6 +87,16 @@ export function BacklogView({
     });
   }
 
+  function moveUp(key: string) {
+    const idx = backlogItems.findIndex((i) => i.key === key);
+    if (idx > 0) reorder(key, backlogItems[idx - 1].key);
+  }
+
+  function moveDown(key: string) {
+    const idx = backlogItems.findIndex((i) => i.key === key);
+    if (idx !== -1 && idx < backlogItems.length - 1) reorder(key, backlogItems[idx + 1].key);
+  }
+
   function moveSelectedToSprint(sprintId: string) {
     setItems((prev) =>
       prev.map((i) => (selected.has(i.key) ? { ...i, sprintId, statusId: todoStatus.id } : i))
@@ -154,7 +164,7 @@ export function BacklogView({
         <QuickCreate onCreate={createItem} />
 
         <div>
-          {backlogItems.map((item) => (
+          {backlogItems.map((item, idx) => (
             <BacklogRow
               key={item.key}
               item={item}
@@ -170,6 +180,8 @@ export function BacklogView({
                 setDraggedKey(null);
               }}
               onDragEnd={() => setDraggedKey(null)}
+              onMoveUp={idx > 0 ? () => moveUp(item.key) : undefined}
+              onMoveDown={idx < backlogItems.length - 1 ? () => moveDown(item.key) : undefined}
             />
           ))}
         </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { GripVertical } from "lucide-react";
+import { ChevronDown, ChevronUp, GripVertical } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { IssueKey, PriorityIcon, TypeIcon, UserAvatar } from "@/components/shared/work-item-meta";
@@ -18,6 +18,8 @@ export function BacklogRow({
   onDragOver,
   onDrop,
   onDragEnd,
+  onMoveUp,
+  onMoveDown,
 }: {
   item: WorkItem;
   selected: boolean;
@@ -28,6 +30,9 @@ export function BacklogRow({
   onDragOver?: (e: React.DragEvent) => void;
   onDrop?: (e: React.DragEvent) => void;
   onDragEnd?: () => void;
+  /** Non-drag alternative for rank reordering — omit (or leave both undefined) at the boundary rows. */
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
 }) {
   return (
     <div
@@ -41,7 +46,29 @@ export function BacklogRow({
       } ${selected ? "bg-accent/50" : ""}`}
     >
       {draggable && (
-        <GripVertical className="size-3.5 shrink-0 cursor-grab text-muted-foreground opacity-0 group-hover:opacity-100" />
+        <>
+          <GripVertical className="size-3.5 shrink-0 cursor-grab text-muted-foreground opacity-0 group-hover:opacity-100 group-focus-within:opacity-100" />
+          <div className="flex shrink-0 flex-col opacity-0 group-hover:opacity-100 group-focus-within:opacity-100">
+            <button
+              type="button"
+              onClick={onMoveUp}
+              disabled={!onMoveUp}
+              aria-label={`Move ${item.key} up`}
+              className="flex size-3.5 items-center justify-center rounded-sm text-muted-foreground hover:bg-border disabled:pointer-events-none disabled:opacity-30"
+            >
+              <ChevronUp className="size-3" />
+            </button>
+            <button
+              type="button"
+              onClick={onMoveDown}
+              disabled={!onMoveDown}
+              aria-label={`Move ${item.key} down`}
+              className="flex size-3.5 items-center justify-center rounded-sm text-muted-foreground hover:bg-border disabled:pointer-events-none disabled:opacity-30"
+            >
+              <ChevronDown className="size-3" />
+            </button>
+          </div>
+        </>
       )}
       <Checkbox
         checked={selected}

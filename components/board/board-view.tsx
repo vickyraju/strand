@@ -27,6 +27,10 @@ export function BoardView({
     setDraggedKey(null);
   }
 
+  function moveItemTo(key: string, statusId: string) {
+    setItems((prev) => prev.map((i) => (i.key === key ? { ...i, statusId } : i)));
+  }
+
   const projectEpics = epics.filter((e) => e.projectKey === board.projectKey);
   const groups = swimlanes
     ? [
@@ -91,10 +95,12 @@ export function BoardView({
                   wipLimit={board.wipLimits[status.id] ?? null}
                   items={group.items.filter((i) => i.statusId === status.id)}
                   compact={compact}
+                  columns={columns}
                   draggedKey={draggedKey}
                   onDragStart={setDraggedKey}
                   onDragEnd={() => setDraggedKey(null)}
                   onDropItem={moveItem}
+                  onMoveToStatus={moveItemTo}
                 />
               ))}
             </div>

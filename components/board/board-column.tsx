@@ -8,19 +8,23 @@ export function BoardColumn({
   wipLimit,
   items,
   compact,
+  columns,
   draggedKey,
   onDragStart,
   onDragEnd,
   onDropItem,
+  onMoveToStatus,
 }: {
   status: WorkflowStatus;
   wipLimit: number | null;
   items: WorkItem[];
   compact: boolean;
+  columns: WorkflowStatus[];
   draggedKey: string | null;
   onDragStart: (key: string) => void;
   onDragEnd: () => void;
   onDropItem: (statusId: string) => void;
+  onMoveToStatus: (key: string, statusId: string) => void;
 }) {
   const overLimit = wipLimit !== null && items.length > wipLimit;
 
@@ -55,9 +59,11 @@ export function BoardColumn({
             key={item.key}
             item={item}
             compact={compact}
+            columns={columns}
             dragging={draggedKey === item.key}
             onDragStart={() => onDragStart(item.key)}
             onDragEnd={onDragEnd}
+            onMoveToStatus={(statusId) => onMoveToStatus(item.key, statusId)}
           />
         ))}
         {items.length === 0 && (

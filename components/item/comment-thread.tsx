@@ -53,6 +53,10 @@ export function CommentThread({
         Comments {comments.length > 0 && <span className="text-muted-foreground">({comments.length})</span>}
       </h2>
 
+      {comments.length === 0 && (
+        <p className="text-xs text-muted-foreground">No comments yet — be the first to add one.</p>
+      )}
+
       <div className="space-y-4">
         {comments.map((comment) => {
           const author = getUser(comment.authorId);
