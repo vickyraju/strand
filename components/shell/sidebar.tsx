@@ -25,9 +25,7 @@ import { useRecentItems } from "@/lib/use-recent-items";
 import { getIssue } from "@/lib/mock-data/issues";
 import { initialUnreadNotificationCount } from "@/lib/mock-data/notifications";
 import { getUser } from "@/lib/mock-data/users";
-import { projects } from "@/lib/mock-data/projects";
 
-const projectColors: Record<string, string> = { ENG: "#3b82f6", PLAT: "#f97316" };
 const currentUser = getUser("u1");
 
 /** Hidden below `sm` regardless of the manual collapse toggle, so the sidebar never forces horizontal scroll on narrow viewports. */
@@ -64,12 +62,11 @@ export function Sidebar({ activeProject }: { activeProject?: string }) {
       )}
     >
       <div className="flex h-14 items-center gap-1.5 border-b border-border px-2.5">
-        <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-foreground text-[11px] font-bold text-background">
+        <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-primary text-[11px] font-bold text-primary-foreground">
           S
         </span>
-        <div className={cn("min-w-0 flex-1 leading-tight", label)}>
+        <div className={cn("min-w-0 flex-1", label)}>
           <p className="truncate text-[13px] font-semibold text-sidebar-foreground">Strand</p>
-          <p className="truncate text-[11px] text-muted-foreground">Meridian Capital</p>
         </div>
         <button
           type="button"
@@ -89,36 +86,6 @@ export function Sidebar({ activeProject }: { activeProject?: string }) {
         <div className="space-y-0.5">
           {!collapsed && (
             <p className={cn("px-2 pb-1 text-[11px] font-medium tracking-wide text-muted-foreground", label)}>
-              Pinned
-            </p>
-          )}
-          {projects.map((project) => {
-            const isActive = project.key === activeProject;
-            return (
-              <Link
-                key={project.key}
-                href={`/${project.key}/board`}
-                className={cn(
-                  "flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm",
-                  isActive ? "bg-muted font-medium text-foreground" : "text-foreground hover:bg-muted"
-                )}
-              >
-                <span
-                  className="size-2 shrink-0 rounded-[3px]"
-                  style={{ backgroundColor: projectColors[project.key] ?? "#94a3b8" }}
-                />
-                <span className={cn("truncate", label)}>
-                  <span className="font-semibold tracking-wide">{project.key}</span>{" "}
-                  <span className="text-muted-foreground">{project.name}</span>
-                </span>
-              </Link>
-            );
-          })}
-        </div>
-
-        <div className="space-y-0.5">
-          {!collapsed && (
-            <p className={cn("px-2 pb-1 text-[11px] font-medium tracking-wide text-muted-foreground", label)}>
               Views
             </p>
           )}
@@ -128,14 +95,14 @@ export function Sidebar({ activeProject }: { activeProject?: string }) {
             const commonClasses = cn(
               "flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm font-medium",
               view.disabled && "pointer-events-none opacity-45",
-              isActive ? "bg-primary text-primary-foreground" : "text-foreground hover:bg-muted"
+              isActive ? "bg-accent font-semibold text-accent-foreground" : "text-foreground hover:bg-muted"
             );
             const content = (
               <>
                 <Icon className="size-4 shrink-0" />
                 {!collapsed && <span className={cn("flex-1 truncate", label)}>{view.label}</span>}
                 {!collapsed && !!view.badge && (
-                  <Badge variant="secondary" className={cn("h-4 min-w-4 justify-center px-1 text-[10px]", label)}>
+                  <Badge className={cn("h-4 min-w-4 justify-center bg-primary px-1 text-[10px] text-primary-foreground", label)}>
                     {view.badge}
                   </Badge>
                 )}
@@ -207,7 +174,10 @@ export function Sidebar({ activeProject }: { activeProject?: string }) {
           </button>
         </div>
         <div className="flex items-center gap-2 rounded-md px-1 py-1">
-          <UserAvatar user={currentUser} className="size-7 shrink-0" />
+          <span className="relative shrink-0">
+            <UserAvatar user={currentUser} className="size-7" />
+            <span className="absolute -bottom-0.5 -right-0.5 size-2 rounded-full bg-primary ring-2 ring-sidebar" />
+          </span>
           {!collapsed && (
             <div className={cn("min-w-0 leading-tight", label)}>
               <p className="truncate text-[12.5px] font-medium text-foreground">{currentUser?.name}</p>
