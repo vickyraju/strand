@@ -83,6 +83,8 @@ export interface WorkItem {
   updatedAt: string;
   /** Backlog rank within its project — lower sorts first */
   rank: number;
+  /** Users watching this item for updates; optional since most mock items have none */
+  watcherIds?: string[];
 }
 
 export interface Epic {
@@ -99,4 +101,23 @@ export interface Comment {
   body: string;
   createdAt: string;
   mentionedUserIds: string[];
+}
+
+export type NotificationCategory =
+  | "mention"
+  | "comment"
+  | "status-change"
+  | "assignment"
+  | "blocked"
+  | "security";
+
+export type NotificationState = "unread" | "read" | "done";
+
+export interface NotificationEvent {
+  id: string;
+  workItemKey: string;
+  category: NotificationCategory;
+  actorId: string;
+  summary: string;
+  createdAt: string;
 }

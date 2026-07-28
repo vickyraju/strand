@@ -94,7 +94,7 @@ const authored: WorkItem[] = [
     description:
       "Typing in the description field, waiting for the 2s autosave debounce to fire, then continuing to type drops the cursor to the start of the field. Reproduces in Chrome and Firefox.",
     statusId: "eng-todo",
-    assigneeId: null,
+    assigneeId: "u1",
     reporterId: "u3",
     priority: "high",
     storyPoints: 2,
@@ -348,6 +348,7 @@ const authored: WorkItem[] = [
     createdAt: "2026-07-12T09:00:00.000Z",
     updatedAt: now,
     rank: 100,
+    watcherIds: ["u1"],
   },
   {
     key: "PLAT-1202",
@@ -448,6 +449,7 @@ const authored: WorkItem[] = [
     createdAt: "2026-07-05T09:00:00.000Z",
     updatedAt: now,
     rank: 200,
+    watcherIds: ["u1"],
   },
   {
     key: "PLAT-1221",

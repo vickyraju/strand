@@ -4,3 +4,4 @@ export * from "./sprints";
 export * from "./epics";
 export * from "./issues";
 export * from "./comments";
+export * from "./notifications";

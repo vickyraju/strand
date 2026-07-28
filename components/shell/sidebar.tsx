@@ -3,19 +3,26 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { KanbanSquare, ListTodo, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { Bell, KanbanSquare, ListTodo, PanelLeftClose, PanelLeftOpen, UserRound } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { initialUnreadNotificationCount } from "@/lib/mock-data/notifications";
 import { projects } from "@/lib/mock-data/projects";
 
-const navItems = [
+const projectNavItems = [
   { segment: "board", label: "Board", icon: KanbanSquare },
   { segment: "backlog", label: "Backlog", icon: ListTodo },
 ] as const;
 
+const globalNavItems = [
+  { href: "/your-work", label: "Your Work", icon: UserRound, badge: undefined as number | undefined },
+  { href: "/notifications", label: "Notifications", icon: Bell, badge: initialUnreadNotificationCount as number | undefined },
+];
+
 /** Hidden below `sm` regardless of the manual collapse toggle, so the sidebar never forces horizontal scroll on narrow viewports. */
 const label = "hidden sm:inline";
 
-export function Sidebar({ activeProject }: { activeProject: string }) {
+export function Sidebar({ activeProject }: { activeProject?: string }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = React.useState(false);
 
@@ -43,6 +50,30 @@ export function Sidebar({ activeProject }: { activeProject: string }) {
       </div>
 
       <nav className="flex flex-1 flex-col gap-4 overflow-y-auto p-2">
+        <div className="space-y-0.5">
+          {globalNavItems.map(({ href, label: navLabel, icon: Icon, badge }) => {
+            const isActive = pathname === href;
+            return (
+              <Link
+                key={href}
+                href={href}
+                className={cn(
+                  "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium",
+                  isActive
+                    ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                    : "text-sidebar-foreground hover:bg-sidebar-accent/60"
+                )}
+              >
+                <Icon className="size-4 shrink-0" />
+                {!collapsed && <span className={cn("flex-1", label)}>{navLabel}</span>}
+                {!collapsed && !!badge && (
+                  <Badge className={cn("h-4 min-w-4 justify-center px-1 text-[10px]", label)}>{badge}</Badge>
+                )}
+              </Link>
+            );
+          })}
+        </div>
+
         <div className="space-y-0.5">
           {!collapsed && (
             <p className={cn("px-2 pb-1 text-[11px] font-medium tracking-wide text-muted-foreground", label)}>
@@ -74,32 +105,34 @@ export function Sidebar({ activeProject }: { activeProject: string }) {
           })}
         </div>
 
-        <div className="space-y-0.5">
-          {!collapsed && (
-            <p className={cn("px-2 pb-1 text-[11px] font-medium tracking-wide text-muted-foreground", label)}>
-              {activeProject}
-            </p>
-          )}
-          {navItems.map(({ segment, label: navLabel, icon: Icon }) => {
-            const href = `/${activeProject}/${segment}`;
-            const isActive = pathname?.startsWith(href);
-            return (
-              <Link
-                key={segment}
-                href={href}
-                className={cn(
-                  "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium",
-                  isActive
-                    ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                    : "text-sidebar-foreground hover:bg-sidebar-accent/60"
-                )}
-              >
-                <Icon className="size-4 shrink-0" />
-                {!collapsed && <span className={label}>{navLabel}</span>}
-              </Link>
-            );
-          })}
-        </div>
+        {activeProject && (
+          <div className="space-y-0.5">
+            {!collapsed && (
+              <p className={cn("px-2 pb-1 text-[11px] font-medium tracking-wide text-muted-foreground", label)}>
+                {activeProject}
+              </p>
+            )}
+            {projectNavItems.map(({ segment, label: navLabel, icon: Icon }) => {
+              const href = `/${activeProject}/${segment}`;
+              const isActive = pathname?.startsWith(href);
+              return (
+                <Link
+                  key={segment}
+                  href={href}
+                  className={cn(
+                    "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium",
+                    isActive
+                      ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                      : "text-sidebar-foreground hover:bg-sidebar-accent/60"
+                  )}
+                >
+                  <Icon className="size-4 shrink-0" />
+                  {!collapsed && <span className={label}>{navLabel}</span>}
+                </Link>
+              );
+            })}
+          </div>
+        )}
       </nav>
     </aside>
   );

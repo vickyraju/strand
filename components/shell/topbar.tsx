@@ -18,10 +18,15 @@ import { getProject } from "@/lib/mock-data/projects";
 
 const currentUser = getUser("u1");
 
-export function Topbar({ activeProject }: { activeProject: string }) {
-  const project = getProject(activeProject);
+const globalTitles: Record<string, string> = {
+  "your-work": "Your Work",
+  notifications: "Notifications",
+};
+
+export function Topbar({ activeProject }: { activeProject?: string }) {
   const pathname = usePathname();
-  const section = pathname?.split("/")[2] ?? "board";
+  const firstSegment = pathname?.split("/")[1] ?? "";
+  const globalTitle = globalTitles[firstSegment];
 
   return (
     <header className="flex h-12 shrink-0 items-center justify-between gap-4 border-b border-border px-4">
@@ -29,14 +34,11 @@ export function Topbar({ activeProject }: { activeProject: string }) {
         aria-label="Breadcrumb"
         className="flex min-w-0 flex-1 items-center gap-1.5 truncate text-sm text-muted-foreground"
       >
-        <Link
-          href={`/${activeProject}/board`}
-          className="truncate font-medium text-foreground hover:underline"
-        >
-          {project?.name ?? activeProject}
-        </Link>
-        <span aria-hidden>/</span>
-        <span className="shrink-0 capitalize text-foreground">{section}</span>
+        {globalTitle ? (
+          <span className="truncate font-medium text-foreground">{globalTitle}</span>
+        ) : (
+          <ProjectBreadcrumb activeProject={activeProject} pathname={pathname} />
+        )}
       </nav>
 
       <div className="flex shrink-0 items-center gap-2">
@@ -60,5 +62,20 @@ export function Topbar({ activeProject }: { activeProject: string }) {
         </DropdownMenu>
       </div>
     </header>
+  );
+}
+
+function ProjectBreadcrumb({ activeProject, pathname }: { activeProject?: string; pathname: string | null }) {
+  if (!activeProject) return null;
+  const project = getProject(activeProject);
+  const section = pathname?.split("/")[2] ?? "board";
+  return (
+    <>
+      <Link href={`/${activeProject}/board`} className="truncate font-medium text-foreground hover:underline">
+        {project?.name ?? activeProject}
+      </Link>
+      <span aria-hidden>/</span>
+      <span className="shrink-0 capitalize text-foreground">{section}</span>
+    </>
   );
 }
