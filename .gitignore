@@ -13,12 +13,9 @@
 # testing
 /coverage
 
-# next.js
-/.next/
-/out/
-
-# production
-/build
+# vite
+/dist/
+.vite/
 
 # misc
 .DS_Store
@@ -38,7 +35,6 @@ yarn-error.log*
 
 # typescript
 *.tsbuildinfo
-next-env.d.ts
 
 # playwright mcp debug output
 .playwright-mcp/
