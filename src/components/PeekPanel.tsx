@@ -1,19 +1,15 @@
 import WorkItemDetail from './WorkItemDetail'
 
-interface PeekPanelProps {
+export default function PeekPanel({ issueId, onExpandFull, onClose }: {
+  issueId:      string
   onExpandFull: () => void
   onClose:      () => void
-}
-
-export default function PeekPanel({ onExpandFull, onClose }: PeekPanelProps) {
+}) {
   return (
     <>
-      {/* Dim overlay — click to close */}
       <div className="peek-dim" onClick={onClose} />
-
-      {/* Sliding panel */}
-      <div className="peek-panel">
-        <WorkItemDetail mode="peek" onExpandFull={onExpandFull} onClose={onClose} />
+      <div className="peek-panel" role="dialog" aria-label="Work item">
+        <WorkItemDetail issueId={issueId} mode="peek" onExpand={onExpandFull} onClose={onClose} />
       </div>
     </>
   )
