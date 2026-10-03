@@ -5,7 +5,8 @@ export type ProjectTab = 'summary' | 'board' | 'backlog' | 'list' | 'timeline' |
 export type Route =
   | { name: 'home' }
   | { name: 'inbox' }
-  | { name: 'search'; q: string }
+  | { name: 'search'; q: string; view?: string }
+  | { name: 'dashboards'; id?: string }
   | { name: 'projects' }
   | { name: 'settings' }
   | { name: 'project'; key: string; tab?: ProjectTab; sub?: string }
@@ -23,7 +24,8 @@ export function parse(pathname: string, search: string): { route: Route; peek?: 
 
   if (!a)                         route = { name: 'home' }
   else if (a === 'inbox')         route = { name: 'inbox' }
-  else if (a === 'search')        route = { name: 'search', q: params.get('q') ?? '' }
+  else if (a === 'search')        route = { name: 'search', q: params.get('q') ?? '', view: params.get('view') ?? undefined }
+  else if (a === 'dashboards')    route = { name: 'dashboards', id: b }
   else if (a === 'projects' && !b) route = { name: 'projects' }
   else if (a === 'settings')      route = { name: 'settings' }
   else if (a === 'i' && b)        route = { name: 'issue', key: b.toUpperCase() }
@@ -37,7 +39,15 @@ export function href(route: Route, peek?: string): string {
   switch (route.name) {
     case 'home':      return `/${q}`
     case 'inbox':     return `/inbox${q}`
-    case 'search':    return `/search${route.q ? `?q=${encodeURIComponent(route.q)}` : ''}${peek ? `${route.q ? '&' : '?'}peek=${encodeURIComponent(peek)}` : ''}`
+    case 'search': {
+      const qs = new URLSearchParams()
+      if (route.view) qs.set('view', route.view)
+      if (route.q) qs.set('q', route.q)
+      if (peek) qs.set('peek', peek)
+      const str = qs.toString()
+      return `/search${str ? `?${str}` : ''}`
+    }
+    case 'dashboards': return `/dashboards${route.id ? `/${route.id}` : ''}${q}`
     case 'projects':  return `/projects${q}`
     case 'settings':  return `/settings${q}`
     case 'issue':     return `/i/${route.key}`

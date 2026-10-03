@@ -166,7 +166,7 @@ function Shell() {
             <ErrorBoundary resetKey={location.pathname}>
             {route.name === 'home'     && <YourWork onCreateProject={() => setCreateProjectOpen(true)} />}
             {route.name === 'inbox'    && <InboxView />}
-            {route.name === 'search'   && <SearchView query={route.q} />}
+            {route.name === 'search'   && <SearchView query={route.q} viewId={route.view} />}
             {route.name === 'projects' && <ProjectsView onCreate={() => setCreateProjectOpen(true)} />}
             {route.name === 'settings' && <SettingsView />}
             {route.name === 'project'  && (project

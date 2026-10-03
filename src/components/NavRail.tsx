@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import {
   LayoutGrid, Inbox, Search, Plus, Settings, PanelLeftClose, PanelLeftOpen, SearchCode, FolderKanban,
-  ChevronRight, ChevronDown, Columns2, ListChecks, List, BarChart3, Gauge, Hash, GanttChart, CalendarDays,
+  ChevronRight, ChevronDown, Bookmark, Columns2, ListChecks, List, BarChart3, Gauge, Hash, GanttChart, CalendarDays,
 } from 'lucide-react'
 import { useStore } from '../data/store'
 import { useApp } from '../appContext'
@@ -40,6 +40,7 @@ export default function NavRail({ collapsed, onCollapseToggle, onCmdK, route, on
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set(currentKey ? [currentKey] : []))
   const unread = state.notifications.filter(n => n.userId === state.me?.id && !n.read && !n.archived).length
   const starred = state.projects.filter(p => state.starred.includes(p.id))
+  const views = state.views.filter(v => v.shared || v.ownerId === state.me?.id)
   const others = state.projects.filter(p => !state.starred.includes(p.id))
   const recent = state.viewed.slice(0, 5).map(id => state.issues.find(i => i.id === id)).filter(i => !!i)
 
@@ -102,7 +103,16 @@ export default function NavRail({ collapsed, onCollapseToggle, onCmdK, route, on
       <div className="nav-body">
         {item(route.name === 'home', 'Your work', LayoutGrid, () => goTo('home'))}
         {item(route.name === 'inbox', 'Inbox', Inbox, () => goTo('inbox'), unread)}
-        {item(route.name === 'search', 'Search', SearchCode, () => goTo('search'))}
+        {item(route.name === 'search' && !route.view, 'Search', SearchCode, () => goTo('search'))}
+
+        {views.length > 0 && !collapsed && <div className="nav-section">Views</div>}
+        {!collapsed && views.map(v => (
+          <button key={v.id} className={`nav-item nav-recent${route.name === 'search' && route.view === v.id ? ' active' : ''}`}
+            onClick={() => navigate(href({ name: 'search', q: '', view: v.id }))} title={v.shared ? `${v.name} (shared)` : v.name}>
+            <Bookmark size={14} strokeWidth={1.75} className="nav-icon" />
+            <span className="nav-label">{v.name}</span>
+          </button>
+        ))}
 
         {starred.length > 0 && <div className="nav-section">Starred</div>}
         {starred.map(projectRow)}

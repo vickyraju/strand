@@ -55,6 +55,9 @@ export interface Project {
   nextNumber:  number
   createdAt:   number
   rules:       Rule[]
+  fields:      FieldDef[]
+  releases:    Release[]
+  templates:   ItemTemplate[]
   sample?:     boolean
 }
 
@@ -89,6 +92,69 @@ export interface Attachment {
 
 export const AUTOMATION = 'automation'
 
+/** Project-level custom field shown on every work item in the project. */
+export interface FieldDef {
+  id:       string
+  name:     string
+  kind:     'text' | 'number' | 'select' | 'date'
+  options?: string[]
+}
+
+/** A release (Jira "fix version"). */
+export interface Release {
+  id:           string
+  name:         string
+  description:  string
+  startDate?:   string
+  releaseDate?: string
+  released:     boolean
+  releasedAt?:  number
+}
+
+/** Reusable defaults for new work items. */
+export interface ItemTemplate {
+  id:          string
+  name:        string
+  type:        IssueType
+  title:       string
+  description: string
+  priority:    Priority
+  labels:      string[]
+  estimate?:   number
+}
+
+export interface Worklog {
+  id:      string
+  userId:  string
+  minutes: number
+  date:    string
+  note:    string
+  at:      number
+}
+
+export type ViewResolution = 'open' | 'done' | 'all'
+export interface ViewFilters {
+  q:          string
+  projectId?: string
+  /** null = anyone, '' = unassigned, 'me' = whoever is viewing */
+  assignee:   string | null
+  type?:      IssueType
+  priority?:  Priority
+  label?:     string
+  resolution: ViewResolution
+}
+export interface SavedView {
+  id:       string
+  name:     string
+  ownerId:  string
+  shared:   boolean
+  filters:  ViewFilters
+}
+
+export type GadgetKind = 'assigned' | 'view' | 'status' | 'created' | 'workload' | 'burndown' | 'due'
+export interface Gadget { id: string; kind: GadgetKind; projectId?: string; viewId?: string; wide?: boolean }
+export interface Dashboard { id: string; name: string; ownerId: string; gadgets: Gadget[] }
+
 export interface IssueLink { type: 'blocks' | 'relates'; issueId: string }
 
 export interface Issue {
@@ -111,6 +177,12 @@ export interface Issue {
   watcherIds:  string[]
   links:       IssueLink[]
   attachments: Attachment[]
+  /** Values for the project's custom fields, by field id. */
+  custom:      Record<string, string | number>
+  releaseId?:  string
+  /** Original time estimate in minutes. */
+  timeEstimate?: number
+  worklogs:    Worklog[]
   /** Backlog order: lower is higher priority. Fractional so a move touches one item. */
   rank:        number
   createdAt:   number
@@ -168,7 +240,7 @@ export interface Notification {
 }
 
 export interface State {
-  version:       3
+  version:       4
   workspaceName: string
   ownerId:       string | null
   actingAsId:    string | null
@@ -182,13 +254,15 @@ export interface State {
   starred:       string[]
   viewed:        string[]
   sampleIds:     string[]
+  views:         SavedView[]
+  dashboards:    Dashboard[]
 }
 
 export type ProjectPatch = Partial<Pick<Project,
-  'name' | 'description' | 'color' | 'leadId' | 'statuses' | 'transitions' | 'layout' | 'boardPrefs' | 'rules'>>
-export type IssuePatch = Partial<Omit<Issue, 'id' | 'key' | 'projectId' | 'reporterId' | 'createdAt' | 'watcherIds' | 'links' | 'attachments' | 'rank'>>
+  'name' | 'description' | 'color' | 'leadId' | 'statuses' | 'transitions' | 'layout' | 'boardPrefs' | 'rules' | 'fields' | 'releases' | 'templates'>>
+export type IssuePatch = Partial<Omit<Issue, 'id' | 'key' | 'projectId' | 'reporterId' | 'createdAt' | 'watcherIds' | 'links' | 'attachments' | 'rank' | 'worklogs'>>
 export type NewIssue = Pick<Issue, 'projectId' | 'title'> & Partial<Pick<Issue,
-  'type' | 'description' | 'status' | 'priority' | 'assigneeId' | 'labels' | 'estimate' | 'dueDate' | 'startDate' | 'sprintId' | 'parentId'>>
+  'type' | 'description' | 'status' | 'priority' | 'assigneeId' | 'labels' | 'estimate' | 'dueDate' | 'startDate' | 'sprintId' | 'parentId' | 'custom' | 'releaseId' | 'timeEstimate'>>
 
 export type Action =
   | { type: 'setOwner'; name: string; workspaceName?: string }
@@ -209,6 +283,13 @@ export type Action =
   | { type: 'moveIssue'; id: string; beforeId?: string; container?: string | null }
   | { type: 'addAttachment'; issueId: string; attachment: Attachment }
   | { type: 'removeAttachment'; issueId: string; attachmentId: string }
+  | { type: 'logWork'; issueId: string; minutes: number; date: string; note: string }
+  | { type: 'deleteWorklog'; issueId: string; worklogId: string }
+  | { type: 'releaseVersion'; projectId: string; releaseId: string; moveTo?: string }
+  | { type: 'saveView'; view: SavedView }
+  | { type: 'deleteView'; id: string }
+  | { type: 'saveDashboard'; dashboard: Dashboard }
+  | { type: 'deleteDashboard'; id: string }
   | { type: 'addLink'; issueId: string; link: IssueLink }
   | { type: 'removeLink'; issueId: string; otherId: string }
   | { type: 'addComment'; issueId: string; body: string }
@@ -248,9 +329,9 @@ export const DEFAULT_FIELDS: Record<CardField, boolean> = {
 export const DEFAULT_BOARD_PREFS: BoardPrefs = { groupBy: 'none', fields: DEFAULT_FIELDS, collapsedLanes: [], collapsedCols: [] }
 
 export const EMPTY: State = {
-  version: 3, workspaceName: 'Forge', ownerId: null, actingAsId: null,
+  version: 4, workspaceName: 'Forge', ownerId: null, actingAsId: null,
   users: [], projects: [], issues: [], sprints: [], comments: [], activity: [], notifications: [],
-  starred: [], viewed: [], sampleIds: [],
+  starred: [], viewed: [], sampleIds: [], views: [], dashboards: [],
 }
 
 // ── Helpers ────────────────────────────────────────────────
@@ -306,6 +387,7 @@ export const actorId = (s: State) => s.actingAsId ?? s.ownerId ?? ''
 const FIELD_LABEL: Partial<Record<keyof IssuePatch, string>> = {
   title: 'title', description: 'description', status: 'status', priority: 'priority', assigneeId: 'assignee',
   type: 'type', labels: 'labels', estimate: 'estimate', dueDate: 'due date', sprintId: 'sprint', parentId: 'parent',
+  releaseId: 'release', timeEstimate: 'time estimate', custom: 'fields', startDate: 'start date',
 }
 
 export function reducer(state: State, action: Action, now = Date.now()): State {
@@ -361,7 +443,7 @@ export function reducer(state: State, action: Action, now = Date.now()): State {
       const project: Project = {
         ...action.project, description: '', leadId: actor,
         statuses: DEFAULT_STATUSES, transitions: anyToAny(DEFAULT_STATUSES), layout: {},
-        boardPrefs: DEFAULT_BOARD_PREFS, nextNumber: 1, createdAt: now, rules: [],
+        boardPrefs: DEFAULT_BOARD_PREFS, nextNumber: 1, createdAt: now, rules: [], fields: [], releases: [], templates: [],
       }
       return { ...state, projects: [...state.projects, project] }
     }
@@ -374,6 +456,8 @@ export function reducer(state: State, action: Action, now = Date.now()): State {
         projects: state.projects.filter(p => p.id !== action.id),
         sprints:  state.sprints.filter(s => s.projectId !== action.id),
         starred:  state.starred.filter(id => id !== action.id),
+        views:    state.views.map(v => v.filters.projectId === action.id ? { ...v, filters: { ...v.filters, projectId: undefined } } : v),
+        dashboards: state.dashboards.map(d => ({ ...d, gadgets: d.gadgets.filter(g => g.projectId !== action.id) })),
       }, issueIds)
     }
     case 'remapStatus': {
@@ -403,7 +487,7 @@ export function reducer(state: State, action: Action, now = Date.now()): State {
         ...action.issue,
         id: action.id, key: `${project.key}-${project.nextNumber}`, reporterId: actor,
         watcherIds: [...new Set([actor, action.issue.assigneeId].filter((x): x is string => !!x))],
-        links: [], attachments: [], createdAt: now, updatedAt: now,
+        links: [], attachments: [], worklogs: [], custom: action.issue.custom ?? {}, createdAt: now, updatedAt: now,
         rank: Math.max(0, ...state.issues.filter(i => i.projectId === project.id).map(i => i.rank)) + 1,
       }
       const next: State = {
@@ -512,6 +596,44 @@ export function reducer(state: State, action: Action, now = Date.now()): State {
       }
     case 'deleteComment':
       return { ...state, comments: state.comments.filter(c => !(c.id === action.id && c.authorId === actor)) }
+
+    case 'logWork': {
+      if (!actor || action.minutes <= 0) return state
+      const w: Worklog = { id: uid(), userId: actor, minutes: Math.round(action.minutes), date: action.date, note: action.note.trim(), at: now }
+      const h = Math.floor(w.minutes / 60), m = w.minutes % 60
+      return {
+        ...state,
+        issues:   state.issues.map(i => i.id === action.issueId ? { ...i, worklogs: [...i.worklogs, w], updatedAt: now } : i),
+        activity: [...state.activity, log(action.issueId, `logged ${h ? `${h}h` : ''}${h && m ? ' ' : ''}${m ? `${m}m` : ''}`)],
+      }
+    }
+    case 'deleteWorklog':
+      return { ...state, issues: state.issues.map(i => i.id === action.issueId ? { ...i, worklogs: i.worklogs.filter(w => !(w.id === action.worklogId && w.userId === actor)) } : i) }
+    case 'releaseVersion': {
+      const project = state.projects.find(p => p.id === action.projectId)
+      if (!project) return state
+      const open = state.issues.filter(i => i.releaseId === action.releaseId && !isDone(project, i)).map(i => i.id)
+      let next: State = {
+        ...state,
+        projects: state.projects.map(p => p.id !== project.id ? p : {
+          ...p, releases: p.releases.map(r => r.id === action.releaseId ? { ...r, released: true, releasedAt: now } : r),
+        }),
+      }
+      if (open.length) next = reducer(next, { type: 'updateIssues', ids: open, patch: { releaseId: action.moveTo } }, now)
+      return next
+    }
+    case 'saveView':
+      return { ...state, views: state.views.some(v => v.id === action.view.id) ? state.views.map(v => v.id === action.view.id ? action.view : v) : [...state.views, action.view] }
+    case 'deleteView':
+      return {
+        ...state,
+        views: state.views.filter(v => v.id !== action.id),
+        dashboards: state.dashboards.map(d => ({ ...d, gadgets: d.gadgets.filter(g => g.viewId !== action.id) })),
+      }
+    case 'saveDashboard':
+      return { ...state, dashboards: state.dashboards.some(d => d.id === action.dashboard.id) ? state.dashboards.map(d => d.id === action.dashboard.id ? action.dashboard : d) : [...state.dashboards, action.dashboard] }
+    case 'deleteDashboard':
+      return { ...state, dashboards: state.dashboards.filter(d => d.id !== action.id) }
 
     case 'markViewed':
       if (state.viewed[0] === action.issueId) return state
@@ -756,8 +878,8 @@ function updateOne(
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function migrate(raw: any): State {
   if (!raw || typeof raw !== 'object') return EMPTY
-  if (raw.version === 3) return { ...EMPTY, ...raw }
-  if (raw.version === 2) return toV3({ ...EMPTY, ...raw })
+  if (raw.version === 4) return { ...EMPTY, ...raw }
+  if (raw.version === 3 || raw.version === 2) return toV4(toV3({ ...EMPTY, ...raw }))
 
   // v1: `me` object, statuses with a `done` flag, no transitions/watchers/links/notifications
   const me = raw.me as User | null
@@ -783,7 +905,7 @@ export function migrate(raw: any): State {
       ? { ...a, field: 'status', to: issues.find(i => i.id === a.issueId)?.status }
       : a)
 
-  return toV3({
+  return toV4(toV3({
     ...EMPTY,
     ownerId:   me?.id ?? null,
     users:     raw.users ?? (me ? [me] : []),
@@ -792,7 +914,19 @@ export function migrate(raw: any): State {
     comments:  raw.comments ?? [],
     starred:   raw.starred ?? [],
     viewed:    raw.viewed ?? [],
-  })
+  }))
+}
+
+/** v4: custom fields, releases, templates, time tracking, saved views and dashboards. */
+function toV4(s: State): State {
+  return {
+    ...s,
+    version:    4,
+    views:      s.views ?? [],
+    dashboards: s.dashboards ?? [],
+    projects:   s.projects.map(p => ({ ...p, fields: p.fields ?? [], releases: p.releases ?? [], templates: p.templates ?? [] })),
+    issues:     s.issues.map(i => ({ ...i, custom: i.custom ?? {}, worklogs: i.worklogs ?? [] })),
+  }
 }
 
 /** v3: backlog rank (seeded from creation order), attachments and automation rules. */
@@ -800,7 +934,7 @@ function toV3(s: State): State {
   const order = [...s.issues].sort((a, b) => a.createdAt - b.createdAt).map(i => i.id)
   return {
     ...s,
-    version:  3,
+    version:  3 as unknown as 4,
     projects: s.projects.map(p => ({ ...p, rules: p.rules ?? [] })),
     issues:   s.issues.map(i => ({ ...i, attachments: i.attachments ?? [], rank: i.rank ?? order.indexOf(i.id) + 1 })),
   }

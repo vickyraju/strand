@@ -3,7 +3,7 @@
 import {
   uid, makeUser, anyToAny, DEFAULT_BOARD_PREFS,
   type State, type User, type Project, type Issue, type Sprint, type Comment, type Activity, type Notification,
-  type Status, type Transition, type IssueType, type Priority,
+  type Status, type Transition, type IssueType, type Priority, type Release,
 } from './reducer.ts'
 
 const DAY = 86_400_000
@@ -191,7 +191,7 @@ export function sampleWorkspace(owner: User, now = Date.now()): Partial<State> {
       id: uid(), key: spec.key, name: spec.name, description: spec.description, color: spec.color,
       template: spec.template, leadId: lead.id, statuses: spec.statuses,
       transitions: spec.transitions ? spec.transitions(spec.statuses) : anyToAny(spec.statuses),
-      layout: {}, boardPrefs: DEFAULT_BOARD_PREFS, nextNumber: 1, createdAt: now - 60 * DAY, rules: [],
+      layout: {}, boardPrefs: DEFAULT_BOARD_PREFS, nextNumber: 1, createdAt: now - 60 * DAY, rules: [], fields: [], releases: [], templates: [],
     }
     projects.push(project)
 
@@ -228,7 +228,7 @@ export function sampleWorkspace(owner: User, now = Date.now()): Partial<State> {
         startDate: s.due !== undefined ? iso(s.due - Math.max(2, Math.round((s.est ?? 3) * 1.2))) : sprintStart(s),
         sprintId: s.sprint !== undefined ? sprintIds[s.sprint] : undefined,
         watcherIds: [...new Set([reporter.id, assignee?.id].filter((x): x is string => !!x))],
-        links: [], attachments: [], rank: issues.length + 1, createdAt: 0, updatedAt: 0,
+        links: [], attachments: [], worklogs: [], custom: {}, rank: issues.length + 1, createdAt: 0, updatedAt: 0,
       }
 
       // Timeline: when it was created and when it moved through the workflow
@@ -330,6 +330,78 @@ export function sampleWorkspace(owner: User, now = Date.now()): Partial<State> {
       id: uid(), userId: owner.id, actorId: team[by].id, issueId: issue.id, kind: 'assigned',
       text: `${team[by].name} assigned ${issue.key} to you`, read: hoursAgo > 24, archived: false, createdAt: now - hoursAgo * HOUR,
     })
+  }
+
+  // ── Releases, custom fields, templates and time tracking ──
+  const [payP, mobP, supP] = projects
+  const rel = (name: string, description: string, start: number, release: number, released = false): Release =>
+    ({ id: uid(), name, description, startDate: iso(start), releaseDate: iso(release), released, releasedAt: released ? now + release * DAY : undefined })
+  payP.releases = [
+    rel('Payouts 2.3', 'Same-day payouts and PAN encryption.', -42, -14, true),
+    rel('Payouts 2.4', 'Instant payouts beta for tier 1 merchants.', -14, 9),
+    rel('Payouts 2.5', 'Webhooks v2.', 9, 40),
+  ]
+  mobP.releases = [
+    rel('iOS & Android 5.0', 'Onboarding redesign.', -30, -3, true),
+    rel('iOS & Android 5.1', 'Offline mode for in-person sales.', -3, 18),
+  ]
+  const forProject = (p: Project) => issues.filter(i => i.projectId === p.id && i.type !== 'epic')
+  for (const i of forProject(payP)) {
+    const sp = sprints.find(x => x.id === i.sprintId)
+    i.releaseId = sp?.state === 'closed' ? payP.releases[0].id : sp?.state === 'active' ? payP.releases[1].id : i.labels.includes('webhooks') ? payP.releases[2].id : undefined
+  }
+  for (const i of forProject(mobP)) {
+    i.releaseId = mobP.statuses.find(st => st.id === i.status)?.category === 'done' ? mobP.releases[0].id
+      : i.labels.some(l => ['ios', 'android'].includes(l)) || i.parentId ? mobP.releases[1].id : undefined
+  }
+
+  mobP.fields = [
+    { id: uid(), name: 'Platform', kind: 'select', options: ['iOS', 'Android', 'Both'] },
+    { id: uid(), name: 'App version', kind: 'text' },
+  ]
+  supP.fields = [
+    { id: uid(), name: 'Customer', kind: 'text' },
+    { id: uid(), name: 'Plan', kind: 'select', options: ['Starter', 'Growth', 'Enterprise'] },
+    { id: uid(), name: 'Revenue at risk', kind: 'number' },
+  ]
+  const customers = ['Acme Coffee', 'Northwind Bikes', 'Bluebird Florists', 'Harbor Dental', 'Kite & Co', 'Lumen Studio', 'Oakline Books', 'Pinecrest Gym', 'Quarry Bakery', 'Riverbend Vets']
+  forProject(mobP).forEach(i => {
+    i.custom[mobP.fields[0].id] = i.labels.includes('ios') && i.labels.includes('android') ? 'Both' : i.labels.includes('android') ? 'Android' : i.labels.includes('ios') ? 'iOS' : 'Both'
+    if (i.releaseId === mobP.releases[0].id) i.custom[mobP.fields[1].id] = '5.0.0'
+  })
+  forProject(supP).forEach((i, k) => {
+    i.custom[supP.fields[0].id] = customers[k % customers.length]
+    i.custom[supP.fields[1].id] = ['Growth', 'Enterprise', 'Starter'][k % 3]
+    i.custom[supP.fields[2].id] = [1200, 18000, 450, 3200, 0, 750, 9600, 2100, 300, 5400][k % 10]
+  })
+
+  supP.templates = [
+    { id: uid(), name: 'Customer bug report', type: 'bug', title: '[Customer] ', priority: 'high', labels: ['customer-reported'],
+      description: '**Customer:** \n**Steps to reproduce:**\n1. \n\n**Expected:** \n**Actual:** ' },
+    { id: uid(), name: 'Data request (GDPR)', type: 'task', title: 'Data request: ', priority: 'high', labels: ['gdpr'],
+      description: 'Verify identity, export data within 30 days, confirm with the customer.' },
+  ]
+  payP.templates = [
+    { id: uid(), name: 'Security finding', type: 'bug', title: 'Security: ', priority: 'urgent', labels: ['security'], estimate: 3,
+      description: '**Severity:** \n**Found by:** \n**Affected component:** \n**Remediation:** ' },
+  ]
+
+  // Estimates in hours, and time already logged on started work
+  for (const i of issues) {
+    if (i.type === 'epic' || i.estimate == null) continue
+    i.timeEstimate = i.estimate * 4 * 60
+    const p = projects.find(x => x.id === i.projectId)!
+    const cat = p.statuses.find(st => st.id === i.status)?.category
+    if (cat === 'todo' || !i.assigneeId) continue
+    const share = cat === 'done' ? between(0.8, 1.3) : between(0.25, 0.7)
+    let left = Math.round((i.timeEstimate * share) / 30) * 30
+    let day = cat === 'done' ? 9 : 3
+    while (left > 0) {
+      const minutes = Math.min(left, [60, 90, 120, 180, 240][Math.floor(between(0, 5))])
+      i.worklogs.push({ id: uid(), userId: i.assigneeId, minutes, date: iso(-day), note: '', at: now - day * DAY })
+      left -= minutes
+      day = Math.max(0, day - 1)
+    }
   }
 
   return { users, projects, issues, sprints, comments, activity, notifications, starred: [projects[0].id] }

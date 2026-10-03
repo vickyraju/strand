@@ -87,7 +87,8 @@ test('v1 saves migrate to v2', () => {
     activity: [{ id: 'a', issueId: 'i', actorId: 'u', text: 'created the work item', createdAt: 1 }],
   }
   const s = migrate(v1)
-  assert.equal(s.version, 3)
+  assert.equal(s.version, 4)
+  assert.deepEqual([s.views, s.projects[0].fields, s.issues[0].worklogs], [[], [], []])
   assert.equal(s.issues[0].rank, 1)
   assert.deepEqual(s.projects[0].rules, [])
   assert.equal(s.ownerId, 'u')
