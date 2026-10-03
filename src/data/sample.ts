@@ -191,7 +191,7 @@ export function sampleWorkspace(owner: User, now = Date.now()): Partial<State> {
       id: uid(), key: spec.key, name: spec.name, description: spec.description, color: spec.color,
       template: spec.template, leadId: lead.id, statuses: spec.statuses,
       transitions: spec.transitions ? spec.transitions(spec.statuses) : anyToAny(spec.statuses),
-      layout: {}, boardPrefs: DEFAULT_BOARD_PREFS, nextNumber: 1, createdAt: now - 60 * DAY,
+      layout: {}, boardPrefs: DEFAULT_BOARD_PREFS, nextNumber: 1, createdAt: now - 60 * DAY, rules: [],
     }
     projects.push(project)
 
@@ -223,7 +223,7 @@ export function sampleWorkspace(owner: User, now = Date.now()): Partial<State> {
         labels: s.labels ?? [], estimate: s.est, dueDate: s.due !== undefined ? iso(s.due) : undefined,
         sprintId: s.sprint !== undefined ? sprintIds[s.sprint] : undefined,
         watcherIds: [...new Set([reporter.id, assignee?.id].filter((x): x is string => !!x))],
-        links: [], createdAt: 0, updatedAt: 0,
+        links: [], attachments: [], rank: issues.length + 1, createdAt: 0, updatedAt: 0,
       }
 
       // Timeline: when it was created and when it moved through the workflow

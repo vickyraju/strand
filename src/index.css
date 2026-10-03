@@ -948,3 +948,10 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; line-height:
 .inbox-detail .detail-main { padding: 22px 24px 48px }
 
 .field-val .picker { max-width: 100% }
+
+/* Backlog ranking */
+.rank-slot { position: relative }
+.rank-slot.drop-before::before { content: ''; position: absolute; left: 0; right: 0; top: -1px; height: 2px; background: var(--brand); z-index: 2; border-radius: 1px }
+.sprint-box > .rank-slot { margin: 0 2px }
+.sprint-box > .rank-slot:first-of-type .row { border-top-left-radius: 8px; border-top-right-radius: 8px }
+.sprint-box > .rank-slot:nth-last-child(2) .row { border-bottom-left-radius: 8px; border-bottom-right-radius: 8px; border-bottom: none }

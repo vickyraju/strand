@@ -54,8 +54,40 @@ export interface Project {
   boardPrefs:  BoardPrefs
   nextNumber:  number
   createdAt:   number
+  rules:       Rule[]
   sample?:     boolean
 }
+
+/** Automation: "When <trigger> then <actions>". */
+export type RuleTrigger =
+  | { kind: 'created' }
+  | { kind: 'status'; to: string }
+  | { kind: 'assigned' }
+export type RuleAction =
+  | { kind: 'assign'; to: 'reporter' | 'lead' | 'unassign' | string }
+  | { kind: 'priority'; value: Priority }
+  | { kind: 'label'; value: string }
+  | { kind: 'status'; value: string }
+  | { kind: 'comment'; body: string }
+export interface Rule {
+  id:      string
+  name:    string
+  enabled: boolean
+  trigger: RuleTrigger
+  actions: RuleAction[]
+  runs:    number
+}
+
+export interface Attachment {
+  id:      string
+  name:    string
+  size:    number
+  type:    string
+  addedBy: string
+  addedAt: number
+}
+
+export const AUTOMATION = 'automation'
 
 export interface IssueLink { type: 'blocks' | 'relates'; issueId: string }
 
@@ -73,10 +105,14 @@ export interface Issue {
   labels:      string[]
   estimate?:   number
   dueDate?:    string
+  startDate?:  string
   sprintId?:   string
   parentId?:   string
   watcherIds:  string[]
   links:       IssueLink[]
+  attachments: Attachment[]
+  /** Backlog order: lower is higher priority. Fractional so a move touches one item. */
+  rank:        number
   createdAt:   number
   updatedAt:   number
 }
@@ -132,7 +168,7 @@ export interface Notification {
 }
 
 export interface State {
-  version:       2
+  version:       3
   workspaceName: string
   ownerId:       string | null
   actingAsId:    string | null
@@ -149,10 +185,10 @@ export interface State {
 }
 
 export type ProjectPatch = Partial<Pick<Project,
-  'name' | 'description' | 'color' | 'leadId' | 'statuses' | 'transitions' | 'layout' | 'boardPrefs'>>
-export type IssuePatch = Partial<Omit<Issue, 'id' | 'key' | 'projectId' | 'reporterId' | 'createdAt' | 'watcherIds' | 'links'>>
+  'name' | 'description' | 'color' | 'leadId' | 'statuses' | 'transitions' | 'layout' | 'boardPrefs' | 'rules'>>
+export type IssuePatch = Partial<Omit<Issue, 'id' | 'key' | 'projectId' | 'reporterId' | 'createdAt' | 'watcherIds' | 'links' | 'attachments' | 'rank'>>
 export type NewIssue = Pick<Issue, 'projectId' | 'title'> & Partial<Pick<Issue,
-  'type' | 'description' | 'status' | 'priority' | 'assigneeId' | 'labels' | 'estimate' | 'dueDate' | 'sprintId' | 'parentId'>>
+  'type' | 'description' | 'status' | 'priority' | 'assigneeId' | 'labels' | 'estimate' | 'dueDate' | 'startDate' | 'sprintId' | 'parentId'>>
 
 export type Action =
   | { type: 'setOwner'; name: string; workspaceName?: string }
@@ -170,6 +206,9 @@ export type Action =
   | { type: 'updateIssues'; ids: string[]; patch: IssuePatch }
   | { type: 'deleteIssues'; ids: string[] }
   | { type: 'toggleWatch'; issueId: string }
+  | { type: 'moveIssue'; id: string; beforeId?: string; container?: string | null }
+  | { type: 'addAttachment'; issueId: string; attachment: Attachment }
+  | { type: 'removeAttachment'; issueId: string; attachmentId: string }
   | { type: 'addLink'; issueId: string; link: IssueLink }
   | { type: 'removeLink'; issueId: string; otherId: string }
   | { type: 'addComment'; issueId: string; body: string }
@@ -209,7 +248,7 @@ export const DEFAULT_FIELDS: Record<CardField, boolean> = {
 export const DEFAULT_BOARD_PREFS: BoardPrefs = { groupBy: 'none', fields: DEFAULT_FIELDS, collapsedLanes: [], collapsedCols: [] }
 
 export const EMPTY: State = {
-  version: 2, workspaceName: 'Forge', ownerId: null, actingAsId: null,
+  version: 3, workspaceName: 'Forge', ownerId: null, actingAsId: null,
   users: [], projects: [], issues: [], sprints: [], comments: [], activity: [], notifications: [],
   starred: [], viewed: [], sampleIds: [],
 }
@@ -322,7 +361,7 @@ export function reducer(state: State, action: Action, now = Date.now()): State {
       const project: Project = {
         ...action.project, description: '', leadId: actor,
         statuses: DEFAULT_STATUSES, transitions: anyToAny(DEFAULT_STATUSES), layout: {},
-        boardPrefs: DEFAULT_BOARD_PREFS, nextNumber: 1, createdAt: now,
+        boardPrefs: DEFAULT_BOARD_PREFS, nextNumber: 1, createdAt: now, rules: [],
       }
       return { ...state, projects: [...state.projects, project] }
     }
@@ -364,9 +403,10 @@ export function reducer(state: State, action: Action, now = Date.now()): State {
         ...action.issue,
         id: action.id, key: `${project.key}-${project.nextNumber}`, reporterId: actor,
         watcherIds: [...new Set([actor, action.issue.assigneeId].filter((x): x is string => !!x))],
-        links: [], createdAt: now, updatedAt: now,
+        links: [], attachments: [], createdAt: now, updatedAt: now,
+        rank: Math.max(0, ...state.issues.filter(i => i.projectId === project.id).map(i => i.rank)) + 1,
       }
-      return {
+      const next: State = {
         ...state,
         projects: state.projects.map(p => p.id === project.id ? { ...p, nextNumber: p.nextNumber + 1 } : p),
         issues:   [...state.issues, issue],
@@ -374,10 +414,44 @@ export function reducer(state: State, action: Action, now = Date.now()): State {
         notifications: [...state.notifications,
           ...notify([issue.assigneeId], issue.id, 'assigned', `${userName(actor)} assigned ${issue.key} to you`)],
       }
+      return runRules(next, issue.id, [{ kind: 'created' }, ...(issue.assigneeId ? [{ kind: 'assigned' as const }] : [])], now)
     }
+    case 'moveIssue': {
+      const issue = state.issues.find(i => i.id === action.id)
+      if (!issue) return state
+      // container: undefined = stay put, null = backlog, string = sprint id
+      const sprintId = action.container === undefined ? issue.sprintId : action.container ?? undefined
+      const list = state.issues
+        .filter(i => i.projectId === issue.projectId && i.id !== issue.id && i.type !== 'epic' && (i.sprintId ?? null) === (sprintId ?? null))
+        .sort((a, b) => a.rank - b.rank)
+      const at = action.beforeId ? list.findIndex(i => i.id === action.beforeId) : -1
+      const rank = at < 0
+        ? (list.at(-1)?.rank ?? 0) + 1
+        : at === 0 ? list[0].rank - 1 : (list[at - 1].rank + list[at].rank) / 2
+      let next: State = { ...state, issues: state.issues.map(i => i.id === issue.id ? { ...i, rank } : i) }
+      if ((issue.sprintId ?? null) !== (sprintId ?? null)) next = reducer(next, { type: 'updateIssues', ids: [issue.id], patch: { sprintId } }, now)
+      return next
+    }
+    case 'addAttachment':
+      return {
+        ...state,
+        issues:   state.issues.map(i => i.id === action.issueId ? { ...i, attachments: [...i.attachments, action.attachment], updatedAt: now } : i),
+        activity: [...state.activity, log(action.issueId, `attached ${action.attachment.name}`)],
+      }
+    case 'removeAttachment':
+      return { ...state, issues: state.issues.map(i => i.id === action.issueId ? { ...i, attachments: i.attachments.filter(a => a.id !== action.attachmentId) } : i) }
     case 'updateIssues': {
       let next = state
-      for (const id of action.ids) next = updateOne(next, id, action.patch, log, notify, userName, now)
+      for (const id of action.ids) {
+        const before = next.issues.find(i => i.id === id)
+        next = updateOne(next, id, action.patch, log, notify, userName, now)
+        const after = next.issues.find(i => i.id === id)
+        if (!before || !after || before === after) continue
+        const events: RuleTrigger[] = []
+        if (after.status !== before.status) events.push({ kind: 'status', to: after.status })
+        if (after.assigneeId && after.assigneeId !== before.assigneeId) events.push({ kind: 'assigned' })
+        if (events.length) next = runRules(next, id, events, now)
+      }
       return next
     }
     case 'deleteIssues': {
@@ -558,6 +632,57 @@ export function reducer(state: State, action: Action, now = Date.now()): State {
   }
 }
 
+/**
+ * Apply the project's enabled automation rules for the events that just happened to one issue.
+ * Actions are applied directly (one pass), so a rule can never trigger itself or loop.
+ */
+export function runRules(state: State, issueId: string, events: RuleTrigger[], now: number): State {
+  const issue = state.issues.find(i => i.id === issueId)
+  const project = state.projects.find(p => p.id === issue?.projectId)
+  if (!issue || !project?.rules?.length) return state
+  const matches = project.rules.filter(r => r.enabled && events.some(e =>
+    e.kind === r.trigger.kind && (e.kind !== 'status' || (r.trigger.kind === 'status' && r.trigger.to === e.to))))
+  if (!matches.length) return state
+
+  let current = issue
+  const activity: Activity[] = []
+  const comments: Comment[] = []
+  const say = (text: string, field?: string, from?: string, to?: string) =>
+    activity.push({ id: uid(), issueId, actorId: AUTOMATION, field, from, to, text, createdAt: now })
+
+  for (const rule of matches) {
+    for (const a of rule.actions) {
+      if (a.kind === 'assign') {
+        const to = a.to === 'reporter' ? current.reporterId : a.to === 'lead' ? project.leadId : a.to === 'unassign' ? undefined : a.to
+        if (to !== undefined && !state.users.some(u => u.id === to)) continue
+        if (to === current.assigneeId) continue
+        say(to ? `assigned to ${state.users.find(u => u.id === to)?.name} (rule “${rule.name}”)` : `removed the assignee (rule “${rule.name}”)`, 'assigneeId', current.assigneeId, to)
+        current = { ...current, assigneeId: to, watcherIds: to ? [...new Set([...current.watcherIds, to])] : current.watcherIds }
+      } else if (a.kind === 'priority' && a.value !== current.priority) {
+        say(`set priority to ${a.value} (rule “${rule.name}”)`, 'priority', current.priority, a.value)
+        current = { ...current, priority: a.value }
+      } else if (a.kind === 'label' && a.value.trim() && !current.labels.includes(a.value.trim())) {
+        say(`added label ${a.value.trim()} (rule “${rule.name}”)`)
+        current = { ...current, labels: [...current.labels, a.value.trim()] }
+      } else if (a.kind === 'status' && a.value !== current.status && project.statuses.some(st => st.id === a.value)) {
+        say(`changed status to ${statusOf(project, a.value)?.name} (rule “${rule.name}”)`, 'status', current.status, a.value)
+        current = { ...current, status: a.value }
+      } else if (a.kind === 'comment' && a.body.trim()) {
+        comments.push({ id: uid(), issueId, authorId: AUTOMATION, body: a.body.trim(), createdAt: now })
+      }
+    }
+  }
+
+  return {
+    ...state,
+    issues:   state.issues.map(i => i.id === issueId ? { ...current, updatedAt: now } : i),
+    activity: [...state.activity, ...activity],
+    comments: [...state.comments, ...comments],
+    projects: state.projects.map(p => p.id === project.id
+      ? { ...p, rules: p.rules.map(r => matches.includes(r) ? { ...r, runs: r.runs + 1 } : r) } : p),
+  }
+}
+
 function dropIssues(state: State, ids: Set<string>): State {
   return {
     ...state,
@@ -631,7 +756,8 @@ function updateOne(
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function migrate(raw: any): State {
   if (!raw || typeof raw !== 'object') return EMPTY
-  if (raw.version === 2) return { ...EMPTY, ...raw }
+  if (raw.version === 3) return { ...EMPTY, ...raw }
+  if (raw.version === 2) return toV3({ ...EMPTY, ...raw })
 
   // v1: `me` object, statuses with a `done` flag, no transitions/watchers/links/notifications
   const me = raw.me as User | null
@@ -657,7 +783,7 @@ export function migrate(raw: any): State {
       ? { ...a, field: 'status', to: issues.find(i => i.id === a.issueId)?.status }
       : a)
 
-  return {
+  return toV3({
     ...EMPTY,
     ownerId:   me?.id ?? null,
     users:     raw.users ?? (me ? [me] : []),
@@ -666,6 +792,17 @@ export function migrate(raw: any): State {
     comments:  raw.comments ?? [],
     starred:   raw.starred ?? [],
     viewed:    raw.viewed ?? [],
+  })
+}
+
+/** v3: backlog rank (seeded from creation order), attachments and automation rules. */
+function toV3(s: State): State {
+  const order = [...s.issues].sort((a, b) => a.createdAt - b.createdAt).map(i => i.id)
+  return {
+    ...s,
+    version:  3,
+    projects: s.projects.map(p => ({ ...p, rules: p.rules ?? [] })),
+    issues:   s.issues.map(i => ({ ...i, attachments: i.attachments ?? [], rank: i.rank ?? order.indexOf(i.id) + 1 })),
   }
 }
 

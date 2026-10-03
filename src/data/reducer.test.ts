@@ -87,7 +87,9 @@ test('v1 saves migrate to v2', () => {
     activity: [{ id: 'a', issueId: 'i', actorId: 'u', text: 'created the work item', createdAt: 1 }],
   }
   const s = migrate(v1)
-  assert.equal(s.version, 2)
+  assert.equal(s.version, 3)
+  assert.equal(s.issues[0].rank, 1)
+  assert.deepEqual(s.projects[0].rules, [])
   assert.equal(s.ownerId, 'u')
   assert.ok(isDone(s.projects[0], s.issues[0]))
   assert.equal(s.projects[0].transitions.length, 2)
@@ -112,4 +114,50 @@ test('sample workspace loads, is consistent, and can be removed', () => {
   assert.ok(s.notifications.some(n => n.userId === owner.id && !n.read))
   const cleaned = run([{ type: 'removeSample' }], s)
   assert.deepEqual([cleaned.projects.length, cleaned.issues.length, cleaned.users.length], [0, 0, 1])
+})
+
+test('moving an item re-ranks only that item', () => {
+  let { s } = workspace()
+  s = run(['i2', 'i3', 'i4'].map(id => ({ type: 'createIssue', id, issue: { projectId: 'p1', title: id } }) as Action), s)
+  const before = new Map(s.issues.map(i => [i.id, i.rank]))
+  s = run([{ type: 'moveIssue', id: 'i4', beforeId: 'i2' }], s)
+  const order = [...s.issues].sort((a, b) => a.rank - b.rank).map(i => i.id)
+  assert.deepEqual(order, ['i1', 'i4', 'i2', 'i3'])
+  assert.deepEqual(s.issues.filter(i => i.rank !== before.get(i.id)).map(i => i.id), ['i4'])
+  // To the top, then into a sprint at the bottom
+  s = run([{ type: 'moveIssue', id: 'i3', beforeId: 'i1' }], s)
+  assert.equal([...s.issues].sort((a, b) => a.rank - b.rank)[0].id, 'i3')
+  s = run([{ type: 'createSprint', projectId: 'p1' }], s)
+  s = run([{ type: 'moveIssue', id: 'i2', container: s.sprints[0].id }], s)
+  assert.equal(s.issues.find(i => i.id === 'i2')!.sprintId, s.sprints[0].id)
+})
+
+test('automation rules fire once per event and respect the enabled switch', () => {
+  let { s, sam } = workspace()
+  const rule = (enabled: boolean) => ({
+    id: 'r', name: 'Ship it', enabled, runs: 0,
+    trigger: { kind: 'status' as const, to: 'done' },
+    actions: [{ kind: 'label' as const, value: 'shipped' }, { kind: 'assign' as const, to: 'reporter' }],
+  })
+  s = run([{ type: 'updateIssues', ids: ['i1'], patch: { assigneeId: sam } }, { type: 'updateProject', id: 'p1', patch: { rules: [rule(true)] } }], s)
+  s = run([{ type: 'updateIssues', ids: ['i1'], patch: { status: 'done' } }], s)
+  const issue = s.issues[0]
+  assert.deepEqual(issue.labels, ['shipped'])
+  assert.equal(issue.assigneeId, issue.reporterId)
+  assert.equal(s.projects[0].rules[0].runs, 1)
+  assert.ok(s.activity.some(a => a.actorId === 'automation'))
+  // Disabled: nothing happens
+  let t = workspace().s
+  t = run([{ type: 'updateProject', id: 'p1', patch: { rules: [rule(false)] } }, { type: 'updateIssues', ids: ['i1'], patch: { status: 'done' } }], t)
+  assert.deepEqual(t.issues[0].labels, [])
+})
+
+test('a rule on creation runs for new items', () => {
+  let { s } = workspace()
+  s = run([{ type: 'updateProject', id: 'p1', patch: { rules: [{
+    id: 'r', name: 'Triage', enabled: true, runs: 0, trigger: { kind: 'created' }, actions: [{ kind: 'priority', value: 'high' }, { kind: 'comment', body: 'Thanks, triaging.' }],
+  }] } }, { type: 'createIssue', id: 'i9', issue: { projectId: 'p1', title: 'New' } }], s)
+  const i9 = s.issues.find(i => i.id === 'i9')!
+  assert.equal(i9.priority, 'high')
+  assert.equal(s.comments.filter(c => c.issueId === 'i9').length, 1)
 })

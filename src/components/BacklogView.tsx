@@ -1,11 +1,11 @@
 import { useState } from 'react'
-import { ChevronDown, ChevronRight, Plus, MoreHorizontal, ArrowRightLeft, Pencil, Trash2, Play } from 'lucide-react'
+import { ChevronDown, ChevronRight, Plus, MoreHorizontal, ArrowRightLeft, Pencil, Trash2, Play, ArrowUpToLine, ArrowDownToLine } from 'lucide-react'
 import { useStore, isDone, userOf, type Project, type Sprint, type Issue } from '../data/store'
 import { useApp, useNavList } from '../appContext'
 import { useFilters } from './filters'
 import IssueRow from './IssueRow'
 import BulkBar from './BulkBar'
-import { Picker, Menu, Modal, plural } from './ui'
+import { Menu, Modal, plural } from './ui'
 
 const BACKLOG = 'backlog'
 const DAY = 86_400_000
@@ -17,6 +17,7 @@ export default function BacklogView({ project }: { project: Project }) {
   const { createIssue } = useApp()
   const [dragging, setDragging] = useState<string | null>(null)
   const [over, setOver]         = useState<string | null>(null)
+  const [overRow, setOverRow]   = useState<string | null>(null)
   const [completing, setCompleting] = useState<Sprint | null>(null)
   const [starting, setStarting]     = useState<Sprint | null>(null)
   const [editing, setEditing]       = useState<Sprint | null>(null)
@@ -31,15 +32,15 @@ export default function BacklogView({ project }: { project: Project }) {
     .filter(s => s.projectId === project.id && s.state !== 'closed')
     .sort((a, b) => (a.state === 'active' ? -1 : b.state === 'active' ? 1 : 0))
   const hasActive = sprints.some(s => s.state === 'active')
-  const issues = filters.apply(items).sort((a, b) => a.createdAt - b.createdAt)
+  const issues = filters.apply(items).sort((a, b) => a.rank - b.rank)
   const inSprint = (s: Sprint) => issues.filter(i => i.sprintId === s.id)
-  const backlogItems = issues.filter(i => !i.sprintId || !sprints.some(s => s.id === i.sprintId))
+  // Items still in a closed sprint were completed there; they live in the sprint report, not the backlog
+  const closedIds = new Set(state.sprints.filter(s => s.projectId === project.id && s.state === 'closed').map(s => s.id))
+  const backlogItems = issues.filter(i => (!i.sprintId || !sprints.some(s => s.id === i.sprintId)) && !(i.sprintId && closedIds.has(i.sprintId)))
   const ordered = [...sprints.flatMap(inSprint), ...backlogItems]
   useNavList(ordered.map(i => i.id))
 
   const moveTargets = [...sprints.map(s => ({ value: s.id as string, label: s.name })), { value: BACKLOG, label: 'Backlog' }]
-  const moveTo = (ids: string[], target: string) =>
-    dispatch({ type: 'updateIssues', ids, patch: { sprintId: target === BACKLOG ? undefined : target } })
 
   const select = (id: string, on: boolean, shift: boolean) => {
     setSelected(prev => {
@@ -54,26 +55,65 @@ export default function BacklogView({ project }: { project: Project }) {
     setAnchor(id)
   }
 
+  // Dragging a selected row moves the whole selection, keeping its order
+  const draggedIds = () => !dragging ? [] : selected.has(dragging) ? ordered.filter(i => selected.has(i.id)).map(i => i.id) : [dragging]
+  const container = (target: string) => target === BACKLOG ? null : target
+
   const dropZone = (target: string) => ({
     onDragOver:  (e: React.DragEvent) => { e.preventDefault(); setOver(target) },
     onDragLeave: (e: React.DragEvent) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setOver(null) },
     onDrop:      (e: React.DragEvent) => {
       e.preventDefault()
-      // Dragging a selected row moves the whole selection
-      if (dragging) moveTo(selected.has(dragging) ? [...selected] : [dragging], target)
-      setDragging(null); setOver(null)
+      for (const id of draggedIds()) dispatch({ type: 'moveIssue', id, container: container(target) })
+      setDragging(null); setOver(null); setOverRow(null)
     },
   })
 
+  const refocus = (id: string) => requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-row="${id}"]`)?.focus())
+
+  // Ordering inside one list (a sprint or the backlog)
+  const reorder = (i: Issue, list: Issue[], where: 'up' | 'down' | 'top' | 'bottom') => {
+    const at = list.findIndex(x => x.id === i.id)
+    const target = list.filter(x => x.id !== i.id)
+    const beforeId = where === 'top' ? target[0]?.id
+      : where === 'up' ? (at > 0 ? list[at - 1].id : undefined)
+      : where === 'down' ? list[at + 2]?.id
+      : undefined
+    if (where === 'up' && at === 0) return
+    if (where === 'down' && at === list.length - 1) return
+    dispatch({ type: 'moveIssue', id: i.id, beforeId, container: i.sprintId ?? null })
+    refocus(i.id)
+  }
+
   const rows = (list: Issue[]) => list.map(i => (
-    <IssueRow key={i.id} issue={i} project={project}
-      selected={selected.has(i.id)} onSelect={(on, shift) => select(i.id, on, shift)}
-      draggable onDragStart={() => setDragging(i.id)} onDragEnd={() => { setDragging(null); setOver(null) }}
-      trailing={
-        <Picker value={i.sprintId ?? BACKLOG} options={moveTargets} onChange={t => moveTo([i.id], t)}
-          className="icon-btn sm" align="right" title="Move to sprint" trigger={<ArrowRightLeft size={14} />} />
-      }
-    />
+    <div key={i.id} className={`rank-slot${overRow === i.id ? ' drop-before' : ''}`}
+      onDragOver={e => { if (dragging && dragging !== i.id) { e.preventDefault(); e.stopPropagation(); setOverRow(i.id); setOver(null) } }}
+      onDragLeave={() => setOverRow(r => r === i.id ? null : r)}
+      onDrop={e => {
+        e.preventDefault(); e.stopPropagation()
+        for (const id of draggedIds()) if (id !== i.id) dispatch({ type: 'moveIssue', id, beforeId: i.id, container: i.sprintId ?? null })
+        setDragging(null); setOver(null); setOverRow(null)
+      }}
+      onKeyDown={e => {
+        if (!e.altKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return
+        e.preventDefault()
+        reorder(i, list, e.key === 'ArrowUp' ? 'up' : 'down')
+      }}>
+      <IssueRow issue={i} project={project}
+        selected={selected.has(i.id)} onSelect={(on, shift) => select(i.id, on, shift)}
+        draggable onDragStart={() => setDragging(i.id)} onDragEnd={() => { setDragging(null); setOver(null); setOverRow(null) }}
+        trailing={
+          <Menu title={`Move ${i.key}`} className="icon-btn sm" trigger={<ArrowRightLeft size={14} />} items={[
+            { label: 'Move to top', icon: <ArrowUpToLine size={14} />, hint: '⌥↑', onClick: () => reorder(i, list, 'top') },
+            { label: 'Move to bottom', icon: <ArrowDownToLine size={14} />, hint: '⌥↓', onClick: () => reorder(i, list, 'bottom') },
+            ...moveTargets.filter(t => t.value !== (i.sprintId ?? BACKLOG)).map((t, k) => ({
+              label: `Move to ${t.label}`, icon: <ArrowRightLeft size={14} />, divider: k === 0,
+              onClick: () => dispatch({ type: 'moveIssue', id: i.id, container: container(t.value) }),
+            })),
+          ]} />
+        }
+      />
+    </div>
   ))
 
   const summary = (list: Issue[]) => {

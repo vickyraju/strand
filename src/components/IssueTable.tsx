@@ -14,7 +14,7 @@ import { ProjectIcon } from './ProjectView'
 
 export type TableGroup = 'status' | 'assignee' | 'priority' | 'epic' | 'project' | 'none'
 type Col = 'type' | 'key' | 'project' | 'status' | 'assignee' | 'priority' | 'labels' | 'estimate' | 'due' | 'updated'
-type SortKey = 'key' | 'title' | 'status' | 'assignee' | 'priority' | 'estimate' | 'due' | 'updated'
+type SortKey = 'rank' | 'key' | 'title' | 'status' | 'assignee' | 'priority' | 'estimate' | 'due' | 'updated'
 
 const COL_LABEL: Record<Col, string> = {
   type: 'Type', key: 'Key', project: 'Project', status: 'Status', assignee: 'Assignee', priority: 'Priority',
@@ -44,7 +44,7 @@ export default function IssueTable({ issues, id, groupBy, onGroupBy, project, sh
     ...JSON.parse(localStorage.getItem(storageKey) ?? '{}'),
   }))
   useEffect(() => { localStorage.setItem(storageKey, JSON.stringify(cols)) }, [cols, storageKey])
-  const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: 'updated', dir: -1 })
+  const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: 'rank', dir: 1 })
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [anchor, setAnchor] = useState<string | null>(null)
@@ -66,6 +66,7 @@ export default function IssueTable({ issues, id, groupBy, onGroupBy, project, sh
   const sorted = useMemo(() => {
     const val = (i: Issue): string | number => {
       switch (sort.key) {
+        case 'rank':     return i.rank
         case 'key':      return `${i.key.split('-')[0]}-${i.key.split('-')[1].padStart(6, '0')}`
         case 'title':    return i.title.toLowerCase()
         case 'status':   return projectFor(i).statuses.findIndex(s => s.id === i.status)
@@ -190,6 +191,7 @@ export default function IssueTable({ issues, id, groupBy, onGroupBy, project, sh
             onChange={onGroupBy}
             trigger={<>Group: {groupBy === 'none' ? 'None' : groupBy[0].toUpperCase() + groupBy.slice(1)}<ChevronDown size={13} /></>} />
         )}
+        {sort.key !== 'rank' && <button className="btn btn-ghost btn-sm" onClick={() => setSort({ key: 'rank', dir: 1 })}>Reset to rank order</button>}
         <Popover title="Columns" className="btn btn-secondary btn-sm" trigger={<><Columns3 size={14} />Columns</>} width={220}>
           {(Object.keys(COL_LABEL) as Col[]).filter(c => c !== 'project' || showProjectColumn).map(c => (
             <label key={c} className="toggle-row">

@@ -46,7 +46,7 @@ export default function BoardView({ project }: { project: Project }) {
   const filters = useFilters(people)
 
   const all = projectItems.filter(i => !sprint || i.sprintId === sprint.id)
-  const issues = filters.apply(all).sort((a, b) => b.updatedAt - a.updatedAt)
+  const issues = filters.apply(all).sort((a, b) => a.rank - b.rank)
   const visibleStatuses = project.statuses
   useNavList(visibleStatuses.flatMap(s => issues.filter(i => i.status === s.id).map(i => i.id)))
 
