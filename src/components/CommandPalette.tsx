@@ -58,6 +58,7 @@ export default function CommandPalette({ onClose, onCreateProject }: { onClose: 
     if (e.key === 'ArrowDown') { e.preventDefault(); setCursor((safeCursor + 1) % all.length) }
     if (e.key === 'ArrowUp')   { e.preventDefault(); setCursor((safeCursor - 1 + all.length) % all.length) }
     if (e.key === 'Enter')     { e.preventDefault(); run(all[safeCursor]) }
+    if (e.key === 'Escape')    { e.preventDefault(); e.stopPropagation(); onClose() }
   }
 
   let lastSection = ''

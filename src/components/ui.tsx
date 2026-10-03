@@ -216,11 +216,25 @@ export function Menu({ items, trigger, title, className = 'icon-btn', align = 'r
 export function Modal({ title, onClose, children, footer, width = 480 }: {
   title: string; onClose: () => void; children: ReactNode; footer?: ReactNode; width?: number
 }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const close = useRef(onClose)
+  close.current = onClose
+  useEffect(() => {
+    // Keep keyboard focus inside the dialog, and close the topmost dialog on Escape
+    const el = ref.current
+    if (el && !el.contains(document.activeElement)) el.focus()
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      const dialogs = document.querySelectorAll('.modal')
+      if (dialogs[dialogs.length - 1] === el) { e.stopPropagation(); close.current() }
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [])
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
-      <div className="modal" style={{ width }} role="dialog" aria-modal="true" aria-label={title}
-        onMouseDown={e => e.stopPropagation()}
-        onKeyDown={e => { if (e.key === 'Escape') { e.stopPropagation(); onClose() } }}>
+      <div ref={ref} tabIndex={-1} className="modal" style={{ width, outline: 'none' }} role="dialog" aria-modal="true" aria-label={title}
+        onMouseDown={e => e.stopPropagation()}>
         <div className="modal-hdr">
           <h2 className="modal-title">{title}</h2>
           <button className="icon-btn" onClick={onClose} aria-label="Close"><X size={16} /></button>

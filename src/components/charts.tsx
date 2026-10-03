@@ -61,7 +61,7 @@ function Axes({ w, h, top, step, labels, every }: { w: number; h: number; top: n
   return (
     <>
       {lines}
-      {labels.map((l, i) => i % every === 0 || i === n - 1 ? (
+      {labels.map((l, i) => (i % every === 0 || i === n - 1) && l !== labels[i - 1] ? (
         <text key={i} x={x(i)} y={h - 8} textAnchor={i === 0 ? 'start' : i === n - 1 ? 'end' : 'middle'} className="axis-text">{l}</text>
       ) : null)}
     </>

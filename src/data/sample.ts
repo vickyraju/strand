@@ -243,7 +243,11 @@ export function sampleWorkspace(owner: User, now = Date.now()): Partial<State> {
       // Steps happen inside the sprint (or before now for Kanban/backlog)
       const [from, to] = sprintWin
         ? [now + sprintWin[0] * DAY + 0.3 * DAY, Math.min(now - HOUR, now + sprintWin[1] * DAY - 0.5 * DAY)]
-        : [created + 0.5 * DAY, now - HOUR]
+        : (() => {
+            // Kanban work: picked up a few days after creation and worked for 1–10 days
+            const start = Math.min(now - 2 * DAY, created + between(0.5, 6) * DAY)
+            return [start, Math.min(now - HOUR, start + between(1, 10) * DAY)]
+          })()
       let t = created + 3 * HOUR
       if (prevWin) {
         // Started in the previous sprint, carried over unfinished
