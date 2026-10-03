@@ -11,7 +11,7 @@ import { useApp } from '../appContext'
 import { href, navigate } from '../router'
 import {
   Picker, Menu, TypeIcon, PriorityIcon, Avatar, Modal, TYPE_META, PRIORITY_META, StatusLozenge,
-  priorityOptions, typeOptions, userOptions, plural,
+  priorityOptions, typeOptions, userOptions, plural, formatDate,
 } from './ui'
 import { Markdown, MentionTextarea } from './markdown'
 import { transitionLabel } from './BoardCard'
@@ -364,6 +364,14 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
                   options={[{ value: undefined, label: 'Backlog' }, ...sprints.map(s => ({ value: s.id as string | undefined, label: s.name, hint: s.state === 'active' ? 'Active' : undefined }))]}
                   onChange={sprintId => set({ sprintId })}
                   trigger={<>{sprint?.name ?? <span className="muted">Backlog</span>}</>} />
+              </Field>
+            )}
+            {project.releases.length > 0 && issue.type !== 'epic' && (
+              <Field label="Release">
+                <Picker value={issue.releaseId} className="field-btn" title="Release"
+                  options={[{ value: undefined, label: 'None' }, ...project.releases.map(r => ({ value: r.id as string | undefined, label: r.name, hint: r.released ? 'Released' : r.releaseDate ? `Due ${formatDate(r.releaseDate)}` : undefined }))]}
+                  onChange={releaseId => set({ releaseId })}
+                  trigger={issue.releaseId ? <>{project.releases.find(r => r.id === issue.releaseId)?.name}</> : <span className="muted">None</span>} />
               </Field>
             )}
             <Field label="Labels">

@@ -1139,3 +1139,10 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; line-height:
 .option-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px }
 .option-chips .tag { display: inline-flex; align-items: center; gap: 2px; padding-right: 2px }
 .field-btn > .muted { flex-shrink: 0; overflow: visible }
+
+/* Releases */
+.release-bar { display: inline-flex; width: 180px; height: 8px; border-radius: 4px; overflow: hidden; background: var(--sunken); flex-shrink: 0 }
+.release-summary { padding: 16px 24px 0 }
+.release-summary .release-bar { width: 100%; height: 10px; border-radius: 5px }
+.release-summary > .muted { margin-bottom: 12px }
+.lozenge-overdue { background: var(--danger-soft); color: var(--danger) }
