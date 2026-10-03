@@ -955,3 +955,72 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; line-height:
 .sprint-box > .rank-slot { margin: 0 2px }
 .sprint-box > .rank-slot:first-of-type .row { border-top-left-radius: 8px; border-top-right-radius: 8px }
 .sprint-box > .rank-slot:nth-last-child(2) .row { border-bottom-left-radius: 8px; border-bottom-right-radius: 8px; border-bottom: none }
+
+/* ══════════════════════════════════════════════════════════
+   TIMELINE
+══════════════════════════════════════════════════════════ */
+.tl { flex: 1; min-height: 0; overflow: auto; position: relative; user-select: none }
+.tl-grid { position: relative; min-height: 100% }
+.tl-head { position: sticky; top: 0; z-index: 4; display: flex; height: 52px; background: var(--surface); border-bottom: 1px solid var(--border) }
+.tl-corner { position: sticky; left: 0; z-index: 5; width: 320px; flex-shrink: 0; display: flex; align-items: flex-end; padding: 0 16px 8px; font-size: 12px; font-weight: 600; color: var(--text-2); background: var(--surface); border-right: 1px solid var(--border) }
+.tl-scale { position: relative; flex-shrink: 0 }
+.tl-month { position: absolute; top: 0; height: 26px; padding: 6px 8px 0; font-size: 12px; font-weight: 600; color: var(--text-1); border-left: 1px solid var(--border); white-space: nowrap; overflow: hidden }
+.tl-tick { position: absolute; top: 28px; height: 24px; padding: 4px 0 0 4px; font-size: 11px; color: var(--text-3); border-left: 1px solid var(--border) }
+.tl-body { position: relative }
+.tl-today { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--danger); opacity: .55; z-index: 2; pointer-events: none }
+.tl-row { display: flex; height: 40px; border-bottom: 1px solid var(--border) }
+.tl-row.epic { background: var(--surface-2) }
+.tl-row:hover { background: var(--hover) }
+.tl-label { position: sticky; left: 0; z-index: 3; width: 320px; flex-shrink: 0; display: flex; align-items: center; gap: 6px; padding: 0 12px 0 6px; background: inherit; background-color: var(--surface); border-right: 1px solid var(--border) }
+.tl-row.epic .tl-label { background-color: var(--surface-2); font-weight: 600 }
+.tl-row:hover .tl-label { background-color: var(--hover) }
+.tl-label.depth-1 { padding-left: 30px }
+.tl-title { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; font-size: 13px; text-align: left }
+.tl-title:hover .cell-ellipsis { text-decoration: underline }
+.tl-title .done { text-decoration: line-through }
+.tl-track { position: relative; flex-shrink: 0; background-image: linear-gradient(to right, transparent calc(100% - 1px), var(--border) 0); }
+.tl-bar {
+  position: absolute; top: 8px; height: 24px; border-radius: 6px; display: flex; align-items: center; gap: 6px; padding: 0 6px 0 10px;
+  background: color-mix(in srgb, var(--bar) 22%, var(--surface)); border: 1px solid color-mix(in srgb, var(--bar) 60%, transparent);
+  color: var(--text-1); font-size: 12px; font-weight: 500; cursor: grab; overflow: hidden; touch-action: none;
+}
+.tl-bar.epic { background: color-mix(in srgb, var(--bar) 18%, var(--surface)); }
+.tl-bar.derived { border-style: dashed; cursor: pointer; background: color-mix(in srgb, var(--bar) 10%, var(--surface)) }
+.tl-bar.done { opacity: .6 }
+.tl-bar.dragging { cursor: grabbing; box-shadow: var(--shadow-lg); z-index: 3 }
+.tl-bar-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; pointer-events: none }
+.tl-handle { position: absolute; top: 0; bottom: 0; width: 8px; cursor: ew-resize }
+.tl-handle.start { left: 0 }
+.tl-handle.end { right: 0 }
+.tl-handle:hover { background: color-mix(in srgb, var(--bar) 40%, transparent) }
+.tl-schedule { position: absolute; top: 9px; display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px; border-radius: 5px; border: 1px dashed var(--border-strong); color: var(--text-3); font-size: 12px; opacity: 0 }
+.tl-row:hover .tl-schedule, .tl-schedule:focus-visible { opacity: 1 }
+.tl-unscheduled { border-top: 1px solid var(--border); padding: 10px 24px; max-height: 34vh; overflow-y: auto; flex-shrink: 0; background: var(--surface-2) }
+.tl-unscheduled summary { cursor: pointer; font-weight: 600; font-size: 13px }
+.tl-unscheduled-list { display: flex; flex-direction: column; margin-top: 8px }
+.tl-unscheduled-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--border) }
+
+/* ══════════════════════════════════════════════════════════
+   CALENDAR
+══════════════════════════════════════════════════════════ */
+.cal-month { font-size: 15px; font-weight: 600; min-width: 140px; text-align: center }
+.cal-scroll { flex: 1; min-height: 0; overflow: auto; padding: 12px 24px 24px }
+.cal { display: grid; grid-template-columns: repeat(7, minmax(120px, 1fr)); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; background: var(--border); gap: 1px }
+.cal-weekday { background: var(--surface-2); padding: 8px 10px; font-size: 12px; font-weight: 600; color: var(--text-2) }
+.cal-day { background: var(--surface); min-height: 118px; padding: 6px; display: flex; flex-direction: column; gap: 3px }
+.cal-day.weekend { background: var(--surface-2) }
+.cal-day.other .cal-date { color: var(--text-3) }
+.cal-day-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2px }
+.cal-date { font-size: 12px; font-weight: 600; width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50% }
+.cal-day.today .cal-date { background: var(--brand); color: #fff }
+.cal-add { opacity: 0 }
+.cal-day:hover .cal-add, .cal-add:focus-visible { opacity: 1 }
+.cal-item {
+  display: flex; align-items: center; gap: 5px; width: 100%; height: 24px; padding: 0 6px; border-radius: 4px; font-size: 12px;
+  background: color-mix(in srgb, var(--bar) 14%, var(--surface)); box-shadow: inset 3px 0 0 var(--bar); text-align: left;
+}
+.cal-item:hover { background: color-mix(in srgb, var(--bar) 24%, var(--surface)) }
+.cal-item.done { opacity: .55 }
+.cal-item.done .cell-ellipsis { text-decoration: line-through }
+.cal-item.late { box-shadow: inset 3px 0 0 var(--danger); color: var(--danger) }
+.cal-more { align-self: flex-start; padding: 0 4px }

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, Star, FolderPlus, Columns2, List, ListChecks, Settings, Gauge, BarChart3, Check, GitBranch, Info, Sparkles } from 'lucide-react'
+import { Plus, Star, FolderPlus, Columns2, List, ListChecks, Settings, Gauge, BarChart3, GanttChart, CalendarDays, Check, GitBranch, Info, Sparkles } from 'lucide-react'
 import { useStore, userOf, isDone, timeAgo, PROJECT_COLORS, type Project, type ProjectPatch } from '../data/store'
 import { useApp } from '../appContext'
 import type { ProjectTab } from '../router'
@@ -9,12 +9,14 @@ import BacklogView from './BacklogView'
 import IssueTable, { type TableGroup } from './IssueTable'
 import SummaryView from './SummaryView'
 import ReportsView from './ReportsView'
+import TimelineView from './TimelineView'
+import CalendarView from './CalendarView'
 import WorkflowBuilder from './WorkflowBuilder'
 import { useFilters } from './filters'
 import { Avatar, Empty, Picker, Modal, userOptions, plural } from './ui'
 
 export const TAB_LABEL: Record<ProjectTab, string> = {
-  summary: 'Summary', backlog: 'Backlog', board: 'Board', list: 'List', reports: 'Reports', settings: 'Settings',
+  summary: 'Summary', backlog: 'Backlog', board: 'Board', list: 'List', timeline: 'Timeline', calendar: 'Calendar', reports: 'Reports', settings: 'Settings',
 }
 
 // ── Shared bits ────────────────────────────────────────────
@@ -124,6 +126,8 @@ export function ProjectView({ project, tab, sub }: { project: Project; tab: Proj
     ...(project.template === 'scrum' ? [{ id: 'backlog' as const, Icon: ListChecks }] : []),
     { id: 'board',    Icon: Columns2 },
     { id: 'list',     Icon: List },
+    { id: 'timeline', Icon: GanttChart },
+    { id: 'calendar', Icon: CalendarDays },
     { id: 'reports',  Icon: BarChart3 },
     { id: 'settings', Icon: Settings },
   ]
@@ -160,6 +164,8 @@ export function ProjectView({ project, tab, sub }: { project: Project; tab: Proj
       {tab === 'board'    && <BoardView project={project} />}
       {tab === 'backlog'  && (project.template === 'scrum' ? <BacklogView project={project} /> : <Empty icon={<ListChecks size={22} />} title="Backlog is for Scrum projects" body="Kanban projects plan work directly on the board." />)}
       {tab === 'list'     && <ListTab project={project} />}
+      {tab === 'timeline' && <TimelineView project={project} />}
+      {tab === 'calendar' && <CalendarView project={project} />}
       {tab === 'reports'  && <ReportsView project={project} report={sub} />}
       {tab === 'settings' && (sub === 'workflow' ? <WorkflowBuilder project={project} /> : <ProjectSettings project={project} />)}
     </div>

@@ -365,8 +365,11 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
               <input className="field-input" type="number" min={0} value={issue.estimate ?? ''} placeholder="None" aria-label="Story points"
                 onChange={e => set({ estimate: e.target.value === '' ? undefined : Math.max(0, Number(e.target.value)) })} />
             </Field>
+            <Field label="Start date">
+              <input className="field-input" type="date" value={issue.startDate ?? ''} max={issue.dueDate} aria-label="Start date" onChange={e => set({ startDate: e.target.value || undefined })} />
+            </Field>
             <Field label="Due date">
-              <input className="field-input" type="date" value={issue.dueDate ?? ''} aria-label="Due date" onChange={e => set({ dueDate: e.target.value || undefined })} />
+              <input className="field-input" type="date" value={issue.dueDate ?? ''} min={issue.startDate} aria-label="Due date" onChange={e => set({ dueDate: e.target.value || undefined })} />
             </Field>
             <Field label="Watchers">
               <span className="avatar-group sm">{watchers.map(u => <Avatar key={u.id} user={u} size={22} />)}</span>

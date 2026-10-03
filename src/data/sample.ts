@@ -213,6 +213,9 @@ export function sampleWorkspace(owner: User, now = Date.now()): Partial<State> {
     }
 
     const order = spec.statuses.map(s => s.id)
+    // Scheduled work gets dates: sprint items span their sprint, epics' items spread across the next weeks
+    const sprintStart = (sp: Spec) => sp.sprint !== undefined ? iso(windows[sp.sprint][0]) : sp.epic !== undefined ? iso(-10 + sp.epic * 9 + Math.round(between(0, 6))) : undefined
+    const sprintDue = (sp: Spec) => sp.sprint !== undefined ? iso(windows[sp.sprint][1]) : sp.epic !== undefined ? iso(4 + sp.epic * 12 + Math.round(between(0, 10))) : undefined
     const make = (s: Spec, isEpic: boolean): Issue => {
       const n = project.nextNumber++
       const assignee = s.a !== undefined ? team[s.a] : undefined
@@ -220,7 +223,8 @@ export function sampleWorkspace(owner: User, now = Date.now()): Partial<State> {
       const issue: Issue = {
         id: uid(), key: `${spec.key}-${n}`, projectId: project.id, type: s.t, title: s.title,
         description: s.desc ?? '', status: s.status, priority: s.p, assigneeId: assignee?.id, reporterId: reporter.id,
-        labels: s.labels ?? [], estimate: s.est, dueDate: s.due !== undefined ? iso(s.due) : undefined,
+        labels: s.labels ?? [], estimate: s.est, dueDate: s.due !== undefined ? iso(s.due) : sprintDue(s),
+        startDate: s.due !== undefined ? iso(s.due - Math.max(2, Math.round((s.est ?? 3) * 1.2))) : sprintStart(s),
         sprintId: s.sprint !== undefined ? sprintIds[s.sprint] : undefined,
         watcherIds: [...new Set([reporter.id, assignee?.id].filter((x): x is string => !!x))],
         links: [], attachments: [], rank: issues.length + 1, createdAt: 0, updatedAt: 0,

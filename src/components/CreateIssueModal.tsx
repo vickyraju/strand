@@ -27,7 +27,7 @@ export default function CreateIssueModal({ defaults, onClose }: {
   const [parentId, setParentId]       = useState<string | undefined>(defaults.parentId)
   const [sprintId, setSprintId]       = useState<string | undefined>(defaults.sprintId)
   const [estimate, setEstimate]       = useState('')
-  const [dueDate, setDueDate]         = useState('')
+  const [dueDate, setDueDate]         = useState(defaults.dueDate ?? '')
   const [labels, setLabels]           = useState('')
   const [createMore, setCreateMore]   = useState(false)
   const [expanded, setExpanded]       = useState(false)
@@ -54,7 +54,7 @@ export default function CreateIssueModal({ defaults, onClose }: {
       type: 'createIssue', id,
       issue: {
         projectId, title: title.trim(), description: description.trim(), type, status, priority, assigneeId,
-        dueDate: dueDate || undefined, sprintId, parentId: type === 'epic' ? undefined : parentId,
+        dueDate: dueDate || undefined, startDate: defaults.startDate, sprintId, parentId: type === 'epic' ? undefined : parentId,
         estimate: estimate === '' ? undefined : Math.max(0, Number(estimate)),
         labels: labels.split(',').map(l => l.trim()).filter(Boolean),
       },

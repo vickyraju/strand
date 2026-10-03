@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react'
 
-export type ProjectTab = 'summary' | 'board' | 'backlog' | 'list' | 'reports' | 'settings'
+export type ProjectTab = 'summary' | 'board' | 'backlog' | 'list' | 'timeline' | 'calendar' | 'reports' | 'settings'
 
 export type Route =
   | { name: 'home' }
@@ -12,7 +12,7 @@ export type Route =
   | { name: 'issue'; key: string }
   | { name: 'not-found' }
 
-const TABS: ProjectTab[] = ['summary', 'board', 'backlog', 'list', 'reports', 'settings']
+const TABS: ProjectTab[] = ['summary', 'board', 'backlog', 'list', 'timeline', 'calendar', 'reports', 'settings']
 
 export function parse(pathname: string, search: string): { route: Route; peek?: string } {
   const parts = pathname.split('/').filter(Boolean).map(decodeURIComponent)

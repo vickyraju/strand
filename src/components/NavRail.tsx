@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import {
   LayoutGrid, Inbox, Search, Plus, Settings, PanelLeftClose, PanelLeftOpen, SearchCode, FolderKanban,
-  ChevronRight, ChevronDown, Columns2, ListChecks, List, BarChart3, Gauge, Hash,
+  ChevronRight, ChevronDown, Columns2, ListChecks, List, BarChart3, Gauge, Hash, GanttChart, CalendarDays,
 } from 'lucide-react'
 import { useStore } from '../data/store'
 import { useApp } from '../appContext'
@@ -22,6 +22,8 @@ const PROJECT_LINKS: { tab: ProjectTab; label: string; Icon: typeof List; scrumO
   { tab: 'backlog', label: 'Backlog', Icon: ListChecks, scrumOnly: true },
   { tab: 'board',   label: 'Board',   Icon: Columns2 },
   { tab: 'list',    label: 'List',    Icon: List },
+  { tab: 'timeline', label: 'Timeline', Icon: GanttChart },
+  { tab: 'calendar', label: 'Calendar', Icon: CalendarDays },
   { tab: 'reports', label: 'Reports', Icon: BarChart3 },
 ]
 
