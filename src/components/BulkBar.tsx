@@ -25,7 +25,7 @@ export default function BulkBar({ ids, onClear }: { ids: string[]; onClear: () =
     }
     if (target.length) {
       dispatch({ type: 'updateIssues', ids: target, patch })
-      toast(`Updated ${what} on ${plural(target.length, 'item')}`)
+      toast(`Updated ${what} on ${plural(target.length, 'item')}`, { undo: 'updateIssues' })
     }
   }
 
@@ -55,7 +55,7 @@ export default function BulkBar({ ids, onClear }: { ids: string[]; onClear: () =
             <button className="btn btn-secondary" onClick={() => setConfirm(false)}>Cancel</button>
             <button className="btn btn-danger" autoFocus onClick={() => {
               dispatch({ type: 'deleteIssues', ids })
-              toast(`Deleted ${plural(ids.length, 'work item')}`)
+              toast(`Deleted ${plural(ids.length, 'work item')}`, { undo: 'deleteIssues' })
               setConfirm(false); onClear()
             }}>Delete</button>
           </>}>

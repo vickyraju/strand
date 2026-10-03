@@ -197,7 +197,7 @@ function ReleaseDialogConfirm({ project, release, onClose }: { project: Project;
         <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
         <button className="btn btn-primary" onClick={() => {
           dispatch({ type: 'releaseVersion', projectId: project.id, releaseId: release.id, moveTo: moveTo || undefined })
-          toast(`${release.name} released`); onClose()
+          toast(`${release.name} released`, { undo: 'releaseVersion' }); onClose()
         }}><Rocket size={15} />Release</button>
       </>}>
       {open.length === 0 ? <p>All work in {release.name} is done. Ready to ship.</p> : (

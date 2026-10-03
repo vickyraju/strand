@@ -33,14 +33,14 @@ export default function App() {
 }
 
 function Shell() {
-  const { state } = useStore()
+  const { state, dispatch, undoType } = useStore()
   const { route, peek } = useLocation()
   const [railCollapsed, setRailCollapsed]   = useState(() => window.innerWidth < 1024)
   const [paletteOpen, setPaletteOpen]       = useState(false)
   const [shortcutsOpen, setShortcutsOpen]   = useState(false)
   const [createDefaults, setCreateDefaults] = useState<Partial<NewIssue> | null>(null)
   const [createProjectOpen, setCreateProjectOpen] = useState(false)
-  const [toast, setToast] = useState<{ text: string; issueId?: string; tone: 'ok' | 'warn'; n: number } | null>(null)
+  const [toast, setToast] = useState<{ text: string; issueId?: string; tone: 'ok' | 'warn'; undo?: string; n: number } | null>(null)
   const toastTimer = useRef<number>(undefined)
   const navList = useRef<string[]>([])
 
@@ -63,7 +63,11 @@ function Shell() {
       else navigate(href(route, key), { replace: !!peek })
     },
     closeIssue: () => {
-      if (route.name === 'issue') history.length > 1 ? history.back() : navigate('/')
+      // Stay inside the app: "back" could leave it (e.g. a shared link opened in a new tab)
+      if (route.name === 'issue') {
+        const p = state.projects.find(x => x.id === fullIssue?.projectId)
+        navigate(p ? href({ name: 'project', key: p.key }) : '/')
+      }
       else navigate(href(route))
     },
     createIssue: (defaults = {}) => {
@@ -72,8 +76,8 @@ function Shell() {
     },
     toast: (text, opts) => {
       window.clearTimeout(toastTimer.current)
-      setToast({ text, issueId: opts?.issueId, tone: opts?.tone ?? 'ok', n: Date.now() })
-      toastTimer.current = window.setTimeout(() => setToast(null), 5000)
+      setToast({ text, issueId: opts?.issueId, tone: opts?.tone ?? 'ok', undo: opts?.undo, n: Date.now() })
+      toastTimer.current = window.setTimeout(() => setToast(null), opts?.undo ? 8000 : 5000)
     },
     setNavList: ids => { navList.current = ids },
   }
@@ -81,12 +85,16 @@ function Shell() {
   const modalOpen = paletteOpen || shortcutsOpen || !!createDefaults || createProjectOpen
 
   // Global shortcuts. A ref keeps the listener stable while seeing current values.
-  const keys = useRef({ modalOpen, actions, peek, gPending: 0 })
-  keys.current = { ...keys.current, modalOpen, actions, peek }
+  const undo = () => { dispatch({ type: 'undo' }); actions.toast('Undone') }
+  const keys = useRef({ modalOpen, actions, peek, gPending: 0, undoType, undo })
+  keys.current = { ...keys.current, modalOpen, actions, peek, undoType, undo }
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const k = keys.current
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); setPaletteOpen(v => !v); return }
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key === 'z' && !k.modalOpen && !isTyping(document.activeElement) && k.undoType) {
+        e.preventDefault(); k.undo(); return
+      }
       if (e.metaKey || e.ctrlKey || e.altKey || k.modalOpen || isTyping(document.activeElement)) return
       if (e.key === 'Escape' && k.peek) { k.actions.closeIssue(); return }
       if (Date.now() - k.gPending < 1000) {
@@ -197,6 +205,9 @@ function Shell() {
                 ? <AlertTriangle size={16} strokeWidth={2} color="#D97706" />
                 : <CheckCircle2 size={16} strokeWidth={2} color="var(--brand)" />}
               <span>{toast.text}</span>
+              {toast.undo && toast.undo === undoType && (
+                <button className="link" onClick={() => { dispatch({ type: 'undo' }); setToast({ text: 'Undone', tone: 'ok', n: Date.now() }) }}>Undo</button>
+              )}
               {toast.issueId && state.issues.some(i => i.id === toast.issueId) && (
                 <button className="link" onClick={() => { actions.openIssue(toast.issueId!); setToast(null) }}>View</button>
               )}

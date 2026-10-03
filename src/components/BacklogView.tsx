@@ -276,7 +276,7 @@ export function CompleteSprintModal({ sprint, project, others, onClose }: {
         <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
         <button className="btn btn-primary" autoFocus onClick={() => {
           dispatch({ type: 'completeSprint', id: sprint.id, moveTo: target === BACKLOG ? undefined : target })
-          toast(`${sprint.name} completed`)
+          toast(`${sprint.name} completed`, { undo: 'completeSprint' })
           onClose()
         }}>Complete sprint</button>
       </>}>

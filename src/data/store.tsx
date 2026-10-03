@@ -1,5 +1,6 @@
-import { createContext, useContext, useEffect, useMemo, useReducer, type ReactNode } from 'react'
-import { reducer, migrate, EMPTY, AUTOMATION, type Action, type State, type User } from './reducer'
+import { createContext, useContext, useEffect, useMemo, useReducer, useRef, type ReactNode } from 'react'
+import { migrate, EMPTY, AUTOMATION, type Action, type State, type User } from './reducer'
+import { undoableReducer, canUndo, type StoreAction, type Undoable } from './history'
 import { pruneFiles } from './files'
 
 export * from './reducer'
@@ -18,14 +19,34 @@ function load(): State {
   }
 }
 
-const StoreContext = createContext<{ state: View; dispatch: (a: Action) => void } | null>(null)
+const StoreContext = createContext<{ state: View; dispatch: (a: StoreAction) => void; undoType: Action['type'] | null } | null>(null)
 
 export function StoreProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer((s: State, a: Action) => reducer(s, a), undefined, load)
+  const [store, dispatch] = useReducer(undoableReducer, undefined, (): Undoable => ({ state: load() }))
+  const state = store.state
 
+  // Remove attachment files nothing points to. Only at startup, so an undone removal still has its file.
+  // ponytail: orphans from this session linger until the next load; fine for a local store
+  const pruned = useRef(false)
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+    if (pruned.current) return
+    pruned.current = true
     pruneFiles(new Set(state.issues.flatMap(i => i.attachments.map(a => a.id))))
+  }, [state])
+
+  // Save shortly after changes settle (large workspaces take a moment to serialize), and always on leaving
+  const latest = useRef(state)
+  const saved = useRef(state)
+  latest.current = state
+  useEffect(() => {
+    const save = () => {
+      if (saved.current === latest.current) return
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(latest.current))
+      saved.current = latest.current
+    }
+    const t = window.setTimeout(save, 250)
+    window.addEventListener('pagehide', save)
+    return () => { window.clearTimeout(t); window.removeEventListener('pagehide', save) }
   }, [state])
 
   // Due-date reminders are created when the app opens
@@ -34,8 +55,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const value = useMemo(() => {
     const owner = state.users.find(u => u.id === state.ownerId) ?? null
     const me = state.users.find(u => u.id === state.actingAsId) ?? owner
-    return { state: { ...state, me, owner }, dispatch }
-  }, [state])
+    return { state: { ...state, me, owner }, dispatch, undoType: canUndo(store) ? store.undo!.type : null }
+  }, [store]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>
 }

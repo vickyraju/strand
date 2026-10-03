@@ -126,7 +126,7 @@ export default function SearchView({ query, viewId }: { query: string; viewId?: 
         <Modal title={`Delete “${view.name}”?`} onClose={() => setConfirmDelete(false)}
           footer={<>
             <button className="btn btn-secondary" onClick={() => setConfirmDelete(false)}>Cancel</button>
-            <button className="btn btn-danger" onClick={() => { dispatch({ type: 'deleteView', id: view.id }); toast('View deleted'); navigate(href({ name: 'search', q: '' })) }}>Delete view</button>
+            <button className="btn btn-danger" onClick={() => { dispatch({ type: 'deleteView', id: view.id }); toast('View deleted', { undo: 'deleteView' }); navigate(href({ name: 'search', q: '' })) }}>Delete view</button>
           </>}>
           <p>{view.shared ? 'Everyone loses access to this view, and dashboard gadgets using it are removed.' : 'Dashboard gadgets using this view are removed.'} Work items aren’t affected.</p>
         </Modal>

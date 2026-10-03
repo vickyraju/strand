@@ -307,7 +307,7 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
                       {mine && !editing && (
                         <div className="comment-actions">
                           <button className="link sm" onClick={() => setEditComment({ id: t.id, body: t.text })}><Pencil size={11} />Edit</button>
-                          <button className="link sm text-danger" onClick={() => dispatch({ type: 'deleteComment', id: t.id })}><Trash2 size={11} />Delete</button>
+                          <button className="link sm text-danger" onClick={() => { dispatch({ type: 'deleteComment', id: t.id }); toast('Comment deleted', { undo: 'deleteComment' }) }}><Trash2 size={11} />Delete</button>
                         </div>
                       )}
                     </div>
@@ -419,7 +419,7 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
         <Modal title={`Delete ${issue.key}?`} onClose={() => setConfirmDel(false)}
           footer={<>
             <button className="btn btn-secondary" onClick={() => setConfirmDel(false)}>Cancel</button>
-            <button className="btn btn-danger" autoFocus onClick={() => { dispatch({ type: 'deleteIssues', ids: [issue.id] }); toast(`Deleted ${issue.key}`); closeIssue() }}>Delete</button>
+            <button className="btn btn-danger" autoFocus onClick={() => { dispatch({ type: 'deleteIssues', ids: [issue.id] }); toast(`Deleted ${issue.key}`, { undo: 'deleteIssues' }); closeIssue() }}>Delete</button>
           </>}>
           <p>“{issue.title}” will be permanently deleted{children.length ? `, along with ${plural(children.length, 'sub-item')}` : ''}. Comments and history go with it.</p>
         </Modal>

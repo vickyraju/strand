@@ -40,7 +40,7 @@ export default function BoardCard({ issue, project, fields, dragging, onDragStar
     { label: 'Copy link', icon: <Link2 size={14} />, divider: issue.assigneeId === state.me?.id,
       onClick: () => { navigator.clipboard?.writeText(location.origin + href({ name: 'issue', key: issue.key })); toast('Link copied') } },
     { label: 'Delete', icon: <Trash2 size={14} />, danger: true, divider: true,
-      onClick: () => { dispatch({ type: 'deleteIssues', ids: [issue.id] }); toast(`Deleted ${issue.key}`) } },
+      onClick: () => { dispatch({ type: 'deleteIssues', ids: [issue.id] }); toast(`Deleted ${issue.key}`, { undo: 'deleteIssues' }) } },
   ]
 
   return (

@@ -174,7 +174,7 @@ export default function SettingsView() {
         <Modal title={`Remove ${removing.name}?`} onClose={() => setRemoving(null)}
           footer={<>
             <button className="btn btn-secondary" onClick={() => setRemoving(null)}>Cancel</button>
-            <button className="btn btn-danger" onClick={() => { dispatch({ type: 'removeUser', id: removing.id }); toast(`Removed ${removing.name}`); setRemoving(null) }}>Remove</button>
+            <button className="btn btn-danger" onClick={() => { dispatch({ type: 'removeUser', id: removing.id }); toast(`Removed ${removing.name}`, { undo: 'removeUser' }); setRemoving(null) }}>Remove</button>
           </>}>
           <p>{plural(assignedTo(removing.id), 'work item')} assigned to {removing.name} will become unassigned. Their comments and history stay.</p>
         </Modal>

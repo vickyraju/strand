@@ -59,7 +59,7 @@ export default function Attachments({ issue, pickRef }: { issue: Issue; pickRef?
                 </div>
                 <div className="attach-actions">
                   {url && <a className="icon-btn sm" href={url} download={a.name} aria-label={`Download ${a.name}`} title="Download"><Download size={14} /></a>}
-                  <button className="icon-btn sm" onClick={() => dispatch({ type: 'removeAttachment', issueId: issue.id, attachmentId: a.id })} aria-label={`Remove ${a.name}`} title="Remove"><Trash2 size={14} /></button>
+                  <button className="icon-btn sm" onClick={() => { dispatch({ type: 'removeAttachment', issueId: issue.id, attachmentId: a.id }); toast(`Removed ${a.name}`, { undo: 'removeAttachment' }) }} aria-label={`Remove ${a.name}`} title="Remove"><Trash2 size={14} /></button>
                 </div>
               </div>
             )

@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect } from 'react'
-import type { NewIssue } from './data/store'
+import type { Action, NewIssue } from './data/store'
 import type { ProjectTab } from './router'
 
 export type { ProjectTab }
@@ -12,7 +12,8 @@ export interface AppActions {
   openIssue:   (id: string, opts?: { full?: boolean }) => void
   closeIssue:  () => void
   createIssue: (defaults?: Partial<NewIssue>) => void
-  toast:       (text: string, opts?: { issueId?: string; tone?: 'ok' | 'warn' }) => void
+  /** `undo`: the action this toast reports; an Undo button shows while that change is still the latest. */
+  toast:       (text: string, opts?: { issueId?: string; tone?: 'ok' | 'warn'; undo?: Action['type'] }) => void
   /** The list the user is looking at, for previous/next in the detail view. */
   setNavList:  (ids: string[]) => void
 }

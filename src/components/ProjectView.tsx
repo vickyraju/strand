@@ -311,7 +311,7 @@ function ProjectSettings({ project }: { project: Project }) {
           footer={<>
             <button className="btn btn-secondary" onClick={() => setDeleting(false)}>Cancel</button>
             <button className="btn btn-danger" disabled={confirm !== project.key} onClick={() => {
-              dispatch({ type: 'deleteProject', id: project.id }); toast(`Deleted ${project.name}`); goTo('projects')
+              dispatch({ type: 'deleteProject', id: project.id }); toast(`Deleted ${project.name}`, { undo: 'deleteProject' }); goTo('projects')
             }}>Delete project</button>
           </>}>
           <p className="callout callout-danger"><Info size={15} />This deletes {plural(count, 'work item')} and can’t be undone.</p>

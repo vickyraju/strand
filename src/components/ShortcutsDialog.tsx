@@ -8,6 +8,7 @@ const GROUPS: [string, [string, string][]][] = [
     ['G then I', 'Go to Inbox'],
     ['G then P', 'Go to Projects'],
     ['G then S', 'Go to Search'],
+    ['⌘ Z', 'Undo the last delete or bulk change'],
     ['?', 'Show keyboard shortcuts'],
   ]],
   ['Work item', [

@@ -50,6 +50,7 @@ export default function InboxView() {
   const archive = (issueId: string) => {
     const i = ids.indexOf(issueId)
     dispatch({ type: 'archive', ids: byIssue.get(issueId)!.map(n => n.id) })
+    toast('Archived', { undo: 'archive' })
     const next = ids[i + 1] ?? ids[i - 1]
     if (next && next !== issueId) open(next); else navigate(href({ name: 'inbox' }), { replace: true })
   }
@@ -75,7 +76,7 @@ export default function InboxView() {
           <div style={{ flex: 1 }} />
           <Menu title="Inbox options" trigger={<MoreHorizontal size={16} />} items={[
             { label: 'Mark all as read', icon: <CheckCheck size={14} />, onClick: () => { dispatch({ type: 'markRead', ids: mine.filter(n => !n.read).map(n => n.id) }); toast('All caught up') } },
-            { label: 'Archive all read', icon: <Archive size={14} />, onClick: () => dispatch({ type: 'archive', ids: mine.filter(n => n.read).map(n => n.id) }) },
+            { label: 'Archive all read', icon: <Archive size={14} />, onClick: () => { dispatch({ type: 'archive', ids: mine.filter(n => n.read).map(n => n.id) }); toast('Archived all read', { undo: 'archive' }) } },
             { label: showArchived ? 'Show inbox' : 'Show archived', icon: <Eye size={14} />, divider: true, onClick: () => setShowArchived(v => !v) },
           ]} />
         </div>
