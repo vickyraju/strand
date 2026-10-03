@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useReducer, type ReactNode } from 'react'
 import { reducer, migrate, EMPTY, type Action, type State, type User } from './reducer'
+import { pruneFiles } from './files'
 
 export * from './reducer'
 
@@ -24,6 +25,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+    pruneFiles(new Set(state.issues.flatMap(i => i.attachments.map(a => a.id))))
   }, [state])
 
   // Due-date reminders are created when the app opens

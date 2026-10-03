@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   Maximize2, Minimize2, X, Link2, Trash2, Plus, Eye, EyeOff, ChevronUp, ChevronDown, MoreHorizontal,
-  Ban, Unlink, Pencil, UserCheck, Copy,
+  Ban, Unlink, Pencil, UserCheck, Copy, Paperclip,
 } from 'lucide-react'
 import {
   useStore, userOf, projectOf, timeAgo, transitionsFrom,
@@ -16,6 +16,7 @@ import {
 import { Markdown, MentionTextarea } from './markdown'
 import { transitionLabel } from './BoardCard'
 import IssueRow from './IssueRow'
+import Attachments from './Attachments'
 
 function AutoText(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
   const ref = useRef<HTMLTextAreaElement>(null)
@@ -45,6 +46,7 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
   const [editComment, setEditComment] = useState<{ id: string; body: string } | null>(null)
   const [linking, setLinking]     = useState(false)
   const [confirmDel, setConfirmDel] = useState(false)
+  const attachRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     setTitle(issue?.title ?? ''); setDesc(issue?.description ?? ''); setLabels(issue?.labels.join(', ') ?? '')
@@ -157,6 +159,7 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
               <button className="btn btn-secondary btn-sm" onClick={() => createIssue({ projectId: project.id, parentId: issue.id, sprintId: issue.sprintId })}><Plus size={14} />Sub-item</button>
             )}
             <button className="btn btn-secondary btn-sm" onClick={() => setLinking(true)}><Link2 size={14} />Link</button>
+            <button className="btn btn-secondary btn-sm" onClick={() => attachRef.current?.click()}><Paperclip size={14} />Attach</button>
           </div>
 
           <section className="detail-section">
@@ -180,6 +183,8 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
               </div>
             )}
           </section>
+
+          <Attachments issue={issue} pickRef={attachRef} />
 
           {(issue.type === 'epic' || !issue.parentId) && (
             <section className="detail-section">
