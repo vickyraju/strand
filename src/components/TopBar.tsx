@@ -1,4 +1,5 @@
-import { ChevronRight, Plus, Bell, HelpCircle, Settings, UserRoundCog, Check, Keyboard } from 'lucide-react'
+import { ChevronRight, Plus, Bell, HelpCircle, Settings, UserRoundCog, Check, Keyboard, Moon, Sun } from 'lucide-react'
+import { useThemePref, setThemePref } from '../theme'
 import { useStore } from '../data/store'
 import { useApp } from '../appContext'
 import { Avatar, Menu } from './ui'
@@ -11,6 +12,8 @@ export default function TopBar({ crumbs, onCreateProject, onShortcuts }: {
   const { state, dispatch } = useStore()
   const { createIssue, goTo } = useApp()
   const hasProjects = state.projects.length > 0
+  useThemePref()
+  const dark = document.documentElement.dataset.theme === 'dark'
   const unread = state.notifications.filter(n => n.userId === state.me?.id && !n.read && !n.archived).length
 
   return (
@@ -52,6 +55,7 @@ export default function TopBar({ crumbs, onCreateProject, onShortcuts }: {
             })),
             { label: 'Manage people', icon: <UserRoundCog size={14} />, onClick: () => goTo('settings'), divider: true },
             { label: 'Settings', icon: <Settings size={14} />, onClick: () => goTo('settings') },
+            { label: dark ? 'Light mode' : 'Dark mode', icon: dark ? <Sun size={14} /> : <Moon size={14} />, onClick: () => setThemePref(dark ? 'light' : 'dark') },
             { label: 'Keyboard shortcuts', icon: <Keyboard size={14} />, onClick: onShortcuts, hint: '?' },
           ]}
         />

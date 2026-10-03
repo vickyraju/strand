@@ -17,8 +17,8 @@ export const toDay = (t: number) => {
 }
 const today = () => parseDay(toDay(Date.now()))
 
-/** An item's span in days. Items with only one date get a one-day bar. */
-function span(i: Issue): [number, number] | null {
+/** An item's own span in days. Items with only one date get a one-day bar. */
+function ownSpan(i: Issue): [number, number] | null {
   if (!i.startDate && !i.dueDate) return null
   const start = parseDay(i.startDate ?? i.dueDate!)
   const end = parseDay(i.dueDate ?? i.startDate!)
@@ -36,6 +36,13 @@ export default function TimelineView({ project }: { project: Project }) {
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const all = state.issues.filter(i => i.projectId === project.id)
+  // Undated sprint work spans its sprint, like Jira's timeline
+  const sprintSpan = (i: Issue): [number, number] | null => {
+    const sp = state.sprints.find(s => s.id === i.sprintId)
+    if (!sp?.startedAt) return null
+    return [parseDay(toDay(sp.startedAt)), parseDay(toDay(sp.completedAt ?? sp.endsAt ?? sp.startedAt))]
+  }
+  const span = (i: Issue) => ownSpan(i) ?? sprintSpan(i)
   const people = [...new Set(all.map(i => i.assigneeId).filter((x): x is string => !!x))].map(id => userOf(state, id)!).filter(Boolean)
   const filters = useFilters(people)
   const visible = new Set(filters.apply(all).map(i => i.id))
@@ -137,8 +144,9 @@ export default function TimelineView({ project }: { project: Project }) {
           <div className="tl-body">
             <div className="tl-today" style={{ left: 320 + x(today()) + px / 2 }} title="Today" />
             {rows.map(({ issue: i, depth, derived, childCount }) => {
-              const own = span(i)
-              const s = own ? preview(i, own) : derived
+              const own = ownSpan(i)
+              const fromSprint = !own ? sprintSpan(i) : null
+              const s = own ? preview(i, own) : fromSprint ?? derived
               const done = isDone(project, i)
               const status = project.statuses.find(st => st.id === i.status)
               const isEpic = i.type === 'epic'
@@ -161,15 +169,15 @@ export default function TimelineView({ project }: { project: Project }) {
                   <div className="tl-track" style={{ width: days * px }}>
                     {s ? (
                       <div
-                        className={`tl-bar${isEpic ? ' epic' : ''}${!own ? ' derived' : ''}${done ? ' done' : ''}${drag?.id === i.id ? ' dragging' : ''}`}
+                        className={`tl-bar${isEpic ? ' epic' : ''}${!own ? ' derived' : ''}${fromSprint ? ' sprint' : ''}${done ? ' done' : ''}${drag?.id === i.id ? ' dragging' : ''}`}
                         style={{ left: x(s[0]), width: x(s[1]) - x(s[0]) + px, ['--bar' as string]: isEpic ? '#7C3AED' : status?.color }}
-                        title={`${i.key}: ${new Date(s[0]).toLocaleDateString()} – ${new Date(s[1]).toLocaleDateString()}${!own ? ' (from its items)' : ''}`}
+                        title={`${i.key}: ${new Date(s[0]).toLocaleDateString()} – ${new Date(s[1]).toLocaleDateString()}${fromSprint ? ' (sprint dates)' : !own ? ' (from its items)' : ''}`}
                         onPointerDown={own ? e => { e.preventDefault(); (e.target as Element).setPointerCapture?.(e.pointerId); setDrag({ id: i.id, mode: 'move', x0: e.clientX, s0: own[0], e0: own[1], dx: 0 }) } : undefined}
                         onClick={!own ? () => openIssue(i.id) : undefined}
                       >
                         {own && <span className="tl-handle start" onPointerDown={e => { e.stopPropagation(); e.preventDefault(); setDrag({ id: i.id, mode: 'start', x0: e.clientX, s0: own[0], e0: own[1], dx: 0 }) }} />}
                         <span className="tl-bar-label">{x(s[1]) - x(s[0]) + px > 90 ? i.title : ''}</span>
-                        {own && i.assigneeId && x(s[1]) - x(s[0]) + px > 60 && <Avatar user={userOf(state, i.assigneeId)} size={18} />}
+                        {(own || fromSprint) && i.assigneeId && x(s[1]) - x(s[0]) + px > 60 && <Avatar user={userOf(state, i.assigneeId)} size={18} />}
                         {own && <span className="tl-handle end" onPointerDown={e => { e.stopPropagation(); e.preventDefault(); setDrag({ id: i.id, mode: 'end', x0: e.clientX, s0: own[0], e0: own[1], dx: 0 }) }} />}
                       </div>
                     ) : (

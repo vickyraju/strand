@@ -214,8 +214,9 @@ export function sampleWorkspace(owner: User, now = Date.now()): Partial<State> {
 
     const order = spec.statuses.map(s => s.id)
     // Scheduled work gets dates: sprint items span their sprint, epics' items spread across the next weeks
-    const sprintStart = (sp: Spec) => sp.sprint !== undefined ? iso(windows[sp.sprint][0]) : sp.epic !== undefined ? iso(-10 + sp.epic * 9 + Math.round(between(0, 6))) : undefined
-    const sprintDue = (sp: Spec) => sp.sprint !== undefined ? iso(windows[sp.sprint][1]) : sp.epic !== undefined ? iso(4 + sp.epic * 12 + Math.round(between(0, 10))) : undefined
+    // Sprint work takes its dates from the sprint; other epic work is spread across the coming weeks
+    const sprintStart = (sp: Spec) => sp.sprint === undefined && sp.epic !== undefined ? iso(-10 + sp.epic * 9 + Math.round(between(0, 6))) : undefined
+    const sprintDue = (sp: Spec) => sp.sprint === undefined && sp.epic !== undefined ? iso(4 + sp.epic * 12 + Math.round(between(0, 10))) : undefined
     const make = (s: Spec, isEpic: boolean): Issue => {
       const n = project.nextNumber++
       const assignee = s.a !== undefined ? team[s.a] : undefined

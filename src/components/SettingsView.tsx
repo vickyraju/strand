@@ -1,11 +1,12 @@
 import { useRef, useState } from 'react'
-import { Plus, Download, Upload, Trash2, UserRoundCog, Sparkles, Pencil, Check, X } from 'lucide-react'
+import { Plus, Download, Upload, Trash2, UserRoundCog, Sparkles, Pencil, Check, X, Sun, Moon, Monitor } from 'lucide-react'
+import { useThemePref, setThemePref, type ThemePref } from '../theme'
 import { useStore, migrate, type User } from '../data/store'
 import { useApp } from '../appContext'
 import { Avatar, Modal, plural } from './ui'
 import { LoadSampleButton } from './ProjectView'
 
-const SECTIONS = [['profile', 'Profile'], ['people', 'People'], ['workspace', 'Workspace'], ['data', 'Data']] as const
+const SECTIONS = [['profile', 'Profile'], ['appearance', 'Appearance'], ['people', 'People'], ['workspace', 'Workspace'], ['data', 'Data']] as const
 
 export default function SettingsView() {
   const { state, dispatch } = useStore()
@@ -20,6 +21,7 @@ export default function SettingsView() {
   const [confirm, setConfirm]   = useState<'reset' | 'sample' | { importData: ReturnType<typeof migrate> } | null>(null)
   const [resetText, setResetText] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
+  const theme = useThemePref()
 
   const exportData = () => {
     const { me: _me, owner: _owner, ...data } = state
@@ -60,6 +62,19 @@ export default function SettingsView() {
                 <input id="st-name" className="input" value={name} onChange={e => setName(e.target.value)}
                   onBlur={() => name.trim() && name.trim() !== owner.name ? (dispatch({ type: 'updateUser', id: owner.id, name }), toast('Profile updated')) : setName(owner.name)} />
               </div>
+            </div>
+          </section>
+
+          <section className="panel" id="appearance">
+            <h2 className="panel-title">Appearance</h2>
+            <p className="muted" style={{ marginBottom: 12 }}>Saved for this browser.</p>
+            <div className="theme-picker" role="radiogroup" aria-label="Theme">
+              {([['light', 'Light', Sun], ['dark', 'Dark', Moon], ['system', 'Match system', Monitor]] as [ThemePref, string, typeof Sun][]).map(([v, label, Icon]) => (
+                <button key={v} role="radio" aria-checked={theme === v} className={`theme-option${theme === v ? ' selected' : ''}`} onClick={() => setThemePref(v)}>
+                  <span className={`theme-swatch ${v}`} />
+                  <span className="cell-flex"><Icon size={14} />{label}</span>
+                </button>
+              ))}
             </div>
           </section>
 
