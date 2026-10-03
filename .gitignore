@@ -38,3 +38,4 @@ yarn-error.log*
 
 # playwright mcp debug output
 .playwright-mcp/
+.serena/
