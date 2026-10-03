@@ -1146,3 +1146,20 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; line-height:
 .release-summary .release-bar { width: 100%; height: 10px; border-radius: 5px }
 .release-summary > .muted { margin-bottom: 12px }
 .lozenge-overdue { background: var(--danger-soft); color: var(--danger) }
+
+/* Time tracking */
+.col-time { width: 120px }
+.time-field { display: flex; flex-direction: column; gap: 4px; width: 100% }
+.time-bar-btn { display: flex; flex-direction: column; gap: 4px; width: 100%; padding: 6px 8px; margin-left: -8px; border-radius: var(--radius) }
+.time-bar-btn:hover { background: var(--hover) }
+.time-bar { display: block; width: 100%; height: 6px; border-radius: 3px; background: var(--sunken); overflow: hidden }
+.time-logged { display: block; height: 100%; background: var(--info); border-radius: 3px }
+.time-logged.over { background: var(--danger) }
+.time-nums { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; white-space: nowrap }
+.time-est { display: flex; align-items: center; gap: 8px }
+.time-est .field-input { margin-left: 0 }
+.worklog { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 8px; max-height: 240px; overflow-y: auto }
+.worklog-row { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--border); font-size: 13px }
+.worklog-row:last-child { border-bottom: none }
+.worklog-text { flex: 1; min-width: 0; color: var(--text-2) }
+.worklog-text b { color: var(--text-1); font-weight: 600 }

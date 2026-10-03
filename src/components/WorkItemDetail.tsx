@@ -18,6 +18,7 @@ import { transitionLabel } from './BoardCard'
 import IssueRow from './IssueRow'
 import Attachments from './Attachments'
 import { CustomFieldInput } from './CustomFields'
+import { TimeField } from './TimeTracking'
 
 function AutoText(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
   const ref = useRef<HTMLTextAreaElement>(null)
@@ -383,6 +384,7 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
               <input className="field-input" type="number" min={0} value={issue.estimate ?? ''} placeholder="None" aria-label="Story points"
                 onChange={e => set({ estimate: e.target.value === '' ? undefined : Math.max(0, Number(e.target.value)) })} />
             </Field>
+            {issue.type !== 'epic' && <Field label="Time tracking"><TimeField key={issue.id} issue={issue} /></Field>}
             <Field label="Start date">
               <input className="field-input" type="date" value={issue.startDate ?? ''} max={issue.dueDate} aria-label="Start date" onChange={e => set({ startDate: e.target.value || undefined })} />
             </Field>

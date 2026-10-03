@@ -12,14 +12,15 @@ import {
 } from './ui'
 import { ProjectIcon } from './ProjectView'
 import { fieldText } from './CustomFields'
+import { loggedMinutes, formatDuration } from '../data/time'
 
 export type TableGroup = 'status' | 'assignee' | 'priority' | 'epic' | 'project' | 'none'
-type Col = `f:${string}` | 'type' | 'key' | 'project' | 'status' | 'assignee' | 'priority' | 'labels' | 'estimate' | 'due' | 'updated'
+type Col = `f:${string}` | 'type' | 'key' | 'project' | 'status' | 'assignee' | 'priority' | 'labels' | 'estimate' | 'logged' | 'due' | 'updated'
 type SortKey = 'rank' | 'key' | 'title' | 'status' | 'assignee' | 'priority' | 'estimate' | 'due' | 'updated'
 
 const COL_LABEL: Record<Col, string> = {
   type: 'Type', key: 'Key', project: 'Project', status: 'Status', assignee: 'Assignee', priority: 'Priority',
-  labels: 'Labels', estimate: 'Points', due: 'Due', updated: 'Updated',
+  labels: 'Labels', estimate: 'Points', logged: 'Time logged', due: 'Due', updated: 'Updated',
 }
 const PRIORITY_RANK: Record<Priority, number> = { urgent: 0, high: 1, medium: 2, low: 3, none: 4 }
 
@@ -41,7 +42,7 @@ export default function IssueTable({ issues, id, groupBy, onGroupBy, project, sh
   const storageKey = `forge:table:${id}`
   const [cols, setCols] = useState<Record<Col, boolean>>(() => ({
     type: true, key: true, project: !!showProjectColumn, status: true, assignee: true, priority: true,
-    labels: false, estimate: true, due: true, updated: true,
+    labels: false, estimate: true, logged: false, due: true, updated: true,
     ...JSON.parse(localStorage.getItem(storageKey) ?? '{}'),
   }))
   useEffect(() => { localStorage.setItem(storageKey, JSON.stringify(cols)) }, [cols, storageKey])
@@ -228,6 +229,7 @@ export default function IssueTable({ issues, id, groupBy, onGroupBy, project, sh
               {cols.priority && headerSort('priority', 'Priority', 'col-priority')}
               {cols.labels && <th className="col-labels">Labels</th>}
               {cols.estimate && headerSort('estimate', 'Points', 'col-num')}
+              {cols.logged && <th className="col-time">Time logged</th>}
               {cols.due && headerSort('due', 'Due', 'col-due')}
               {customCols.map(f => <th key={f.id} title={f.name} className={`col-custom${f.kind === 'number' ? ' col-num' : ''}`}><span className="cell-ellipsis">{f.name}</span></th>)}
               {cols.updated && headerSort('updated', 'Updated', 'col-updated')}
@@ -299,6 +301,7 @@ export default function IssueTable({ issues, id, groupBy, onGroupBy, project, sh
                       )}
                       {cols.labels && <td className="col-labels"><span className="cell-flex">{i.labels.slice(0, 2).map(l => <span key={l} className="tag">{l}</span>)}{i.labels.length > 2 && <span className="muted">+{i.labels.length - 2}</span>}</span></td>}
                       {cols.estimate && <td className="col-num">{i.estimate ?? ''}</td>}
+                      {cols.logged && <td className="col-time muted">{loggedMinutes(i) ? `${formatDuration(loggedMinutes(i))}${i.timeEstimate ? ` / ${formatDuration(i.timeEstimate)}` : ''}` : ''}</td>}
                       {cols.due && <td className={`col-due${i.dueDate && isOverdue(i.dueDate) && !done ? ' text-danger' : ''}`}>{i.dueDate ? formatDate(i.dueDate) : ''}</td>}
                       {customCols.map(f => <td key={f.id} className={`col-custom${f.kind === 'number' ? ' col-num' : ''}`}><span className="cell-ellipsis">{fieldText(f, i.custom[f.id])}</span></td>)}
                       {cols.updated && <td className="col-updated muted">{timeAgo(i.updatedAt)}</td>}
