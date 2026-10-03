@@ -1169,3 +1169,16 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; line-height:
 .import-map-row { display: flex; align-items: center; gap: 10px; font-size: 13px }
 .import-map-row > span { width: 96px; flex-shrink: 0; color: var(--text-2) }
 .import-map-row .input { height: 32px }
+
+/* Dashboards */
+.dash-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; padding: 0 28px }
+.gadget { min-width: 0; display: flex; flex-direction: column }
+.gadget.wide { grid-column: span 2 }
+.gadget-hdr { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px }
+.gadget-empty { padding: 18px 0 }
+.mini-list { display: flex; flex-direction: column }
+.mini-row { display: flex; align-items: center; gap: 8px; padding: 7px 6px; border-radius: 6px; font-size: 13px; text-align: left; min-width: 0 }
+.mini-row:hover { background: var(--hover) }
+.mini-row .cell-ellipsis { flex: 1 }
+.gadget-picker { display: grid; grid-template-columns: 1fr 1fr; gap: 8px }
+@media (max-width: 1024px) { .dash-grid { grid-template-columns: 1fr } .gadget.wide { grid-column: auto } }

@@ -3,7 +3,7 @@ import type { NewIssue } from './data/store'
 import type { ProjectTab } from './router'
 
 export type { ProjectTab }
-export type AppView = 'home' | 'inbox' | 'search' | 'projects' | 'settings'
+export type AppView = 'home' | 'inbox' | 'search' | 'projects' | 'settings' | 'dashboards'
 
 export interface AppActions {
   goTo:        (view: AppView, query?: string) => void

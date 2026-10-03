@@ -7,6 +7,7 @@ import SearchView from './components/SearchView'
 import YourWork from './components/YourWork'
 import InboxView from './components/InboxView'
 import SettingsView from './components/SettingsView'
+import DashboardsView from './components/DashboardsView'
 import WorkItemDetail from './components/WorkItemDetail'
 import Welcome from './components/Welcome'
 import CreateProjectModal from './components/CreateProjectModal'
@@ -108,7 +109,7 @@ function Shell() {
       fullIssue ? [`${fullIssue.key} ${fullIssue.title}`]
       : project ? [project.name]
       : route.name === 'inbox' ? ['Inbox'] : route.name === 'search' ? ['Search'] : route.name === 'projects' ? ['Projects']
-      : route.name === 'settings' ? ['Settings'] : route.name === 'home' ? ['Your work'] : []
+      : route.name === 'settings' ? ['Settings'] : route.name === 'dashboards' ? ['Dashboards'] : route.name === 'home' ? ['Your work'] : []
     document.title = [...parts, state.workspaceName || 'Forge'].join(' · ')
   }, [route, fullIssue, project, state.workspaceName])
 
@@ -139,7 +140,7 @@ function Shell() {
       { label: state.projects.find(p => p.id === fullIssue.projectId)?.name ?? '', onClick: () => actions.openProject(fullIssue.projectId) },
       { label: fullIssue.key },
     ]
-    : [{ label: { home: 'Your work', inbox: 'Inbox', search: 'Search', projects: 'Projects', settings: 'Settings' }[route.name as 'home'] ?? '' }]
+    : [{ label: { home: 'Your work', inbox: 'Inbox', search: 'Search', projects: 'Projects', settings: 'Settings', dashboards: 'Dashboards' }[route.name as 'home'] ?? '' }]
 
   const acting = state.actingAsId ? state.me : null
 
@@ -169,6 +170,7 @@ function Shell() {
             {route.name === 'search'   && <SearchView query={route.q} viewId={route.view} />}
             {route.name === 'projects' && <ProjectsView onCreate={() => setCreateProjectOpen(true)} />}
             {route.name === 'settings' && <SettingsView />}
+            {route.name === 'dashboards' && <DashboardsView id={route.id} />}
             {route.name === 'project'  && (project
               ? route.tab && <ProjectView project={project} tab={route.tab} sub={route.sub} />
               : notFound('Project'))}

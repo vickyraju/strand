@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, type ReactNode } from 'react'
-import { Search, Plus, FolderPlus, LayoutGrid, FolderKanban, SearchCode, Settings, Inbox } from 'lucide-react'
+import { Search, Plus, FolderPlus, LayoutGrid, FolderKanban, SearchCode, Settings, Inbox, LayoutDashboard, Bookmark } from 'lucide-react'
+import { navigate, href } from '../router'
 import { useStore, projectOf } from '../data/store'
 import { useApp, type AppView } from '../appContext'
 import { ProjectIcon } from './ProjectView'
@@ -27,6 +28,7 @@ export default function CommandPalette({ onClose, onCreateProject }: { onClose: 
     go('projects', 'Go to All projects',  <FolderKanban size={14} />),
     ...(q ? [{ id: 'search-all', section: 'Actions', icon: <SearchCode size={14} />, label: `Search all work items for “${query.trim()}”`, run: () => goTo('search', query.trim()) }] : []),
     go('search',   'Go to Search',        <SearchCode size={14} />),
+    go('dashboards', 'Go to Dashboards',  <LayoutDashboard size={14} />),
     go('settings', 'Go to Settings',      <Settings size={14} />),
   ].filter(i => i.id === 'search-all' || match(String(i.label)))
 
@@ -44,7 +46,11 @@ export default function CommandPalette({ onClose, onCreateProject }: { onClose: 
       label: <><em>{i!.key}</em> {i!.title}</>, hint: projectOf(state, i!.projectId)?.name, run: () => openIssue(i!.id),
     }))
 
-  const all = [...issues, ...projects, ...items]
+  const views: Item[] = state.views
+    .filter(v => (v.shared || v.ownerId === state.me?.id) && match(v.name))
+    .map(v => ({ id: v.id, section: 'Saved views', icon: <Bookmark size={14} />, label: v.name, run: () => navigate(href({ name: 'search', q: '', view: v.id })) }))
+
+  const all = [...issues, ...projects, ...views, ...items]
   const safeCursor = Math.min(cursor, Math.max(all.length - 1, 0))
 
   useEffect(() => { setCursor(0) }, [query])
