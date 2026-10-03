@@ -17,6 +17,7 @@ import { StoreProvider, useStore, type NewIssue } from './data/store'
 import { AppContext, type AppActions } from './appContext'
 import { useLocation, navigate, href, type Route } from './router'
 import { Empty } from './components/ui'
+import ErrorBoundary from './components/ErrorBoundary'
 
 const isTyping = (el: Element | null) =>
   !!el && (['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName) || (el as HTMLElement).isContentEditable)
@@ -162,6 +163,7 @@ function Shell() {
           <TopBar crumbs={crumbs} onCreateProject={() => setCreateProjectOpen(true)} onShortcuts={() => setShortcutsOpen(true)} />
 
           <div className="content">
+            <ErrorBoundary resetKey={location.pathname}>
             {route.name === 'home'     && <YourWork onCreateProject={() => setCreateProjectOpen(true)} />}
             {route.name === 'inbox'    && <InboxView />}
             {route.name === 'search'   && <SearchView query={route.q} />}
@@ -183,6 +185,7 @@ function Shell() {
                 </aside>
               </>
             )}
+            </ErrorBoundary>
           </div>
 
           {toast && (

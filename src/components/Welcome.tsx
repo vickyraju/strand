@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useStore } from '../data/store'
 import { Logomark } from './NavRail'
+import { navigate } from '../router'
 
 export default function Welcome() {
   const { dispatch } = useStore()
@@ -11,7 +12,7 @@ export default function Welcome() {
     <div className="welcome">
       <form
         className="welcome-card"
-        onSubmit={e => { e.preventDefault(); if (name.trim()) dispatch({ type: 'setOwner', name, workspaceName: workspace }) }}
+        onSubmit={e => { e.preventDefault(); if (name.trim()) { dispatch({ type: 'setOwner', name, workspaceName: workspace }); navigate('/', { replace: true }) } }}
       >
         <Logomark size={40} />
         <h1 className="welcome-title">Welcome to Forge</h1>
