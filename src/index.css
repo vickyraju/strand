@@ -1039,3 +1039,15 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; line-height:
 .attach-actions { position: absolute; top: 6px; right: 6px; display: flex; gap: 2px; opacity: 0; transition: opacity .1s }
 .attach-actions .icon-btn { background: var(--surface); box-shadow: var(--shadow-sm) }
 .attach-card:hover .attach-actions, .attach-actions:focus-within { opacity: 1 }
+
+/* Automation */
+.rule-card { display: flex; align-items: center; gap: 12px; padding: 14px 16px }
+.rule-card.off { opacity: .6 }
+.rule-icon { width: 34px; height: 34px; border-radius: 9px; display: inline-flex; align-items: center; justify-content: center; background: #F5F0FF; color: #7C3AED; flex-shrink: 0 }
+.rule-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px }
+.rule-step { display: flex; align-items: center; gap: 8px; margin-top: 12px }
+.rule-step .input { flex: 1 }
+.rule-step .rule-kind { flex: 0 0 170px }
+.rule-step-tag { width: 52px; flex-shrink: 0; text-align: center; padding: 4px 0; border-radius: 4px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em }
+.rule-step-tag.when { background: var(--info-soft); color: var(--info) }
+.rule-step-tag.then { background: #F5F0FF; color: #7C3AED }

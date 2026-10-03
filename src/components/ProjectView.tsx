@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, Star, FolderPlus, Columns2, List, ListChecks, Settings, Gauge, BarChart3, GanttChart, CalendarDays, Check, GitBranch, Info, Sparkles } from 'lucide-react'
+import { Plus, Star, FolderPlus, Columns2, List, ListChecks, Settings, Gauge, BarChart3, GanttChart, CalendarDays, Check, GitBranch, Info, Sparkles, Zap } from 'lucide-react'
 import { useStore, userOf, isDone, timeAgo, PROJECT_COLORS, type Project, type ProjectPatch } from '../data/store'
 import { useApp } from '../appContext'
 import type { ProjectTab } from '../router'
@@ -12,6 +12,7 @@ import ReportsView from './ReportsView'
 import TimelineView from './TimelineView'
 import CalendarView from './CalendarView'
 import WorkflowBuilder from './WorkflowBuilder'
+import AutomationView from './AutomationView'
 import { useFilters } from './filters'
 import { Avatar, Empty, Picker, Modal, userOptions, plural } from './ui'
 
@@ -167,7 +168,7 @@ export function ProjectView({ project, tab, sub }: { project: Project; tab: Proj
       {tab === 'timeline' && <TimelineView project={project} />}
       {tab === 'calendar' && <CalendarView project={project} />}
       {tab === 'reports'  && <ReportsView project={project} report={sub} />}
-      {tab === 'settings' && (sub === 'workflow' ? <WorkflowBuilder project={project} /> : <ProjectSettings project={project} />)}
+      {tab === 'settings' && (sub === 'workflow' ? <WorkflowBuilder project={project} /> : sub === 'automation' ? <AutomationView project={project} /> : <ProjectSettings project={project} />)}
     </div>
   )
 }
@@ -273,6 +274,16 @@ function ProjectSettings({ project }: { project: Project }) {
         </div>
         <div className="workflow-strip">
           {project.statuses.map(s => <span key={s.id} className={`lozenge lozenge-${s.category}`}>{s.name}</span>)}
+        </div>
+      </section>
+
+      <section className="panel">
+        <div className="panel-title-row">
+          <div>
+            <h2 className="panel-title">Automation</h2>
+            <p className="muted">{project.rules.length ? `${plural(project.rules.filter(r => r.enabled).length, 'active rule')} of ${project.rules.length}.` : 'No rules yet.'} Rules update work items for you when they’re created, assigned or moved.</p>
+          </div>
+          <button className="btn btn-secondary" onClick={() => openProject(project.id, 'settings', 'automation')}><Zap size={14} />Manage rules</button>
         </div>
       </section>
 

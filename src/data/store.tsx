@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useReducer, type ReactNode } from 'react'
-import { reducer, migrate, EMPTY, type Action, type State, type User } from './reducer'
+import { reducer, migrate, EMPTY, AUTOMATION, type Action, type State, type User } from './reducer'
 import { pruneFiles } from './files'
 
 export * from './reducer'
@@ -47,4 +47,7 @@ export function useStore() {
 }
 
 export const projectOf = (state: State, id: string | undefined) => state.projects.find(p => p.id === id)
-export const userOf    = (state: State, id: string | undefined) => state.users.find(u => u.id === id)
+/** The pseudo-user shown for changes made by automation rules. */
+export const AUTOMATION_USER: User = { id: AUTOMATION, name: 'Automation', initials: 'AU', color: '#57534E' }
+export const userOf = (state: State, id: string | undefined) =>
+  id === AUTOMATION ? AUTOMATION_USER : state.users.find(u => u.id === id)

@@ -57,6 +57,10 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
     if (unread.length) dispatch({ type: 'markRead', ids: unread })
   }, [issueId]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Keep the labels box in step with changes made elsewhere (bulk edits, automation)
+  const labelsKey = issue?.labels.join(', ') ?? ''
+  useEffect(() => { if (document.activeElement?.getAttribute('aria-label') !== 'Labels (comma separated)') setLabels(labelsKey) }, [labelsKey])
+
   // j / k step through the list the item was opened from
   const idx = navList.indexOf(issueId)
   const prev = idx > 0 ? navList[idx - 1] : undefined

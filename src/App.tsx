@@ -132,7 +132,7 @@ function Shell() {
       { label: 'Projects', onClick: () => actions.goTo('projects') },
       { label: project.name, onClick: () => actions.openProject(project.id) },
       ...(route.tab ? [{ label: TAB_LABEL[route.tab] }] : []),
-      ...(route.sub === 'workflow' ? [{ label: 'Workflow' }] : []),
+      ...(route.sub === 'workflow' ? [{ label: 'Workflow' }] : route.sub === 'automation' ? [{ label: 'Automation' }] : []),
     ]
     : route.name === 'issue' && fullIssue ? [
       { label: 'Projects', onClick: () => actions.goTo('projects') },
