@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ChevronRight, Maximize2, Minimize2, X, CalendarDays, Tag, Zap, IterationCcw, Hash } from 'lucide-react'
+import { ChevronRight, Maximize2, Minimize2, X, CalendarDays, Tag, Zap, IterationCcw, Hash, FileText } from 'lucide-react'
 import { useStore, uid, userOf, type NewIssue, type IssueType, type Priority } from '../data/store'
 import { useApp } from '../appContext'
 import {
@@ -85,6 +85,17 @@ export default function CreateIssueModal({ defaults, onClose }: {
             trigger={<><ProjectIcon project={project} size={16} />{project.key}</>} />
           <ChevronRight size={13} className="muted" />
           <span className="compose-hdr-label">{parent ? `New item in ${parent.key}` : 'New work item'}</span>
+          {project.templates.length > 0 && (
+            <Picker value="" title="Use a template" className="chip chip-ghost"
+              options={project.templates.map(t => ({ value: t.id, label: t.name, icon: <TypeIcon type={t.type} size={13} /> }))}
+              onChange={id => {
+                const t = project.templates.find(x => x.id === id)!
+                setType(t.type); setPriority(t.priority); setLabels(t.labels.join(', '))
+                setEstimate(t.estimate != null ? String(t.estimate) : '')
+                setTitle(prev => prev.trim() ? prev : t.title); setDescription(t.description)
+              }}
+              trigger={<><FileText size={13} className="muted" />Template</>} />
+          )}
           <div style={{ flex: 1 }} />
           <button type="button" className="icon-btn" onClick={() => setExpanded(v => !v)} title={expanded ? 'Collapse' : 'Expand'} aria-label={expanded ? 'Collapse' : 'Expand'}>
             {expanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}

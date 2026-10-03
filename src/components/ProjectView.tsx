@@ -15,6 +15,7 @@ import CalendarView from './CalendarView'
 import WorkflowBuilder from './WorkflowBuilder'
 import AutomationView from './AutomationView'
 import { FieldsPanel } from './CustomFields'
+import { TemplatesPanel, ImportPanel } from './TemplatesImport'
 import { useFilters } from './filters'
 import { Avatar, Empty, Picker, Modal, userOptions, plural } from './ui'
 
@@ -282,6 +283,8 @@ function ProjectSettings({ project }: { project: Project }) {
       </section>
 
       <FieldsPanel project={project} />
+      <TemplatesPanel project={project} />
+      <ImportPanel project={project} />
 
       <section className="panel">
         <div className="panel-title-row">

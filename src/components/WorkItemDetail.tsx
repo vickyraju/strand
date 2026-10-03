@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   Maximize2, Minimize2, X, Link2, Trash2, Plus, Eye, EyeOff, ChevronUp, ChevronDown, MoreHorizontal,
-  Ban, Unlink, Pencil, UserCheck, Copy, Paperclip,
+  Ban, Unlink, Pencil, UserCheck, Copy, Paperclip, FileText,
 } from 'lucide-react'
 import {
   useStore, userOf, projectOf, timeAgo, transitionsFrom,
@@ -19,6 +19,7 @@ import IssueRow from './IssueRow'
 import Attachments from './Attachments'
 import { CustomFieldInput } from './CustomFields'
 import { TimeField } from './TimeTracking'
+import { TemplateDialog, blankTemplate } from './TemplatesImport'
 
 function AutoText(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
   const ref = useRef<HTMLTextAreaElement>(null)
@@ -49,6 +50,7 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
   const [linking, setLinking]     = useState(false)
   const [confirmDel, setConfirmDel] = useState(false)
   const attachRef = useRef<HTMLInputElement>(null)
+  const [templating, setTemplating] = useState(false)
 
   useEffect(() => {
     setTitle(issue?.title ?? ''); setDesc(issue?.description ?? ''); setLabels(issue?.labels.join(', ') ?? '')
@@ -143,6 +145,7 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
         <Menu title="More actions" trigger={<MoreHorizontal size={16} />} items={[
           { label: 'Copy key', icon: <Copy size={14} />, onClick: () => { navigator.clipboard?.writeText(issue.key); toast(`Copied ${issue.key}`) } },
           { label: 'Link work item', icon: <Link2 size={14} />, onClick: () => setLinking(true) },
+          { label: 'Save as template', icon: <FileText size={14} />, onClick: () => setTemplating(true) },
           ...(issue.type !== 'epic' && !issue.parentId ? [{ label: 'Add sub-item', icon: <Plus size={14} />, onClick: () => createIssue({ projectId: project.id, parentId: issue.id, sprintId: issue.sprintId }) }] : []),
           { label: 'Delete', icon: <Trash2 size={14} />, danger: true, divider: true, onClick: () => setConfirmDel(true) },
         ]} />
@@ -406,6 +409,12 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
       </div>
 
       {linking && <LinkDialog issue={issue} onClose={() => setLinking(false)} />}
+      {templating && (
+        <TemplateDialog
+          template={{ ...blankTemplate(), name: issue.title, type: issue.type, description: issue.description, priority: issue.priority, labels: issue.labels, estimate: issue.estimate }}
+          onClose={() => setTemplating(false)}
+          onSave={t => { dispatch({ type: 'updateProject', id: project.id, patch: { templates: [...project.templates, t] } }); toast(`Saved template ${t.name}`); setTemplating(false) }} />
+      )}
       {confirmDel && (
         <Modal title={`Delete ${issue.key}?`} onClose={() => setConfirmDel(false)}
           footer={<>
