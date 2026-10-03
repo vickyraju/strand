@@ -1133,3 +1133,9 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; line-height:
 [data-theme='dark'] .modal-backdrop, [data-theme='dark'] .cmd-backdrop { background: rgba(0,0,0,.6) }
 [data-theme='dark'] input[type='date']::-webkit-calendar-picker-indicator { filter: invert(.8) }
 .tl-bar.sprint { border-style: solid; background: color-mix(in srgb, var(--bar) 16%, var(--surface)) }
+
+/* Custom fields */
+.col-custom { width: 140px !important; overflow: hidden }
+.option-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px }
+.option-chips .tag { display: inline-flex; align-items: center; gap: 2px; padding-right: 2px }
+.field-btn > .muted { flex-shrink: 0; overflow: visible }

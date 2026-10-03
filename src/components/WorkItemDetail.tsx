@@ -17,6 +17,7 @@ import { Markdown, MentionTextarea } from './markdown'
 import { transitionLabel } from './BoardCard'
 import IssueRow from './IssueRow'
 import Attachments from './Attachments'
+import { CustomFieldInput } from './CustomFields'
 
 function AutoText(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
   const ref = useRef<HTMLTextAreaElement>(null)
@@ -380,6 +381,9 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
             <Field label="Due date">
               <input className="field-input" type="date" value={issue.dueDate ?? ''} min={issue.startDate} aria-label="Due date" onChange={e => set({ dueDate: e.target.value || undefined })} />
             </Field>
+            {project.fields.map(f => (
+              <Field key={f.id} label={f.name}><CustomFieldInput key={issue.id} field={f} issue={issue} /></Field>
+            ))}
             <Field label="Watchers">
               <span className="avatar-group sm">{watchers.map(u => <Avatar key={u.id} user={u} size={22} />)}</span>
             </Field>

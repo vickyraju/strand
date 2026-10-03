@@ -11,9 +11,10 @@ import {
   statusOptions, priorityOptions, userOptions, formatDate, isOverdue,
 } from './ui'
 import { ProjectIcon } from './ProjectView'
+import { fieldText } from './CustomFields'
 
 export type TableGroup = 'status' | 'assignee' | 'priority' | 'epic' | 'project' | 'none'
-type Col = 'type' | 'key' | 'project' | 'status' | 'assignee' | 'priority' | 'labels' | 'estimate' | 'due' | 'updated'
+type Col = `f:${string}` | 'type' | 'key' | 'project' | 'status' | 'assignee' | 'priority' | 'labels' | 'estimate' | 'due' | 'updated'
 type SortKey = 'rank' | 'key' | 'title' | 'status' | 'assignee' | 'priority' | 'estimate' | 'due' | 'updated'
 
 const COL_LABEL: Record<Col, string> = {
@@ -175,7 +176,8 @@ export default function IssueTable({ issues, id, groupBy, onGroupBy, project, sh
 
   const allIds = flat.map(i => i.id)
   const allSelected = allIds.length > 0 && allIds.every(id => selected.has(id))
-  const colCount = 2 + Object.entries(cols).filter(([k, v]) => v && (k !== 'project' || showProjectColumn)).length
+  const customCols = (project?.fields ?? []).filter(f => cols[`f:${f.id}` as Col])
+  const colCount = 2 + Object.entries(cols).filter(([k, v]) => v && !k.startsWith('f:') && (k !== 'project' || showProjectColumn)).length + customCols.length
 
   return (
     <div className="table-wrap">
@@ -199,11 +201,18 @@ export default function IssueTable({ issues, id, groupBy, onGroupBy, project, sh
               <Toggle on={cols[c]} onChange={on => setCols(prev => ({ ...prev, [c]: on }))} label={COL_LABEL[c]} />
             </label>
           ))}
+          {(project?.fields.length ?? 0) > 0 && <div className="section-label" style={{ marginTop: 8 }}>Custom fields</div>}
+          {project?.fields.map(f => (
+            <label key={f.id} className="toggle-row">
+              <span>{f.name}</span>
+              <Toggle on={!!cols[`f:${f.id}` as Col]} onChange={on => setCols(prev => ({ ...prev, [`f:${f.id}`]: on }))} label={f.name} />
+            </label>
+          ))}
         </Popover>
       </div>
 
       <div className="table-scroll" onKeyDown={onKeyDown}>
-        <table className="table">
+        <table className="table" style={{ minWidth: 960 + customCols.length * 140 }}>
           <thead>
             <tr>
               <th className="col-check">
@@ -220,6 +229,7 @@ export default function IssueTable({ issues, id, groupBy, onGroupBy, project, sh
               {cols.labels && <th className="col-labels">Labels</th>}
               {cols.estimate && headerSort('estimate', 'Points', 'col-num')}
               {cols.due && headerSort('due', 'Due', 'col-due')}
+              {customCols.map(f => <th key={f.id} title={f.name} className={`col-custom${f.kind === 'number' ? ' col-num' : ''}`}><span className="cell-ellipsis">{f.name}</span></th>)}
               {cols.updated && headerSort('updated', 'Updated', 'col-updated')}
             </tr>
           </thead>
@@ -290,6 +300,7 @@ export default function IssueTable({ issues, id, groupBy, onGroupBy, project, sh
                       {cols.labels && <td className="col-labels"><span className="cell-flex">{i.labels.slice(0, 2).map(l => <span key={l} className="tag">{l}</span>)}{i.labels.length > 2 && <span className="muted">+{i.labels.length - 2}</span>}</span></td>}
                       {cols.estimate && <td className="col-num">{i.estimate ?? ''}</td>}
                       {cols.due && <td className={`col-due${i.dueDate && isOverdue(i.dueDate) && !done ? ' text-danger' : ''}`}>{i.dueDate ? formatDate(i.dueDate) : ''}</td>}
+                      {customCols.map(f => <td key={f.id} className={`col-custom${f.kind === 'number' ? ' col-num' : ''}`}><span className="cell-ellipsis">{fieldText(f, i.custom[f.id])}</span></td>)}
                       {cols.updated && <td className="col-updated muted">{timeAgo(i.updatedAt)}</td>}
                     </tr>
                   )

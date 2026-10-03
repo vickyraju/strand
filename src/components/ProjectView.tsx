@@ -13,6 +13,7 @@ import TimelineView from './TimelineView'
 import CalendarView from './CalendarView'
 import WorkflowBuilder from './WorkflowBuilder'
 import AutomationView from './AutomationView'
+import { FieldsPanel } from './CustomFields'
 import { useFilters } from './filters'
 import { Avatar, Empty, Picker, Modal, userOptions, plural } from './ui'
 
@@ -276,6 +277,8 @@ function ProjectSettings({ project }: { project: Project }) {
           {project.statuses.map(s => <span key={s.id} className={`lozenge lozenge-${s.category}`}>{s.name}</span>)}
         </div>
       </section>
+
+      <FieldsPanel project={project} />
 
       <section className="panel">
         <div className="panel-title-row">
