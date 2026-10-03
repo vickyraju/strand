@@ -1,86 +1,79 @@
 import { useState } from 'react'
-import { Search as SearchIcon, X } from 'lucide-react'
+import { Search as SearchIcon, X, ChevronDown } from 'lucide-react'
 import { useStore, projectOf, isDone, type IssueType, type Priority } from '../data/store'
-import IssueRow from './IssueRow'
+import { navigate, href } from '../router'
+import IssueTable, { type TableGroup } from './IssueTable'
 import { Picker, TYPE_META, PRIORITY_META, typeOptions, priorityOptions, userOptions, type PickerOption } from './ui'
 import { ProjectIcon } from './ProjectView'
 
 type Resolution = 'open' | 'done' | 'all'
-type Sort = 'updated' | 'created' | 'priority'
-const PRIORITY_RANK: Record<Priority, number> = { urgent: 0, high: 1, medium: 2, low: 3, none: 4 }
 
-export default function SearchView({ initialQuery = '' }: { initialQuery?: string }) {
+export default function SearchView({ query }: { query: string }) {
   const { state } = useStore()
-  const [query, setQuery]         = useState(initialQuery)
+  const [text, setText]           = useState(query)
   const [projectId, setProjectId] = useState<string>()
   const [assignee, setAssignee]   = useState<string | undefined | null>(null) // null = anyone, undefined = unassigned
   const [type, setType]           = useState<IssueType>()
   const [priority, setPriority]   = useState<Priority>()
   const [resolution, setRes]      = useState<Resolution>('open')
-  const [sort, setSort]           = useState<Sort>('updated')
+  const [label, setLabel]         = useState<string>()
+  const [groupBy, setGroupBy]     = useState<TableGroup>('none')
 
-  const q = query.trim().toLowerCase()
-  const results = state.issues
-    .filter(i => {
-      const p = projectOf(state, i.projectId)
-      return (!projectId || i.projectId === projectId)
-        && (assignee === null || i.assigneeId === assignee)
-        && (!type || i.type === type)
-        && (!priority || i.priority === priority)
-        && (resolution === 'all' || (resolution === 'done') === isDone(p, i))
-        && (!q || i.key.toLowerCase().includes(q) || i.title.toLowerCase().includes(q)
-            || i.description.toLowerCase().includes(q) || i.labels.some(l => l.toLowerCase().includes(q)))
-    })
-    .sort((a, b) =>
-      sort === 'priority' ? PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority] || b.updatedAt - a.updatedAt
-      : sort === 'created' ? b.createdAt - a.createdAt
-      : b.updatedAt - a.updatedAt)
+  const q = text.trim().toLowerCase()
+  const labels = [...new Set(state.issues.flatMap(i => i.labels))].sort()
+  const results = state.issues.filter(i => {
+    const p = projectOf(state, i.projectId)
+    return (!projectId || i.projectId === projectId)
+      && (assignee === null || i.assigneeId === assignee)
+      && (!type || i.type === type)
+      && (!priority || i.priority === priority)
+      && (!label || i.labels.includes(label))
+      && (resolution === 'all' || (resolution === 'done') === isDone(p, i))
+      && (!q || i.key.toLowerCase().includes(q) || i.title.toLowerCase().includes(q)
+          || i.description.toLowerCase().includes(q) || i.labels.some(l => l.toLowerCase().includes(q)))
+  })
 
-  const active = !!(projectId || assignee !== null || type || priority || resolution !== 'open')
-  const clear = () => { setProjectId(undefined); setAssignee(null); setType(undefined); setPriority(undefined); setRes('open') }
-  const any = <T,>(label: string, opts: PickerOption<T>[]) => [{ value: undefined as T, label }, ...opts]
+  const active = !!(projectId || assignee !== null || type || priority || label || resolution !== 'open')
+  const clear = () => { setProjectId(undefined); setAssignee(null); setType(undefined); setPriority(undefined); setLabel(undefined); setRes('open') }
+  const any = <T,>(l: string, opts: PickerOption<T>[]) => [{ value: undefined as T, label: l }, ...opts]
   const project = projectOf(state, projectId)
   const assigneeUser = state.users.find(u => u.id === assignee)
 
   return (
-    <div className="pv-root" style={{ overflow: 'hidden' }}>
-      <div className="pv-header"><h1 className="pv-title">Search</h1></div>
-
-      <div style={{ padding: '0 24px' }}>
-        <label className="sv-input">
-          <SearchIcon size={15} strokeWidth={1.5} />
-          <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search by key, title, description or label" autoFocus aria-label="Search work items" />
-          {query && <button className="col-hdr-btn" onClick={() => setQuery('')} aria-label="Clear search"><X size={13} /></button>}
+    <div className="page-col">
+      <div className="page-hdr"><h1 className="page-title">Search</h1></div>
+      <div className="search-bar">
+        <label className="search-hero">
+          <SearchIcon size={17} />
+          <input value={text} autoFocus aria-label="Search work items" placeholder="Search by key, title, description or label"
+            onChange={e => { setText(e.target.value); navigate(href({ name: 'search', q: e.target.value }), { replace: true }) }} />
+          {text && <button className="icon-btn sm" onClick={() => { setText(''); navigate(href({ name: 'search', q: '' }), { replace: true }) }} aria-label="Clear search"><X size={14} /></button>}
         </label>
-
-        <div className="sv-filters">
-          <Picker value={projectId} options={any('Any project', state.projects.map(p => ({ value: p.id as string | undefined, label: p.name, icon: <ProjectIcon project={p} size={14} /> })))}
-            onChange={setProjectId} className={`chip${projectId ? ' chip-on' : ''}`}
-            trigger={<>{project ? <><ProjectIcon project={project} size={14} />{project.name}</> : 'Project'}</>} />
-          <Picker value={assignee} options={[{ value: null as string | undefined | null, label: 'Anyone' }, ...userOptions(state.users)]}
-            onChange={setAssignee} className={`chip${assignee !== null ? ' chip-on' : ''}`}
-            trigger={<>{assignee === null ? 'Assignee' : assigneeUser?.name ?? 'Unassigned'}</>} />
-          <Picker value={type} options={any('Any type', typeOptions)} onChange={setType} className={`chip${type ? ' chip-on' : ''}`}
-            trigger={<>{type ? TYPE_META[type].label : 'Type'}</>} />
-          <Picker value={priority} options={any('Any priority', priorityOptions)} onChange={setPriority} className={`chip${priority ? ' chip-on' : ''}`}
-            trigger={<>{priority ? PRIORITY_META[priority].label : 'Priority'}</>} />
-          <Picker value={resolution} options={[{ value: 'open' as Resolution, label: 'Open' }, { value: 'done' as Resolution, label: 'Done' }, { value: 'all' as Resolution, label: 'Open and done' }]}
-            onChange={setRes} className={`chip${resolution !== 'open' ? ' chip-on' : ''}`}
-            trigger={<>{resolution === 'open' ? 'Open' : resolution === 'done' ? 'Done' : 'Open and done'}</>} />
-          {active && <button className="wi-link" onClick={clear}>Clear filters</button>}
+        <div className="filters">
+          <Picker value={projectId} search title="Project" className={`chip${projectId ? ' chip-on' : ''}`}
+            options={any('Any project', state.projects.map(p => ({ value: p.id as string | undefined, label: p.name, icon: <ProjectIcon project={p} size={16} /> })))}
+            onChange={setProjectId} trigger={<>{project ? <><ProjectIcon project={project} size={16} />{project.name}</> : 'Project'}<ChevronDown size={13} /></>} />
+          <Picker value={assignee} search title="Assignee" className={`chip${assignee !== null ? ' chip-on' : ''}`}
+            options={[{ value: null as string | undefined | null, label: 'Anyone' }, ...userOptions(state.users)]}
+            onChange={setAssignee} trigger={<>{assignee === null ? 'Assignee' : assigneeUser?.name ?? 'Unassigned'}<ChevronDown size={13} /></>} />
+          <Picker value={type} title="Type" options={any('Any type', typeOptions())} onChange={setType} className={`chip${type ? ' chip-on' : ''}`}
+            trigger={<>{type ? TYPE_META[type].label : 'Type'}<ChevronDown size={13} /></>} />
+          <Picker value={priority} title="Priority" options={any('Any priority', priorityOptions)} onChange={setPriority} className={`chip${priority ? ' chip-on' : ''}`}
+            trigger={<>{priority ? PRIORITY_META[priority].label : 'Priority'}<ChevronDown size={13} /></>} />
+          {labels.length > 0 && (
+            <Picker value={label} search title="Label" options={any('Any label', labels.map(l => ({ value: l as string | undefined, label: l })))} onChange={setLabel}
+              className={`chip${label ? ' chip-on' : ''}`} trigger={<>{label ?? 'Label'}<ChevronDown size={13} /></>} />
+          )}
+          <Picker value={resolution} title="Resolution" className={`chip${resolution !== 'open' ? ' chip-on' : ''}`}
+            options={[{ value: 'open' as Resolution, label: 'Open' }, { value: 'done' as Resolution, label: 'Done' }, { value: 'all' as Resolution, label: 'Open and done' }]}
+            onChange={setRes} trigger={<>{resolution === 'open' ? 'Open' : resolution === 'done' ? 'Done' : 'Open and done'}<ChevronDown size={13} /></>} />
+          {active && <button className="link" onClick={clear}>Clear filters</button>}
           <div style={{ flex: 1 }} />
-          <span className="ir-group-count">{results.length} result{results.length === 1 ? '' : 's'}</span>
-          <Picker value={sort} align="right" options={[{ value: 'updated' as Sort, label: 'Recently updated' }, { value: 'created' as Sort, label: 'Newest' }, { value: 'priority' as Sort, label: 'Priority' }]}
-            onChange={setSort} className="chip chip-ghost"
-            trigger={<>Sort: {sort === 'updated' ? 'Recently updated' : sort === 'created' ? 'Newest' : 'Priority'}</>} />
+          <span className="muted">{results.length} result{results.length === 1 ? '' : 's'}</span>
         </div>
       </div>
-
-      <div style={{ flex: 1, overflowY: 'auto', padding: '0 24px 32px' }}>
-        {results.length === 0
-          ? <div className="yw-empty-tab">{state.issues.length ? 'No work items match. Try fewer filters or another search.' : 'There are no work items yet.'}</div>
-          : results.map(i => <IssueRow key={i.id} issue={i} project={projectOf(state, i.projectId)!} showProject />)}
-      </div>
+      <IssueTable id="search" issues={results} groupBy={groupBy} onGroupBy={setGroupBy} showProjectColumn
+        emptyText={state.issues.length ? 'No work items match. Try fewer filters or a different search.' : 'There are no work items yet.'} />
     </div>
   )
 }

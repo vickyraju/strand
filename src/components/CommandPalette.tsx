@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, type ReactNode } from 'react'
-import { Search, Plus, FolderPlus, LayoutGrid, FolderKanban, SearchCode, Settings } from 'lucide-react'
+import { Search, Plus, FolderPlus, LayoutGrid, FolderKanban, SearchCode, Settings, Inbox } from 'lucide-react'
 import { useStore, projectOf } from '../data/store'
 import { useApp, type AppView } from '../appContext'
 import { ProjectIcon } from './ProjectView'
@@ -22,11 +22,13 @@ export default function CommandPalette({ onClose, onCreateProject }: { onClose: 
   const items: Item[] = [
     ...(state.projects.length ? [{ id: 'new-issue', section: 'Actions', icon: <Plus size={14} />, label: 'Create work item', hint: 'C', run: () => createIssue() }] : []),
     { id: 'new-project', section: 'Actions', icon: <FolderPlus size={14} />, label: 'Create project', run: onCreateProject },
-    go('my-work',  'Go to Your work',     <LayoutGrid size={14} />),
+    go('home',     'Go to Your work',     <LayoutGrid size={14} />),
+    go('inbox',    'Go to Inbox',         <Inbox size={14} />),
     go('projects', 'Go to All projects',  <FolderKanban size={14} />),
+    ...(q ? [{ id: 'search-all', section: 'Actions', icon: <SearchCode size={14} />, label: `Search all work items for “${query.trim()}”`, run: () => goTo('search', query.trim()) }] : []),
     go('search',   'Go to Search',        <SearchCode size={14} />),
     go('settings', 'Go to Settings',      <Settings size={14} />),
-  ].filter(i => match(String(i.label)))
+  ].filter(i => i.id === 'search-all' || match(String(i.label)))
 
   const projects: Item[] = state.projects
     .filter(p => match(p.name, p.key))

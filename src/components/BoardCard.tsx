@@ -1,67 +1,89 @@
-import { MoreHorizontal, CalendarDays } from 'lucide-react'
-import { useStore, userOf, type Issue, type Project } from '../data/store'
-import { Picker, TypeIcon, PriorityIcon, Avatar, statusOptions } from './ui'
+import { MoreHorizontal, CalendarDays, Ban, UserCheck, Link2, Trash2, ArrowRight, Eye } from 'lucide-react'
+import { useStore, userOf, blockersOf, transitionsFrom, type Issue, type Project, type CardField } from '../data/store'
+import { useApp } from '../appContext'
+import { href } from '../router'
+import { TypeIcon, PriorityIcon, Avatar, Menu, formatDate, isOverdue, type MenuItem } from './ui'
 
-export function formatDue(date: string) {
-  return new Date(date + 'T00:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
+/** "Move to Done", or "Approve → Done" when the transition has its own name. */
+export function transitionLabel(project: Project, t: { name: string; to: string }) {
+  const target = project.statuses.find(s => s.id === t.to)?.name ?? ''
+  return t.name === target ? `Move to ${target}` : `${t.name} → ${target}`
 }
-export const isOverdue = (date?: string) => !!date && new Date(date + 'T23:59') < new Date()
 
-export default function BoardCard({ issue, project, onOpen, dragging, onDragStart, onDragEnd }: {
+export default function BoardCard({ issue, project, fields, dragging, onDragStart, onDragEnd }: {
   issue:        Issue
   project:      Project
-  onOpen:       () => void
+  fields:       Record<CardField, boolean>
   dragging?:    boolean
   onDragStart?: () => void
   onDragEnd?:   () => void
 }) {
   const { state, dispatch } = useStore()
+  const { openIssue, toast } = useApp()
+  const status   = project.statuses.find(s => s.id === issue.status)
+  const done     = status?.category === 'done'
+  const epic     = issue.parentId ? state.issues.find(i => i.id === issue.parentId && i.type === 'epic') : undefined
   const subItems = state.issues.filter(i => i.parentId === issue.id)
-  const subDone  = subItems.filter(i => project.statuses.find(s => s.id === i.status)?.done).length
-  const done = !!project.statuses.find(s => s.id === issue.status)?.done
+  const subDone  = subItems.filter(i => project.statuses.find(s => s.id === i.status)?.category === 'done').length
+  const blocked  = blockersOf(state, issue).length > 0
+  const assignee = userOf(state, issue.assigneeId)
+
+  const menu: MenuItem[] = [
+    { label: 'Open', icon: <Eye size={14} />, onClick: () => openIssue(issue.id) },
+    ...transitionsFrom(project, issue.status).map((t, i) => ({
+      label: transitionLabel(project, t),
+      icon: <ArrowRight size={14} />, divider: i === 0,
+      onClick: () => dispatch({ type: 'updateIssues', ids: [issue.id], patch: { status: t.to } }),
+    })),
+    ...(issue.assigneeId !== state.me?.id ? [{ label: 'Assign to me', icon: <UserCheck size={14} />, divider: true,
+      onClick: () => dispatch({ type: 'updateIssues', ids: [issue.id], patch: { assigneeId: state.me?.id } }) }] : []),
+    { label: 'Copy link', icon: <Link2 size={14} />, divider: issue.assigneeId === state.me?.id,
+      onClick: () => { navigator.clipboard?.writeText(location.origin + href({ name: 'issue', key: issue.key })); toast('Link copied') } },
+    { label: 'Delete', icon: <Trash2 size={14} />, danger: true, divider: true,
+      onClick: () => { dispatch({ type: 'deleteIssues', ids: [issue.id] }); toast(`Deleted ${issue.key}`) } },
+  ]
 
   return (
     <div
-      className={`board-card${dragging ? ' ghost' : ''}`}
+      className={`card${dragging ? ' dragging' : ''}${blocked && !done ? ' blocked' : ''}`}
       draggable
+      data-card={issue.id}
       onDragStart={e => { e.dataTransfer.setData('text/plain', issue.id); e.dataTransfer.effectAllowed = 'move'; onDragStart?.() }}
       onDragEnd={onDragEnd}
-      onClick={onOpen}
-      onKeyDown={e => e.key === 'Enter' && onOpen()}
+      onClick={() => openIssue(issue.id)}
+      onKeyDown={e => { if (e.key === 'Enter') openIssue(issue.id) }}
       tabIndex={0}
-      aria-label={`${issue.key} ${issue.title}`}
+      aria-label={`${issue.key}: ${issue.title}. ${status?.name}${assignee ? `, assigned to ${assignee.name}` : ''}`}
     >
-      <div className="bc-title" style={done ? { color: '#78716C' } : undefined}>{issue.title}</div>
+      <div className="card-title">{issue.title}</div>
 
-      {issue.labels.length > 0 && (
-        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 8 }}>
-          {issue.labels.slice(0, 3).map(l => <span key={l} className="card-label label-chip">{l}</span>)}
+      {(blocked && !done) || (fields.epic && epic) || (fields.labels && issue.labels.length > 0) ? (
+        <div className="card-tags">
+          {blocked && !done && <span className="tag tag-danger"><Ban size={11} />Blocked</span>}
+          {fields.epic && epic && <span className="tag tag-epic" title={`Epic: ${epic.title}`}>{epic.title}</span>}
+          {fields.labels && issue.labels.slice(0, 3).map(l => <span key={l} className="tag">{l}</span>)}
+        </div>
+      ) : null}
+
+      {fields.due && issue.dueDate && (
+        <div className={`due${isOverdue(issue.dueDate) && !done ? ' overdue' : ''}`}>
+          <CalendarDays size={12} />{formatDate(issue.dueDate)}
         </div>
       )}
 
-      {issue.dueDate && (
-        <div className={`bc-due${isOverdue(issue.dueDate) && !done ? ' overdue' : ''}`}>
-          <CalendarDays size={11} strokeWidth={1.75} />{formatDue(issue.dueDate)}
-        </div>
-      )}
-
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-        <TypeIcon type={issue.type} size={13} />
-        <span className="bc-key" style={done ? { textDecoration: 'line-through' } : undefined}>{issue.key}</span>
-        {subItems.length > 0 && <span className="bc-subtasks">{subDone}/{subItems.length}</span>}
+      <div className="card-foot">
+        {fields.type && <TypeIcon type={issue.type} size={14} />}
+        {fields.key && <span className={`card-key${done ? ' done' : ''}`}>{issue.key}</span>}
+        {fields.subitems && subItems.length > 0 && (
+          <span className="card-sub" title={`${subDone} of ${subItems.length} sub-items done`}>
+            <span className="mini-bar"><span style={{ width: `${(subDone / subItems.length) * 100}%` }} /></span>{subDone}/{subItems.length}
+          </span>
+        )}
         <div style={{ flex: 1 }} />
-        {issue.estimate != null && <span className="bc-points" title="Estimate">{issue.estimate}</span>}
-        <PriorityIcon priority={issue.priority} />
-        <Picker
-          value={issue.status}
-          options={statusOptions(project.statuses)}
-          onChange={status => dispatch({ type: 'updateIssue', id: issue.id, patch: { status } })}
-          className="bc-menu-btn"
-          align="right"
-          title={`Move ${issue.key}`}
-          trigger={<MoreHorizontal size={14} strokeWidth={1.5} />}
-        />
-        <Avatar user={userOf(state, issue.assigneeId)} size={20} />
+        {fields.estimate && issue.estimate != null && <span className="points" title="Story points">{issue.estimate}</span>}
+        {fields.priority && issue.priority !== 'none' && <PriorityIcon priority={issue.priority} />}
+        <span className="card-menu"><Menu title={`Actions for ${issue.key}`} className="icon-btn sm" trigger={<MoreHorizontal size={15} />} items={menu} /></span>
+        {fields.assignee && <Avatar user={assignee} size={24} />}
       </div>
     </div>
   )

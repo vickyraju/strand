@@ -1,24 +1,22 @@
 import { useState, useEffect, useRef } from 'react'
-import { X, CheckCircle2 } from 'lucide-react'
+import { X, CheckCircle2, AlertTriangle, SearchX } from 'lucide-react'
 import NavRail from './components/NavRail'
 import TopBar, { type Crumb } from './components/TopBar'
 import CommandPalette from './components/CommandPalette'
 import SearchView from './components/SearchView'
 import YourWork from './components/YourWork'
+import InboxView from './components/InboxView'
 import SettingsView from './components/SettingsView'
-import PeekPanel from './components/PeekPanel'
 import WorkItemDetail from './components/WorkItemDetail'
 import Welcome from './components/Welcome'
 import CreateProjectModal from './components/CreateProjectModal'
 import CreateIssueModal from './components/CreateIssueModal'
-import { ProjectsView, ProjectView } from './components/ProjectView'
+import ShortcutsDialog from './components/ShortcutsDialog'
+import { ProjectsView, ProjectView, TAB_LABEL } from './components/ProjectView'
 import { StoreProvider, useStore, type NewIssue } from './data/store'
-import { AppContext, type AppActions, type AppView, type ProjectTab } from './appContext'
-
-const VIEW_TITLE: Record<AppView, string> = {
-  'my-work': 'Your work', projects: 'Projects', project: 'Projects', search: 'Search', settings: 'Settings',
-}
-const TAB_TITLE: Record<ProjectTab, string> = { board: 'Board', list: 'List', backlog: 'Backlog', settings: 'Settings' }
+import { AppContext, type AppActions } from './appContext'
+import { useLocation, navigate, href, type Route } from './router'
+import { Empty } from './components/ui'
 
 const isTyping = (el: Element | null) =>
   !!el && (['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName) || (el as HTMLElement).isContentEditable)
@@ -32,135 +30,171 @@ export default function App() {
 }
 
 function Shell() {
-  const { state, dispatch } = useStore()
-  const [railCollapsed, setRailCollapsed] = useState(false)
-  const [paletteOpen,   setPaletteOpen]   = useState(false)
-  const [view,          setView]          = useState<AppView>('my-work')
-  const [projectId,     setProjectId]     = useState<string>()
-  const [projectTab,    setProjectTab]    = useState<ProjectTab>('board')
-  const [detail,        setDetail]        = useState<{ id: string; mode: 'peek' | 'full' } | null>(null)
+  const { state } = useStore()
+  const { route, peek } = useLocation()
+  const [railCollapsed, setRailCollapsed]   = useState(() => window.innerWidth < 1024)
+  const [paletteOpen, setPaletteOpen]       = useState(false)
+  const [shortcutsOpen, setShortcutsOpen]   = useState(false)
   const [createDefaults, setCreateDefaults] = useState<Partial<NewIssue> | null>(null)
   const [createProjectOpen, setCreateProjectOpen] = useState(false)
-  const [toast, setToast] = useState<{ text: string; issueId?: string; n: number } | null>(null)
+  const [toast, setToast] = useState<{ text: string; issueId?: string; tone: 'ok' | 'warn'; n: number } | null>(null)
   const toastTimer = useRef<number>(undefined)
+  const navList = useRef<string[]>([])
 
-  const project = state.projects.find(p => p.id === projectId)
-  const openIssueExists = detail && state.issues.some(i => i.id === detail.id)
+  const project = route.name === 'project' ? state.projects.find(p => p.key === route.key) : undefined
+  const peekIssue = peek ? state.issues.find(i => i.key === peek) : undefined
+  const fullIssue = route.name === 'issue' ? state.issues.find(i => i.key === route.key) : undefined
+  const keyOf = (id: string) => state.issues.find(i => i.id === id)?.key
 
   const actions: AppActions = {
-    goTo: v => { setView(v); setDetail(null) },
-    openProject: (id, tab) => {
+    goTo: (view, query) => navigate(href(
+      view === 'search' ? { name: 'search', q: query ?? '' } : { name: view === 'home' ? 'home' : view } as Route)),
+    openProject: (id, tab, sub) => {
       const p = state.projects.find(x => x.id === id)
-      setProjectId(id)
-      setProjectTab(tab ?? (p?.template === 'scrum' ? 'backlog' : 'board'))
-      setView('project')
-      setDetail(null)
+      if (p) navigate(href({ name: 'project', key: p.key, tab, sub }))
     },
-    openIssue: id => {
-      dispatch({ type: 'markViewed', issueId: id })
-      setDetail(d => ({ id, mode: d?.mode === 'full' ? 'full' : 'peek' }))
+    openIssue: (id, opts) => {
+      const key = keyOf(id)
+      if (!key) return
+      if (opts?.full || route.name === 'issue') navigate(href({ name: 'issue', key }))
+      else navigate(href(route, key), { replace: !!peek })
+    },
+    closeIssue: () => {
+      if (route.name === 'issue') history.length > 1 ? history.back() : navigate('/')
+      else navigate(href(route))
     },
     createIssue: (defaults = {}) => {
       if (!state.projects.length) { setCreateProjectOpen(true); return }
-      // Default to the project on screen
-      setCreateDefaults({ projectId: view === 'project' ? projectId : undefined, ...defaults })
+      setCreateDefaults({ projectId: project?.id ?? (fullIssue ?? peekIssue)?.projectId, ...defaults })
     },
-    toast: (text, issueId) => {
+    toast: (text, opts) => {
       window.clearTimeout(toastTimer.current)
-      setToast({ text, issueId, n: Date.now() })
+      setToast({ text, issueId: opts?.issueId, tone: opts?.tone ?? 'ok', n: Date.now() })
       toastTimer.current = window.setTimeout(() => setToast(null), 5000)
     },
+    setNavList: ids => { navList.current = ids },
   }
 
-  const modalOpen = paletteOpen || !!createDefaults || createProjectOpen
+  const modalOpen = paletteOpen || shortcutsOpen || !!createDefaults || createProjectOpen
 
-  // Keep the latest handlers for the global key listener
-  const keyState = useRef({ modalOpen, detail, actions })
-  keyState.current = { modalOpen, detail, actions }
-
+  // Global shortcuts. A ref keeps the listener stable while seeing current values.
+  const keys = useRef({ modalOpen, actions, peek, gPending: 0 })
+  keys.current = { ...keys.current, modalOpen, actions, peek }
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      const { modalOpen, detail, actions } = keyState.current
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault()
-        setPaletteOpen(v => !v)
+      const k = keys.current
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); setPaletteOpen(v => !v); return }
+      if (e.metaKey || e.ctrlKey || e.altKey || k.modalOpen || isTyping(document.activeElement)) return
+      if (e.key === 'Escape' && k.peek) { k.actions.closeIssue(); return }
+      if (Date.now() - k.gPending < 1000) {
+        k.gPending = 0
+        const to = { h: 'home', i: 'inbox', p: 'projects', s: 'search' }[e.key] as 'home' | undefined
+        if (to) { e.preventDefault(); k.actions.goTo(to) }
         return
       }
-      if (e.key === 'Escape') {
-        if (paletteOpen) { setPaletteOpen(false); return }
-        if (!modalOpen && detail) setDetail(null)
-        return
-      }
-      if (e.key === 'c' && !e.metaKey && !e.ctrlKey && !e.altKey && !modalOpen && !isTyping(document.activeElement)) {
-        e.preventDefault()
-        actions.createIssue()
-      }
+      if (e.key === 'g') { k.gPending = Date.now(); return }
+      if (e.key === 'c') { e.preventDefault(); k.actions.createIssue() }
+      if (e.key === '?') { e.preventDefault(); setShortcutsOpen(true) }
+      if (e.key === '/') { e.preventDefault(); setPaletteOpen(true) }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [paletteOpen])
+  }, [])
 
-  if (!state.me) return <Welcome />
+  // Page title
+  useEffect(() => {
+    const parts =
+      fullIssue ? [`${fullIssue.key} ${fullIssue.title}`]
+      : project ? [project.name]
+      : route.name === 'inbox' ? ['Inbox'] : route.name === 'search' ? ['Search'] : route.name === 'projects' ? ['Projects']
+      : route.name === 'settings' ? ['Settings'] : route.name === 'home' ? ['Your work'] : []
+    document.title = [...parts, state.workspaceName || 'Forge'].join(' · ')
+  }, [route, fullIssue, project, state.workspaceName])
 
-  const currentView: AppView = view === 'project' && !project ? 'projects' : view
-  const crumbs: Crumb[] = currentView === 'project' && project
-    ? [
-        { label: 'Projects', onClick: () => actions.goTo('projects') },
-        { label: project.name, onClick: () => actions.openProject(project.id) },
-        { label: TAB_TITLE[projectTab] },
-      ]
-    : [{ label: VIEW_TITLE[currentView] }]
+  // Unknown project tab → its default tab, keeping the URL tidy
+  useEffect(() => {
+    if (route.name === 'project' && project && !route.tab) {
+      navigate(href({ name: 'project', key: project.key, tab: project.template === 'scrum' ? 'backlog' : 'board' }, peek), { replace: true })
+    }
+  }, [route, project, peek])
+
+  if (!state.owner) return <Welcome />
+
+  const notFound = (what: string) => (
+    <Empty icon={<SearchX size={20} strokeWidth={1.5} />} title={`${what} not found`}
+      body="It may have been deleted, or the link is wrong."
+      action={<button className="btn btn-primary" onClick={() => actions.goTo('home')}>Go to Your work</button>} />
+  )
+
+  const crumbs: Crumb[] =
+    route.name === 'project' && project ? [
+      { label: 'Projects', onClick: () => actions.goTo('projects') },
+      { label: project.name, onClick: () => actions.openProject(project.id) },
+      ...(route.tab ? [{ label: TAB_LABEL[route.tab] }] : []),
+      ...(route.sub === 'workflow' ? [{ label: 'Workflow' }] : []),
+    ]
+    : route.name === 'issue' && fullIssue ? [
+      { label: 'Projects', onClick: () => actions.goTo('projects') },
+      { label: state.projects.find(p => p.id === fullIssue.projectId)?.name ?? '', onClick: () => actions.openProject(fullIssue.projectId) },
+      { label: fullIssue.key },
+    ]
+    : [{ label: { home: 'Your work', inbox: 'Inbox', search: 'Search', projects: 'Projects', settings: 'Settings' }[route.name as 'home'] ?? '' }]
+
+  const acting = state.actingAsId ? state.me : null
 
   return (
     <AppContext.Provider value={actions}>
-      <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: '#FAFAF9' }}>
-
+      <div className="shell">
         <NavRail
           collapsed={railCollapsed}
           onCollapseToggle={() => setRailCollapsed(v => !v)}
           onCmdK={() => setPaletteOpen(true)}
-          currentView={currentView}
-          currentProjectId={projectId}
+          route={route}
           onCreateProject={() => setCreateProjectOpen(true)}
         />
 
-        <main style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0, position: 'relative' }}>
-          <TopBar crumbs={crumbs} onCreateProject={() => setCreateProjectOpen(true)} />
-
-          {openIssueExists && detail.mode === 'full' ? (
-            <div className="detail-page">
-              <WorkItemDetail
-                issueId={detail.id}
-                mode="full"
-                onExpand={() => setDetail({ ...detail, mode: 'peek' })}
-                onClose={() => setDetail(null)}
-              />
+        <main className="main">
+          {acting && (
+            <div className="acting-banner" role="status">
+              You are acting as <b>{acting.name}</b>. Everything you do is attributed to them.
             </div>
-          ) : (
-            <>
-              {currentView === 'my-work'  && <YourWork onCreateProject={() => setCreateProjectOpen(true)} />}
-              {currentView === 'projects' && <ProjectsView onCreate={() => setCreateProjectOpen(true)} />}
-              {currentView === 'project'  && project && <ProjectView project={project} tab={projectTab} />}
-              {currentView === 'search'   && <SearchView />}
-              {currentView === 'settings' && <SettingsView />}
-              {openIssueExists && (
-                <PeekPanel
-                  issueId={detail.id}
-                  onExpandFull={() => setDetail({ ...detail, mode: 'full' })}
-                  onClose={() => setDetail(null)}
-                />
-              )}
-            </>
           )}
+          <TopBar crumbs={crumbs} onCreateProject={() => setCreateProjectOpen(true)} onShortcuts={() => setShortcutsOpen(true)} />
+
+          <div className="content">
+            {route.name === 'home'     && <YourWork onCreateProject={() => setCreateProjectOpen(true)} />}
+            {route.name === 'inbox'    && <InboxView />}
+            {route.name === 'search'   && <SearchView query={route.q} />}
+            {route.name === 'projects' && <ProjectsView onCreate={() => setCreateProjectOpen(true)} />}
+            {route.name === 'settings' && <SettingsView />}
+            {route.name === 'project'  && (project
+              ? route.tab && <ProjectView project={project} tab={route.tab} sub={route.sub} />
+              : notFound('Project'))}
+            {route.name === 'issue' && (fullIssue
+              ? <div className="detail-page"><WorkItemDetail issueId={fullIssue.id} mode="full" navList={navList.current} /></div>
+              : notFound('Work item'))}
+            {route.name === 'not-found' && notFound('Page')}
+
+            {peekIssue && route.name !== 'issue' && route.name !== 'inbox' && (
+              <>
+                <div className="peek-dim" onClick={actions.closeIssue} />
+                <aside className="peek-panel" role="dialog" aria-label={`${peekIssue.key} ${peekIssue.title}`}>
+                  <WorkItemDetail issueId={peekIssue.id} mode="peek" navList={navList.current} />
+                </aside>
+              </>
+            )}
+          </div>
 
           {toast && (
-            <div className="toast" role="status" key={toast.n}>
-              <CheckCircle2 size={16} strokeWidth={2} color="#368727" />
+            <div className={`toast toast-${toast.tone}`} role="status" key={toast.n}>
+              {toast.tone === 'warn'
+                ? <AlertTriangle size={16} strokeWidth={2} color="#D97706" />
+                : <CheckCircle2 size={16} strokeWidth={2} color="var(--brand)" />}
               <span>{toast.text}</span>
               {toast.issueId && state.issues.some(i => i.id === toast.issueId) && (
-                <button className="wi-link" onClick={() => { actions.openIssue(toast.issueId!); setToast(null) }}>View</button>
+                <button className="link" onClick={() => { actions.openIssue(toast.issueId!); setToast(null) }}>View</button>
               )}
-              <button className="col-hdr-btn" onClick={() => setToast(null)} aria-label="Dismiss"><X size={13} /></button>
+              <button className="icon-btn sm" onClick={() => setToast(null)} aria-label="Dismiss"><X size={13} /></button>
             </div>
           )}
         </main>
@@ -171,14 +205,9 @@ function Shell() {
             onCreated={id => { setCreateProjectOpen(false); actions.openProject(id) }}
           />
         )}
-
-        {createDefaults && (
-          <CreateIssueModal defaults={createDefaults} onClose={() => setCreateDefaults(null)} />
-        )}
-
-        {paletteOpen && (
-          <CommandPalette onClose={() => setPaletteOpen(false)} onCreateProject={() => setCreateProjectOpen(true)} />
-        )}
+        {createDefaults && <CreateIssueModal defaults={createDefaults} onClose={() => setCreateDefaults(null)} />}
+        {paletteOpen && <CommandPalette onClose={() => setPaletteOpen(false)} onCreateProject={() => setCreateProjectOpen(true)} />}
+        {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
       </div>
     </AppContext.Provider>
   )

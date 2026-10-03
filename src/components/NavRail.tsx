@@ -1,125 +1,128 @@
+import { useState } from 'react'
 import {
-  LayoutGrid, Hash, Settings, Search, Plus,
-  PanelLeftClose, PanelLeftOpen, SearchCode, FolderKanban,
+  LayoutGrid, Inbox, Search, Plus, Settings, PanelLeftClose, PanelLeftOpen, SearchCode, FolderKanban,
+  ChevronRight, ChevronDown, Columns2, ListChecks, List, BarChart3, Gauge, Hash,
 } from 'lucide-react'
 import { useStore } from '../data/store'
-import { useApp, type AppView } from '../appContext'
+import { useApp } from '../appContext'
+import { href, navigate, type Route, type ProjectTab } from '../router'
 import { ProjectIcon } from './ProjectView'
-import { Avatar } from './ui'
 
-// ── Forge logomark ─────────────────────────────────────────
 export function Logomark({ size = 28 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 28 28" fill="none" aria-hidden>
-      <rect width="28" height="28" rx="6" fill="#368727" />
-      {/* Bold geometric F — three rectangles */}
-      <rect x="8"  y="8"  width="2.5" height="12" fill="white" />
-      <rect x="8"  y="8"  width="10"  height="2.5" fill="white" />
-      <rect x="8"  y="13" width="7.5" height="2.5" fill="white" />
+      <rect width="28" height="28" rx="6" fill="var(--brand)" />
+      <path d="M8 8h10v2.5h-7.5V13h5v2.5h-5V20H8z" fill="white" />
     </svg>
   )
 }
 
-const VIEWS: { icon: typeof LayoutGrid; label: string; key: AppView }[] = [
-  { icon: LayoutGrid, label: 'Your work', key: 'my-work' },
-  { icon: SearchCode, label: 'Search',    key: 'search'  },
+const PROJECT_LINKS: { tab: ProjectTab; label: string; Icon: typeof List; scrumOnly?: boolean }[] = [
+  { tab: 'summary', label: 'Summary', Icon: Gauge },
+  { tab: 'backlog', label: 'Backlog', Icon: ListChecks, scrumOnly: true },
+  { tab: 'board',   label: 'Board',   Icon: Columns2 },
+  { tab: 'list',    label: 'List',    Icon: List },
+  { tab: 'reports', label: 'Reports', Icon: BarChart3 },
 ]
 
-interface NavRailProps {
-  collapsed:         boolean
-  onCollapseToggle:  () => void
-  onCmdK:            () => void
-  currentView:       AppView
-  currentProjectId?: string
-  onCreateProject:   () => void
-}
-
-export default function NavRail({ collapsed, onCollapseToggle, onCmdK, currentView, currentProjectId, onCreateProject }: NavRailProps) {
+export default function NavRail({ collapsed, onCollapseToggle, onCmdK, route, onCreateProject }: {
+  collapsed:        boolean
+  onCollapseToggle: () => void
+  onCmdK:           () => void
+  route:            Route
+  onCreateProject:  () => void
+}) {
   const { state } = useStore()
-  const { goTo, openProject, openIssue } = useApp()
-  const projects = [...state.projects].sort((a, b) =>
-    Number(state.starred.includes(b.id)) - Number(state.starred.includes(a.id)))
-  const recent = state.viewed.slice(0, 5).map(id => state.issues.find(i => i.id === id)).filter(Boolean)
+  const { goTo, openIssue } = useApp()
+  const currentKey = route.name === 'project' ? route.key : undefined
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(currentKey ? [currentKey] : []))
+  const unread = state.notifications.filter(n => n.userId === state.me?.id && !n.read && !n.archived).length
+  const starred = state.projects.filter(p => state.starred.includes(p.id))
+  const others = state.projects.filter(p => !state.starred.includes(p.id))
+  const recent = state.viewed.slice(0, 5).map(id => state.issues.find(i => i.id === id)).filter(i => !!i)
+
+  const toggle = (key: string) => setExpanded(prev => {
+    const n = new Set(prev)
+    if (n.has(key)) n.delete(key); else n.add(key)
+    return n
+  })
+
+  const item = (active: boolean, label: string, Icon: typeof List, onClick: () => void, badge?: number) => (
+    <button className={`nav-item${active ? ' active' : ''}`} title={collapsed ? label : undefined} onClick={onClick} aria-current={active ? 'page' : undefined}>
+      <Icon size={16} strokeWidth={1.75} className="nav-icon" />
+      <span className="nav-label">{label}</span>
+      {!!badge && <span className="nav-badge" aria-label={`${badge} unread`}>{badge > 99 ? '99+' : badge}</span>}
+    </button>
+  )
+
+  const projectRow = (p: typeof state.projects[number]) => {
+    const open = expanded.has(p.key) && !collapsed
+    const active = currentKey === p.key
+    return (
+      <div key={p.id}>
+        <div className={`nav-item nav-project${active && !open ? ' active' : ''}`} title={collapsed ? p.name : undefined}>
+          <button className="nav-caret" onClick={() => toggle(p.key)} aria-label={open ? `Collapse ${p.name}` : `Expand ${p.name}`} aria-expanded={open}>
+            {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+          </button>
+          <button className="nav-project-link" onClick={() => { navigate(href({ name: 'project', key: p.key })); setExpanded(s => new Set(s).add(p.key)) }}>
+            <ProjectIcon project={p} size={18} />
+            <span className="nav-label">{p.name}</span>
+          </button>
+        </div>
+        {open && PROJECT_LINKS.filter(l => !l.scrumOnly || p.template === 'scrum').map(l => (
+          <button key={l.tab}
+            className={`nav-item nav-sub${active && route.name === 'project' && route.tab === l.tab ? ' active' : ''}`}
+            onClick={() => navigate(href({ name: 'project', key: p.key, tab: l.tab }))}>
+            <l.Icon size={14} strokeWidth={1.75} className="nav-icon" />
+            <span className="nav-label">{l.label}</span>
+          </button>
+        ))}
+      </div>
+    )
+  }
 
   return (
     <nav className={`nav-rail${collapsed ? ' collapsed' : ''}`} aria-label="Main navigation">
-
-      {/* ── Logo + collapse ──────────────────────────────── */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 8,
-        padding: '12px 10px 8px', borderBottom: '1px solid #E7E5E4', flexShrink: 0,
-      }}>
-        <div style={{ flexShrink: 0 }}><Logomark size={28} /></div>
-        <div className="nav-item-label" style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 600, color: '#1C1917', letterSpacing: '-0.01em' }}>
-          Forge
-        </div>
-        <button className="nav-icon-btn" onClick={onCollapseToggle} title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} style={{ flexShrink: 0 }}>
-          {collapsed ? <PanelLeftOpen size={15} strokeWidth={1.5} /> : <PanelLeftClose size={15} strokeWidth={1.5} />}
+      <div className="nav-head">
+        <Logomark size={26} />
+        <span className="nav-label nav-workspace" title={state.workspaceName}>{state.workspaceName}</span>
+        <button className="icon-btn" onClick={onCollapseToggle} title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
+          {collapsed ? <PanelLeftOpen size={16} strokeWidth={1.75} /> : <PanelLeftClose size={16} strokeWidth={1.75} />}
         </button>
       </div>
 
-      {/* ── Search / Cmd+K ──────────────────────────────── */}
-      <button className="nav-search" onClick={onCmdK} title="Search or jump to… ⌘K">
-        <Search size={15} strokeWidth={1.5} style={{ flexShrink: 0 }} />
-        <span className="nav-search-text" style={{ flex: 1, fontSize: 12, color: '#A8A29E' }}>Search or jump to…</span>
-        <kbd className="nav-search-kbd" style={{
-          fontSize: 10, color: '#A8A29E', background: '#FFFFFF', border: '1px solid #E7E5E4',
-          borderRadius: 3, padding: '1px 4px', fontFamily: 'inherit', flexShrink: 0,
-        }}>⌘K</kbd>
+      <button className="nav-search" onClick={onCmdK} title="Search or jump to (⌘K)">
+        <Search size={14} strokeWidth={1.75} />
+        <span className="nav-label">Search or jump to…</span>
+        <kbd className="kbd nav-label">⌘K</kbd>
       </button>
 
-      {/* ── Scrollable body ─────────────────────────────── */}
-      <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '0 6px' }}>
-        {VIEWS.map(({ icon: Icon, label, key }) => (
-          <button key={key} className={`nav-item${currentView === key ? ' active' : ''}`} title={collapsed ? label : undefined} onClick={() => goTo(key)}>
-            <Icon size={15} strokeWidth={1.5} style={{ flexShrink: 0 }} />
-            <span className="nav-item-label" style={{ flex: 1 }}>{label}</span>
-          </button>
-        ))}
+      <div className="nav-body">
+        {item(route.name === 'home', 'Your work', LayoutGrid, () => goTo('home'))}
+        {item(route.name === 'inbox', 'Inbox', Inbox, () => goTo('inbox'), unread)}
+        {item(route.name === 'search', 'Search', SearchCode, () => goTo('search'))}
 
-        {/* Projects */}
-        <div className="nav-section-label nav-section-row">
+        {starred.length > 0 && <div className="nav-section">Starred</div>}
+        {starred.map(projectRow)}
+
+        <div className="nav-section nav-section-row">
           <span>Projects</span>
-          <button className="nav-section-add" onClick={onCreateProject} title="Create project" aria-label="Create project">
-            <Plus size={13} strokeWidth={1.75} />
-          </button>
+          <button className="icon-btn sm" onClick={onCreateProject} title="Create project" aria-label="Create project"><Plus size={14} /></button>
         </div>
-        {projects.map(p => (
-          <button
-            key={p.id}
-            className={`nav-item${currentView === 'project' && currentProjectId === p.id ? ' active' : ''}`}
-            title={collapsed ? `${p.key} ${p.name}` : undefined}
-            onClick={() => openProject(p.id)}
-          >
-            <ProjectIcon project={p} size={14} />
-            <span className="nav-item-label" style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</span>
-          </button>
-        ))}
-        <button className={`nav-item${currentView === 'projects' ? ' active' : ''}`} title={collapsed ? 'All projects' : undefined} onClick={() => goTo('projects')}>
-          <FolderKanban size={15} strokeWidth={1.5} style={{ flexShrink: 0 }} />
-          <span className="nav-item-label" style={{ flex: 1 }}>All projects</span>
-        </button>
+        {others.map(projectRow)}
+        {item(route.name === 'projects', 'All projects', FolderKanban, () => goTo('projects'))}
 
-        {/* Recent */}
-        {recent.length > 0 && <div className="nav-section-label">Recent</div>}
-        {recent.map(i => (
-          <button key={i!.id} className="nav-item" title={collapsed ? `${i!.key} ${i!.title}` : undefined} onClick={() => openIssue(i!.id)}>
-            <Hash size={13} strokeWidth={1.5} style={{ flexShrink: 0, color: '#A8A29E' }} />
-            <span className="nav-item-label" style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              <span style={{ fontSize: 11, color: '#A8A29E', fontFamily: 'monospace', marginRight: 5 }}>{i!.key}</span>
-              <span style={{ fontSize: 12 }}>{i!.title}</span>
-            </span>
+        {recent.length > 0 && !collapsed && <div className="nav-section">Recent</div>}
+        {!collapsed && recent.map(i => (
+          <button key={i.id} className="nav-item nav-recent" onClick={() => openIssue(i.id)} title={`${i.key} ${i.title}`}>
+            <Hash size={13} strokeWidth={1.75} className="nav-icon" />
+            <span className="nav-label"><span className="mono">{i.key}</span> {i.title}</span>
           </button>
         ))}
       </div>
 
-      {/* ── Bottom ──────────────────────────────────────── */}
-      <div style={{ borderTop: '1px solid #E7E5E4', padding: '6px', flexShrink: 0 }}>
-        <button className={`nav-item${currentView === 'settings' ? ' active' : ''}`} title={collapsed ? 'Settings' : undefined} onClick={() => goTo('settings')}>
-          <Settings size={15} strokeWidth={1.5} style={{ flexShrink: 0 }} />
-          <span className="nav-item-label" style={{ flex: 1 }}>Settings</span>
-          {!collapsed && <Avatar user={state.me ?? undefined} size={20} />}
-        </button>
+      <div className="nav-foot">
+        {item(route.name === 'settings', 'Settings', Settings, () => goTo('settings'))}
       </div>
     </nav>
   )
