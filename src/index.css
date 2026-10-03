@@ -1182,3 +1182,4 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; line-height:
 .mini-row .cell-ellipsis { flex: 1 }
 .gadget-picker { display: grid; grid-template-columns: 1fr 1fr; gap: 8px }
 @media (max-width: 1024px) { .dash-grid { grid-template-columns: 1fr } .gadget.wide { grid-column: auto } }
+.loading { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--text-3); font-size: 13px; padding: 48px }

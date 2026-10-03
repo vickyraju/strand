@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import { Plus, Star, FolderPlus, Columns2, List, ListChecks, Settings, Gauge, BarChart3, GanttChart, CalendarDays, Rocket, Check, GitBranch, Info, Sparkles, Zap } from 'lucide-react'
 import { useStore, userOf, isDone, timeAgo, PROJECT_COLORS, type Project, type ProjectPatch } from '../data/store'
 import { useApp } from '../appContext'
@@ -8,16 +8,18 @@ import BoardView from './BoardView'
 import BacklogView from './BacklogView'
 import IssueTable, { type TableGroup } from './IssueTable'
 import SummaryView from './SummaryView'
-import ReportsView from './ReportsView'
-import TimelineView from './TimelineView'
-import ReleasesView from './ReleasesView'
-import CalendarView from './CalendarView'
-import WorkflowBuilder from './WorkflowBuilder'
-import AutomationView from './AutomationView'
 import { FieldsPanel } from './CustomFields'
 import { TemplatesPanel, ImportPanel } from './TemplatesImport'
 import { useFilters } from './filters'
 import { Avatar, Empty, Picker, Modal, userOptions, plural } from './ui'
+
+// Screens most people don't open first load on demand to keep the first page fast
+const ReportsView     = lazy(() => import('./ReportsView'))
+const TimelineView    = lazy(() => import('./TimelineView'))
+const CalendarView    = lazy(() => import('./CalendarView'))
+const ReleasesView    = lazy(() => import('./ReleasesView'))
+const WorkflowBuilder = lazy(() => import('./WorkflowBuilder'))
+const AutomationView  = lazy(() => import('./AutomationView'))
 
 export const TAB_LABEL: Record<ProjectTab, string> = {
   summary: 'Summary', backlog: 'Backlog', board: 'Board', list: 'List', timeline: 'Timeline', calendar: 'Calendar', releases: 'Releases', reports: 'Reports', settings: 'Settings',
@@ -165,6 +167,7 @@ export function ProjectView({ project, tab, sub }: { project: Project; tab: Proj
         ))}
       </div>
 
+      <Suspense fallback={<div className="loading" role="status">Loading…</div>}>
       {tab === 'summary'  && <SummaryView project={project} />}
       {tab === 'board'    && <BoardView project={project} />}
       {tab === 'backlog'  && (project.template === 'scrum' ? <BacklogView project={project} /> : <Empty icon={<ListChecks size={22} />} title="Backlog is for Scrum projects" body="Kanban projects plan work directly on the board." />)}
@@ -174,6 +177,7 @@ export function ProjectView({ project, tab, sub }: { project: Project; tab: Proj
       {tab === 'releases' && <ReleasesView project={project} releaseId={sub} />}
       {tab === 'reports'  && <ReportsView project={project} report={sub} />}
       {tab === 'settings' && (sub === 'workflow' ? <WorkflowBuilder project={project} /> : sub === 'automation' ? <AutomationView project={project} /> : <ProjectSettings project={project} />)}
+      </Suspense>
     </div>
   )
 }

@@ -162,3 +162,47 @@ test('a rule on creation runs for new items', () => {
   assert.equal(i9.priority, 'high')
   assert.equal(s.comments.filter(c => c.issueId === 'i9').length, 1)
 })
+
+test('time logs add up and only the author can delete theirs', () => {
+  let { s, sam } = workspace()
+  s = run([
+    { type: 'logWork', issueId: 'i1', minutes: 90, date: '2026-10-01', note: 'setup' },
+    { type: 'actAs', userId: sam },
+    { type: 'logWork', issueId: 'i1', minutes: 30, date: '2026-10-02', note: '' },
+  ], s)
+  assert.equal(s.issues[0].worklogs.reduce((n, w) => n + w.minutes, 0), 120)
+  const ownerLog = s.issues[0].worklogs[0].id
+  s = run([{ type: 'deleteWorklog', issueId: 'i1', worklogId: ownerLog }], s) // Sam can't delete the owner's log
+  assert.equal(s.issues[0].worklogs.length, 2)
+  assert.ok(s.activity.some(a => a.text === 'logged 1h 30m'))
+})
+
+test('releasing a version moves unfinished work to the next one', () => {
+  let { s } = workspace()
+  s = run([
+    { type: 'createIssue', id: 'i2', issue: { projectId: 'p1', title: 'Done one' } },
+    { type: 'updateProject', id: 'p1', patch: { releases: [
+      { id: 'r1', name: '1.0', description: '', released: false },
+      { id: 'r2', name: '1.1', description: '', released: false },
+    ] } },
+    { type: 'updateIssues', ids: ['i1', 'i2'], patch: { releaseId: 'r1' } },
+    { type: 'updateIssues', ids: ['i2'], patch: { status: 'done' } },
+    { type: 'releaseVersion', projectId: 'p1', releaseId: 'r1', moveTo: 'r2' },
+  ], s)
+  assert.ok(s.projects[0].releases[0].released)
+  assert.equal(s.issues.find(i => i.id === 'i1')!.releaseId, 'r2')
+  assert.equal(s.issues.find(i => i.id === 'i2')!.releaseId, 'r1')
+})
+
+test('deleting a project clears it from views and dashboards', () => {
+  let { s, owner } = workspace()
+  s = run([
+    { type: 'saveView', view: { id: 'v', name: 'Mine', ownerId: owner, shared: false, filters: { q: '', projectId: 'p1', assignee: 'me', resolution: 'open' } } },
+    { type: 'saveDashboard', dashboard: { id: 'd', name: 'Home', ownerId: owner, gadgets: [{ id: 'g1', kind: 'status', projectId: 'p1' }, { id: 'g2', kind: 'view', viewId: 'v' }] } },
+    { type: 'deleteProject', id: 'p1' },
+  ], s)
+  assert.equal(s.views[0].filters.projectId, undefined)
+  assert.deepEqual(s.dashboards[0].gadgets.map(g => g.id), ['g2'])
+  s = run([{ type: 'deleteView', id: 'v' }], s)
+  assert.deepEqual(s.dashboards[0].gadgets, [])
+})

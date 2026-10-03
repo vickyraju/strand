@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, lazy, Suspense } from 'react'
 import { X, CheckCircle2, AlertTriangle, SearchX } from 'lucide-react'
 import NavRail from './components/NavRail'
 import TopBar, { type Crumb } from './components/TopBar'
@@ -7,7 +7,6 @@ import SearchView from './components/SearchView'
 import YourWork from './components/YourWork'
 import InboxView from './components/InboxView'
 import SettingsView from './components/SettingsView'
-import DashboardsView from './components/DashboardsView'
 import WorkItemDetail from './components/WorkItemDetail'
 import Welcome from './components/Welcome'
 import CreateProjectModal from './components/CreateProjectModal'
@@ -19,6 +18,8 @@ import { AppContext, type AppActions } from './appContext'
 import { useLocation, navigate, href, type Route } from './router'
 import { Empty } from './components/ui'
 import ErrorBoundary from './components/ErrorBoundary'
+
+const DashboardsView = lazy(() => import('./components/DashboardsView'))
 
 const isTyping = (el: Element | null) =>
   !!el && (['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName) || (el as HTMLElement).isContentEditable)
@@ -170,7 +171,7 @@ function Shell() {
             {route.name === 'search'   && <SearchView query={route.q} viewId={route.view} />}
             {route.name === 'projects' && <ProjectsView onCreate={() => setCreateProjectOpen(true)} />}
             {route.name === 'settings' && <SettingsView />}
-            {route.name === 'dashboards' && <DashboardsView id={route.id} />}
+            {route.name === 'dashboards' && <Suspense fallback={<div className="loading" role="status">Loading…</div>}><DashboardsView id={route.id} /></Suspense>}
             {route.name === 'project'  && (project
               ? route.tab && <ProjectView project={project} tab={route.tab} sub={route.sub} />
               : notFound('Project'))}
