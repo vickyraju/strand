@@ -1,4 +1,4 @@
-import { ChevronRight, Plus, Bell, HelpCircle, Settings, UserRoundCog, Check, Keyboard, Moon, Sun } from 'lucide-react'
+import { ChevronRight, Plus, Bell, HelpCircle, Settings, UserRoundCog, Check, Keyboard, Moon, Sun, Menu as MenuIcon } from 'lucide-react'
 import { useThemePref, setThemePref } from '../theme'
 import { useStore } from '../data/store'
 import { useApp } from '../appContext'
@@ -6,8 +6,8 @@ import { Avatar, Menu } from './ui'
 
 export interface Crumb { label: string; onClick?: () => void }
 
-export default function TopBar({ crumbs, onCreateProject, onShortcuts }: {
-  crumbs: Crumb[]; onCreateProject: () => void; onShortcuts: () => void
+export default function TopBar({ crumbs, onCreateProject, onShortcuts, onMenu }: {
+  crumbs: Crumb[]; onCreateProject: () => void; onShortcuts: () => void; onMenu?: () => void
 }) {
   const { state, dispatch } = useStore()
   const { createIssue, goTo } = useApp()
@@ -18,6 +18,7 @@ export default function TopBar({ crumbs, onCreateProject, onShortcuts }: {
 
   return (
     <header className="topbar">
+      {onMenu && <button className="icon-btn topbar-menu" onClick={onMenu} aria-label="Open navigation"><MenuIcon size={18} /></button>}
       <nav className="breadcrumb" aria-label="Breadcrumb">
         {crumbs.map((c, i) => (
           <span key={i} className="crumb">
@@ -33,7 +34,7 @@ export default function TopBar({ crumbs, onCreateProject, onShortcuts }: {
         <button className="btn btn-primary" onClick={() => hasProjects ? createIssue() : onCreateProject()}
           title={hasProjects ? 'Create work item (C)' : 'Create a project first'}>
           <Plus size={15} strokeWidth={2.25} />
-          {hasProjects ? 'Create' : 'Create project'}
+          <span className="create-label">{hasProjects ? 'Create' : 'Create project'}</span>
         </button>
         <button className="icon-btn" onClick={() => goTo('inbox')} title="Inbox" aria-label={`Inbox, ${unread} unread`}>
           <Bell size={17} strokeWidth={1.75} />

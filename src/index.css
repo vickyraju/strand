@@ -1199,3 +1199,63 @@ h2.empty-title, h2.section-title, h2.side-title { margin: 0 }
 [data-theme='dark'] .due.overdue, [data-theme='dark'] .cal-item.late, [data-theme='dark'] .text-danger { color: #F79494 }
 .tl-bar.done { opacity: 1; filter: saturate(.35); color: var(--text-2) }
 .cal-item.done { opacity: 1; color: var(--text-2) }
+
+/* ══════════════════════════════════════════════════════════
+   PHONES
+══════════════════════════════════════════════════════════ */
+.topbar-menu { display: none }
+@media (max-width: 640px) {
+  .topbar-menu { display: inline-flex; margin-left: -6px }
+  .nav-rail.drawer { position: fixed; z-index: 960; top: 0; bottom: 0; left: 0; width: min(300px, 86vw); box-shadow: var(--shadow-lg); transition: transform .2s var(--ease) }
+  .nav-rail.drawer.closed { transform: translateX(-105%); visibility: hidden }
+  .drawer-scrim { position: fixed; inset: 0; z-index: 955; background: rgba(18,22,16,.42); animation: fade-in .15s var(--ease) }
+  .topbar { padding: 0 10px 0 12px; gap: 8px }
+  .crumb:not(:last-child), .crumb-sep { display: none }
+  .create-label { display: none }
+  .topbar .btn-primary { width: 36px; padding: 0 }
+  .topbar-actions .icon-btn[aria-label='Keyboard shortcuts'] { display: none }
+  .page-hdr, .home-hdr { padding: 18px 16px 12px }
+  .focus-grid, .project-cards, .section-hdr, .home-tabs, .home-body, .dash-grid, .card-table, .settings-layout { padding-left: 16px; padding-right: 16px; margin-left: 0; margin-right: 0 }
+  .home-tabs { margin: 20px 16px 0 }
+  .focus-grid { grid-template-columns: 1fr 1fr; gap: 8px }
+  .focus-card b { font-size: 22px }
+  .project-hdr { padding: 14px 16px 10px; gap: 10px }
+  .project-hdr .avatar-group, .project-desc { display: none }
+  .tabs { padding: 0 8px; scrollbar-width: none }
+  .toolbar { padding: 10px 12px }
+  .filters .search-field { width: 100% }
+  .board-scroll, .backlog-scroll, .table-scroll, .summary, .cal-scroll { padding-left: 12px; padding-right: 12px }
+  .table-tools { padding: 8px 12px 0 }
+  .row { flex-wrap: wrap; row-gap: 4px; column-gap: 6px }
+  .row-key { width: auto; min-width: 0; margin-right: auto }
+  .row-title { flex-basis: 100%; order: -1 }
+  .row-parent { display: none }
+  .stat-grid { grid-template-columns: 1fr }
+  .detail-hdr { padding: 0 6px 0 12px }
+  .detail-hdr .pager, .detail-crumbs .crumb-link { display: none }
+  .detail-main { padding: 16px }
+  .detail-title { font-size: 20px }
+  .modal-backdrop { padding: 0; align-items: flex-end }
+  .modal, .compose { width: 100% !important; max-height: 92vh; border-radius: 14px 14px 0 0 }
+  .modal-backdrop.top { padding-top: 0; align-items: flex-start }
+  .modal-backdrop.top > * { border-radius: 0 0 14px 14px }
+  .compose-chips { overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none }
+  .compose-chips > * { flex-shrink: 0 }
+  .inbox:has(.inbox-detail .detail) .inbox-list { display: none }
+  .inbox:not(:has(.inbox-detail .detail)) .inbox-detail { display: none }
+  .inbox-list { max-height: none; flex: 1 }
+  .inbox-detail .detail-side { width: auto }
+  .inbox-detail .detail-main { padding: 16px }
+  .reports-nav { padding: 8px }
+  .report { padding: 16px }
+  .hbar-row { grid-template-columns: 110px 1fr 44px }
+  .settings-nav { display: none }
+  .person { flex-wrap: wrap }
+  .person-text { flex-basis: calc(100% - 60px) }
+  .person-actions { margin-left: 48px }
+  .person-edit { flex-wrap: wrap }
+  .bulk-bar { left: 8px; right: 8px; transform: none; flex-wrap: wrap; justify-content: center }
+  .toast { left: 12px; right: 12px; transform: none }
+  .wf-bar { padding: 8px 12px }
+  .wf-bar .wf-title { display: none }
+}

@@ -21,6 +21,17 @@ import ErrorBoundary from './components/ErrorBoundary'
 
 const DashboardsView = lazy(() => import('./components/DashboardsView'))
 
+function useMedia(query: string) {
+  const [match, setMatch] = useState(() => window.matchMedia(query).matches)
+  useEffect(() => {
+    const m = window.matchMedia(query)
+    const on = () => setMatch(m.matches)
+    m.addEventListener('change', on)
+    return () => m.removeEventListener('change', on)
+  }, [query])
+  return match
+}
+
 const isTyping = (el: Element | null) =>
   !!el && (['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName) || (el as HTMLElement).isContentEditable)
 
@@ -36,6 +47,10 @@ function Shell() {
   const { state, dispatch, undoType } = useStore()
   const { route, peek } = useLocation()
   const [railCollapsed, setRailCollapsed]   = useState(() => window.innerWidth < 1024)
+  // Phones: the sidebar is a drawer opened from the top bar
+  const phone = useMedia('(max-width: 640px)')
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  useEffect(() => { setDrawerOpen(false) }, [location.pathname])
   const [paletteOpen, setPaletteOpen]       = useState(false)
   const [shortcutsOpen, setShortcutsOpen]   = useState(false)
   const [createDefaults, setCreateDefaults] = useState<Partial<NewIssue> | null>(null)
@@ -156,9 +171,11 @@ function Shell() {
   return (
     <AppContext.Provider value={actions}>
       <div className="shell">
+        {phone && drawerOpen && <div className="drawer-scrim" onClick={() => setDrawerOpen(false)} />}
         <NavRail
-          collapsed={railCollapsed}
-          onCollapseToggle={() => setRailCollapsed(v => !v)}
+          drawer={phone ? (drawerOpen ? 'open' : 'closed') : undefined}
+          collapsed={!phone && railCollapsed}
+          onCollapseToggle={() => phone ? setDrawerOpen(false) : setRailCollapsed(v => !v)}
           onCmdK={() => setPaletteOpen(true)}
           route={route}
           onCreateProject={() => setCreateProjectOpen(true)}
@@ -170,7 +187,7 @@ function Shell() {
               You are acting as <b>{acting.name}</b>. Everything you do is attributed to them.
             </div>
           )}
-          <TopBar crumbs={crumbs} onCreateProject={() => setCreateProjectOpen(true)} onShortcuts={() => setShortcutsOpen(true)} />
+          <TopBar crumbs={crumbs} onCreateProject={() => setCreateProjectOpen(true)} onShortcuts={() => setShortcutsOpen(true)} onMenu={phone ? () => setDrawerOpen(true) : undefined} />
 
           <div className="content">
             <ErrorBoundary resetKey={location.pathname}>

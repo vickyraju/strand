@@ -28,7 +28,9 @@ const PROJECT_LINKS: { tab: ProjectTab; label: string; Icon: typeof List; scrumO
   { tab: 'reports', label: 'Reports', Icon: BarChart3 },
 ]
 
-export default function NavRail({ collapsed, onCollapseToggle, onCmdK, route, onCreateProject }: {
+export default function NavRail({ collapsed, onCollapseToggle, onCmdK, route, onCreateProject, drawer }: {
+  /** Phones: the rail is an off-canvas drawer */
+  drawer?:          'open' | 'closed'
   collapsed:        boolean
   onCollapseToggle: () => void
   onCmdK:           () => void
@@ -86,7 +88,7 @@ export default function NavRail({ collapsed, onCollapseToggle, onCmdK, route, on
   }
 
   return (
-    <nav className={`nav-rail${collapsed ? ' collapsed' : ''}`} aria-label="Main navigation">
+    <nav className={`nav-rail${collapsed ? ' collapsed' : ''}${drawer ? ` drawer ${drawer}` : ''}`} aria-label="Main navigation" aria-hidden={drawer === 'closed' || undefined} inert={drawer === 'closed' || undefined}>
       <div className="nav-head">
         <Logomark size={26} />
         <span className="nav-label nav-workspace" title={state.workspaceName}>{state.workspaceName}</span>
