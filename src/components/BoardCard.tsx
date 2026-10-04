@@ -1,5 +1,5 @@
 import { MoreHorizontal, CalendarDays, Ban, UserCheck, Link2, Trash2, ArrowRight, Eye } from 'lucide-react'
-import { useStore, userOf, blockersOf, transitionsFrom, type Issue, type Project, type CardField } from '../data/store'
+import { useStore, userOf, blockersOf, indexOf, transitionsFrom, type Issue, type Project, type CardField } from '../data/store'
 import { useApp } from '../appContext'
 import { href } from '../router'
 import { TypeIcon, PriorityIcon, Avatar, Menu, formatDate, isOverdue, type MenuItem } from './ui'
@@ -22,8 +22,10 @@ export default function BoardCard({ issue, project, fields, dragging, onDragStar
   const { openIssue, toast } = useApp()
   const status   = project.statuses.find(s => s.id === issue.status)
   const done     = status?.category === 'done'
-  const epic     = issue.parentId ? state.issues.find(i => i.id === issue.parentId && i.type === 'epic') : undefined
-  const subItems = state.issues.filter(i => i.parentId === issue.id)
+  const index    = indexOf(state)
+  const parent   = issue.parentId ? index.byId.get(issue.parentId) : undefined
+  const epic     = parent?.type === 'epic' ? parent : undefined
+  const subItems = index.children.get(issue.id) ?? []
   const subDone  = subItems.filter(i => project.statuses.find(s => s.id === i.status)?.category === 'done').length
   const blocked  = blockersOf(state, issue).length > 0
   const assignee = userOf(state, issue.assigneeId)

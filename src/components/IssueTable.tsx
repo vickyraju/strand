@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ChevronDown, ChevronRight, ArrowUp, ArrowDown, Plus, Columns3, Ban } from 'lucide-react'
 import {
-  useStore, userOf, projectOf, blockersOf, timeAgo, uid,
+  useStore, userOf, projectOf, blockersOf, indexOf, timeAgo, uid,
   type Issue, type Priority, type Project, type NewIssue,
 } from '../data/store'
 import { useApp, useNavList } from '../appContext'
@@ -52,6 +52,10 @@ export default function IssueTable({ issues, id, groupBy, onGroupBy, project, sh
   const [anchor, setAnchor] = useState<string | null>(null)
   const [adding, setAdding] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
+  // Long groups render in pages so thousands of items stay fast
+  const PAGE = 100
+  const [limits, setLimits] = useState<Record<string, number>>({})
+  const limitOf = (key: string) => limits[key] ?? PAGE
 
   // Drop selections that no longer exist (deleted, filtered out)
   useEffect(() => {
@@ -114,13 +118,14 @@ export default function IssueTable({ issues, id, groupBy, onGroupBy, project, sh
       return state.projects.map(p => ({ key: p.id, label: <><ProjectIcon project={p} size={18} />{p.name}</>, color: p.color, items: sorted.filter(i => i.projectId === p.id) }))
     }
     // epic
+    const byId = indexOf(state).byId
     const epicOf = (i: Issue) => {
-      const parent = state.issues.find(p => p.id === i.parentId)
+      const parent = i.parentId ? byId.get(i.parentId) : undefined
       return parent?.type === 'epic' ? parent : undefined
     }
     const epics = [...new Set(sorted.map(i => epicOf(i)?.id ?? ''))]
     return epics.map(id => {
-      const e = state.issues.find(x => x.id === id)
+      const e = byId.get(id)
       return {
         key: id || 'none', label: e ? <><TypeIcon type="epic" size={13} /><span className="mono muted">{e.key}</span>{e.title}</> : 'No epic',
         color: e ? TYPE_META.epic.color : undefined, items: sorted.filter(i => (epicOf(i)?.id ?? '') === id),
@@ -257,12 +262,12 @@ export default function IssueTable({ issues, id, groupBy, onGroupBy, project, sh
                     </td>
                   </tr>
                 )}
-                {!isCollapsed && g.items.map(i => {
+                {!isCollapsed && g.items.slice(0, limitOf(g.key)).map(i => {
                   const p = projectFor(i)
                   const st = statusFor(i)
                   const done = st?.category === 'done'
                   const blocked = !done && blockersOf(state, i).length > 0
-                  const parent = i.parentId ? state.issues.find(x => x.id === i.parentId) : undefined
+                  const parent = i.parentId ? indexOf(state).byId.get(i.parentId) : undefined
                   const set = (patch: Partial<Issue>) => dispatch({ type: 'updateIssues', ids: [i.id], patch })
                   return (
                     <tr key={i.id} data-id={i.id} tabIndex={0} className={selected.has(i.id) ? 'selected' : ''}
@@ -308,6 +313,16 @@ export default function IssueTable({ issues, id, groupBy, onGroupBy, project, sh
                     </tr>
                   )
                 })}
+                {!isCollapsed && g.items.length > limitOf(g.key) && (
+                  <tr className="tadd">
+                    <td colSpan={colCount}>
+                      <button className="tadd-btn" onClick={() => setLimits(l => ({ ...l, [g.key]: limitOf(g.key) + 200 }))}>
+                        <ChevronDown size={14} />Show {Math.min(200, g.items.length - limitOf(g.key))} more
+                        <span className="muted"> · {g.items.length - limitOf(g.key)} not shown</span>
+                      </button>
+                    </td>
+                  </tr>
+                )}
                 {!isCollapsed && g.defaults?.projectId && (
                   <tr className="tadd">
                     <td colSpan={colCount}>

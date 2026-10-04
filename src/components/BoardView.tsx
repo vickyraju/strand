@@ -3,7 +3,7 @@ import {
   Plus, Columns2, ListChecks, ChevronDown, ChevronRight, ChevronsLeftRight, Settings2, Check, GitBranch, Timer,
 } from 'lucide-react'
 import {
-  useStore, userOf, canTransition, statusOf, DEFAULT_FIELDS,
+  useStore, userOf, canTransition, statusOf, indexOf, DEFAULT_FIELDS,
   type Project, type Issue, type BoardPrefs, type CardField, type GroupBy, type IssuePatch,
 } from '../data/store'
 import { useApp, useNavList } from '../appContext'
@@ -34,6 +34,9 @@ export default function BoardView({ project }: { project: Project }) {
   const [dragging, setDragging] = useState<Issue | null>(null)
   const [over, setOver]         = useState<string | null>(null)
   const [completing, setCompleting] = useState(false)
+  // Columns render their first 50 cards; large boards stay responsive
+  const [cardLimits, setCardLimits] = useState<Record<string, number>>({})
+  const cardLimit = (key: string) => cardLimits[key] ?? 50
 
   const sprint = project.template === 'scrum'
     ? state.sprints.find(s => s.projectId === project.id && s.state === 'active')
@@ -74,7 +77,7 @@ export default function BoardView({ project }: { project: Project }) {
 
   // ── Swimlanes ────────────────────────────────────────────
   const epicOf = (i: Issue): string | undefined => {
-    const parent = state.issues.find(p => p.id === i.parentId)
+    const parent = i.parentId ? indexOf(state).byId.get(i.parentId) : undefined
     if (!parent) return undefined
     return parent.type === 'epic' ? parent.id : epicOf(parent)
   }
@@ -124,7 +127,7 @@ export default function BoardView({ project }: { project: Project }) {
       patch.status = statusId
     }
     // Moving between lanes changes the grouped field (sub-items keep their parent)
-    if (lane.patch && !lane.match(issue) && !(prefs.groupBy === 'epic' && issue.parentId && state.issues.find(p => p.id === issue.parentId)?.type !== 'epic')) {
+    if (lane.patch && !lane.match(issue) && !(prefs.groupBy === 'epic' && issue.parentId && indexOf(state).byId.get(issue.parentId)?.type !== 'epic')) {
       Object.assign(patch, lane.patch)
     }
     if (Object.keys(patch).length) dispatch({ type: 'updateIssues', ids: [issue.id], patch })
@@ -262,7 +265,7 @@ export default function BoardView({ project }: { project: Project }) {
                       onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setOver(null) }}
                       onDrop={e => { e.preventDefault(); drop(col.id, lane) }}
                     >
-                      {!col.collapsed && cards.map(issue => (
+                      {!col.collapsed && cards.slice(0, cardLimit(cellKey)).map(issue => (
                         <BoardCard
                           key={issue.id}
                           issue={issue}
@@ -273,6 +276,11 @@ export default function BoardView({ project }: { project: Project }) {
                           onDragEnd={() => { setDragging(null); setOver(null) }}
                         />
                       ))}
+                      {!col.collapsed && cards.length > cardLimit(cellKey) && (
+                        <button className="cell-create" onClick={() => setCardLimits(l => ({ ...l, [cellKey]: cardLimit(cellKey) + 100 }))}>
+                          <ChevronDown size={14} />Show {Math.min(100, cards.length - cardLimit(cellKey))} more
+                        </button>
+                      )}
                       {!col.collapsed && (
                         <button className="cell-create" onClick={() => createIssue({ projectId: project.id, status: col.id, sprintId: sprint?.id, ...(lane.patch as object) })}>
                           <Plus size={14} />Create

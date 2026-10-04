@@ -85,7 +85,21 @@ export default function BacklogView({ project }: { project: Project }) {
     refocus(i.id)
   }
 
-  const rows = (list: Issue[]) => list.map(i => (
+  // Long lists render in pages so large backlogs stay fast
+  const [limits, setLimits] = useState<Record<string, number>>({})
+  const rows = (list: Issue[], key = BACKLOG) => {
+    const limit = limits[key] ?? 100
+    return <>
+      {list.slice(0, limit).map(i => row(i, list))}
+      {list.length > limit && (
+        <button className="cell-create" onClick={() => setLimits(l => ({ ...l, [key]: limit + 200 }))}>
+          <ChevronDown size={14} />Show {Math.min(200, list.length - limit)} more<span className="muted"> · {list.length - limit} not shown</span>
+        </button>
+      )}
+    </>
+  }
+
+  const row = (i: Issue, list: Issue[]) => (
     <div key={i.id} className={`rank-slot${overRow === i.id ? ' drop-before' : ''}`}
       onDragOver={e => { if (dragging && dragging !== i.id) { e.preventDefault(); e.stopPropagation(); setOverRow(i.id); setOver(null) } }}
       onDragLeave={() => setOverRow(r => r === i.id ? null : r)}
@@ -114,7 +128,7 @@ export default function BacklogView({ project }: { project: Project }) {
         }
       />
     </div>
-  ))
+  )
 
   const summary = (list: Issue[]) => {
     const pts = list.reduce((n, i) => n + (i.estimate ?? 0), 0)
@@ -163,7 +177,7 @@ export default function BacklogView({ project }: { project: Project }) {
             >
               {list.length === 0
                 ? <div className="drop-hint">Plan this sprint by dragging work items here, or select items and use “Sprint” in the action bar.</div>
-                : rows(list)}
+                : rows(list, sprint.id)}
             </SprintBox>
           )
         })}

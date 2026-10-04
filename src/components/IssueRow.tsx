@@ -1,5 +1,5 @@
 import { CalendarDays, Ban } from 'lucide-react'
-import { useStore, userOf, blockersOf, timeAgo, type Issue, type Project } from '../data/store'
+import { useStore, userOf, blockersOf, indexOf, timeAgo, type Issue, type Project } from '../data/store'
 import { useApp } from '../appContext'
 import { Picker, TypeIcon, PriorityIcon, Avatar, Checkbox, statusOptions, priorityOptions, userOptions, formatDate, isOverdue } from './ui'
 import { ProjectIcon } from './ProjectView'
@@ -22,7 +22,7 @@ export default function IssueRow({ issue, project, showProject, trailing, select
   const status = project.statuses.find(s => s.id === issue.status)
   const done = status?.category === 'done'
   const blocked = !done && blockersOf(state, issue).length > 0
-  const parent = issue.parentId ? state.issues.find(i => i.id === issue.parentId) : undefined
+  const parent = issue.parentId ? indexOf(state).byId.get(issue.parentId) : undefined
   const set = (patch: Partial<Issue>) => dispatch({ type: 'updateIssues', ids: [issue.id], patch })
 
   return (

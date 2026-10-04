@@ -942,11 +942,30 @@ function toV3(s: State): State {
 
 // ── Selectors ──────────────────────────────────────────────
 
+/** Lookups that would otherwise scan every item per row. Built once per change to the item list. */
+export interface IssueIndex { byId: Map<string, Issue>; children: Map<string, Issue[]>; blockers: Map<string, Issue[]> }
+const indexCache = new WeakMap<Issue[], IssueIndex>()
+export function indexOf(state: Pick<State, 'issues' | 'projects'>): IssueIndex {
+  const hit = indexCache.get(state.issues)
+  if (hit) return hit
+  const byId = new Map<string, Issue>()
+  const children = new Map<string, Issue[]>()
+  const blockers = new Map<string, Issue[]>()
+  const projects = new Map(state.projects.map(p => [p.id, p]))
+  for (const i of state.issues) {
+    byId.set(i.id, i)
+    if (i.parentId) children.set(i.parentId, [...(children.get(i.parentId) ?? []), i])
+    const open = !isDone(projects.get(i.projectId), i)
+    for (const l of i.links) if (l.type === 'blocks' && open) blockers.set(l.issueId, [...(blockers.get(l.issueId) ?? []), i])
+  }
+  const idx = { byId, children, blockers }
+  indexCache.set(state.issues, idx)
+  return idx
+}
+
 /** Items this one is blocked by (open items that link to it with "blocks"). */
-export function blockersOf(state: State, issue: Issue) {
-  return state.issues.filter(o =>
-    o.links.some(l => l.type === 'blocks' && l.issueId === issue.id) &&
-    !isDone(state.projects.find(p => p.id === o.projectId), o))
+export function blockersOf(state: Pick<State, 'issues' | 'projects'>, issue: Issue) {
+  return indexOf(state).blockers.get(issue.id) ?? []
 }
 
 export function timeAgo(ts: number, now = Date.now()) {
