@@ -108,9 +108,10 @@ export default function InboxView() {
             return (
               <div key={r.issueId}>
                 {header && <div className="inbox-bucket">{header}</div>}
-                <div role="button" tabIndex={0} aria-current={selectedIssue?.id === r.issueId}
-                  className={`inbox-row${selectedIssue?.id === r.issueId ? ' active' : ''}${r.unread ? ' unread' : ''}`}
-                  onClick={() => open(r.issueId)} onKeyDown={e => e.key === 'Enter' && open(r.issueId)}>
+                <div className={`inbox-row${selectedIssue?.id === r.issueId ? ' active' : ''}${r.unread ? ' unread' : ''}`}>
+                  <button type="button" className="inbox-open" aria-current={selectedIssue?.id === r.issueId}
+                    aria-label={`${issue.key} ${issue.title}. ${r.latest.text}${r.unread ? '. Unread' : ''}`}
+                    onClick={() => open(r.issueId)} />
                   <span className="inbox-avatar">
                     <Avatar user={actor} size={30} />
                     <span className={`kind-badge kind-${r.latest.kind}`}><Icon size={10} strokeWidth={2.5} /></span>
@@ -121,7 +122,7 @@ export default function InboxView() {
                   </span>
                   <span className="inbox-meta">
                     <span className="muted sm">{timeAgo(r.latest.createdAt)}</span>
-                    {r.unread && <span className="unread-dot" aria-label="Unread" />}
+                    {r.unread && <span className="unread-dot" role="img" aria-label="Unread" />}
                   </span>
                   {!showArchived && (
                     <button className="icon-btn sm inbox-archive" title="Archive (E)" aria-label={`Archive ${issue.key}`}

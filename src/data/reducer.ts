@@ -312,7 +312,7 @@ export type Action =
 // ── Constants ──────────────────────────────────────────────
 
 export const PROJECT_COLORS = ['#368727', '#4F46E5', '#0891B2', '#D97706', '#DC2626', '#DB2777', '#7C3AED', '#57534E']
-export const AVATAR_COLORS  = ['#368727', '#7C3AED', '#0891B2', '#EA580C', '#DB2777', '#4F46E5', '#B45309', '#0D9488']
+export const AVATAR_COLORS  = ['#2F7A22', '#7C3AED', '#0E7490', '#C2410C', '#BE185D', '#4F46E5', '#B45309', '#0F766E']
 export const CATEGORY_COLOR: Record<Category, string> = { todo: '#A8A29E', 'in-progress': '#3B82F6', done: '#16A34A' }
 
 export const DEFAULT_STATUSES: Status[] = [

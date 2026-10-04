@@ -45,18 +45,18 @@ export default function CalendarView({ project }: { project: Project }) {
       </div>
 
       <div className="cal-scroll">
-        <div className="cal" role="grid" aria-label={month.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}>
-          {WEEKDAYS.map(d => <div key={d} className="cal-weekday" role="columnheader">{d}</div>)}
+        <div className="cal">
+          {WEEKDAYS.map(d => <div key={d} className="cal-weekday" aria-hidden>{d}</div>)}
           {cells.map(d => {
             const key = toDay(d.getTime())
             const due = items.filter(i => i.dueDate === key)
             const open = expanded === key
             const shown = open ? due : due.slice(0, MAX_PER_DAY)
             return (
-              <div key={key} role="gridcell" aria-label={d.toDateString()}
+              <div key={key}
                 className={`cal-day${d.getMonth() !== month.getMonth() ? ' other' : ''}${key === todayKey ? ' today' : ''}${d.getDay() % 6 === 0 ? ' weekend' : ''}`}>
                 <div className="cal-day-head">
-                  <span className="cal-date">{d.getDate()}</span>
+                  <span className="cal-date"><span className="sr-only">{d.toLocaleDateString(undefined, { weekday: 'long', month: 'long' })} </span>{d.getDate()}</span>
                   <button className="icon-btn sm cal-add" onClick={() => createIssue({ projectId: project.id, dueDate: key })} aria-label={`Create work item due ${d.toDateString()}`} title="Create work item due this day">
                     <Plus size={13} />
                   </button>

@@ -158,6 +158,7 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
 
       <div className="detail-body">
         <div className="detail-main">
+          {mode === 'full' && <h1 className="sr-only">{issue.key}: {issue.title}</h1>}
           <AutoText className="detail-title" value={title} aria-label="Title"
             onChange={e => setTitle(e.target.value.replace(/\n/g, ''))}
             onBlur={() => title.trim() ? set({ title: title.trim() }) : setTitle(issue.title)}
@@ -172,7 +173,7 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
           </div>
 
           <section className="detail-section">
-            <h3 className="section-title">Description</h3>
+            <h2 className="section-title">Description</h2>
             {editingDesc ? (
               <>
                 <MentionTextarea className="input desc-input" value={desc} onChange={setDesc} users={state.users} autoFocus
@@ -198,7 +199,7 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
           {(issue.type === 'epic' || !issue.parentId) && (
             <section className="detail-section">
               <div className="section-title-row">
-                <h3 className="section-title">{issue.type === 'epic' ? 'Work in this epic' : 'Sub-items'}</h3>
+                <h2 className="section-title">{issue.type === 'epic' ? 'Work in this epic' : 'Sub-items'}</h2>
                 {children.length > 0 && (
                   <span className="cell-flex muted sm">
                     <span className="progress"><span style={{ width: `${(childDone / children.length) * 100}%` }} /></span>{childDone} of {children.length} done
@@ -219,7 +220,7 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
           {links.length > 0 && (
             <section className="detail-section">
               <div className="section-title-row">
-                <h3 className="section-title">Linked work items</h3>
+                <h2 className="section-title">Linked work items</h2>
                 <div style={{ flex: 1 }} />
                 <button className="icon-btn sm" onClick={() => setLinking(true)} aria-label="Link work item" title="Link work item"><Plus size={15} /></button>
               </div>
@@ -244,7 +245,7 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
 
           <section className="detail-section">
             <div className="section-title-row">
-              <h3 className="section-title">Activity</h3>
+              <h2 className="section-title">Activity</h2>
               <div style={{ flex: 1 }} />
               <div className="segmented sm" role="tablist" aria-label="Activity filter">
                 {(['comments', 'history', 'all'] as const).map(t => (
@@ -318,7 +319,7 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
           </section>
         </div>
 
-        <aside className="detail-side" aria-label="Details">
+        <section className="detail-side" aria-label="Details">
           <div className="status-action">
             <Picker
               value={issue.status}
@@ -335,7 +336,7 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
           </div>
 
           <div className="side-card">
-            <h3 className="side-title">Details</h3>
+            <h2 className="side-title">Details</h2>
             <Field label="Assignee">
               <Picker value={issue.assigneeId} search options={userOptions(state.users)} onChange={assigneeId => set({ assigneeId })} className="field-btn" title="Assignee"
                 trigger={<><Avatar user={assignee} size={22} />{assignee?.name ?? 'Unassigned'}</>} />
@@ -405,7 +406,7 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
             <div>Created {new Date(issue.createdAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</div>
             <div>Updated {timeAgo(issue.updatedAt)}</div>
           </div>
-        </aside>
+        </section>
       </div>
 
       {linking && <LinkDialog issue={issue} onClose={() => setLinking(false)} />}

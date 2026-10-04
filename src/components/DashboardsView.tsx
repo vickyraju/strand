@@ -51,9 +51,12 @@ export default function DashboardsView({ id }: { id?: string }) {
 
   if (!dash) {
     return (
-      <Empty icon={<LayoutDashboard size={22} strokeWidth={1.5} />} title={id ? 'Dashboard not found' : 'See everything at a glance'}
+      <div className="page-col">
+        <div className="page-hdr"><h1 className="page-title">Dashboards</h1></div>
+        <Empty icon={<LayoutDashboard size={22} strokeWidth={1.5} />} title={id ? 'Dashboard not found' : 'See everything at a glance'}
         body="Dashboards bring your work, your saved views and project reports together on one page."
         action={<button className="btn btn-primary" onClick={create}><Plus size={15} />Create dashboard</button>} />
+      </div>
     )
   }
 

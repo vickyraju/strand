@@ -104,9 +104,10 @@ export default function YourWork({ onCreateProject }: { onCreateProject: () => v
     return (
       <div className="rows-box">
         {starred.map(p => (
-          <div key={p.id} className="row" role="button" tabIndex={0} onClick={() => openProject(p.id)} onKeyDown={e => e.key === 'Enter' && openProject(p.id)}>
+          <div key={p.id} className="row" onClick={() => openProject(p.id)}>
             <StarButton projectId={p.id} /><ProjectIcon project={p} size={20} />
-            <span className="row-title strong">{p.name}</span><span className="mono muted">{p.key}</span>
+            <button type="button" className="row-title strong" onClick={e => { e.stopPropagation(); openProject(p.id) }}>{p.name}</button>
+            <span className="mono muted">{p.key}</span>
           </div>
         ))}
       </div>

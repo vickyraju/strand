@@ -24,7 +24,7 @@
 
   --text-1:        #1A1D18;
   --text-2:        #55594F;
-  --text-3:        #868A82;
+  --text-3:        #6A6F66;
   --text-inverse:  #FFFFFF;
 
   --danger:        #DC2626;
@@ -1087,7 +1087,7 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; line-height:
 
   --text-1:        #E8EBE6;
   --text-2:        #AEB4AB;
-  --text-3:        #7C847A;
+  --text-3:        #949C91;
 
   --danger:        #F06A6A;
   --danger-soft:   #3A1E1E;
@@ -1183,3 +1183,19 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; line-height:
 .gadget-picker { display: grid; grid-template-columns: 1fr 1fr; gap: 8px }
 @media (max-width: 1024px) { .dash-grid { grid-template-columns: 1fr } .gadget.wide { grid-column: auto } }
 .loading { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--text-3); font-size: 13px; padding: 48px }
+
+/* Inbox rows: one full-row open button, with Archive above it */
+.inbox-open { position: absolute; inset: 0; z-index: 1; border-radius: 8px }
+.inbox-open:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px }
+.inbox-archive { z-index: 2 }
+.inbox-row:focus-within .inbox-archive { opacity: 1 }
+/* Row titles are buttons */
+.row-title { text-align: left; color: inherit; font: inherit }
+.row-title:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; border-radius: 4px }
+h2.empty-title, h2.section-title, h2.side-title { margin: 0 }
+
+/* Contrast fixes (WCAG AA) */
+.due.overdue, .cal-item.late, .text-danger { color: #B91C1C }
+[data-theme='dark'] .due.overdue, [data-theme='dark'] .cal-item.late, [data-theme='dark'] .text-danger { color: #F79494 }
+.tl-bar.done { opacity: 1; filter: saturate(.35); color: var(--text-2) }
+.cal-item.done { opacity: 1; color: var(--text-2) }

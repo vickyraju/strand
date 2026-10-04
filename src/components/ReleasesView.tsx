@@ -119,7 +119,7 @@ export default function ReleasesView({ project, releaseId }: { project: Project;
       <div className="table-scroll" style={{ paddingTop: 12 }}>
         <table className="table" style={{ minWidth: 820 }}>
           <thead>
-            <tr><th>Version</th><th style={{ width: 120 }}>Status</th><th style={{ width: 260 }}>Progress</th><th style={{ width: 120 }}>Start</th><th style={{ width: 120 }}>Release</th><th style={{ width: 300 }}>Description</th><th style={{ width: 48 }} /></tr>
+            <tr><th>Version</th><th style={{ width: 120 }}>Status</th><th style={{ width: 260 }}>Progress</th><th style={{ width: 120 }}>Start</th><th style={{ width: 120 }}>Release</th><th style={{ width: 300 }}>Description</th><th style={{ width: 48 }}><span className="sr-only">Actions</span></th></tr>
           </thead>
           <tbody>
             {sorted.map(r => {

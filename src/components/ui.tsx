@@ -16,7 +16,7 @@ export const TYPE_META: Record<IssueType, { label: string; Icon: typeof Bug; col
 export function TypeIcon({ type, size = 14 }: { type: IssueType; size?: number }) {
   const { Icon, color, label } = TYPE_META[type]
   return (
-    <span className="type-icon" style={{ background: color, width: size + 2, height: size + 2 }} title={label} aria-label={label}>
+    <span className="type-icon" role="img" style={{ background: color, width: size + 2, height: size + 2 }} title={label} aria-label={label}>
       <Icon size={size - 4} strokeWidth={2.5} color="#FFFFFF" />
     </span>
   )
@@ -35,10 +35,13 @@ export const PRIORITIES: Priority[] = ['urgent', 'high', 'medium', 'low', 'none'
 
 export function PriorityIcon({ priority, size = 14 }: { priority: Priority; size?: number }) {
   const { Icon, color, label } = PRIORITY_META[priority]
-  return <Icon size={size} strokeWidth={2.25} color={color} style={{ flexShrink: 0 }} aria-label={label} />
+  return <Icon size={size} strokeWidth={2.25} color={color} style={{ flexShrink: 0 }} aria-label={label} role="img" />
 }
 
 // ── People ─────────────────────────────────────────────────
+
+/** Older, lighter avatar colors mapped to versions with enough contrast for white initials (WCAG AA). */
+const READABLE: Record<string, string> = { '#368727': '#2F7A22', '#0891B2': '#0E7490', '#EA580C': '#C2410C', '#DB2777': '#BE185D', '#0D9488': '#0F766E', '#16A34A': '#15803D' }
 
 export function Avatar({ user, size = 22 }: { user?: User | null; size?: number }) {
   if (!user) {
@@ -49,7 +52,7 @@ export function Avatar({ user, size = 22 }: { user?: User | null; size?: number 
     )
   }
   return (
-    <span className="avatar" style={{ width: size, height: size, background: user.color, fontSize: Math.max(8, size * 0.4) }} title={user.name}>
+    <span className="avatar" style={{ width: size, height: size, background: READABLE[user.color] ?? user.color, fontSize: Math.max(8, size * 0.4) }} title={user.name}>
       {user.initials}
     </span>
   )
@@ -302,7 +305,7 @@ export function Empty({ icon, title, body, action }: {
   return (
     <div className="empty">
       <div className="empty-icon">{icon}</div>
-      <div className="empty-title">{title}</div>
+      <h2 className="empty-title">{title}</h2>
       <div className="empty-body">{body}</div>
       {action && <div className="empty-actions">{action}</div>}
     </div>

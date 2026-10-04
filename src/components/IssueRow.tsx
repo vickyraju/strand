@@ -28,19 +28,10 @@ export default function IssueRow({ issue, project, showProject, trailing, select
   return (
     <div
       className={`row${selected ? ' selected' : ''}`}
-      data-row={issue.id}
-      role="button"
-      tabIndex={0}
       onClick={e => { if (onSelect && (e.shiftKey || e.metaKey)) onSelect(!selected, e.shiftKey); else openIssue(issue.id) }}
-      onKeyDown={e => {
-        if (e.target !== e.currentTarget) return
-        if (e.key === 'Enter') openIssue(issue.id)
-        if (e.key === 'x' && onSelect) { e.preventDefault(); onSelect(!selected, e.shiftKey) }
-      }}
       draggable={draggable}
       onDragStart={e => { e.dataTransfer.setData('text/plain', issue.id); e.dataTransfer.effectAllowed = 'move'; onDragStart?.() }}
       onDragEnd={onDragEnd}
-      aria-label={`${issue.key} ${issue.title}`}
     >
       {onSelect && (
         <span className="row-check" onClick={e => e.stopPropagation()}>
@@ -50,11 +41,14 @@ export default function IssueRow({ issue, project, showProject, trailing, select
       <TypeIcon type={issue.type} size={14} />
       {showProject && <ProjectIcon project={project} size={16} />}
       <span className={`row-key mono${done ? ' done' : ''}`}>{issue.key}</span>
-      <span className="row-title">
-        {blocked && <Ban size={13} className="text-danger" aria-label="Blocked" />}
+      {/* The row's one focusable target: opens the item; X selects it */}
+      <button type="button" className="row-title" data-row={issue.id}
+        onClick={e => { if (onSelect && (e.shiftKey || e.metaKey)) return; e.stopPropagation(); openIssue(issue.id) }}
+        onKeyDown={e => { if (e.key === 'x' && onSelect) { e.preventDefault(); onSelect(!selected, e.shiftKey) } }}>
+        {blocked && <Ban size={13} className="text-danger" aria-label="Blocked" role="img" />}
         <span className={done ? 'done-text' : ''}>{issue.title}</span>
         {parent && <span className="muted row-parent">{parent.title}</span>}
-      </span>
+      </button>
       {issue.labels.slice(0, 2).map(l => <span key={l} className="tag hide-sm">{l}</span>)}
       {issue.dueDate && (
         <span className={`due hide-sm${isOverdue(issue.dueDate) && !done ? ' overdue' : ''}`}><CalendarDays size={12} />{formatDate(issue.dueDate)}</span>
