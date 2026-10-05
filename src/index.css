@@ -130,6 +130,7 @@ ul, ol { list-style: none }
 .icon-btn:hover:not(:disabled) { background: var(--hover); color: var(--text-1) }
 .icon-btn.active { color: var(--brand) }
 .icon-btn.sm { min-width: 26px; height: 26px; padding: 0 4px }
+.icon-btn.xs { min-width: 22px; height: 22px; padding: 0; border-radius: 4px }
 .icon-btn.star.on { color: #E8A317 }
 .dot-badge { position: absolute; top: 6px; right: 6px; width: 8px; height: 8px; border-radius: 50%; background: var(--danger); border: 2px solid var(--surface) }
 
@@ -250,15 +251,17 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; line-height:
 .picker-menu.up, .popover.up { top: auto; bottom: calc(100% + 4px) }
 .picker-left  { left: 0 }
 .picker-right { right: 0 }
+/* Positioned from JS with viewport coordinates, so an ancestor's overflow cannot clip it. */
+.picker-fixed { position: fixed; top: 0; left: 0 }
 .picker-item {
-  display: flex; align-items: center; gap: 8px; width: 100%; min-height: 32px; padding: 5px 8px;
+  display: flex; align-items: center; gap: 8px; width: 100%; min-height: 32px; padding: 6px 8px;
   border-radius: 5px; font-size: 13px; color: var(--text-1); text-align: left;
 }
 .picker-item:hover, .picker-item:focus-visible, .picker-item.focus { background: var(--hover); outline: none }
 .picker-item[aria-selected='true'] { background: var(--selected) }
 .picker-item.danger { color: var(--danger) }
-.picker-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
-.picker-hint  { font-size: 11px; color: var(--text-3); white-space: nowrap }
+.picker-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0 }
+.picker-hint  { margin-left: auto; padding-left: 8px; font-size: 11px; color: var(--text-3); white-space: nowrap; flex-shrink: 0 }
 .picker-check { color: var(--brand); flex-shrink: 0 }
 .picker-search { width: 100%; height: 32px; padding: 0 8px; margin-bottom: 4px; border: 1px solid var(--border); border-radius: 5px; outline: none; font-size: 13px }
 .picker-search:focus { border-color: var(--brand) }
@@ -312,7 +315,6 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; line-height:
 .nav-body { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 2px 8px 8px }
 .nav-foot { padding: 6px 8px 8px; border-top: 1px solid var(--border) }
 .nav-section { padding: 16px 8px 4px; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-3); white-space: nowrap }
-.nav-section-row { display: flex; align-items: center; justify-content: space-between; padding-right: 0 }
 .nav-item {
   display: flex; align-items: center; gap: 10px; width: 100%; height: 34px; padding: 0 8px;
   border-radius: var(--radius); color: var(--text-2); font-size: 14px; white-space: nowrap; position: relative;
@@ -325,6 +327,10 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; line-height:
 .nav-label { min-width: 0; overflow: hidden; text-overflow: ellipsis }
 .nav-badge { margin-left: auto; min-width: 20px; height: 18px; padding: 0 6px; border-radius: 9px; background: var(--brand); color: #fff; font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center }
 .nav-project { padding: 0 4px 0 0; gap: 2px }
+.nav-star { width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; color: var(--text-3); border-radius: 4px; flex-shrink: 0; margin-right: 2px }
+.nav-star:hover { background: var(--press); color: var(--text-1) }
+.nav-star.on { color: #E8A317 }
+.nav-rail.collapsed .nav-star { display: none }
 .nav-caret { width: 20px; height: 24px; display: inline-flex; align-items: center; justify-content: center; color: var(--text-3); border-radius: 4px; flex-shrink: 0 }
 .nav-caret:hover { background: var(--press); color: var(--text-1) }
 .nav-project-link { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; height: 100%; color: inherit }

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import {
   Bookmark, Bug, SquareCheck, Zap, ChevronsUp, ChevronUp, Equal, ChevronDown, Minus, Check, UserRound, X,
 } from 'lucide-react'
@@ -87,6 +87,62 @@ function usePopoverPlacement(open: boolean) {
   return { ref, up }
 }
 
+/**
+ * Anchors a panel to its trigger with `position: fixed`, so an ancestor's `overflow: hidden`
+ * (`.rows-box`, `.content`, `.shell`, `.table-scroll`, `.detail-side`, `.modal-body`…) cannot clip
+ * it — a fixed element's containing block is the viewport, not its DOM parent.
+ *
+ * NOTE: a `transform`/`filter`/`perspective`/`contain` on any ancestor becomes the containing block
+ * for fixed descendants and would silently break this. `.bulk-bar` used to carry `transform:
+ * translateX(-50%)`; it now centres with `margin: auto` for exactly this reason.
+ *
+ * The panel should start at `visibility: hidden`; positions are written before paint so it never
+ * flashes at the wrong place.
+ */
+function useAnchoredPanel(open: boolean, align: 'left' | 'right' = 'left') {
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const panelRef   = useRef<HTMLDivElement>(null)
+
+  useLayoutEffect(() => {
+    if (!open) return
+    const t = triggerRef.current, p = panelRef.current
+    if (!t || !p) return
+
+    const place = () => {
+      const tr = t.getBoundingClientRect()
+      // offsetWidth/offsetHeight ignore the `pop-in` animation's transform, which
+      // getBoundingClientRect would otherwise fold into the measurement.
+      const w = p.offsetWidth, h = p.offsetHeight
+      const gap = 6, pad = 8
+
+      const below = window.innerHeight - tr.bottom - gap - pad
+      const above = tr.top - gap - pad
+      const up = h > below && above > below      // flip only when forced, and only if there's room
+      const top = up ? tr.top - gap - h : tr.bottom + gap
+
+      p.style.top  = Math.max(pad, Math.min(top, window.innerHeight - h - pad)) + 'px'
+      p.style.left = Math.max(pad, Math.min(
+        align === 'right' ? tr.right - w : tr.left,
+        window.innerWidth - w - pad)) + 'px'
+      p.style.visibility = 'visible'
+    }
+
+    place()
+    let frame = 0
+    const reposition = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(place) }
+    // capture: true catches scroll on every scrollable ancestor, not just the window
+    window.addEventListener('scroll', reposition, true)
+    window.addEventListener('resize', reposition)
+    return () => {
+      cancelAnimationFrame(frame)
+      window.removeEventListener('scroll', reposition, true)
+      window.removeEventListener('resize', reposition)
+    }
+  }, [open, align])
+
+  return { triggerRef, panelRef }
+}
+
 export function Picker<T>({ value, options, onChange, trigger, title, className = 'chip', align = 'left', search, disabled }: {
   value:      T
   options:    PickerOption<T>[]
@@ -100,19 +156,19 @@ export function Picker<T>({ value, options, onChange, trigger, title, className 
 }) {
   const [open, setOpen]   = useState(false)
   const [query, setQuery] = useState('')
-  const { ref, up } = usePopoverPlacement(open)
+  const { triggerRef, panelRef } = useAnchoredPanel(open, align)
   const shown = query ? options.filter(o => o.label.toLowerCase().includes(query.toLowerCase())) : options
 
   useEffect(() => {
     if (!open) { setQuery(''); return }
-    if (!search) ref.current?.querySelector<HTMLButtonElement>('[aria-selected=true], button')?.focus()
+    if (!search) panelRef.current?.querySelector<HTMLButtonElement>('[aria-selected=true], button')?.focus()
   }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Escape') { e.stopPropagation(); setOpen(false) }
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault()
-      const items = [...(ref.current?.querySelectorAll<HTMLButtonElement>('.picker-item') ?? [])]
+      const items = [...(panelRef.current?.querySelectorAll<HTMLButtonElement>('.picker-item') ?? [])]
       const i = items.indexOf(document.activeElement as HTMLButtonElement)
       items[(i + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length]?.focus()
     }
@@ -123,14 +179,14 @@ export function Picker<T>({ value, options, onChange, trigger, title, className 
 
   return (
     <span className="picker" onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}>
-      <button type="button" className={className} onClick={() => setOpen(v => !v)} title={title} aria-label={title}
+      <button ref={triggerRef} type="button" className={className} onClick={() => setOpen(v => !v)} title={title} aria-label={title}
         aria-haspopup="listbox" aria-expanded={open} disabled={disabled}>
         {trigger}
       </button>
       {open && (
         <>
           <div className="popover-scrim" onClick={() => setOpen(false)} />
-          <div ref={ref} className={`picker-menu picker-${align}${up ? ' up' : ''}`} role="listbox" onKeyDown={onKeyDown}>
+          <div ref={panelRef} className="picker-menu picker-fixed" style={{ visibility: 'hidden' }} role="listbox" onKeyDown={onKeyDown}>
             {search && (
               <input className="picker-search" value={query} onChange={e => setQuery(e.target.value)} placeholder="Search…" autoFocus aria-label="Search options" />
             )}

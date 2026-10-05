@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import {
-  LayoutGrid, LayoutDashboard, Inbox, Search, Plus, Settings, PanelLeftClose, PanelLeftOpen, SearchCode, FolderKanban,
-  ChevronRight, ChevronDown, Bookmark, Columns2, ListChecks, List, BarChart3, Gauge, Hash, GanttChart, CalendarDays, Rocket,
+  LayoutGrid, LayoutDashboard, Inbox, Search, Settings, PanelLeftClose, PanelLeftOpen, SearchCode, FolderKanban,
+  ChevronRight, ChevronDown, Bookmark, Columns2, ListChecks, List, BarChart3, Gauge, Hash, GanttChart, CalendarDays, Rocket, Star,
 } from 'lucide-react'
 import { useStore } from '../data/store'
 import { useApp } from '../appContext'
@@ -37,15 +37,14 @@ export default function NavRail({ collapsed, onCollapseToggle, onCmdK, route, on
   route:            Route
   onCreateProject:  () => void
 }) {
-  const { state } = useStore()
+  const { state, dispatch } = useStore()
   const { goTo, openIssue } = useApp()
   const currentKey = route.name === 'project' ? route.key : undefined
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set(currentKey ? [currentKey] : []))
   const unread = state.notifications.filter(n => n.userId === state.me?.id && !n.read && !n.archived).length
   const starred = state.projects.filter(p => state.starred.includes(p.id))
   const views = state.views.filter(v => v.shared || v.ownerId === state.me?.id)
-  const others = state.projects.filter(p => !state.starred.includes(p.id))
-  const recent = state.viewed.slice(0, 5).map(id => state.issues.find(i => i.id === id)).filter(i => !!i)
+  const recentIssues = state.viewed.slice(0, 5).map(id => state.issues.find(i => i.id === id)).filter(i => !!i)
 
   const toggle = (key: string) => setExpanded(prev => {
     const n = new Set(prev)
@@ -61,9 +60,10 @@ export default function NavRail({ collapsed, onCollapseToggle, onCmdK, route, on
     </button>
   )
 
-  const projectRow = (p: typeof state.projects[number]) => {
+  const projectRow = (p: typeof state.projects[number], showStar = true) => {
     const open = expanded.has(p.key) && !collapsed
     const active = currentKey === p.key
+    const on = state.starred.includes(p.id)
     return (
       <div key={p.id}>
         <div className={`nav-item nav-project${active && !open ? ' active' : ''}`} title={collapsed ? p.name : undefined}>
@@ -74,6 +74,11 @@ export default function NavRail({ collapsed, onCollapseToggle, onCmdK, route, on
             <ProjectIcon project={p} size={18} />
             <span className="nav-label">{p.name}</span>
           </button>
+          {showStar && (
+            <button className={`icon-btn xs nav-star${on ? ' on' : ''}`} onClick={e => { e.stopPropagation(); dispatch({ type: 'toggleStar', projectId: p.id }) }} title={on ? 'Unstar' : 'Star'} aria-label={on ? 'Remove from starred' : 'Add to starred'}>
+              <Star size={12} strokeWidth={1.75} fill={on ? 'currentColor' : 'none'} />
+            </button>
+          )}
         </div>
         {open && PROJECT_LINKS.filter(l => !l.scrumOnly || p.template === 'scrum').map(l => (
           <button key={l.tab}
@@ -108,6 +113,7 @@ export default function NavRail({ collapsed, onCollapseToggle, onCmdK, route, on
         {item(route.name === 'inbox', 'Inbox', Inbox, () => goTo('inbox'), unread)}
         {item(route.name === 'search' && !route.view, 'Search', SearchCode, () => goTo('search'))}
         {item(route.name === 'dashboards', 'Dashboards', LayoutDashboard, () => goTo('dashboards'))}
+        {item(route.name === 'projects', 'All projects', FolderKanban, () => goTo('projects'))}
 
         {views.length > 0 && !collapsed && <div className="nav-section">Views</div>}
         {!collapsed && views.map(v => (
@@ -119,17 +125,33 @@ export default function NavRail({ collapsed, onCollapseToggle, onCmdK, route, on
         ))}
 
         {starred.length > 0 && <div className="nav-section">Starred</div>}
-        {starred.map(projectRow)}
+        {starred.map(p => projectRow(p, true))}
 
-        <div className="nav-section nav-section-row">
-          <span>Projects</span>
-          <button className="icon-btn sm" onClick={onCreateProject} title="Create project" aria-label="Create project"><Plus size={14} /></button>
-        </div>
-        {others.map(projectRow)}
-        {item(route.name === 'projects', 'All projects', FolderKanban, () => goTo('projects'))}
+        {(() => {
+          const recentProjectIds = new Set<string>()
+          const recentProjects: typeof state.projects = []
+          for (const issueId of state.viewed) {
+            const i = state.issues.find(iss => iss.id === issueId)
+            if (i && !recentProjectIds.has(i.projectId)) {
+              recentProjectIds.add(i.projectId)
+              const p = state.projects.find(pr => pr.id === i.projectId)
+              if (p) recentProjects.push(p)
+            }
+            if (recentProjects.length >= 4) break
+          }
+          return recentProjects.length > 0 ? (
+            <>
+              <div className="nav-section">Recent projects</div>
+              {recentProjects.map(p => {
+                if (starred.find(sp => sp.id === p.id)) return null
+                return projectRow(p, true)
+              })}
+            </>
+          ) : null
+        })()}
 
-        {recent.length > 0 && !collapsed && <div className="nav-section">Recent</div>}
-        {!collapsed && recent.map(i => (
+        {recentIssues.length > 0 && !collapsed && <div className="nav-section">Recent issues</div>}
+        {!collapsed && recentIssues.map(i => (
           <button key={i.id} className="nav-item nav-recent" onClick={() => openIssue(i.id)} title={`${i.key} ${i.title}`}>
             <Hash size={13} strokeWidth={1.75} className="nav-icon" />
             <span className="nav-label"><span className="mono">{i.key}</span> {i.title}</span>
