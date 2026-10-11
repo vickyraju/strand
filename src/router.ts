@@ -29,7 +29,7 @@ export function parse(pathname: string, search: string): { route: Route; peek?: 
   else if (a === 'projects' && !b) route = { name: 'projects' }
   else if (a === 'settings')      route = { name: 'settings' }
   else if (a === 'i' && b)        route = { name: 'issue', key: b.toUpperCase() }
-  else if (a === 'p' && b && (!c || (TABS as string[]).includes(c)))
+  else if ((a === 'project' || a === 'p') && b &&(!c || (TABS as string[]).includes(c)))
     route = { name: 'project', key: b.toUpperCase(), tab: c as ProjectTab | undefined, sub: d }
   return { route, peek }
 }
@@ -51,12 +51,15 @@ export function href(route: Route, peek?: string): string {
     case 'projects':  return `/projects${q}`
     case 'settings':  return `/settings${q}`
     case 'issue':     return `/i/${route.key}`
-    case 'project':   return `/p/${route.key}${route.tab ? `/${route.tab}` : ''}${route.sub ? `/${route.sub}` : ''}${q}`
+    case 'project':   return `/project/${route.key}${route.tab ? `/${route.tab}` : ''}${route.sub ? `/${route.sub}` : ''}${q}`
     case 'not-found': return '/'
   }
 }
 
 // ── History plumbing ───────────────────────────────────────
+
+// Legacy /p/KEY links → canonical /project/KEY (before first render)
+if (location.pathname.startsWith('/p/')) history.replaceState(null, '', '/project' + location.pathname.slice(2) + location.search)
 
 const listeners = new Set<() => void>()
 const emit = () => listeners.forEach(l => l())
