@@ -1,4 +1,4 @@
-import type { FastifyPluginAsync } from 'fastify'
+import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
 import { db, tx, pick, type Db } from '../db.ts'
 import { HttpError, requireWrite, type Me } from '../auth.ts'
@@ -55,13 +55,21 @@ async function checkTransition(d: Db, projectId: string, from: string, to: strin
   if (!ok.length) throw new HttpError(409, 'That move is not allowed by the workflow')
 }
 
-const plugin: FastifyPluginAsync = async app => {
+const keyP = z.object({ key: z.string().describe('Issue key, e.g. PAY-12') })
+const projKeyP = z.object({ key: z.string().describe('Project key, e.g. PAY') })
+const idP = z.object({ id: uuid })
+const TAG = ['Issues']
+
+const listQuery = z.object({
+  status: uuid.optional(), assignee: uuid.optional(), type: type.optional(), sprint: z.union([uuid, z.literal('none')]).optional().describe('Sprint id, or "none" for the backlog'),
+  release: uuid.optional(), parent: uuid.optional(), cursor: z.string().optional().describe('`next` from the previous page'),
+  limit: z.coerce.number().int().min(1).max(500).default(200),
+})
+
+const plugin: FastifyPluginAsyncZod = async app => {
   // Board/list page of a project, in backlog order. Keyset-paginated: pass `next` back as `cursor`.
-  app.get<{ Params: { key: string }; Querystring: Record<string, string> }>('/projects/:key/issues', async req => {
-    const q = z.object({
-      status: uuid.optional(), assignee: uuid.optional(), type: type.optional(), sprint: z.union([uuid, z.literal('none')]).optional(),
-      release: uuid.optional(), parent: uuid.optional(), cursor: z.string().optional(), limit: z.coerce.number().int().min(1).max(500).default(200),
-    }).parse(req.query)
+  app.get('/projects/:key/issues', { schema: { tags: TAG, summary: 'List a project\'s issues in backlog order (keyset-paginated)', params: projKeyP, querystring: listQuery } }, async req => {
+    const q = req.query
     const p = await projectByKey(db, req.me.workspaceId, req.params.key)
     const args: unknown[] = [p.id]
     const where = ['i.project_id = $1', 'i.deleted_at is null']
@@ -86,9 +94,10 @@ const plugin: FastifyPluginAsync = async app => {
     return { items, next: more && last ? Buffer.from(`${last.rank}|${last.id}`).toString('base64url') : null }
   })
 
-  app.post<{ Params: { key: string } }>('/projects/:key/issues', async req => {
+  const createBody = patchBody.required({ title: true }).extend({ labels: z.array(z.string()).default([]) })
+  app.post('/projects/:key/issues', { schema: { tags: TAG, summary: 'Create an issue (key and rank are assigned by the server)', params: projKeyP, body: createBody } }, async req => {
     requireWrite(req)
-    const b = patchBody.required({ title: true }).extend({ labels: z.array(z.string()).default([]) }).parse(req.body)
+    const b = req.body
     const p = await projectByKey(db, req.me.workspaceId, req.params.key)
     return tx(async d => {
       const [pr] = await d.query<{ leadId: string | null }>('select lead_id from projects where id = $1', [p.id])
@@ -115,7 +124,7 @@ const plugin: FastifyPluginAsync = async app => {
     })
   })
 
-  app.get<{ Params: { key: string } }>('/issues/:key', async req => {
+  app.get('/issues/:key', { schema: { tags: TAG, summary: 'Issue with links, watchers, comments, activity, work logs, attachments and children', params: keyP } }, async req => {
     const i = await issueByKey(db, req.me.workspaceId, req.params.key)
     const [links, watchers, comments, activity, worklogs, attachments, children] = await Promise.all([
       db.query(`select l.type, 'out' as dir, t.id as issue_id, p.key || '-' || t.number as key, t.title
@@ -133,9 +142,12 @@ const plugin: FastifyPluginAsync = async app => {
     return { ...i, links, watcherIds: watchers.map((w: any) => w.userId), comments, activity, worklogs, attachments, children }
   })
 
-  app.patch<{ Params: { key: string } }>('/issues/:key', async req => {
+  app.patch('/issues/:key', { schema: {
+    tags: TAG, summary: 'Update issue fields. Send If-Match: <version> to reject stale edits (409). Workflow transitions are enforced.',
+    params: keyP, body: patchBody, headers: z.object({ 'if-match': z.string().optional().describe('Issue version you last read') }),
+  } }, async req => {
     requireWrite(req)
-    const patch = patchBody.parse(req.body)
+    const patch = req.body
     const ifMatch = req.headers['if-match'] ? Number(String(req.headers['if-match']).replace(/"/g, '')) : null
     return tx(async d => {
       const cur = await issueByKey(d, req.me.workspaceId, req.params.key)
@@ -172,7 +184,7 @@ const plugin: FastifyPluginAsync = async app => {
   })
 
   // Soft delete + restore back the client's Undo
-  app.delete<{ Params: { key: string } }>('/issues/:key', async (req, reply) => {
+  app.delete('/issues/:key', { schema: { tags: TAG, summary: 'Soft-delete an issue (restorable)', params: keyP } }, async (req, reply) => {
     requireWrite(req)
     await tx(async d => {
       const i = await issueByKey(d, req.me.workspaceId, req.params.key)
@@ -181,7 +193,7 @@ const plugin: FastifyPluginAsync = async app => {
     })
     reply.code(204).send()
   })
-  app.post<{ Params: { key: string } }>('/issues/:key/restore', async req => {
+  app.post('/issues/:key/restore', { schema: { tags: TAG, summary: 'Restore a soft-deleted issue (Undo)', params: keyP } }, async req => {
     requireWrite(req)
     return tx(async d => {
       const i = await issueByKey(d, req.me.workspaceId, req.params.key, true)
@@ -193,27 +205,30 @@ const plugin: FastifyPluginAsync = async app => {
 
   // ── Links & watchers ──
   const linkBody = z.object({ type: z.enum(['blocks', 'relates']), targetKey: z.string() })
-  app.post<{ Params: { key: string } }>('/issues/:key/links', async (req, reply) => {
+  app.post('/issues/:key/links', { schema: { tags: ['Links & watchers'], summary: 'Link two issues (blocks / relates)', params: keyP, body: linkBody } }, async (req, reply) => {
     requireWrite(req)
-    const b = linkBody.parse(req.body)
+    const b = req.body
     const [a, t] = await Promise.all([issueByKey(db, req.me.workspaceId, req.params.key), issueByKey(db, req.me.workspaceId, b.targetKey)])
     if (a.id === t.id) throw new HttpError(400, 'Cannot link an item to itself')
     await db.query('insert into issue_links (issue_id, target_id, type) values ($1, $2, $3) on conflict do nothing', [a.id, t.id, b.type])
     reply.code(204).send()
   })
-  app.delete<{ Params: { key: string }; Querystring: { type: string; target: string } }>('/issues/:key/links', async (req, reply) => {
+  app.delete('/issues/:key/links', { schema: {
+    tags: ['Links & watchers'], summary: 'Remove a link', params: keyP,
+    querystring: z.object({ type: z.enum(['blocks', 'relates']), target: z.string().describe('Key of the linked issue') }),
+  } }, async (req, reply) => {
     requireWrite(req)
-    const q = linkBody.parse({ type: req.query.type, targetKey: req.query.target })
+    const q = { type: req.query.type, targetKey: req.query.target }
     const [a, t] = await Promise.all([issueByKey(db, req.me.workspaceId, req.params.key), issueByKey(db, req.me.workspaceId, q.targetKey)])
     await db.query('delete from issue_links where issue_id = $1 and target_id = $2 and type = $3', [a.id, t.id, q.type])
     reply.code(204).send()
   })
-  app.put<{ Params: { key: string } }>('/issues/:key/watch', async (req, reply) => {
+  app.put('/issues/:key/watch', { schema: { tags: ['Links & watchers'], summary: 'Watch an issue', params: keyP } }, async (req, reply) => {
     const i = await issueByKey(db, req.me.workspaceId, req.params.key)
     await db.query('insert into issue_watchers (issue_id, user_id) values ($1, $2) on conflict do nothing', [i.id, req.me.id])
     reply.code(204).send()
   })
-  app.delete<{ Params: { key: string } }>('/issues/:key/watch', async (req, reply) => {
+  app.delete('/issues/:key/watch', { schema: { tags: ['Links & watchers'], summary: 'Stop watching an issue', params: keyP } }, async (req, reply) => {
     const i = await issueByKey(db, req.me.workspaceId, req.params.key)
     await db.query('delete from issue_watchers where issue_id = $1 and user_id = $2', [i.id, req.me.id])
     reply.code(204).send()
@@ -221,9 +236,9 @@ const plugin: FastifyPluginAsync = async app => {
 
   // ── Comments (authors edit/delete their own) ──
   const body = z.object({ body: z.string().min(1).max(20000) })
-  app.post<{ Params: { key: string } }>('/issues/:key/comments', async req => {
+  app.post('/issues/:key/comments', { schema: { tags: ['Comments & work logs'], summary: 'Add a comment (notifies watchers)', params: keyP, body } }, async req => {
     requireWrite(req)
-    const b = body.parse(req.body)
+    const b = req.body
     return tx(async d => {
       const i = await issueByKey(d, req.me.workspaceId, req.params.key)
       const [c] = await d.query('insert into comments (issue_id, author_id, body) values ($1, $2, $3) returning *', [i.id, req.me.id, b.body])
@@ -232,33 +247,36 @@ const plugin: FastifyPluginAsync = async app => {
       return c
     })
   })
-  app.patch<{ Params: { id: string } }>('/comments/:id', async req => {
+  app.patch('/comments/:id', { schema: { tags: ['Comments & work logs'], summary: 'Edit your own comment', params: idP, body } }, async req => {
     requireWrite(req)
     const [c] = await db.query(
       `update comments set body = $3, edited_at = now() where id = $1 and author_id = $2 returning *`,
-      [uuid.parse(req.params.id), req.me.id, body.parse(req.body).body])
+      [req.params.id, req.me.id, req.body.body])
     if (!c) throw new HttpError(404, 'Not found, or not yours')
     return c
   })
-  app.delete<{ Params: { id: string } }>('/comments/:id', async (req, reply) => {
+  app.delete('/comments/:id', { schema: { tags: ['Comments & work logs'], summary: 'Delete your own comment', params: idP } }, async (req, reply) => {
     requireWrite(req)
-    const r = await db.query('delete from comments where id = $1 and author_id = $2 returning id', [uuid.parse(req.params.id), req.me.id])
+    const r = await db.query('delete from comments where id = $1 and author_id = $2 returning id', [req.params.id, req.me.id])
     if (!r.length) throw new HttpError(404, 'Not found, or not yours')
     reply.code(204).send()
   })
 
   // ── Work logs ──
-  app.post<{ Params: { key: string } }>('/issues/:key/worklogs', async req => {
+  app.post('/issues/:key/worklogs', { schema: {
+    tags: ['Comments & work logs'], summary: 'Log time on an issue', params: keyP,
+    body: z.object({ minutes: z.number().int().positive(), date, note: z.string().default('') }),
+  } }, async req => {
     requireWrite(req)
-    const b = z.object({ minutes: z.number().int().positive(), date, note: z.string().default('') }).parse(req.body)
+    const b = req.body
     const i = await issueByKey(db, req.me.workspaceId, req.params.key)
     const [w] = await db.query('insert into worklogs (issue_id, user_id, minutes, date, note) values ($1, $2, $3, $4, $5) returning *',
       [i.id, req.me.id, b.minutes, b.date, b.note])
     return w
   })
-  app.delete<{ Params: { id: string } }>('/worklogs/:id', async (req, reply) => {
+  app.delete('/worklogs/:id', { schema: { tags: ['Comments & work logs'], summary: 'Delete your own work log', params: idP } }, async (req, reply) => {
     requireWrite(req)
-    const r = await db.query('delete from worklogs where id = $1 and user_id = $2 returning id', [uuid.parse(req.params.id), req.me.id])
+    const r = await db.query('delete from worklogs where id = $1 and user_id = $2 returning id', [req.params.id, req.me.id])
     if (!r.length) throw new HttpError(404, 'Not found, or not yours')
     reply.code(204).send()
   })

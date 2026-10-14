@@ -6,7 +6,8 @@
     "dev": "NODE_ENV=development node --watch src/index.ts",
     "start": "node src/index.ts",
     "test": "node --test test/*.test.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "openapi": "node scripts/openapi.ts"
   },
   "engines": {
     "node": ">=24"

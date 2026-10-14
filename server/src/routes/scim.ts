@@ -1,4 +1,4 @@
-import type { FastifyPluginAsync } from 'fastify'
+import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { timingSafeEqual } from 'node:crypto'
 import { z } from 'zod'
 import { db } from '../db.ts'
@@ -27,7 +27,11 @@ const userBody = z.object({
 const displayName = (b: z.infer<typeof userBody>) =>
   b.displayName ?? [b.name?.givenName, b.name?.familyName].filter(Boolean).join(' ') ?? b.userName
 
-const plugin: FastifyPluginAsync = async app => {
+const idP = z.object({ id: z.string().uuid() })
+const TAG = ['SCIM (Entra provisioning)']
+const sec = [{ scimToken: [] }]
+
+const plugin: FastifyPluginAsyncZod = async app => {
   app.addHook('preHandler', async req => {
     const got = Buffer.from(String(req.headers.authorization ?? '').replace(/^Bearer /i, ''))
     const want = Buffer.from(token)
@@ -38,14 +42,17 @@ const plugin: FastifyPluginAsync = async app => {
   })
   app.addHook('onSend', async (_req, reply) => { reply.header('content-type', 'application/scim+json') })
 
-  app.get('/ServiceProviderConfig', async () => ({
+  app.get('/ServiceProviderConfig', { schema: { tags: TAG, summary: 'SCIM capabilities', security: sec } }, async () => ({
     schemas: ['urn:ietf:params:scim:schemas:core:2.0:ServiceProviderConfig'],
     patch: { supported: true }, bulk: { supported: false }, filter: { supported: true, maxResults: 200 },
     changePassword: { supported: false }, sort: { supported: false }, etag: { supported: false },
     authenticationSchemes: [{ type: 'oauthbearertoken', name: 'Bearer token', description: 'Shared secret' }],
   }))
 
-  app.get<{ Querystring: { filter?: string; startIndex?: string; count?: string } }>('/Users', async req => {
+  app.get('/Users', { schema: {
+    tags: TAG, summary: 'List users; supports filter=userName eq "x"', security: sec,
+    querystring: z.object({ filter: z.string().optional(), startIndex: z.string().optional(), count: z.string().optional() }),
+  } }, async req => {
     const start = Math.max(1, Number(req.query.startIndex ?? 1))
     const count = Math.min(200, Math.max(0, Number(req.query.count ?? 100)))
     const f = /^userName eq "([^"]+)"$/i.exec(req.query.filter ?? '')   // the only filter Entra sends
@@ -55,14 +62,14 @@ const plugin: FastifyPluginAsync = async app => {
     return { schemas: ['urn:ietf:params:scim:api:messages:2.0:ListResponse'], totalResults: rows[0]?.total ?? 0, startIndex: start, itemsPerPage: rows.length, Resources: rows.map(toScim) }
   })
 
-  app.get<{ Params: { id: string } }>('/Users/:id', async req => {
-    const [u] = await db.query('select * from users where id = $1', [z.string().uuid().parse(req.params.id)])
+  app.get('/Users/:id', { schema: { tags: TAG, summary: 'Get a user', security: sec, params: idP } }, async req => {
+    const [u] = await db.query('select * from users where id = $1', [req.params.id])
     if (!u) throw new HttpError(404, 'Not found')
     return toScim(u)
   })
 
-  app.post('/Users', async (req, reply) => {
-    const b = userBody.parse(req.body)
+  app.post('/Users', { schema: { tags: TAG, summary: 'Provision a user', security: sec, body: userBody } }, async (req, reply) => {
+    const b = req.body
     const email = b.userName.toLowerCase()
     const name = displayName(b) || email
     const [u] = await db.query<any>(
@@ -72,19 +79,22 @@ const plugin: FastifyPluginAsync = async app => {
     return toScim(u)
   })
 
-  app.put<{ Params: { id: string } }>('/Users/:id', async req => {
-    const b = userBody.parse(req.body)
+  app.put('/Users/:id', { schema: { tags: TAG, summary: 'Replace a user', security: sec, params: idP, body: userBody } }, async req => {
+    const b = req.body
     const name = displayName(b)
     const [u] = await db.query<any>(
       `update users set entra_oid = coalesce($2, entra_oid), email = lower($3), name = $4, initials = $5, title = $6, active = $7 where id = $1 returning *`,
-      [z.string().uuid().parse(req.params.id), b.externalId ?? null, b.userName, name, initials(name), b.title ?? null, b.active === undefined ? true : asBool(b.active)])
+      [req.params.id, b.externalId ?? null, b.userName, name, initials(name), b.title ?? null, b.active === undefined ? true : asBool(b.active)])
     if (!u) throw new HttpError(404, 'Not found')
     return toScim(u)
   })
 
   // Entra mostly sends {op:'Replace', path:'active', value:'False'}; also handle the no-path object form.
-  app.patch<{ Params: { id: string } }>('/Users/:id', async req => {
-    const { Operations } = z.object({ Operations: z.array(z.object({ op: z.string(), path: z.string().optional(), value: z.unknown() })) }).parse(req.body)
+  app.patch('/Users/:id', { schema: {
+    tags: TAG, summary: 'Patch a user (Entra deactivates with active=false)', security: sec, params: idP,
+    body: z.object({ Operations: z.array(z.object({ op: z.string(), path: z.string().optional(), value: z.unknown() })) }),
+  } }, async req => {
+    const { Operations } = req.body
     const set: Record<string, unknown> = {}
     for (const o of Operations) {
       if (o.op.toLowerCase() === 'remove') continue
@@ -101,13 +111,13 @@ const plugin: FastifyPluginAsync = async app => {
     if (!cols.length) throw new HttpError(400, 'Nothing to update')
     const [u] = await db.query<any>(
       `update users set ${cols.map((c, i) => `${c} = $${i + 2}`).join(', ')} where id = $1 returning *`,
-      [z.string().uuid().parse(req.params.id), ...cols.map(c => set[c])])
+      [req.params.id, ...cols.map(c => set[c])])
     if (!u) throw new HttpError(404, 'Not found')
     return toScim(u)
   })
 
-  app.delete<{ Params: { id: string } }>('/Users/:id', async (req, reply) => {
-    await db.query('update users set active = false where id = $1', [z.string().uuid().parse(req.params.id)])
+  app.delete('/Users/:id', { schema: { tags: TAG, summary: 'Deactivate a user (soft)', security: sec, params: idP } }, async (req, reply) => {
+    await db.query('update users set active = false where id = $1', [req.params.id])
     reply.code(204).send()
   })
 }

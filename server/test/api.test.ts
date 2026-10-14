@@ -146,11 +146,17 @@ test('OpenAPI: project routes are documented and the schemas are enforced', { sk
   assert.ok(spec.components.securitySchemes.bearer && spec.components.securitySchemes.devSecret)
   const post = spec.paths['/api/projects/{key}/statuses'].post
   assert.deepEqual(post.tags, ['Project settings'])
-  assert.deepEqual(post.requestBody.content['application/json'].schema.required.sort(), ['category', 'color', 'name'])
-  // ponytail: only the migrated route files so far; slice 2 widens this to every /api and /scim path
+  assert.deepEqual([...post.requestBody.content['application/json'].schema.required].sort(), ['category', 'color', 'name'])
+  // every route (except the health check and the docs themselves) must be documented
   for (const [path, ops] of Object.entries<any>(spec.paths))
-    if (path.startsWith('/api/projects') && !/\/(issues|summary)$/.test(path))
-      for (const op of Object.values<any>(ops)) assert.ok(op.summary, `${path} has no summary`)
+    if (path !== '/health')
+      for (const [method, op] of Object.entries<any>(ops)) {
+        assert.ok(op.summary, `${method.toUpperCase()} ${path} has no summary`)
+        assert.ok(op.tags?.length, `${method.toUpperCase()} ${path} has no tag`)
+      }
+  // the committed openapi.json must match the code (regenerate with `npm run openapi`)
+  const committed = JSON.parse(readFileSync(new URL('../openapi.json', import.meta.url), 'utf8'))
+  assert.deepEqual(committed, spec, 'server/openapi.json is stale: run `npm run openapi`')
 
   // the same schema rejects a bad body before the handler runs
   const bad = await call('POST', '/api/projects/PAY/statuses', { name: 'x' })

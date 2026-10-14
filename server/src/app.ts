@@ -26,6 +26,7 @@ export async function build() {
         securitySchemes: {
           bearer: { type: 'http', scheme: 'bearer', bearerFormat: 'Entra ID JWT' },
           devSecret: { type: 'apiKey', in: 'header', name: 'x-dev-secret', description: 'Dev login only (AUTH_DEV); pair with x-dev-user' },
+          scimToken: { type: 'http', scheme: 'bearer', description: 'Shared SCIM_TOKEN (Entra provisioning only)' },
           devUser: { type: 'apiKey', in: 'header', name: 'x-dev-user', description: 'Dev login only: your email' },
         },
       },

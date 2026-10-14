@@ -1,4 +1,4 @@
-import type { FastifyPluginAsync } from 'fastify'
+import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
 import { randomUUID } from 'node:crypto'
 import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3'
@@ -16,12 +16,16 @@ const s3 = new S3Client({
 })
 const needBucket = () => { if (!bucket) throw new HttpError(503, 'File storage is not configured (S3_BUCKET)') }
 
-const plugin: FastifyPluginAsync = async app => {
+const plugin: FastifyPluginAsyncZod = async app => {
   // Step 1: register the attachment, get a URL to PUT the bytes to
-  app.post<{ Params: { key: string } }>('/issues/:key/attachments', async req => {
+  app.post('/issues/:key/attachments', { schema: {
+    tags: ['Attachments'], summary: 'Register an attachment; returns a presigned uploadUrl to PUT the bytes to (5 min)',
+    params: z.object({ key: z.string().describe('Issue key, e.g. PAY-12') }),
+    body: z.object({ name: z.string().min(1).max(255), size: z.number().int().positive().max(MAX_BYTES), type: z.string().max(255) }),
+  } }, async req => {
     requireWrite(req)
     needBucket()
-    const b = z.object({ name: z.string().min(1).max(255), size: z.number().int().positive().max(MAX_BYTES), type: z.string().max(255) }).parse(req.body)
+    const b = req.body
     const m = /^([A-Za-z][A-Za-z0-9]*)-(\d+)$/.exec(req.params.key)
     const [i] = m ? await db.query<{ id: string }>(
       `select i.id from issues i join projects p on p.id = i.project_id
@@ -44,7 +48,7 @@ const plugin: FastifyPluginAsync = async app => {
     return a
   }
 
-  app.get<{ Params: { id: string } }>('/attachments/:id/url', async req => {
+  app.get('/attachments/:id/url', { schema: { tags: ['Attachments'], summary: 'Presigned download URL (5 min)', params: z.object({ id: z.string().uuid() }) } }, async req => {
     needBucket()
     const a = await owned(req.params.id, req.me.workspaceId)
     const url = await getSignedUrl(s3, new GetObjectCommand({
@@ -53,7 +57,7 @@ const plugin: FastifyPluginAsync = async app => {
     return { url }
   })
 
-  app.delete<{ Params: { id: string } }>('/attachments/:id', async (req, reply) => {
+  app.delete('/attachments/:id', { schema: { tags: ['Attachments'], summary: 'Delete an attachment and its file', params: z.object({ id: z.string().uuid() }) } }, async (req, reply) => {
     requireWrite(req)
     needBucket()
     const a = await owned(req.params.id, req.me.workspaceId)

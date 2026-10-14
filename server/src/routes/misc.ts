@@ -1,4 +1,4 @@
-import type { FastifyPluginAsync } from 'fastify'
+import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
 import { db } from '../db.ts'
 import { HttpError, requireWrite } from '../auth.ts'
@@ -16,14 +16,20 @@ const viewFilters = z.object({
   resolution: z.enum(['open', 'done', 'all']).default('open'),
 }).passthrough()
 
-const plugin: FastifyPluginAsync = async app => {
+const idP = z.object({ id: uuid })
+const pageQ = { cursor: z.string().optional().describe('`next` from the previous page') }
+
+const plugin: FastifyPluginAsyncZod = async app => {
   // Cross-project search / saved-view results. Keyset by (updated_at, id) desc.
-  app.get<{ Querystring: Record<string, string> }>('/search', async req => {
-    const q = z.object({
-      q: z.string().default(''), project: uuid.optional(), assignee: z.string().optional(), type: z.string().optional(),
-      priority: z.string().optional(), label: z.string().optional(), resolution: z.enum(['open', 'done', 'all']).default('open'),
-      cursor: z.string().optional(), limit: z.coerce.number().int().min(1).max(200).default(50),
-    }).parse(req.query)
+  app.get('/search', { schema: {
+    tags: ['Search & work'], summary: 'Search issues across projects (text, key like PAY-12, or filters); newest first, keyset-paginated',
+    querystring: z.object({
+      q: z.string().default('').describe('Free text or an issue key'), project: uuid.optional(), assignee: z.string().optional().describe('User id, or "me"'),
+      type: z.string().optional(), priority: z.string().optional(), label: z.string().optional(),
+      resolution: z.enum(['open', 'done', 'all']).default('open'), ...pageQ, limit: z.coerce.number().int().min(1).max(200).default(50),
+    }),
+  } }, async req => {
+    const q = req.query
     const args: unknown[] = [req.me.workspaceId]
     const where = ['i.workspace_id = $1', 'i.deleted_at is null']
     const add = (sql: string, v: unknown) => { args.push(v); where.push(sql.replace(/\?/g, `$${args.length}`)) }
@@ -54,12 +60,12 @@ const plugin: FastifyPluginAsync = async app => {
   })
 
   // "Your work": open items assigned to me
-  app.get('/me/work', async req => db.query(
+  app.get('/me/work', { schema: { tags: ['Search & work'], summary: 'Open issues assigned to me, due soonest first' } }, async req => db.query(
     `${LIST} where i.workspace_id = $1 and i.assignee_id = $2 and i.deleted_at is null and st.category <> 'done'
       order by i.due_date nulls last, i.updated_at desc limit 200`, [req.me.workspaceId, req.me.id]))
 
   // Counts for summary/dashboards without scanning issues in the client
-  app.get<{ Params: { key: string } }>('/projects/:key/summary', async req => {
+  app.get('/projects/:key/summary', { schema: { tags: ['Search & work'], summary: 'Counts by status, assignee and type; created in the last 7 days; overdue', params: z.object({ key: z.string() }) } }, async req => {
     const p = await projectByKey(db, req.me.workspaceId, req.params.key)
     const [byStatus, byAssignee, byType, created, overdue] = await Promise.all([
       db.query(`select s.id as status_id, s.name, s.category, count(i.id)::int as count from statuses s
@@ -75,46 +81,46 @@ const plugin: FastifyPluginAsync = async app => {
   })
 
   // ── Notifications ──
-  app.get<{ Querystring: { archived?: string } }>('/notifications', async req => db.query(
+  app.get('/notifications', { schema: { tags: ['Notifications'], summary: 'My notifications (newest 200)', querystring: z.object({ archived: z.enum(['0', '1']).optional().describe('1 = archived ones') }) } }, async req => db.query(
     `select n.*, p.key || '-' || i.number as issue_key, i.title as issue_title
        from notifications n join issues i on i.id = n.issue_id join projects p on p.id = i.project_id
       where n.user_id = $1 and n.archived = $2 order by n.created_at desc limit 200`, [req.me.id, req.query.archived === '1']))
 
-  app.patch<{ Params: { id: string } }>('/notifications/:id', async req => {
-    const b = z.object({ read: z.boolean(), archived: z.boolean() }).partial().parse(req.body)
+  app.patch('/notifications/:id', { schema: { tags: ['Notifications'], summary: 'Mark a notification read / archived', params: idP, body: z.object({ read: z.boolean(), archived: z.boolean() }).partial() } }, async req => {
+    const b = req.body
     const [n] = await db.query(
       `update notifications set read = coalesce($3, read), archived = coalesce($4, archived)
-        where id = $1 and user_id = $2 returning *`, [uuid.parse(req.params.id), req.me.id, b.read ?? null, b.archived ?? null])
+        where id = $1 and user_id = $2 returning *`, [req.params.id, req.me.id, b.read ?? null, b.archived ?? null])
     if (!n) throw new HttpError(404, 'Not found')
     return n
   })
-  app.post('/notifications/read-all', async (req, reply) => {
+  app.post('/notifications/read-all', { schema: { tags: ['Notifications'], summary: 'Mark all my notifications read' } }, async (req, reply) => {
     await db.query('update notifications set read = true where user_id = $1 and not read', [req.me.id])
     reply.code(204).send()
   })
 
   // ── Saved views & dashboards (owner edits; shared views visible to all) ──
-  app.get('/views', async req => db.query(
+  app.get('/views', { schema: { tags: ['Saved views'], summary: 'My saved views plus shared ones' } }, async req => db.query(
     'select * from saved_views where workspace_id = $1 and (owner_id = $2 or shared) order by name', [req.me.workspaceId, req.me.id]))
-  app.post('/views', async req => {
+  app.post('/views', { schema: { tags: ['Saved views'], summary: 'Save a view', body: z.object({ name: z.string().min(1), shared: z.boolean().default(false), filters: viewFilters }) } }, async req => {
     requireWrite(req)
-    const b = z.object({ name: z.string().min(1), shared: z.boolean().default(false), filters: viewFilters }).parse(req.body)
+    const b = req.body
     return (await db.query('insert into saved_views (workspace_id, owner_id, name, shared, filters) values ($1, $2, $3, $4, $5) returning *',
       [req.me.workspaceId, req.me.id, b.name, b.shared, JSON.stringify(b.filters)]))[0]
   })
-  app.patch<{ Params: { id: string } }>('/views/:id', async req => {
+  app.patch('/views/:id', { schema: { tags: ['Saved views'], summary: 'Edit my saved view', params: idP, body: z.object({ name: z.string().min(1), shared: z.boolean(), filters: viewFilters }).partial() } }, async req => {
     requireWrite(req)
-    const b = z.object({ name: z.string().min(1), shared: z.boolean(), filters: viewFilters }).partial().parse(req.body)
+    const b = req.body
     const [v] = await db.query(
       `update saved_views set name = coalesce($3, name), shared = coalesce($4, shared), filters = coalesce($5::jsonb, filters)
         where id = $1 and owner_id = $2 returning *`,
-      [uuid.parse(req.params.id), req.me.id, b.name ?? null, b.shared ?? null, b.filters ? JSON.stringify(b.filters) : null])
+      [req.params.id, req.me.id, b.name ?? null, b.shared ?? null, b.filters ? JSON.stringify(b.filters) : null])
     if (!v) throw new HttpError(404, 'Not found, or not yours')
     return v
   })
-  app.delete<{ Params: { id: string } }>('/views/:id', async (req, reply) => {
+  app.delete('/views/:id', { schema: { tags: ['Saved views'], summary: 'Delete my saved view', params: idP } }, async (req, reply) => {
     requireWrite(req)
-    const r = await db.query('delete from saved_views where id = $1 and owner_id = $2 returning id', [uuid.parse(req.params.id), req.me.id])
+    const r = await db.query('delete from saved_views where id = $1 and owner_id = $2 returning id', [req.params.id, req.me.id])
     if (!r.length) throw new HttpError(404, 'Not found, or not yours')
     reply.code(204).send()
   })
@@ -123,26 +129,26 @@ const plugin: FastifyPluginAsync = async app => {
     id: z.string(), kind: z.enum(['assigned', 'view', 'status', 'created', 'workload', 'burndown', 'due']),
     projectId: uuid.optional(), viewId: uuid.optional(), wide: z.boolean().optional(),
   })
-  app.get('/dashboards', async req => db.query(
+  app.get('/dashboards', { schema: { tags: ['Dashboards'], summary: 'My dashboards' } }, async req => db.query(
     'select * from dashboards where workspace_id = $1 and owner_id = $2 order by name', [req.me.workspaceId, req.me.id]))
-  app.post('/dashboards', async req => {
+  app.post('/dashboards', { schema: { tags: ['Dashboards'], summary: 'Create a dashboard', body: z.object({ name: z.string().min(1), gadgets: z.array(gadget).default([]) }) } }, async req => {
     requireWrite(req)
-    const b = z.object({ name: z.string().min(1), gadgets: z.array(gadget).default([]) }).parse(req.body)
+    const b = req.body
     return (await db.query('insert into dashboards (workspace_id, owner_id, name, gadgets) values ($1, $2, $3, $4) returning *',
       [req.me.workspaceId, req.me.id, b.name, JSON.stringify(b.gadgets)]))[0]
   })
-  app.patch<{ Params: { id: string } }>('/dashboards/:id', async req => {
+  app.patch('/dashboards/:id', { schema: { tags: ['Dashboards'], summary: 'Edit my dashboard', params: idP, body: z.object({ name: z.string().min(1), gadgets: z.array(gadget) }).partial() } }, async req => {
     requireWrite(req)
-    const b = z.object({ name: z.string().min(1), gadgets: z.array(gadget) }).partial().parse(req.body)
+    const b = req.body
     const [d] = await db.query(
       `update dashboards set name = coalesce($3, name), gadgets = coalesce($4::jsonb, gadgets) where id = $1 and owner_id = $2 returning *`,
-      [uuid.parse(req.params.id), req.me.id, b.name ?? null, b.gadgets ? JSON.stringify(b.gadgets) : null])
+      [req.params.id, req.me.id, b.name ?? null, b.gadgets ? JSON.stringify(b.gadgets) : null])
     if (!d) throw new HttpError(404, 'Not found, or not yours')
     return d
   })
-  app.delete<{ Params: { id: string } }>('/dashboards/:id', async (req, reply) => {
+  app.delete('/dashboards/:id', { schema: { tags: ['Dashboards'], summary: 'Delete my dashboard', params: idP } }, async (req, reply) => {
     requireWrite(req)
-    const r = await db.query('delete from dashboards where id = $1 and owner_id = $2 returning id', [uuid.parse(req.params.id), req.me.id])
+    const r = await db.query('delete from dashboards where id = $1 and owner_id = $2 returning id', [req.params.id, req.me.id])
     if (!r.length) throw new HttpError(404, 'Not found, or not yours')
     reply.code(204).send()
   })

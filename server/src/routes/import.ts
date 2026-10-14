@@ -1,4 +1,5 @@
-import type { FastifyPluginAsync } from 'fastify'
+import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
+import { z } from 'zod'
 import { randomUUID } from 'node:crypto'
 import { tx, type Db } from '../db.ts'
 import { requireAdmin } from '../auth.ts'
@@ -8,8 +9,12 @@ import { requireAdmin } from '../auth.ts'
 // Skipped: notifications (ephemeral), attachment bytes (live in the browser; re-upload to S3).
 const ms = (v?: number) => (v ? new Date(v).toISOString() : null)
 
-const plugin: FastifyPluginAsync = async app => {
-  app.post('/import', async req => {
+const plugin: FastifyPluginAsyncZod = async app => {
+  // Body is the whole browser state (large, free-form), so it is documented as an object and checked by hand below
+  app.post('/import', { schema: {
+    tags: ['Admin'], summary: 'One-time import of a browser forge:v1 state (reducer v4). Admin only; existing project keys are skipped.',
+    body: z.object({ version: z.literal(4) }).passthrough(),
+  } }, async req => {
     requireAdmin(req)
     const s: any = req.body
     if (!s || s.version !== 4 || !Array.isArray(s.projects)) return { error: 'Expected a reducer v4 state (version: 4)' }
