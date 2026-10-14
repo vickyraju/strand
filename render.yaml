@@ -1,4 +1,4 @@
-# Render blueprint: the API as a Docker web service. Database is hosted Supabase (dev); Aurora in prod.
+# Render blueprint: the API as a Docker web service. Database is Neon Postgres (dev); Aurora in prod.
 # Secrets (sync: false) are entered once in the Render dashboard, never committed.
 services:
   - type: web
@@ -10,7 +10,7 @@ services:
     autoDeploy: true
     branch: strand
     envVars:
-      - key: DATABASE_URL        # Supabase *session* pooler URL (port 5432): LISTEN/NOTIFY needs it
+      - key: DATABASE_URL        # Neon *direct* (non-pooler) URL: LISTEN/NOTIFY needs it. Omit channel_binding=require (the Node driver lacks it)
         sync: false
       - key: PG_POOL
         value: "10"

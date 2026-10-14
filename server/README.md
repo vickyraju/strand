@@ -1,9 +1,9 @@
 # Strand API
 
-Fastify + Postgres. Schema lives in [../supabase/migrations](../supabase/migrations) (plain Postgres, Aurora-compatible).
+Fastify + Postgres. Schema lives in [../supabase/migrations](../supabase/migrations) (plain SQL, so it runs on Neon, Aurora or any Postgres; the folder name is historical).
 
 ```bash
-npx supabase start              # from repo root; applies migrations (needs Docker)
+for f in ../supabase/migrations/*.sql; do psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$f"; done   # apply migrations in order
 cp .env.example .env            # then: set -a; source .env; set +a
 npm run dev                     # http://localhost:3001/health
 DATABASE_URL=<throwaway db> npm test   # WIPES the public schema, then runs integration tests
