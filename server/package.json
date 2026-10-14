@@ -7,7 +7,8 @@
     "start": "node src/index.ts",
     "test": "node --test test/*.test.ts",
     "typecheck": "tsc --noEmit",
-    "openapi": "node scripts/openapi.ts"
+    "openapi": "node scripts/openapi.ts",
+    "smoke": "node scripts/smoke.ts"
   },
   "engines": {
     "node": ">=24"
