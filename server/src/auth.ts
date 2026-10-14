@@ -1,4 +1,5 @@
 import { createRemoteJWKSet, jwtVerify } from 'jose'
+import { timingSafeEqual } from 'node:crypto'
 import type { FastifyRequest } from 'fastify'
 import { tx } from './db.ts'
 
@@ -16,7 +17,15 @@ const tenant = process.env.ENTRA_TENANT_ID
 const clientId = process.env.ENTRA_CLIENT_ID
 const jwks = tenant ? createRemoteJWKSet(new URL(`https://login.microsoftonline.com/${tenant}/discovery/v2.0/keys`)) : null
 const devAuth = process.env.AUTH_DEV === '1'
-if (!devAuth && !jwks) throw new Error('Set ENTRA_TENANT_ID + ENTRA_CLIENT_ID (or AUTH_DEV=1 for local development)')
+if (!devAuth && !jwks) throw new Error('Set ENTRA_TENANT_ID + ENTRA_CLIENT_ID (or AUTH_DEV=1 for development)')
+// Dev login without Entra: a shared secret keeps a public dev URL from being open to anyone. Mandatory in production mode.
+const devSecret = process.env.DEV_AUTH_SECRET ?? ''
+if (devAuth && !jwks && process.env.NODE_ENV === 'production' && devSecret.length < 16)
+  throw new Error('AUTH_DEV in production mode needs DEV_AUTH_SECRET (16+ chars)')
+const sameSecret = (got: unknown) => {
+  const a = Buffer.from(String(got ?? '')), b = Buffer.from(devSecret)
+  return a.length === b.length && timingSafeEqual(a, b)
+}
 
 const initials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]!.toUpperCase()).join('') || '?'
 
@@ -24,7 +33,8 @@ interface Identity { oid?: string; email: string; name: string; admin: boolean }
 
 async function identify(req: FastifyRequest): Promise<Identity> {
   if (devAuth && !req.headers.authorization) {
-    const email = String(req.headers['x-dev-user'] ?? 'dev@strand.local')
+    if (devSecret && !sameSecret(req.headers['x-dev-secret'])) throw new HttpError(401, 'Missing or wrong dev secret')
+    const email = String(req.headers['x-dev-user'] ?? 'dev@strand.local').toLowerCase()
     return { email, name: email.split('@')[0]!, admin: req.headers['x-dev-admin'] === '1' }
   }
   const token = req.headers.authorization?.replace(/^Bearer /i, '')
