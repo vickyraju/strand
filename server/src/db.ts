@@ -4,6 +4,8 @@ import pg from 'pg'
 pg.types.setTypeParser(20, Number)
 pg.types.setTypeParser(1700, Number)
 pg.types.setTypeParser(1082, v => v)
+// timestamps → ISO strings (what JSON would produce anyway), so response schemas can say `string` and nothing is a Date
+for (const oid of [1114, 1184]) pg.types.setTypeParser(oid, v => new Date(/[zZ]|[+-]\d\d(:?\d\d)?$/.test(v) ? v : v + 'Z').toISOString())
 
 export const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
