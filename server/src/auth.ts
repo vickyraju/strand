@@ -19,12 +19,15 @@ const jwks = tenant ? createRemoteJWKSet(new URL(`https://login.microsoftonline.
 const devAuth = process.env.AUTH_DEV === '1'
 if (!devAuth && !jwks) throw new Error('Set ENTRA_TENANT_ID + ENTRA_CLIENT_ID (or AUTH_DEV=1 for development)')
 // Dev login without Entra: a shared secret keeps a public dev URL from being open to anyone. Mandatory in production mode.
+// Fails closed: only an explicit NODE_ENV=development|test (local runs, tests) may skip the secret; anything else needs one.
 const devSecret = process.env.DEV_AUTH_SECRET ?? ''
-if (devAuth && !jwks && process.env.NODE_ENV === 'production' && devSecret.length < 16)
-  throw new Error('AUTH_DEV in production mode needs DEV_AUTH_SECRET (16+ chars)')
+const localDev = ['development', 'test'].includes(process.env.NODE_ENV ?? '')
+if (devAuth && jwks) throw new Error('AUTH_DEV and ENTRA_* are both set; remove AUTH_DEV so dev login cannot bypass Entra')
+if (devAuth && !localDev && devSecret.length < 16)
+  throw new Error('AUTH_DEV needs DEV_AUTH_SECRET (16+ chars) unless NODE_ENV is development or test')
 const sameSecret = (got: unknown) => {
   const a = Buffer.from(String(got ?? '')), b = Buffer.from(devSecret)
-  return a.length === b.length && timingSafeEqual(a, b)
+  return devSecret !== '' && a.length === b.length && timingSafeEqual(a, b)
 }
 
 const initials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]!.toUpperCase()).join('') || '?'
@@ -33,9 +36,9 @@ interface Identity { oid?: string; email: string; name: string; admin: boolean }
 
 async function identify(req: FastifyRequest): Promise<Identity> {
   if (devAuth && !req.headers.authorization) {
-    if (devSecret && !sameSecret(req.headers['x-dev-secret'])) throw new HttpError(401, 'Missing or wrong dev secret')
+    if ((devSecret || !localDev) && !sameSecret(req.headers['x-dev-secret'])) throw new HttpError(401, 'Missing or wrong dev secret')
     const email = String(req.headers['x-dev-user'] ?? 'dev@strand.local').toLowerCase()
-    return { email, name: email.split('@')[0]!, admin: req.headers['x-dev-admin'] === '1' }
+    return { email, name: email.split('@')[0]!, admin: localDev && req.headers['x-dev-admin'] === '1' }   // never self-grantable on a deployed dev server
   }
   const token = req.headers.authorization?.replace(/^Bearer /i, '')
   if (!token || !jwks) throw new HttpError(401, 'Missing bearer token')
