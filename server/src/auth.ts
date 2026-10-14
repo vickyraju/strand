@@ -52,11 +52,21 @@ export async function authenticate(req: FastifyRequest) {
   const who = await identify(req)
   if (!who.email) throw new HttpError(401, 'Token has no email')
   req.me = await tx(async d => {
-    const [u] = await d.query<{ id: string; active: boolean }>(
-      `insert into users (entra_oid, email, name, initials) values ($1, $2, $3, $4)
-       on conflict (email) do update set entra_oid = coalesce(users.entra_oid, excluded.entra_oid)
-       returning id, active`,
-      [who.oid ?? null, who.email, who.name, initials(who.name)])
+    // Identity is the Entra `oid`. Email (a mutable claim) only links a row that has no oid yet.
+    type U = { id: string; active: boolean; entraOid: string | null }
+    let [u] = who.oid ? await d.query<U>('select id, active, entra_oid from users where entra_oid = $1', [who.oid]) : []
+    if (!u) {
+      [u] = await d.query<U>('select id, active, entra_oid from users where email = $1', [who.email])
+      if (u) {
+        if (who.oid && u.entraOid && u.entraOid !== who.oid) throw new HttpError(403, 'Email belongs to a different account')
+        if (who.oid) await d.query('update users set entra_oid = $2 where id = $1', [u.id, who.oid])
+      } else {
+        [u] = await d.query<U>(
+          `insert into users (entra_oid, email, name, initials) values ($1, $2, $3, $4)
+           on conflict (email) do update set email = excluded.email returning id, active, entra_oid`,
+          [who.oid ?? null, who.email, who.name, initials(who.name)])
+      }
+    }
     if (!u!.active) throw new HttpError(403, 'Account is deactivated')
     let [ws] = await d.query<{ id: string }>('select id from workspaces order by created_at limit 1')
     const first = !ws
@@ -66,7 +76,9 @@ export async function authenticate(req: FastifyRequest) {
       `insert into memberships (workspace_id, user_id, role) values ($1, $2, $3)
        on conflict (workspace_id, user_id) do update set role = case
          when memberships.role = 'owner' then 'owner'
-         when $4 then 'admin' else memberships.role end
+         when $4 then 'admin'
+         when memberships.role = 'admin' then 'member'   -- the Entra claim is the source of truth
+         else memberships.role end
        returning role`,
       [ws!.id, u!.id, want, who.admin])
     return { id: u!.id, email: who.email, name: who.name, workspaceId: ws!.id, role: m!.role }
