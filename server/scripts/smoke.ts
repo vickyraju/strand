@@ -1,7 +1,7 @@
 // Checks a deployed API: node scripts/smoke.ts <base-url>
 // Dev login needs SMOKE_EMAIL and SMOKE_SECRET (the Render DEV_AUTH_SECRET); read-only apart from the first
 // sign-in, which creates your user (and the workspace, if you are the first user) like any login.
-const base = process.argv[2]?.replace(/\/$/, '')
+const base = (process.argv[2] ?? process.env.STRAND_API_URL)?.replace(/\/$/, '')
 if (!base) { console.error('usage: node scripts/smoke.ts <base-url>'); process.exit(2) }
 
 let failed = 0
@@ -13,7 +13,7 @@ const get = async (path: string, headers: Record<string, string> = {}) => {
   if (!r.ok) throw new Error(`${r.status} ${(await r.text()).slice(0, 120)}`)
   return r
 }
-const dev = { 'x-dev-user': process.env.SMOKE_EMAIL ?? '', 'x-dev-secret': process.env.SMOKE_SECRET ?? '' }
+const dev = { 'x-dev-user': process.env.SMOKE_EMAIL ?? '', 'x-dev-secret': process.env.SMOKE_SECRET ?? process.env.DEV_AUTH_SECRET ?? '' }
 
 await check('health', async () => JSON.stringify(await (await get('/health')).json()))
 await check('docs spec', async () => `${Object.keys((await (await get('/docs/json')).json() as any).paths).length} paths`)

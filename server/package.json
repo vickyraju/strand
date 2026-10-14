@@ -3,12 +3,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "NODE_ENV=development node --watch src/index.ts",
+    "dev": "NODE_ENV=development node --env-file-if-exists=.env --watch src/index.ts",
     "start": "node src/index.ts",
     "test": "node --test test/*.test.ts",
     "typecheck": "tsc --noEmit",
     "openapi": "node scripts/openapi.ts",
-    "smoke": "node scripts/smoke.ts"
+    "smoke": "node --env-file-if-exists=.env scripts/smoke.ts"
   },
   "engines": {
     "node": ">=24"
