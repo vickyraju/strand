@@ -306,6 +306,8 @@ export type Action =
   | { type: 'checkDue'; now: number }
   /** Replaces one project's issues with a fresh copy from the server. Not undoable. */
   | { type: 'loadIssues'; projectId: string; issues: Issue[] }
+  /** The server's copy of a sprint (point snapshots, member list). */
+  | { type: 'syncSprint'; sprint: Sprint }
   /** The parts of one issue that come with the single-issue call: comments, history, time logs, outgoing links, watchers. */
   | { type: 'loadIssueDetail'; issueId: string; comments: Comment[]; activity: Activity[]; worklogs: Worklog[]; links: IssueLink[]; watcherIds: string[] }
   /** The server's copy of one issue (key, rank, rule effects). Keeps the local-only watchers, links, work logs and attachments. */
@@ -712,6 +714,9 @@ export function reducer(state: State, action: Action, now = Date.now()): State {
     }
 
     // ── Bulk data ─────────────────────────────────────────
+    case 'syncSprint':
+      return state.sprints.some(s => s.id === action.sprint.id)
+        ? { ...state, sprints: state.sprints.map(s => (s.id === action.sprint.id ? action.sprint : s)) } : state
     case 'loadIssueDetail':
       return {
         ...state,

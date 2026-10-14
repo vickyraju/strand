@@ -1,7 +1,9 @@
 // Thin fetch wrapper for the Strand API. Off (apiEnabled = false) unless VITE_API_URL is set,
 // in which case the app keeps using its local store.
 
-export const API_URL: string | undefined = import.meta.env?.VITE_API_URL?.replace(/\/$/, '') || undefined
+// Vite inlines import.meta.env in the browser build; scripts and tests under Node set VITE_API_URL in the environment instead.
+const configured: string | undefined = import.meta.env?.VITE_API_URL ?? (typeof process !== 'undefined' ? process.env.VITE_API_URL : undefined)
+export const API_URL: string | undefined = configured?.replace(/\/$/, '') || undefined
 export const apiEnabled = !!API_URL
 
 /** Dev login (no Entra yet): sent as x-dev-* headers. Entra will replace this with a bearer token. */

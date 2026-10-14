@@ -261,3 +261,11 @@ test('loadIssueDetail replaces one issue\'s comments, history, time logs, links 
   assert.deepEqual([a.watcherIds, a.links.length, a.worklogs.length], [['u'], 1, 1])
   assert.deepEqual(b.watcherIds, ['old'])
 })
+
+test('syncSprint replaces the sprint with the server copy and ignores unknown ones', () => {
+  const sp = (over: object = {}) => ({ id: 's1', projectId: 'p', name: 'S', goal: '', state: 'planned' as const, ...over })
+  const s0: State = { ...EMPTY, sprints: [sp()] }
+  const s1 = reducer(s0, { type: 'syncSprint', sprint: sp({ state: 'active', committed: 8 }) })
+  assert.deepEqual([s1.sprints[0]!.state, s1.sprints[0]!.committed], ['active', 8])
+  assert.equal(reducer(s0, { type: 'syncSprint', sprint: sp({ id: 'nope' }) }), s0)
+})
