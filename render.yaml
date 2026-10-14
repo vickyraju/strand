@@ -1,0 +1,30 @@
+# Render blueprint: the API as a Docker web service. Database is hosted Supabase (dev); Aurora in prod.
+# Secrets (sync: false) are entered once in the Render dashboard, never committed.
+services:
+  - type: web
+    name: strand-api
+    runtime: docker
+    rootDir: server
+    plan: starter
+    healthCheckPath: /health
+    autoDeploy: true
+    branch: strand
+    envVars:
+      - key: DATABASE_URL        # Supabase *session* pooler URL (port 5432): LISTEN/NOTIFY needs it
+        sync: false
+      - key: PG_POOL
+        value: "10"
+      # AUTH_DEV is deliberately absent: on a public URL it would let anyone act as admin via a header.
+      # Without ENTRA_* the server refuses to start, which is the safe default.
+      - key: ENTRA_TENANT_ID
+        sync: false
+      - key: ENTRA_CLIENT_ID
+        sync: false
+      - key: SCIM_TOKEN
+        sync: false
+      - key: S3_BUCKET
+        sync: false
+      - key: S3_ENDPOINT
+        sync: false
+      - key: AWS_REGION
+        value: us-east-1
