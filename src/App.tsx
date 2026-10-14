@@ -14,6 +14,7 @@ import CreateIssueModal from './components/CreateIssueModal'
 import ShortcutsDialog from './components/ShortcutsDialog'
 import { ProjectsView, ProjectView, TAB_LABEL } from './components/ProjectView'
 import { StoreProvider, useStore, type NewIssue } from './data/store'
+import { useProjectIssues } from './api/useProjectIssues'
 import { AppContext, type AppActions } from './appContext'
 import { useLocation, navigate, href, type Route } from './router'
 import { Empty } from './components/ui'
@@ -60,6 +61,7 @@ function Shell() {
   const navList = useRef<string[]>([])
 
   const project = route.name === 'project' ? state.projects.find(p => p.key === route.key) : undefined
+  const issuesLoad = useProjectIssues(project)
   const peekIssue = peek ? state.issues.find(i => i.key === peek) : undefined
   const fullIssue = route.name === 'issue' ? state.issues.find(i => i.key === route.key) : undefined
   const keyOf = (id: string) => state.issues.find(i => i.id === id)?.key
@@ -198,7 +200,11 @@ function Shell() {
             {route.name === 'settings' && <SettingsView />}
             {route.name === 'dashboards' && <Suspense fallback={<div className="loading" role="status">Loading…</div>}><DashboardsView id={route.id} /></Suspense>}
             {route.name === 'project'  && (project
-              ? route.tab && <ProjectView project={project} tab={route.tab} sub={route.sub} />
+              ? issuesLoad.status === 'loading' ? <div className="loading" role="status">Loading work items…</div>
+              : issuesLoad.status === 'error' ? (
+                <Empty icon={<SearchX size={20} strokeWidth={1.5} />} title="Could not load work items" body="The server did not respond."
+                  action={<button className="btn btn-primary" onClick={issuesLoad.retry}>Try again</button>} />)
+              : route.tab && <ProjectView project={project} tab={route.tab} sub={route.sub} />
               : notFound('Project'))}
             {route.name === 'issue' && (fullIssue
               ? <div className="detail-page"><WorkItemDetail issueId={fullIssue.id} mode="full" navList={navList.current} /></div>

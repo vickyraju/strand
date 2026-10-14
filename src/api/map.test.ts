@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mapProject, mapWorkspace, mapSprint } from './map.ts'
+import { mapProject, mapWorkspace, mapSprint, mapIssue } from './map.ts'
 import { DEFAULT_BOARD_PREFS } from '../data/reducer.ts'
 
 const apiProject = {
@@ -58,4 +58,20 @@ test('the workspace makes the signed-in user the owner and collects every sprint
   assert.equal(s.sprints.length, 1)
   assert.deepEqual(s.starred, ['p1'])
   assert.equal(s.issues.length, 0)
+})
+
+test('an issue row maps status ids, drops nulls and leaves the detail-only collections empty', () => {
+  const i = mapIssue({
+    id: 'i1', key: 'PAY-1', projectId: 'p1', type: 'bug', title: 'T', description: null, statusId: 's2', priority: 'high',
+    assigneeId: null, reporterId: 'u1', labels: ['a'], estimate: 3, timeEstimate: null, dueDate: '2026-11-01', startDate: null,
+    sprintId: 'sp', releaseId: null, parentId: null, custom: { f1: 'A' }, rank: 2000.5, version: 3,
+    createdAt: '2026-10-01T00:00:00.000Z', updatedAt: '2026-10-02T00:00:00.000Z',
+  })
+  assert.equal(i.status, 's2')
+  assert.equal(i.description, '')
+  assert.deepEqual([i.estimate, i.dueDate, i.sprintId], [3, '2026-11-01', 'sp'])
+  for (const k of ['assigneeId', 'timeEstimate', 'startDate', 'releaseId', 'parentId']) assert.equal(k in i, false, k)
+  assert.deepEqual([i.watcherIds, i.links, i.attachments, i.worklogs], [[], [], [], []])
+  assert.equal(i.rank, 2000.5)
+  assert.equal(i.updatedAt, Date.parse('2026-10-02T00:00:00.000Z'))
 })

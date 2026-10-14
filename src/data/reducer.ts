@@ -304,6 +304,8 @@ export type Action =
   | { type: 'markRead'; ids: string[]; read?: boolean }
   | { type: 'archive'; ids: string[] }
   | { type: 'checkDue'; now: number }
+  /** Replaces one project's issues with a fresh copy from the server. Not undoable. */
+  | { type: 'loadIssues'; projectId: string; issues: Issue[] }
   | { type: 'merge'; data: Partial<State> }
   | { type: 'removeSample' }
   | { type: 'replace'; state: State }
@@ -704,6 +706,8 @@ export function reducer(state: State, action: Action, now = Date.now()): State {
     }
 
     // ── Bulk data ─────────────────────────────────────────
+    case 'loadIssues':
+      return { ...state, issues: [...state.issues.filter(i => i.projectId !== action.projectId), ...action.issues] }
     case 'merge': {
       const d = action.data
       const ids = [

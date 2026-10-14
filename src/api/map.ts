@@ -2,7 +2,7 @@
 // (epoch-millisecond numbers, optional fields). Pure: no React, no fetch, so it is unit-tested.
 import {
   DEFAULT_BOARD_PREFS, type Project, type Sprint, type State, type User,
-  type Status, type Transition, type Rule, type FieldDef, type Release, type ItemTemplate,
+  type Issue, type Status, type Transition, type Rule, type FieldDef, type Release, type ItemTemplate,
 } from '../data/reducer.ts'
 
 type Row = Record<string, any>
@@ -66,3 +66,18 @@ export function mapWorkspace(me: Row, users: Row[], projects: Row[], starredIds:
     starred: starredIds, viewed: [], sampleIds: [], views: [], dashboards: [],
   }
 }
+
+/** One row of `GET /api/projects/:key/issues`. Watchers, links, work logs and attachments are not in list
+ *  rows (they come with the single-issue call), so they start empty. */
+export const mapIssue = (i: Row): Issue => ({
+  id: i.id, key: i.key, projectId: i.projectId, type: i.type, title: i.title, description: i.description ?? '',
+  status: i.statusId, priority: i.priority, reporterId: i.reporterId ?? '', labels: i.labels ?? [],
+  ...(i.assigneeId ? { assigneeId: i.assigneeId } : {}),
+  ...(i.estimate != null ? { estimate: i.estimate } : {}),
+  ...(i.timeEstimate != null ? { timeEstimate: i.timeEstimate } : {}),
+  ...(i.dueDate ? { dueDate: i.dueDate } : {}), ...(i.startDate ? { startDate: i.startDate } : {}),
+  ...(i.sprintId ? { sprintId: i.sprintId } : {}), ...(i.releaseId ? { releaseId: i.releaseId } : {}),
+  ...(i.parentId ? { parentId: i.parentId } : {}),
+  watcherIds: [], links: [], attachments: [], worklogs: [],
+  custom: i.custom ?? {}, rank: i.rank, createdAt: ms(i.createdAt) ?? Date.now(), updatedAt: ms(i.updatedAt) ?? Date.now(),
+})

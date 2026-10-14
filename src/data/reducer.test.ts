@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { reducer, migrate, EMPTY, isDone, type Action, type State } from './reducer.ts'
+import { reducer, migrate, EMPTY, isDone, type Action, type State, type Issue } from './reducer.ts'
 import { sampleWorkspace } from './sample.ts'
 
 const run = (actions: Action[], start: State = EMPTY) => actions.reduce((s, a) => reducer(s, a), start)
@@ -205,4 +205,22 @@ test('deleting a project clears it from views and dashboards', () => {
   assert.deepEqual(s.dashboards[0].gadgets.map(g => g.id), ['g2'])
   s = run([{ type: 'deleteView', id: 'v' }], s)
   assert.deepEqual(s.dashboards[0].gadgets, [])
+})
+
+test('loadIssues replaces only that project\'s issues and is not undoable', async () => {
+  const base = run([
+    { type: 'setOwner', name: 'Alex' },
+    { type: 'createProject', project: { id: 'p1', name: 'A', key: 'AAA', color: '#000', template: 'kanban' } },
+    { type: 'createProject', project: { id: 'p2', name: 'B', key: 'BBB', color: '#000', template: 'kanban' } },
+  ])
+  const mk = (id: string, projectId: string): Issue => ({
+    id, key: id, projectId, type: 'task', title: id, description: '', status: 'todo', priority: 'none', reporterId: 'u',
+    labels: [], watcherIds: [], links: [], attachments: [], custom: {}, worklogs: [], rank: 1, createdAt: 1, updatedAt: 1,
+  })
+  const s1 = reducer(base, { type: 'loadIssues', projectId: 'p1', issues: [mk('a1', 'p1'), mk('a2', 'p1')] })
+  const s2 = reducer(s1, { type: 'loadIssues', projectId: 'p2', issues: [mk('b1', 'p2')] })
+  const s3 = reducer(s2, { type: 'loadIssues', projectId: 'p1', issues: [mk('a3', 'p1')] })
+  assert.deepEqual(s3.issues.map(i => i.id).sort(), ['a3', 'b1'])
+  const { UNDOABLE } = await import('./history.ts')
+  assert.equal(UNDOABLE.has('loadIssues'), false)
 })

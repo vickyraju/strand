@@ -6,7 +6,7 @@ import pg from 'pg'
 // Needs a throwaway Postgres: DATABASE_URL=postgres://… npm test  (skipped otherwise)
 const url = process.env.DATABASE_URL
 const skip = !url && 'DATABASE_URL not set'
-Object.assign(process.env, { AUTH_DEV: '1', SCIM_TOKEN: 'scim-secret', NODE_ENV: 'test' })
+Object.assign(process.env, { AUTH_DEV: '1', SCIM_TOKEN: 'scim-secret', NODE_ENV: 'test', CORS_ORIGINS: 'https://strand-one.vercel.app/, http://localhost:5173' })
 
 let app: Awaited<ReturnType<typeof import('../src/app.ts').build>>
 let pool: pg.Pool
@@ -162,4 +162,20 @@ test('OpenAPI: project routes are documented and the schemas are enforced', { sk
   const bad = await call('POST', '/api/projects/PAY/statuses', { name: 'x' })
   assert.equal(bad.status, 400)
   assert.equal(bad.body.error, 'Invalid input')
+})
+
+test('CORS: only listed origins may call the API from a browser, and preflight needs no login', { skip }, async () => {
+  const pre = (origin: string) => app.inject({
+    method: 'OPTIONS', url: '/api/projects',
+    headers: { origin, 'access-control-request-method': 'POST', 'access-control-request-headers': 'content-type,x-dev-user,x-dev-secret,if-match' },
+  })
+  const ok = await pre('https://strand-one.vercel.app')
+  assert.equal(ok.statusCode, 204)
+  assert.equal(ok.headers['access-control-allow-origin'], 'https://strand-one.vercel.app')
+  for (const h of ['x-dev-user', 'x-dev-secret', 'if-match']) assert.match(String(ok.headers['access-control-allow-headers']), new RegExp(h))
+  assert.equal((await pre('http://localhost:5173')).headers['access-control-allow-origin'], 'http://localhost:5173')
+  assert.equal((await pre('https://evil.example')).headers['access-control-allow-origin'], undefined)
+  // a normal request from a listed origin carries the header too
+  const r = await app.inject({ method: 'GET', url: '/api/me', headers: { origin: 'https://strand-one.vercel.app', 'x-dev-user': 'owner@x.com' } })
+  assert.equal(r.headers['access-control-allow-origin'], 'https://strand-one.vercel.app')
 })

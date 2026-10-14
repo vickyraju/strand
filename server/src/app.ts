@@ -1,4 +1,5 @@
 import Fastify from 'fastify'
+import cors from '@fastify/cors'
 import swagger from '@fastify/swagger'
 import swaggerUi from '@fastify/swagger-ui'
 import { jsonSchemaTransform, serializerCompiler, validatorCompiler } from 'fastify-type-provider-zod'
@@ -15,6 +16,15 @@ import scim from './routes/scim.ts'
 
 export async function build() {
   const app = Fastify({ logger: process.env.NODE_ENV !== 'test', bodyLimit: 20 * 1024 * 1024 })
+
+  // Browsers may call the API only from listed origins (comma-separated CORS_ORIGINS). Unset = no cross-origin access.
+  const origins = (process.env.CORS_ORIGINS ?? '').split(',').map(o => o.trim().replace(/\/$/, '')).filter(Boolean)
+  await app.register(cors, {
+    origin: origins,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+    allowedHeaders: ['content-type', 'authorization', 'if-match', 'x-dev-user', 'x-dev-secret'],
+    maxAge: 600,
+  })
 
   // Route schemas (zod) drive validation and the OpenAPI document
   app.setValidatorCompiler(validatorCompiler)
