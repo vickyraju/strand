@@ -16,6 +16,7 @@ import { ProjectsView, ProjectView, TAB_LABEL } from './components/ProjectView'
 import { StoreProvider, useStore, type NewIssue } from './data/store'
 import { useProjectIssues } from './api/useProjectIssues'
 import { useIssueSync } from './api/useIssueSync'
+import { useIssueDetail } from './api/useIssueDetail'
 import { AppContext, type AppActions } from './appContext'
 import { useLocation, navigate, href, type Route } from './router'
 import { Empty } from './components/ui'
@@ -65,6 +66,7 @@ function Shell() {
   const issuesLoad = useProjectIssues(project)
   const peekIssue = peek ? state.issues.find(i => i.key === peek) : undefined
   const fullIssue = route.name === 'issue' ? state.issues.find(i => i.key === route.key) : undefined
+  useIssueDetail((fullIssue ?? peekIssue)?.id)
   const keyOf = (id: string) => state.issues.find(i => i.id === id)?.key
 
   const actions: AppActions = {

@@ -11,6 +11,7 @@
 //   from before the failure is dropped.
 import type { Issue } from '../data/reducer.ts'
 import { mapIssue } from './map.ts'
+import { enqueue as queue, idle as queueIdle } from './queue.ts'
 
 type Call = <T = any>(method: string, path: string, body?: unknown, headers?: Record<string, string>) => Promise<T>
 
@@ -82,7 +83,6 @@ export function createIssueSync(initial?: SyncDeps) {
   const trash = new Map<string, Issue>()
   const keys = new Map<string, string>()        // issue id → the key the server uses (local keys can differ until synced)
   const versions = new Map<string, number>()
-  let chain: Promise<void> = Promise.resolve()
   let epoch = 0
 
   const keyOf = (i: Issue) => keys.get(i.id) ?? i.key
@@ -95,7 +95,7 @@ export function createIssueSync(initial?: SyncDeps) {
 
   const enqueue = (run: () => Promise<void>) => {
     const mine = epoch
-    chain = chain.then(async () => {
+    queue(async () => {
       if (mine !== epoch) return                 // queued before a failure that already reloaded the project
       try { await run() } catch (e) { await recover(e) }
     })
@@ -168,7 +168,11 @@ export function createIssueSync(initial?: SyncDeps) {
     configure(next: SyncDeps) { deps = next },
     load, flush,
     /** Resolves when everything queued so far has been sent (used by tests and before sign-out). */
-    idle: () => chain,
+    idle: queueIdle,
+    /** The key the server knows an issue by (a new issue's local key differs until its create is answered). */
+    serverKey: (issue: Issue) => keyOf(issue),
+    /** True once the server has this issue (it came from the server, or its create was answered). */
+    known: (id: string) => keys.has(id),
   }
 }
 

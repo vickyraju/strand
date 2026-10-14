@@ -239,12 +239,13 @@ const plugin: FastifyPluginAsyncZod = async app => {
 
   // ── Comments (authors edit/delete their own) ──
   const body = z.object({ body: z.string().min(1).max(20000) })
-  app.post('/issues/:key/comments', { schema: { tags: ['Comments & work logs'], summary: 'Add a comment (notifies watchers)', params: keyP, body } }, async req => {
+  const commentCreate = body.extend({ id: uuid.optional().describe('Client-chosen id') })
+  app.post('/issues/:key/comments', { schema: { tags: ['Comments & work logs'], summary: 'Add a comment (notifies watchers)', params: keyP, body: commentCreate } }, async req => {
     requireWrite(req)
     const b = req.body
     return tx(async d => {
       const i = await issueByKey(d, req.me.workspaceId, req.params.key)
-      const [c] = await d.query('insert into comments (issue_id, author_id, body) values ($1, $2, $3) returning *', [i.id, req.me.id, b.body])
+      const [c] = await d.query('insert into comments (id, issue_id, author_id, body) values (coalesce($4::uuid, uuid_v7()), $1, $2, $3) returning *', [i.id, req.me.id, b.body, b.id ?? null])
       for (const u of await watchersOf(d, i)) await note(d, u, req.me, i.id, 'commented', 'commented on a work item')
       await publish(d, i.projectId, { type: 'comment.created', key: i.key })
       return c

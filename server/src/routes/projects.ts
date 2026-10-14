@@ -58,7 +58,8 @@ const REQUIRED: Record<Kind, string[]> = {
 }
 // Create = the same shape with the required keys enforced
 const childCreate = Object.fromEntries((Object.keys(childPatch) as Kind[]).map(k =>
-  [k, (childPatch[k] as z.ZodObject<any>).required(Object.fromEntries(REQUIRED[k].map(r => [r, true])) as any)])) as unknown as typeof childPatch
+  [k, (childPatch[k] as z.ZodObject<any>).required(Object.fromEntries(REQUIRED[k].map(r => [r, true])) as any)
+    .extend({ id: uuid.optional().describe('Client-chosen id') })])) as unknown as typeof childPatch
 
 const projectBody = z.object({
   name: z.string().min(1).max(120), description: z.string(), color, leadId: uuid.nullable(),
@@ -147,10 +148,12 @@ const plugin: FastifyPluginAsyncZod = async app => {
       requireWrite(req)
       const p = await projectByKey(db, req.me.workspaceId, req.params.key)
       await requireProjectAdmin(req, p)
-      const w = pick(req.body as Record<string, unknown>, [...cfg.cols], json)
+      const body = req.body as Record<string, unknown>
+      const w = pick(body, [...cfg.cols], json)
       const extra = cfg.ws ? ['workspace_id'] : []
-      const cols = ['project_id', ...extra, ...w.cols]
-      const vals = [p.id, ...(cfg.ws ? [req.me.workspaceId] : []), ...w.vals]
+      const cid = typeof body.id === 'string' ? ['id'] : []
+      const cols = ['project_id', ...extra, ...cid, ...w.cols]
+      const vals = [p.id, ...(cfg.ws ? [req.me.workspaceId] : []), ...(cid.length ? [body.id] : []), ...w.vals]
       const [row] = await db.query(
         `insert into ${cfg.table} (${cols.join(', ')}) values (${vals.map((_, i) => `$${i + 1}`).join(', ')}) returning *`, vals)
       return row
@@ -201,14 +204,15 @@ const plugin: FastifyPluginAsyncZod = async app => {
 
   // ── Sprints ──
   const sprintBody = z.object({ name: z.string().min(1), goal: z.string(), endsAt: z.string().datetime().nullable() }).partial()
+  const sprintCreate = sprintBody.required({ name: true }).extend({ id: uuid.optional().describe('Client-chosen id') })
 
-  app.post('/projects/:key/sprints', { schema: { tags: T.sprints, summary: 'Create a sprint', params: keyP, body: sprintBody.required({ name: true }) } }, async req => {
+  app.post('/projects/:key/sprints', { schema: { tags: T.sprints, summary: 'Create a sprint', params: keyP, body: sprintCreate } }, async req => {
     requireWrite(req)
     const p = await projectByKey(db, req.me.workspaceId, req.params.key)
     const b = req.body
     const [s] = await db.query(
-      'insert into sprints (workspace_id, project_id, name, goal, ends_at) values ($1, $2, $3, $4, $5) returning *',
-      [req.me.workspaceId, p.id, b.name, b.goal ?? '', b.endsAt ?? null])
+      'insert into sprints (id, workspace_id, project_id, name, goal, ends_at) values (coalesce($6::uuid, uuid_v7()), $1, $2, $3, $4, $5) returning *',
+      [req.me.workspaceId, p.id, b.name, b.goal ?? '', b.endsAt ?? null, b.id ?? null])
     return s
   })
 

@@ -306,6 +306,8 @@ export type Action =
   | { type: 'checkDue'; now: number }
   /** Replaces one project's issues with a fresh copy from the server. Not undoable. */
   | { type: 'loadIssues'; projectId: string; issues: Issue[] }
+  /** The parts of one issue that come with the single-issue call: comments, history, time logs, outgoing links, watchers. */
+  | { type: 'loadIssueDetail'; issueId: string; comments: Comment[]; activity: Activity[]; worklogs: Worklog[]; links: IssueLink[]; watcherIds: string[] }
   /** The server's copy of one issue (key, rank, rule effects). Keeps the local-only watchers, links, work logs and attachments. */
   | { type: 'syncIssue'; issue: Issue }
   /** A project the server created or changed. Replaces the local one with the same id, or adds it. */
@@ -710,6 +712,14 @@ export function reducer(state: State, action: Action, now = Date.now()): State {
     }
 
     // ── Bulk data ─────────────────────────────────────────
+    case 'loadIssueDetail':
+      return {
+        ...state,
+        comments: [...state.comments.filter(c => c.issueId !== action.issueId), ...action.comments],
+        activity: [...state.activity.filter(a => a.issueId !== action.issueId), ...action.activity],
+        issues: state.issues.map(i => i.id === action.issueId
+          ? { ...i, links: action.links, watcherIds: action.watcherIds, worklogs: action.worklogs } : i),
+      }
     case 'syncIssue': {
       const ex = state.issues.find(i => i.id === action.issue.id)
       if (!ex) return state

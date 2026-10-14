@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mapProject, mapWorkspace, mapSprint, mapIssue } from './map.ts'
+import { mapProject, mapWorkspace, mapSprint, mapIssue, mapIssueDetail } from './map.ts'
 import { DEFAULT_BOARD_PREFS } from '../data/reducer.ts'
 
 const apiProject = {
@@ -74,4 +74,22 @@ test('an issue row maps status ids, drops nulls and leaves the detail-only colle
   assert.deepEqual([i.watcherIds, i.links, i.attachments, i.worklogs], [[], [], [], []])
   assert.equal(i.rank, 2000.5)
   assert.equal(i.updatedAt, Date.parse('2026-10-02T00:00:00.000Z'))
+})
+
+test('issue detail maps comments, history (null actor = automation), time logs, outgoing links and watchers', () => {
+  const d = mapIssueDetail({
+    comments: [{ id: 'c1', issueId: 'i1', authorId: 'u1', body: 'hi', createdAt: '2026-10-01T00:00:00.000Z', editedAt: null }, { id: 'c2', issueId: 'i1', authorId: null, body: 'auto', createdAt: '2026-10-02T00:00:00.000Z', editedAt: '2026-10-03T00:00:00.000Z' }],
+    activity: [{ id: 'a1', issueId: 'i1', actorId: null, field: null, fromValue: null, toValue: null, text: 'Automation rule ran', createdAt: '2026-10-01T00:00:00.000Z' },
+               { id: 'a2', issueId: 'i1', actorId: 'u1', field: 'status', fromValue: 's1', toValue: 's2', text: 'Changed status', createdAt: '2026-10-01T00:00:00.000Z' }],
+    worklogs: [{ id: 'w1', userId: 'u1', minutes: 90, date: '2026-10-01', note: null, createdAt: '2026-10-01T09:00:00.000Z' }],
+    links: [{ type: 'blocks', dir: 'out', issueId: 'i2', key: 'PAY-2' }, { type: 'blocks', dir: 'in', issueId: 'i3', key: 'PAY-3' }],
+    watcherIds: ['u1'],
+  })
+  assert.equal(d.comments[0]!.editedAt, undefined)
+  assert.equal(d.comments[1]!.editedAt, Date.parse('2026-10-03T00:00:00.000Z'))
+  assert.deepEqual([d.activity[0]!.actorId, 'field' in d.activity[0]!], ['automation', false])
+  assert.deepEqual([d.activity[1]!.field, d.activity[1]!.from, d.activity[1]!.to], ['status', 's1', 's2'])
+  assert.deepEqual(d.worklogs[0], { id: 'w1', userId: 'u1', minutes: 90, date: '2026-10-01', note: '', at: Date.parse('2026-10-01T09:00:00.000Z') })
+  assert.deepEqual(d.links, [{ type: 'blocks', issueId: 'i2' }])           // the incoming one belongs to the other issue
+  assert.deepEqual(d.watcherIds, ['u1'])
 })

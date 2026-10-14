@@ -2,7 +2,7 @@
 // (epoch-millisecond numbers, optional fields). Pure: no React, no fetch, so it is unit-tested.
 import {
   DEFAULT_BOARD_PREFS, type Project, type Sprint, type State, type User,
-  type Issue, type Status, type Transition, type Rule, type FieldDef, type Release, type ItemTemplate,
+  type Activity, type Comment, type IssueLink, type Worklog, type Issue, type Status, type Transition, type Rule, type FieldDef, type Release, type ItemTemplate,
 } from '../data/reducer.ts'
 
 type Row = Record<string, any>
@@ -81,3 +81,26 @@ export const mapIssue = (i: Row): Issue => ({
   watcherIds: [], links: [], attachments: [], worklogs: [],
   custom: i.custom ?? {}, rank: i.rank, createdAt: ms(i.createdAt) ?? Date.now(), updatedAt: ms(i.updatedAt) ?? Date.now(),
 })
+
+export const mapComment = (c: Row): Comment => ({
+  id: c.id, issueId: c.issueId, authorId: c.authorId ?? '', body: c.body, createdAt: ms(c.createdAt) ?? Date.now(),
+  ...(c.editedAt ? { editedAt: ms(c.editedAt) } : {}),
+})
+export const mapActivity = (a: Row): Activity => ({
+  id: a.id, issueId: a.issueId, actorId: a.actorId ?? 'automation', text: a.text, createdAt: ms(a.createdAt) ?? Date.now(),
+  ...(a.field ? { field: a.field } : {}), ...(a.fromValue != null ? { from: a.fromValue } : {}), ...(a.toValue != null ? { to: a.toValue } : {}),
+})
+export const mapWorklog = (w: Row): Worklog => ({
+  id: w.id, userId: w.userId ?? '', minutes: w.minutes, date: w.date, note: w.note ?? '', at: ms(w.createdAt) ?? Date.now(),
+})
+
+/** `GET /api/issues/:key` → the pieces the reducer keeps next to an issue. Links are the issue's own (outgoing) ones. */
+export function mapIssueDetail(d: Row) {
+  return {
+    comments: (d.comments ?? []).map(mapComment),
+    activity: (d.activity ?? []).map(mapActivity),
+    worklogs: (d.worklogs ?? []).map(mapWorklog),
+    links: (d.links ?? []).filter((l: Row) => l.dir === 'out').map((l: Row): IssueLink => ({ type: l.type, issueId: l.issueId })),
+    watcherIds: (d.watcherIds ?? []) as string[],
+  }
+}

@@ -192,3 +192,15 @@ test('create accepts a client id; reusing it conflicts instead of duplicating; p
   assert.equal(cleared.body.assigneeId, null)
   assert.ok(p.statuses.length)
 })
+
+test('comments, sprints and settings items accept client ids', { skip }, async () => {
+  await call('POST', '/api/projects', { name: 'Ids', key: 'IDS', template: 'scrum' })
+  await call('POST', '/api/projects/IDS/issues', { title: 'x' })
+  const cid = '0192f0c0-0000-7000-8000-00000000c0de', sid = '0192f0c0-0000-7000-8000-00000000050d', fid = '0192f0c0-0000-7000-8000-0000000000f1'
+  const c = await call('POST', '/api/issues/IDS-1/comments', { id: cid, body: 'hello' })
+  assert.equal(c.body.id, cid)
+  assert.equal((await call('POST', '/api/issues/IDS-1/comments', { id: cid, body: 'dup' })).status, 409)
+  assert.equal((await call('POST', '/api/projects/IDS/sprints', { id: sid, name: 'S1' })).body.id, sid)
+  assert.equal((await call('POST', '/api/projects/IDS/fields', { id: fid, name: 'Team', kind: 'text' })).body.id, fid)
+  assert.equal((await call('POST', '/api/projects/IDS/fields', { name: 'No id', kind: 'text' })).status, 200)   // still optional
+})

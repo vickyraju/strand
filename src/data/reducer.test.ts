@@ -243,3 +243,21 @@ test('loadIssues replaces only that project\'s issues and is not undoable', asyn
   const { UNDOABLE } = await import('./history.ts')
   assert.equal(UNDOABLE.has('loadIssues'), false)
 })
+
+test('loadIssueDetail replaces one issue\'s comments, history, time logs, links and watchers only', () => {
+  const mkI = (id: string): Issue => ({
+    id, key: id, projectId: 'p1', type: 'task', title: id, description: '', status: 'todo', priority: 'none', reporterId: 'u',
+    labels: [], watcherIds: ['old'], links: [], attachments: [], custom: {}, worklogs: [], rank: 1, createdAt: 1, updatedAt: 1,
+  })
+  const s0: State = { ...EMPTY, issues: [mkI('a'), mkI('b')],
+    comments: [{ id: 'c1', issueId: 'a', authorId: 'u', body: 'local', createdAt: 1 }, { id: 'c2', issueId: 'b', authorId: 'u', body: 'other', createdAt: 1 }],
+    activity: [{ id: 'x1', issueId: 'a', actorId: 'u', text: 'old', createdAt: 1 }] }
+  const s1 = reducer(s0, { type: 'loadIssueDetail', issueId: 'a',
+    comments: [{ id: 'c9', issueId: 'a', authorId: 'u', body: 'server', createdAt: 2 }], activity: [],
+    worklogs: [{ id: 'w', userId: 'u', minutes: 30, date: '2026-10-01', note: '', at: 1 }], links: [{ type: 'blocks', issueId: 'b' }], watcherIds: ['u'] })
+  assert.deepEqual(s1.comments.map(c => c.id).sort(), ['c2', 'c9'])
+  assert.equal(s1.activity.length, 0)
+  const a = s1.issues.find(i => i.id === 'a')!, b = s1.issues.find(i => i.id === 'b')!
+  assert.deepEqual([a.watcherIds, a.links.length, a.worklogs.length], [['u'], 1, 1])
+  assert.deepEqual(b.watcherIds, ['old'])
+})
