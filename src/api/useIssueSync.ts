@@ -6,6 +6,7 @@ import { sprintDeps, sprintSync } from './sprints'
 import { loadProjectIssues, loadWorkspace } from './load'
 import { KINDS, kindSyncs, itemsOf, projectSync, sendDetails, settingsDeps, starSync } from './settings'
 import { isDone } from '../data/reducer'
+import { dashboardSync, notificationSync, personalDeps, refreshNotifications, viewSync } from './personal'
 import { useStore } from '../data/store'
 
 type Toast = (text: string, opts?: { tone?: 'ok' | 'warn' }) => void
@@ -64,9 +65,26 @@ export function useIssueSync(toast: Toast) {
     // After a failed request: take projects, sprints and stars from the server (this also resets every sync's base)
     sprintDeps.reloadAll = async () => {
       const fresh = await loadWorkspace()
-      dispatch({ type: 'replace', state: { ...latest.current, projects: fresh.projects, sprints: fresh.sprints, starred: fresh.starred } })
+      dispatch({ type: 'replace', state: { ...latest.current, projects: fresh.projects, sprints: fresh.sprints, starred: fresh.starred,
+        views: fresh.views, dashboards: fresh.dashboards, notifications: fresh.notifications } })
     }
   }, [dispatch])
+
+  // Personal: views, dashboards, notifications (read/archive), plus a periodic refresh of new notifications
+  useEffect(() => {
+    if (!apiEnabled) return
+    personalDeps.meId = () => latest.current.ownerId
+    personalDeps.reloadAll = sprintDeps.reloadAll
+    personalDeps.setNotifications = notifications => dispatch({ type: 'setNotifications', notifications })
+    personalDeps.onError = m => toastRef.current(`Couldn't save that change: ${m}. Showing what the server has.`, { tone: 'warn' })
+    const tick = () => { if (!document.hidden) refreshNotifications().catch(() => {}) }
+    const t = window.setInterval(tick, 60_000)
+    document.addEventListener('visibilitychange', tick)
+    return () => { window.clearInterval(t); document.removeEventListener('visibilitychange', tick) }
+  }, [dispatch])
+  useEffect(() => { if (apiEnabled) viewSync.flush(state.views.filter(v => v.ownerId === state.ownerId)) }, [state.views])
+  useEffect(() => { if (apiEnabled) dashboardSync.flush(state.dashboards.filter(d => d.ownerId === state.ownerId)) }, [state.dashboards])
+  useEffect(() => { if (apiEnabled) notificationSync.flush(state.notifications.filter(n => n.userId === state.ownerId)) }, [state.notifications])
 
   // Project settings: workflow, fields, templates, rules, releases, stars, details, delete
   useEffect(() => {

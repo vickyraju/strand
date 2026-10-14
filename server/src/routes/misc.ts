@@ -102,11 +102,11 @@ const plugin: FastifyPluginAsyncZod = async app => {
   // ── Saved views & dashboards (owner edits; shared views visible to all) ──
   app.get('/views', { schema: { tags: ['Saved views'], summary: 'My saved views plus shared ones' } }, async req => db.query(
     'select * from saved_views where workspace_id = $1 and (owner_id = $2 or shared) order by name', [req.me.workspaceId, req.me.id]))
-  app.post('/views', { schema: { tags: ['Saved views'], summary: 'Save a view', body: z.object({ name: z.string().min(1), shared: z.boolean().default(false), filters: viewFilters }) } }, async req => {
+  app.post('/views', { schema: { tags: ['Saved views'], summary: 'Save a view', body: z.object({ id: uuid.optional().describe('Client-chosen id'), name: z.string().min(1), shared: z.boolean().default(false), filters: viewFilters }) } }, async req => {
     requireWrite(req)
     const b = req.body
-    return (await db.query('insert into saved_views (workspace_id, owner_id, name, shared, filters) values ($1, $2, $3, $4, $5) returning *',
-      [req.me.workspaceId, req.me.id, b.name, b.shared, JSON.stringify(b.filters)]))[0]
+    return (await db.query('insert into saved_views (id, workspace_id, owner_id, name, shared, filters) values (coalesce($6::uuid, uuid_v7()), $1, $2, $3, $4, $5) returning *',
+      [req.me.workspaceId, req.me.id, b.name, b.shared, JSON.stringify(b.filters), b.id ?? null]))[0]
   })
   app.patch('/views/:id', { schema: { tags: ['Saved views'], summary: 'Edit my saved view', params: idP, body: z.object({ name: z.string().min(1), shared: z.boolean(), filters: viewFilters }).partial() } }, async req => {
     requireWrite(req)
@@ -131,11 +131,11 @@ const plugin: FastifyPluginAsyncZod = async app => {
   })
   app.get('/dashboards', { schema: { tags: ['Dashboards'], summary: 'My dashboards' } }, async req => db.query(
     'select * from dashboards where workspace_id = $1 and owner_id = $2 order by name', [req.me.workspaceId, req.me.id]))
-  app.post('/dashboards', { schema: { tags: ['Dashboards'], summary: 'Create a dashboard', body: z.object({ name: z.string().min(1), gadgets: z.array(gadget).default([]) }) } }, async req => {
+  app.post('/dashboards', { schema: { tags: ['Dashboards'], summary: 'Create a dashboard', body: z.object({ id: uuid.optional().describe('Client-chosen id'), name: z.string().min(1), gadgets: z.array(gadget).default([]) }) } }, async req => {
     requireWrite(req)
     const b = req.body
-    return (await db.query('insert into dashboards (workspace_id, owner_id, name, gadgets) values ($1, $2, $3, $4) returning *',
-      [req.me.workspaceId, req.me.id, b.name, JSON.stringify(b.gadgets)]))[0]
+    return (await db.query('insert into dashboards (id, workspace_id, owner_id, name, gadgets) values (coalesce($5::uuid, uuid_v7()), $1, $2, $3, $4) returning *',
+      [req.me.workspaceId, req.me.id, b.name, JSON.stringify(b.gadgets), b.id ?? null]))[0]
   })
   app.patch('/dashboards/:id', { schema: { tags: ['Dashboards'], summary: 'Edit my dashboard', params: idP, body: z.object({ name: z.string().min(1), gadgets: z.array(gadget) }).partial() } }, async req => {
     requireWrite(req)

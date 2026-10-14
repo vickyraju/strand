@@ -2,7 +2,7 @@
 // (epoch-millisecond numbers, optional fields). Pure: no React, no fetch, so it is unit-tested.
 import {
   DEFAULT_BOARD_PREFS, type Project, type Sprint, type State, type User,
-  type Activity, type Comment, type IssueLink, type Worklog, type Issue, type Status, type Transition, type Rule, type FieldDef, type Release, type ItemTemplate,
+  type Dashboard, type Notification, type SavedView, type Activity, type Comment, type IssueLink, type Worklog, type Issue, type Status, type Transition, type Rule, type FieldDef, type Release, type ItemTemplate,
 } from '../data/reducer.ts'
 
 type Row = Record<string, any>
@@ -55,15 +55,16 @@ export function mapProject(p: Row): Project {
 }
 
 /** Everything slice 2 loads: who you are, the people, and the projects with their sprints. */
-export function mapWorkspace(me: Row, users: Row[], projects: Row[], starredIds: string[]): State {
+export function mapWorkspace(me: Row, users: Row[], projects: Row[], starredIds: string[], extras: { views?: Row[]; dashboards?: Row[]; notifications?: Row[] } = {}): State {
   return {
     version: 4, workspaceName: 'Strand',
     ownerId: me.id, actingAsId: null,
     users: users.map(mapUser),
     projects: projects.map(mapProject),
     sprints: projects.flatMap(p => (p.sprints ?? []).map(mapSprint)),
-    issues: [], comments: [], activity: [], notifications: [],
-    starred: starredIds, viewed: [], sampleIds: [], views: [], dashboards: [],
+    issues: [], comments: [], activity: [], notifications: (extras.notifications ?? []).map(mapNotification),
+    starred: starredIds, viewed: [], sampleIds: [],
+    views: (extras.views ?? []).map(mapView), dashboards: (extras.dashboards ?? []).map(mapDashboard),
   }
 }
 
@@ -104,3 +105,10 @@ export function mapIssueDetail(d: Row) {
     watcherIds: (d.watcherIds ?? []) as string[],
   }
 }
+
+export const mapView = (v: Row): SavedView => ({ id: v.id, name: v.name, ownerId: v.ownerId, shared: !!v.shared, filters: v.filters })
+export const mapDashboard = (d: Row): Dashboard => ({ id: d.id, name: d.name, ownerId: d.ownerId, gadgets: d.gadgets ?? [] })
+export const mapNotification = (n: Row): Notification => ({
+  id: n.id, userId: n.userId, actorId: n.actorId ?? '', issueId: n.issueId, kind: n.kind, text: n.text,
+  read: !!n.read, archived: !!n.archived, createdAt: ms(n.createdAt) ?? Date.now(),
+})

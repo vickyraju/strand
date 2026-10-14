@@ -306,6 +306,8 @@ export type Action =
   | { type: 'checkDue'; now: number }
   /** Replaces one project's issues with a fresh copy from the server. Not undoable. */
   | { type: 'loadIssues'; projectId: string; issues: Issue[] }
+  /** Notifications as the server has them (it creates them when others assign, mention or comment). */
+  | { type: 'setNotifications'; notifications: Notification[] }
   /** The server's copy of a sprint (point snapshots, member list). */
   | { type: 'syncSprint'; sprint: Sprint }
   /** The parts of one issue that come with the single-issue call: comments, history, time logs, outgoing links, watchers. */
@@ -714,6 +716,8 @@ export function reducer(state: State, action: Action, now = Date.now()): State {
     }
 
     // ── Bulk data ─────────────────────────────────────────
+    case 'setNotifications':
+      return { ...state, notifications: action.notifications }
     case 'syncSprint':
       return state.sprints.some(s => s.id === action.sprint.id)
         ? { ...state, sprints: state.sprints.map(s => (s.id === action.sprint.id ? action.sprint : s)) } : state

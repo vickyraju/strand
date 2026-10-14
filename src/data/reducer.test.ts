@@ -269,3 +269,8 @@ test('syncSprint replaces the sprint with the server copy and ignores unknown on
   assert.deepEqual([s1.sprints[0]!.state, s1.sprints[0]!.committed], ['active', 8])
   assert.equal(reducer(s0, { type: 'syncSprint', sprint: sp({ id: 'nope' }) }), s0)
 })
+
+test('setNotifications replaces the list', () => {
+  const n = { id: 'n1', userId: 'u', actorId: '', issueId: 'i', kind: 'assigned' as const, text: 't', read: false, archived: false, createdAt: 1 }
+  assert.equal(reducer({ ...EMPTY, notifications: [{ ...n, id: 'old' }] }, { type: 'setNotifications', notifications: [n] }).notifications[0]!.id, 'n1')
+})

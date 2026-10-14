@@ -274,13 +274,13 @@ const plugin: FastifyPluginAsyncZod = async app => {
   // ── Work logs ──
   app.post('/issues/:key/worklogs', { schema: {
     tags: ['Comments & work logs'], summary: 'Log time on an issue', params: keyP,
-    body: z.object({ minutes: z.number().int().positive(), date, note: z.string().default('') }),
+    body: z.object({ id: uuid.optional().describe('Client-chosen id'), minutes: z.number().int().positive(), date, note: z.string().default('') }),
   } }, async req => {
     requireWrite(req)
     const b = req.body
     const i = await issueByKey(db, req.me.workspaceId, req.params.key)
-    const [w] = await db.query('insert into worklogs (issue_id, user_id, minutes, date, note) values ($1, $2, $3, $4, $5) returning *',
-      [i.id, req.me.id, b.minutes, b.date, b.note])
+    const [w] = await db.query('insert into worklogs (id, issue_id, user_id, minutes, date, note) values (coalesce($6::uuid, uuid_v7()), $1, $2, $3, $4, $5) returning *',
+      [i.id, req.me.id, b.minutes, b.date, b.note, b.id ?? null])
     return w
   })
   app.delete('/worklogs/:id', { schema: { tags: ['Comments & work logs'], summary: 'Delete your own work log', params: idP } }, async (req, reply) => {

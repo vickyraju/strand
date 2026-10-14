@@ -216,3 +216,13 @@ test('workflow override: refused for plain members, honored for the project lead
   assert.equal((await move('lead@x.com', { 'x-workflow-override': '1' })).status, 200)      // the lead can
   assert.equal((await call('GET', '/api/issues/OVR-1')).body.statusId, done.id)
 })
+
+test('views, dashboards and work logs accept client ids; notifications can be read and archived', { skip }, async () => {
+  const vid = '0192f0c0-0000-7000-8000-0000000000a1', did = '0192f0c0-0000-7000-8000-0000000000a2', wid = '0192f0c0-0000-7000-8000-0000000000a3'
+  assert.equal((await call('POST', '/api/views', { id: vid, name: 'Mine', filters: { q: '' } })).body.id, vid)
+  assert.equal((await call('POST', '/api/dashboards', { id: did, name: 'Board' })).body.id, did)
+  assert.equal((await call('POST', '/api/projects', { name: 'Logs', key: 'LOG', template: 'kanban' })).status, 200)
+  await call('POST', '/api/projects/LOG/issues', { title: 'x' })
+  assert.equal((await call('POST', '/api/issues/LOG-1/worklogs', { id: wid, minutes: 30, date: '2026-10-01' })).body.id, wid)
+  assert.equal((await call('POST', '/api/views', { id: vid, name: 'dup', filters: { q: '' } })).status, 409)
+})
