@@ -207,6 +207,25 @@ test('deleting a project clears it from views and dashboards', () => {
   assert.deepEqual(s.dashboards[0].gadgets, [])
 })
 
+test('syncIssue adopts the server copy but keeps local-only parts; upsertProject adds then replaces', () => {
+  const issue = (over: Partial<Issue> = {}): Issue => ({
+    id: 'i1', key: 'PAY-local', projectId: 'p1', type: 'task', title: 'T', description: '', status: 'todo', priority: 'none', reporterId: 'u',
+    labels: [], watcherIds: ['w'], links: [], attachments: [], custom: {}, worklogs: [], rank: 1, createdAt: 1, updatedAt: 1, ...over,
+  })
+  const s0 = { ...EMPTY, issues: [issue()] }
+  const s1 = reducer(s0, { type: 'syncIssue', issue: issue({ key: 'PAY-7', watcherIds: [], priority: 'high' }) })
+  assert.equal(s1.issues[0]!.key, 'PAY-7')
+  assert.equal(s1.issues[0]!.priority, 'high')
+  assert.deepEqual(s1.issues[0]!.watcherIds, ['w'])                       // local-only part kept
+  assert.equal(reducer(s1, { type: 'syncIssue', issue: issue({ key: 'PAY-7', priority: 'high' }) }), s1)   // no change, same state
+  assert.equal(reducer(s0, { type: 'syncIssue', issue: issue({ id: 'gone' }) }), s0)
+
+  const proj = run([{ type: 'setOwner', name: 'Alex' }, { type: 'createProject', project: { id: 'p1', name: 'A', key: 'AAA', color: '#000', template: 'kanban' } }]).projects[0]!
+  const added = reducer(EMPTY, { type: 'upsertProject', project: proj })
+  assert.equal(added.projects.length, 1)
+  assert.equal(reducer(added, { type: 'upsertProject', project: { ...proj, name: 'Renamed' } }).projects[0]!.name, 'Renamed')
+})
+
 test('loadIssues replaces only that project\'s issues and is not undoable', async () => {
   const base = run([
     { type: 'setOwner', name: 'Alex' },

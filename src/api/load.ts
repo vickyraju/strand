@@ -19,13 +19,15 @@ const PAGE = 500
 const CAP = 5000   // ponytail: a project beyond this shows its first CAP items by rank; add "load more" when one gets there
 
 /** All of a project's issues, in backlog order, following the server's cursor. */
-export async function loadProjectIssues(key: string): Promise<Issue[]> {
-  const out: Issue[] = []
+export type LoadedIssue = Issue & { version?: number }
+
+export async function loadProjectIssues(key: string): Promise<LoadedIssue[]> {
+  const out: LoadedIssue[] = []
   let cursor: string | null = null
   do {
     const qs: string = `limit=${PAGE}` + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : '')
     const page: { items: any[]; next: string | null } = await api('GET', `/api/projects/${encodeURIComponent(key)}/issues?${qs}`)
-    out.push(...page.items.map(mapIssue))
+    out.push(...page.items.map(i => ({ ...mapIssue(i), version: i.version })))
     cursor = page.next
   } while (cursor && out.length < CAP)
   return out

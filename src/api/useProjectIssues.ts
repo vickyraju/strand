@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { apiEnabled } from './client'
 import { loadProjectIssues } from './load'
 import { useStore } from '../data/store'
+import { issueSync } from './sync'
 
 export type IssuesStatus = 'ready' | 'loading' | 'error'
 
@@ -18,7 +19,14 @@ export function useProjectIssues(project: { id: string; key: string } | undefine
     let cancelled = false
     setFailed(null)
     loadProjectIssues(key).then(
-      issues => { if (!cancelled) { dispatch({ type: 'loadIssues', projectId: id, issues }); setLoaded(s => new Set(s).add(id)) } },
+      loaded => {
+        if (cancelled) return
+        // the sync layer learns these issues first, so they are not mistaken for local changes and sent back
+        const issues = loaded.map(({ version, ...i }) => i)
+        issueSync.load(id, loaded)
+        dispatch({ type: 'loadIssues', projectId: id, issues })
+        setLoaded(s => new Set(s).add(id))
+      },
       () => { if (!cancelled) setFailed(id) },
     )
     return () => { cancelled = true }

@@ -306,6 +306,10 @@ export type Action =
   | { type: 'checkDue'; now: number }
   /** Replaces one project's issues with a fresh copy from the server. Not undoable. */
   | { type: 'loadIssues'; projectId: string; issues: Issue[] }
+  /** The server's copy of one issue (key, rank, rule effects). Keeps the local-only watchers, links, work logs and attachments. */
+  | { type: 'syncIssue'; issue: Issue }
+  /** A project the server created or changed. Replaces the local one with the same id, or adds it. */
+  | { type: 'upsertProject'; project: Project }
   | { type: 'merge'; data: Partial<State> }
   | { type: 'removeSample' }
   | { type: 'replace'; state: State }
@@ -706,6 +710,17 @@ export function reducer(state: State, action: Action, now = Date.now()): State {
     }
 
     // ── Bulk data ─────────────────────────────────────────
+    case 'syncIssue': {
+      const ex = state.issues.find(i => i.id === action.issue.id)
+      if (!ex) return state
+      const next: Issue = { ...action.issue, watcherIds: ex.watcherIds, links: ex.links, attachments: ex.attachments, worklogs: ex.worklogs }
+      if (JSON.stringify(next) === JSON.stringify(ex)) return state
+      return { ...state, issues: state.issues.map(i => (i.id === ex.id ? next : i)) }
+    }
+    case 'upsertProject':
+      return { ...state, projects: state.projects.some(p => p.id === action.project.id)
+        ? state.projects.map(p => (p.id === action.project.id ? action.project : p))
+        : [...state.projects, action.project] }
     case 'loadIssues':
       return { ...state, issues: [...state.issues.filter(i => i.projectId !== action.projectId), ...action.issues] }
     case 'merge': {

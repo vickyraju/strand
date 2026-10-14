@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { Columns2, ListChecks, Check } from 'lucide-react'
 import { useStore, uid, suggestKey, isValidKey, PROJECT_COLORS, type Template } from '../data/store'
 import { Modal } from './ui'
+import { api, apiEnabled } from '../api/client'
+import { mapProject } from '../api/map'
 
 const TEMPLATES: { id: Template; name: string; desc: string; Icon: typeof Columns2 }[] = [
   { id: 'kanban', name: 'Kanban', desc: 'Visualize work on a board and keep it flowing. Good for support, ops and continuous delivery.', Icon: Columns2 },
@@ -24,10 +26,25 @@ export default function CreateProjectModal({ onClose, onCreated }: {
     : !isValidKey(key) ? 'Use 2–10 letters, A–Z only.'
     : keyTaken ? `${key} is already used by another project.`
     : null
-  const canCreate = name.trim().length > 0 && isValidKey(key) && !keyTaken
+  const [busy, setBusy]   = useState(false)
+  const [error, setError] = useState('')
+  const canCreate = name.trim().length > 0 && isValidKey(key) && !keyTaken && !busy
 
-  const submit = () => {
+  const submit = async () => {
     if (!canCreate) return
+    if (apiEnabled) {
+      // The server owns the project's workflow (status ids), so wait for it instead of creating a local stand-in
+      setBusy(true); setError('')
+      try {
+        const created = mapProject(await api('POST', '/api/projects', { name: name.trim(), key, color, template }))
+        dispatch({ type: 'upsertProject', project: created })
+        onCreated(created.id)
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Could not create the project')
+        setBusy(false)
+      }
+      return
+    }
     const id = uid()
     dispatch({ type: 'createProject', project: { id, name: name.trim(), key, color, template } })
     onCreated(id)
@@ -40,10 +57,10 @@ export default function CreateProjectModal({ onClose, onCreated }: {
       width={560}
       footer={<>
         <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
-        <button type="submit" form="create-project" className="btn btn-primary" disabled={!canCreate}>Create project</button>
+        <button type="submit" form="create-project" className="btn btn-primary" disabled={!canCreate}>{busy ? 'Creating…' : 'Create project'}</button>
       </>}
     >
-      <form id="create-project" onSubmit={e => { e.preventDefault(); submit() }}>
+      <form id="create-project" onSubmit={e => { e.preventDefault(); void submit() }}>
         <p className="muted" style={{ marginBottom: 16 }}>You can change these details anytime in project settings.</p>
         <div className="form-row">
           <div style={{ flex: 1 }}>
@@ -60,6 +77,7 @@ export default function CreateProjectModal({ onClose, onCreated }: {
         <div id="cp-key-hint" className={`hint${keyError ? ' error' : ''}`}>
           {keyError ?? (key ? `Work items will be numbered ${key}-1, ${key}-2, …` : 'The key prefixes every work item in this project.')}
         </div>
+        {error && <p role="alert" className="text-danger" style={{ marginTop: 8 }}>{error}</p>}
 
         <label className="label" style={{ marginTop: 18 }}>Template</label>
         <div className="template-grid" role="radiogroup" aria-label="Template">

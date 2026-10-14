@@ -94,7 +94,10 @@ const plugin: FastifyPluginAsyncZod = async app => {
     return { items, next: more && last ? Buffer.from(`${last.rank}|${last.id}`).toString('base64url') : null }
   })
 
-  const createBody = patchBody.required({ title: true }).extend({ labels: z.array(z.string()).default([]) })
+  const createBody = patchBody.required({ title: true }).extend({
+    labels: z.array(z.string()).default([]),
+    id: uuid.optional().describe('Client-chosen id: lets the app keep its local id, and makes a retried create a conflict instead of a duplicate'),
+  })
   app.post('/projects/:key/issues', { schema: { tags: TAG, summary: 'Create an issue (key and rank are assigned by the server)', params: projKeyP, body: createBody } }, async req => {
     requireWrite(req)
     const b = req.body
@@ -111,8 +114,8 @@ const plugin: FastifyPluginAsyncZod = async app => {
       const [{ rank }] = await d.query<{ rank: number }>(
         'select coalesce(max(rank), 0) + 1000 as rank from issues where project_id = $1', [p.id]) as any
       const w = pick({ ...b, statusId, rank: b.rank ?? rank }, FIELDS, ['custom'])
-      const cols = ['workspace_id', 'project_id', 'number', 'reporter_id', ...w.cols]
-      const vals = [req.me.workspaceId, p.id, number, req.me.id, ...w.vals]
+      const cols = ['workspace_id', 'project_id', 'number', 'reporter_id', ...(b.id ? ['id'] : []), ...w.cols]
+      const vals = [req.me.workspaceId, p.id, number, req.me.id, ...(b.id ? [b.id] : []), ...w.vals]
       const [row] = await d.query<{ id: string }>(
         `insert into issues (${cols.join(', ')}) values (${vals.map((_, i) => `$${i + 1}`).join(', ')}) returning id`, vals)
       await d.query(`insert into activity (issue_id, actor_id, text) values ($1, $2, 'Created this work item')`, [row!.id, req.me.id])

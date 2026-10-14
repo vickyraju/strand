@@ -179,3 +179,16 @@ test('CORS: only listed origins may call the API from a browser, and preflight n
   const r = await app.inject({ method: 'GET', url: '/api/me', headers: { origin: 'https://strand-one.vercel.app', 'x-dev-user': 'owner@x.com' } })
   assert.equal(r.headers['access-control-allow-origin'], 'https://strand-one.vercel.app')
 })
+
+test('create accepts a client id; reusing it conflicts instead of duplicating; patch can null fields', { skip }, async () => {
+  const p = (await call('POST', '/api/projects', { name: 'Client ids', key: 'CID', template: 'kanban' })).body
+  const id = '0192f0c0-0000-7000-8000-00000000c1d0'
+  const made = await call('POST', '/api/projects/CID/issues', { id, title: 'from the app', rank: 5, assigneeId: (await call('GET', '/api/me')).body.id })
+  assert.equal(made.body.id, id)
+  assert.equal(made.body.key, 'CID-1')
+  assert.equal((await call('POST', '/api/projects/CID/issues', { id, title: 'retry' })).status, 409)
+  assert.equal((await call('GET', '/api/projects/CID/issues')).body.items.length, 1)
+  const cleared = await call('PATCH', '/api/issues/CID-1', { assigneeId: null, dueDate: null }, 'owner@x.com', { 'if-match': '1' })
+  assert.equal(cleared.body.assigneeId, null)
+  assert.ok(p.statuses.length)
+})

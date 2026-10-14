@@ -15,6 +15,7 @@ import ShortcutsDialog from './components/ShortcutsDialog'
 import { ProjectsView, ProjectView, TAB_LABEL } from './components/ProjectView'
 import { StoreProvider, useStore, type NewIssue } from './data/store'
 import { useProjectIssues } from './api/useProjectIssues'
+import { useIssueSync } from './api/useIssueSync'
 import { AppContext, type AppActions } from './appContext'
 import { useLocation, navigate, href, type Route } from './router'
 import { Empty } from './components/ui'
@@ -103,6 +104,7 @@ function Shell() {
 
   // Global shortcuts. A ref keeps the listener stable while seeing current values.
   const undo = () => { dispatch({ type: 'undo' }); actions.toast('Undone') }
+  useIssueSync(actions.toast)
   const keys = useRef({ modalOpen, actions, peek, gPending: 0, undoType, undo })
   keys.current = { ...keys.current, modalOpen, actions, peek, undoType, undo }
   useEffect(() => {
