@@ -204,3 +204,15 @@ test('comments, sprints and settings items accept client ids', { skip }, async (
   assert.equal((await call('POST', '/api/projects/IDS/fields', { id: fid, name: 'Team', kind: 'text' })).body.id, fid)
   assert.equal((await call('POST', '/api/projects/IDS/fields', { name: 'No id', kind: 'text' })).status, 200)   // still optional
 })
+
+test('workflow override: refused for plain members, honored for the project lead and admins', { skip }, async () => {
+  const p = (await call('POST', '/api/projects', { name: 'Override', key: 'OVR', template: 'kanban' }, 'lead@x.com')).body
+  const [todo, doing, done] = p.statuses
+  await call('POST', '/api/projects/OVR/transitions', { name: 'Start', fromIds: [todo.id], toId: doing.id }, 'lead@x.com')
+  await call('POST', '/api/projects/OVR/issues', { title: 'stuck', statusId: doing.id }, 'lead@x.com')
+  const move = (who: string, headers: Record<string, string>) => call('PATCH', '/api/issues/OVR-1', { statusId: done.id }, who, headers)
+  assert.equal((await move('lead@x.com', {})).status, 409)                                  // no transition doing -> done
+  assert.equal((await move('someone@x.com', { 'x-workflow-override': '1' })).status, 409)   // a plain member cannot override
+  assert.equal((await move('lead@x.com', { 'x-workflow-override': '1' })).status, 200)      // the lead can
+  assert.equal((await call('GET', '/api/issues/OVR-1')).body.statusId, done.id)
+})

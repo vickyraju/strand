@@ -69,6 +69,8 @@ export interface SyncDeps {
   /** Latest local issues (read when a request runs, never captured earlier). */
   getIssues: () => Issue[]
   projectKey: (projectId: string) => string | undefined
+  /** Does this status still exist in the project? A move off a deleted status is an admin remap, not a workflow move. */
+  statusExists?: (projectId: string, statusId: string) => boolean
   /** Replace one issue with the server's copy, keeping the local-only parts. */
   applyServerIssue: (issue: Issue) => void
   /** Replace a project's issues wholesale (used when recovering from a failed request). */
@@ -152,14 +154,19 @@ export function createIssueSync(initial?: SyncDeps) {
       })
     }
     for (const { issue, patch } of plan.patches) {
+      const was = base.get(issue.id)
+      const remap = !!patch.statusId && !!was && !!d.statusExists && !d.statusExists(issue.projectId, was.status)
       base.set(issue.id, issue)
       enqueue(async () => {
         const v = versions.get(issue.id)
-        reconcile(issue, await d.call('PATCH', `/api/issues/${encodeURIComponent(keyOf(issue))}`, patch, v != null ? { 'if-match': String(v) } : undefined))
+        const headers = { ...(v != null ? { 'if-match': String(v) } : {}), ...(remap ? { 'x-workflow-override': '1' } : {}) }
+        reconcile(issue, await d.call('PATCH', `/api/issues/${encodeURIComponent(keyOf(issue))}`, patch, Object.keys(headers).length ? headers : undefined))
       })
     }
     for (const issue of plan.deletes) {
-      base.delete(issue.id); trash.set(issue.id, issue)
+      base.delete(issue.id)
+      if (!d.projectKey(issue.projectId)) continue     // its whole project was deleted: that request removes the issues too
+      trash.set(issue.id, issue)
       enqueue(async () => { await d.call('DELETE', `/api/issues/${encodeURIComponent(keyOf(issue))}`) })
     }
   }
@@ -173,6 +180,8 @@ export function createIssueSync(initial?: SyncDeps) {
     serverKey: (issue: Issue) => keyOf(issue),
     /** True once the server has this issue (it came from the server, or its create was answered). */
     known: (id: string) => keys.has(id),
+    /** The issues as the server last returned them (before local edits). */
+    baseList: () => [...base.values()],
   }
 }
 

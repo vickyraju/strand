@@ -117,3 +117,14 @@ test('a failed request reports the error, reloads the project from the server an
   h.sync.flush(); await h.sync.idle()                                  // reloaded state is the new base: nothing to send
   assert.equal(n, 1)
 })
+
+test('moving work off a status that was deleted is sent as an admin remap (workflow override)', async () => {
+  const h = harness({ statusExists: (_p: string, status: string) => status !== 's-old' } as Partial<SyncDeps>)
+  const a = mk('1', { key: 'PAY-1', status: 's-old' })
+  h.sync.load('p1', [{ ...a, version: 4 }]); h.set([a])
+  h.set([{ ...a, status: 's1' }]); h.sync.flush(); await h.sync.idle()
+  assert.deepEqual(h.calls[0]!.headers, { 'if-match': '4', 'x-workflow-override': '1' })
+  // an ordinary move between statuses that both still exist is not an override
+  h.set([{ ...a, status: 's2' }]); h.sync.flush(); await h.sync.idle()
+  assert.deepEqual(h.calls[1]!.headers, { 'if-match': '2' })
+})

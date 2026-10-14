@@ -1,7 +1,7 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
 import { db, tx, pick, type Db } from '../db.ts'
-import { HttpError, requireWrite, type Me } from '../auth.ts'
+import { HttpError, isAdmin, requireWrite, type Me } from '../auth.ts'
 import { publish } from '../events.ts'
 import { runRules } from '../rules.ts'
 import { projectByKey } from './projects.ts'
@@ -147,7 +147,10 @@ const plugin: FastifyPluginAsyncZod = async app => {
 
   app.patch('/issues/:key', { schema: {
     tags: TAG, summary: 'Update issue fields. Send If-Match: <version> to reject stale edits (409). Workflow transitions are enforced.',
-    params: keyP, body: patchBody, headers: z.object({ 'if-match': z.string().optional().describe('Issue version you last read') }),
+    params: keyP, body: patchBody, headers: z.object({
+      'if-match': z.string().optional().describe('Issue version you last read'),
+      'x-workflow-override': z.string().optional().describe('Send 1 to skip the workflow check. Honored only for workspace admins and the project lead (used when moving work off a status that is being deleted).'),
+    }),
   } }, async req => {
     requireWrite(req)
     const patch = req.body
@@ -155,7 +158,9 @@ const plugin: FastifyPluginAsyncZod = async app => {
     return tx(async d => {
       const cur = await issueByKey(d, req.me.workspaceId, req.params.key)
       if (ifMatch !== null && ifMatch !== cur.version) throw new HttpError(409, `Edited elsewhere (current version ${cur.version})`)
-      if (patch.statusId) await checkTransition(d, cur.projectId, cur.statusId, patch.statusId)
+      const [lead] = await d.query<{ leadId: string | null }>('select lead_id from projects where id = $1', [cur.projectId])
+      const override = req.headers['x-workflow-override'] === '1' && (isAdmin(req.me.role) || lead?.leadId === req.me.id)
+      if (patch.statusId && !override) await checkTransition(d, cur.projectId, cur.statusId, patch.statusId)
       if (patch.parentId === cur.id) throw new HttpError(400, 'An item cannot be its own parent')
 
       const changed = Object.keys(patch).filter(k => k !== 'rank' && JSON.stringify((patch as any)[k]) !== JSON.stringify(cur[k]))

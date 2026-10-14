@@ -4,6 +4,7 @@ import { useStore, uid, suggestKey, isValidKey, PROJECT_COLORS, type Template } 
 import { Modal } from './ui'
 import { api, apiEnabled } from '../api/client'
 import { mapProject } from '../api/map'
+import { adoptProject } from '../api/settings'
 
 const TEMPLATES: { id: Template; name: string; desc: string; Icon: typeof Columns2 }[] = [
   { id: 'kanban', name: 'Kanban', desc: 'Visualize work on a board and keep it flowing. Good for support, ops and continuous delivery.', Icon: Columns2 },
@@ -37,6 +38,7 @@ export default function CreateProjectModal({ onClose, onCreated }: {
       setBusy(true); setError('')
       try {
         const created = mapProject(await api('POST', '/api/projects', { name: name.trim(), key, color, template }))
+        adoptProject(created)          // its default workflow is already on the server: do not send it back
         dispatch({ type: 'upsertProject', project: created })
         onCreated(created.id)
       } catch (e) {

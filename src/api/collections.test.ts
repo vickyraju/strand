@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createCollectionSync } from './collections.ts'
-import { idle } from './queue.ts'
+import { idle, enqueue } from './queue.ts'
 
 interface Item { id: string; text: string; parent: string }
 const setup = (over: Record<string, unknown> = {}) => {
@@ -52,4 +52,14 @@ test('a failure reports once, reloads, and drops work queued behind it', async (
   assert.deepEqual(h.errors, ['boom'])
   assert.equal(h.recovered(), 1)
   assert.deepEqual(h.log, [])
+})
+
+test('writes and deletes can be flushed separately so other work runs in between', async () => {
+  const h = setup()
+  h.sync.load([it('old')])
+  h.sync.flush([it('new')], 'writes')
+  enqueue(async () => { h.log.push('--- other work ---') })      // e.g. issue requests, queued between the two phases
+  h.sync.flush([it('new')], 'deletes')
+  await idle()
+  assert.deepEqual(h.log, ['create new:t', '--- other work ---', 'remove old'])
 })

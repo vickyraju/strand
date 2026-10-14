@@ -4,6 +4,8 @@ import { issueSync } from './sync'
 import { commentDeps, commentSync, fetchIssueDetail } from './comments'
 import { sprintDeps, sprintSync } from './sprints'
 import { loadProjectIssues, loadWorkspace } from './load'
+import { KINDS, kindSyncs, itemsOf, projectSync, sendDetails, settingsDeps, starSync } from './settings'
+import { isDone } from '../data/reducer'
 import { useStore } from '../data/store'
 
 type Toast = (text: string, opts?: { tone?: 'ok' | 'warn' }) => void
@@ -22,6 +24,7 @@ export function useIssueSync(toast: Toast) {
       call: api,
       getIssues: () => latest.current.issues,
       projectKey: id => latest.current.projects.find(p => p.id === id)?.key,
+      statusExists: (projectId, statusId) => !!latest.current.projects.find(p => p.id === projectId)?.statuses.some(s => s.id === statusId),
       applyServerIssue: issue => dispatch({ type: 'syncIssue', issue }),
       applyProjectIssues: (projectId, issues) =>
         dispatch({ type: 'loadIssues', projectId, issues: issues.map(({ version, ...i }: any) => i) }),
@@ -58,13 +61,42 @@ export function useIssueSync(toast: Toast) {
       issueSync.load(projectId, loaded)
       dispatch({ type: 'loadIssues', projectId, issues: loaded.map(({ version, ...i }: any) => i) })
     }
+    // After a failed request: take projects, sprints and stars from the server (this also resets every sync's base)
     sprintDeps.reloadAll = async () => {
-      const fresh = await loadWorkspace()            // also resets the sprint base
-      dispatch({ type: 'replace', state: { ...latest.current, sprints: fresh.sprints } })
+      const fresh = await loadWorkspace()
+      dispatch({ type: 'replace', state: { ...latest.current, projects: fresh.projects, sprints: fresh.sprints, starred: fresh.starred } })
     }
   }, [dispatch])
+
+  // Project settings: workflow, fields, templates, rules, releases, stars, details, delete
+  useEffect(() => {
+    if (!apiEnabled) return
+    settingsDeps.getProjects = () => latest.current.projects
+    settingsDeps.getIssues = () => latest.current.issues
+    settingsDeps.baseIssues = () => issueSync.baseList()
+    settingsDeps.isUnfinished = issue => {
+      const project = latest.current.projects.find(p => p.id === issue.projectId)
+      return !project || !isDone(project, issue)
+    }
+    settingsDeps.onError = m => toastRef.current(`Couldn't save that change: ${m}. Showing what the server has.`, { tone: 'warn' })
+    settingsDeps.reloadProject = sprintDeps.reloadProject
+    settingsDeps.reloadAll = sprintDeps.reloadAll
+  }, [dispatch])
+  // creates and edits first (a status must exist before an issue moves into it) …
+  useEffect(() => {
+    if (!apiEnabled) return
+    for (const k of KINDS) kindSyncs[k].flush(itemsOf(state.projects, k), 'writes')
+    sendDetails(state.projects)
+  }, [state.projects])
+  useEffect(() => { if (apiEnabled) starSync.flush(state.starred.map(id => ({ id }))) }, [state.starred])
   useEffect(() => { if (apiEnabled) sprintSync.flush(state.sprints) }, [state.sprints])
 
   useEffect(() => { if (apiEnabled) issueSync.flush() }, [state.issues])
   useEffect(() => { if (apiEnabled) commentSync.flush(state.comments) }, [state.comments])
+  // … and removals last (a status can only be deleted once its issues have been moved off it)
+  useEffect(() => {
+    if (!apiEnabled) return
+    for (const k of [...KINDS].reverse()) kindSyncs[k].flush(itemsOf(state.projects, k), 'deletes')
+    projectSync.flush(state.projects.map(p => ({ id: p.id, key: p.key, body: {} })))
+  }, [state.projects])
 }

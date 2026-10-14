@@ -1,6 +1,7 @@
 import { api } from './client'
 import { mapWorkspace, mapIssue } from './map'
 import { sprintSync } from './sprints'
+import { loadSettingsBase } from './settings'
 import type { Issue, State } from '../data/reducer'
 
 /** Loads who you are, the people and the projects (with workflow, sprints, fields…) from the API.
@@ -14,7 +15,8 @@ export async function loadWorkspace(): Promise<State> {
   ])
   const details = await Promise.all(list.map(p => api<any>('GET', `/api/projects/${encodeURIComponent(p.key)}`)))
   const state = mapWorkspace(me, users, details, list.filter(p => p.starred).map(p => p.id))
-  sprintSync.load(state.sprints)   // the server's sprints are the base, so they are not sent back
+  sprintSync.load(state.sprints)   // the server's data is the base, so none of it is sent back
+  loadSettingsBase(state.projects, state.starred)
   return state
 }
 

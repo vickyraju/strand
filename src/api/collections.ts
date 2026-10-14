@@ -39,15 +39,19 @@ export function createCollectionSync<T>(o: CollectionOptions<T>) {
       for (const [id, t] of base) if (inScope(t)) base.delete(id)
       for (const t of items) base.set(o.id(t), t)
     },
-    flush(current: T[]) {
+    /** `only` splits a flush in two so other syncs can run between: 'writes' = creates and updates, 'deletes' = removals.
+     *  (A status must be deleted after its issues are moved off it, but created before issues move onto it.) */
+    flush(current: T[], only?: 'writes' | 'deletes') {
       const seen = new Set<string>()
       for (const t of current) {
         const id = o.id(t); seen.add(id)
+        if (only === 'deletes') continue
         const was = base.get(id)
         base.set(id, t)
         if (!was) run(() => o.create(t))
         else if (o.changed(was, t)) run(() => o.update(was, t))
       }
+      if (only === 'writes') return
       for (const [id, t] of [...base]) {
         if (seen.has(id)) continue
         base.delete(id)

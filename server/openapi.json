@@ -2482,6 +2482,15 @@
             "name": "if-match",
             "required": false,
             "description": "Issue version you last read"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "header",
+            "name": "x-workflow-override",
+            "required": false,
+            "description": "Send 1 to skip the workflow check. Honored only for workspace admins and the project lead (used when moving work off a status that is being deleted)."
           }
         ],
         "responses": {
