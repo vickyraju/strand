@@ -1,4 +1,7 @@
 import Fastify from 'fastify'
+import swagger from '@fastify/swagger'
+import swaggerUi from '@fastify/swagger-ui'
+import { jsonSchemaTransform, serializerCompiler, validatorCompiler } from 'fastify-type-provider-zod'
 import { ZodError } from 'zod'
 import { authenticate, HttpError } from './auth.ts'
 import { pool } from './db.ts'
@@ -13,7 +16,31 @@ import scim from './routes/scim.ts'
 export async function build() {
   const app = Fastify({ logger: process.env.NODE_ENV !== 'test', bodyLimit: 20 * 1024 * 1024 })
 
+  // Route schemas (zod) drive validation and the OpenAPI document
+  app.setValidatorCompiler(validatorCompiler)
+  app.setSerializerCompiler(serializerCompiler)
+  await app.register(swagger, {
+    openapi: {
+      info: { title: 'Strand API', version: '1.0.0', description: 'Work management: projects, issues, sprints, releases, automation.' },
+      components: {
+        securitySchemes: {
+          bearer: { type: 'http', scheme: 'bearer', bearerFormat: 'Entra ID JWT' },
+          devSecret: { type: 'apiKey', in: 'header', name: 'x-dev-secret', description: 'Dev login only (AUTH_DEV); pair with x-dev-user' },
+          devUser: { type: 'apiKey', in: 'header', name: 'x-dev-user', description: 'Dev login only: your email' },
+        },
+      },
+      security: [{ bearer: [] }, { devSecret: [], devUser: [] }],
+    },
+    transform: jsonSchemaTransform,
+  })
+  // Docs are opt-in so a production deploy does not publish its API surface by default
+  if (process.env.DOCS_ENABLED === '1' || ['development', 'test'].includes(process.env.NODE_ENV ?? ''))
+    await app.register(swaggerUi, { routePrefix: '/docs', uiConfig: { persistAuthorization: true } })
+
   app.setErrorHandler((err: any, _req, reply) => {
+    if (err.validation) return reply.code(400).send({
+      error: 'Invalid input', issues: err.validation.map((v: any) => ({ path: v.instancePath, message: v.message })),
+    })
     if (err instanceof ZodError) return reply.code(400).send({ error: 'Invalid input', issues: err.issues })
     if (err instanceof HttpError) return reply.code(err.status).send({ error: err.message })
     if (err.code === '23505') return reply.code(409).send({ error: 'Already exists' })

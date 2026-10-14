@@ -1,4 +1,5 @@
-import type { FastifyPluginAsync, FastifyRequest } from 'fastify'
+import type { FastifyRequest } from 'fastify'
+import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
 import { db, tx, pick, type Db } from '../db.ts'
 import { HttpError, isAdmin, requireAdmin, requireWrite } from '../auth.ts'
@@ -36,7 +37,7 @@ const CHILD = {
 } as const
 type Kind = keyof typeof CHILD
 
-const childBody: Record<Kind, z.ZodType<Record<string, unknown>>> = {
+const childPatch = {
   statuses: z.object({ name: z.string().min(1), color, category, wipLimit: z.number().int().positive().nullable(), position: z.number().int() }).partial(),
   transitions: z.object({ name: z.string().min(1), fromIds: z.array(uuid).nullable(), toId: uuid }).partial(),
   fields: z.object({ name: z.string().min(1), kind: z.enum(['text', 'number', 'select', 'date']), options: z.array(z.string()).nullable(), position: z.number().int() }).partial(),
@@ -51,25 +52,31 @@ const childBody: Record<Kind, z.ZodType<Record<string, unknown>>> = {
   }).partial(),
   releases: z.object({ name: z.string().min(1), description: z.string(), startDate: z.string().nullable(), releaseDate: z.string().nullable() }).partial(),
 }
-// Required on create (everything is optional in the shared schema above so PATCH can reuse it)
 const REQUIRED: Record<Kind, string[]> = {
   statuses: ['name', 'color', 'category'], transitions: ['name', 'toId'], fields: ['name', 'kind'],
   templates: ['name', 'type', 'title'], rules: ['name', 'trigger', 'actions'], releases: ['name'],
 }
+// Create = the same shape with the required keys enforced
+const childCreate = Object.fromEntries((Object.keys(childPatch) as Kind[]).map(k =>
+  [k, (childPatch[k] as z.ZodObject<any>).required(Object.fromEntries(REQUIRED[k].map(r => [r, true])) as any)])) as unknown as typeof childPatch
 
 const projectBody = z.object({
   name: z.string().min(1).max(120), description: z.string(), color, leadId: uuid.nullable(),
   boardPrefs: z.record(z.string(), z.unknown()), layout: z.record(z.string(), z.unknown()),
 }).partial()
 
-const plugin: FastifyPluginAsync = async app => {
-  app.get('/me', async req => req.me)
+const keyP = z.object({ key: z.string().describe('Project key, e.g. PAY') })
+const keyIdP = keyP.extend({ id: uuid })
+const T = { me: ['Account'], projects: ['Projects'], config: ['Project settings'], sprints: ['Sprints'] }
 
-  app.get('/users', async req => db.query(
+const plugin: FastifyPluginAsyncZod = async app => {
+  app.get('/me', { schema: { tags: T.me, summary: 'Current user and role' } }, async req => req.me)
+
+  app.get('/users', { schema: { tags: T.me, summary: 'Active users in the workspace' } }, async req => db.query(
     `select u.id, u.name, u.initials, u.color, u.title, u.email, m.role from users u
      join memberships m on m.user_id = u.id and m.workspace_id = $1 where u.active order by u.name`, [req.me.workspaceId]))
 
-  app.get('/projects', async req => db.query(
+  app.get('/projects', { schema: { tags: T.projects, summary: 'List projects with star flag and open-issue count' } }, async req => db.query(
     `select p.id, p.key, p.name, p.description, p.color, p.template, p.lead_id, p.created_at,
             (s.user_id is not null) as starred,
             (select count(*) from issues i join statuses st on st.id = i.status_id
@@ -77,9 +84,10 @@ const plugin: FastifyPluginAsync = async app => {
        from projects p left join stars s on s.project_id = p.id and s.user_id = $2
       where p.workspace_id = $1 order by p.name`, [req.me.workspaceId, req.me.id]))
 
-  app.post('/projects', async req => {
+  const createProject = projectBody.required({ name: true }).extend({ key: z.string().regex(/^[A-Z][A-Z0-9]{1,9}$/), template: z.enum(['kanban', 'scrum']) })
+  app.post('/projects', { schema: { tags: T.projects, summary: 'Create a project with default statuses', body: createProject } }, async req => {
     requireWrite(req)
-    const b = projectBody.required({ name: true }).extend({ key: z.string().regex(/^[A-Z][A-Z0-9]{1,9}$/), template: z.enum(['kanban', 'scrum']) }).parse(req.body)
+    const b = req.body
     return tx(async d => {
       const [p] = await d.query<{ id: string }>(
         `insert into projects (workspace_id, key, name, description, color, template, lead_id)
@@ -92,38 +100,38 @@ const plugin: FastifyPluginAsync = async app => {
     })
   })
 
-  app.get<{ Params: { key: string } }>('/projects/:key', async req => projectDetail(db, req.me.workspaceId, req.params.key))
+  app.get('/projects/:key', { schema: { tags: T.projects, summary: 'Project with workflow, fields, releases, templates, rules and sprints', params: keyP } }, async req => projectDetail(db, req.me.workspaceId, req.params.key))
 
-  app.patch<{ Params: { key: string } }>('/projects/:key', async req => {
+  app.patch('/projects/:key', { schema: { tags: T.projects, summary: 'Update project details', params: keyP, body: projectBody } }, async req => {
     requireWrite(req)
     const p = await projectByKey(db, req.me.workspaceId, req.params.key)
     await requireProjectAdmin(req, p)
-    const w = pick(projectBody.parse(req.body), ['name', 'description', 'color', 'leadId', 'boardPrefs', 'layout'], ['boardPrefs', 'layout'])
+    const w = pick(req.body, ['name', 'description', 'color', 'leadId', 'boardPrefs', 'layout'], ['boardPrefs', 'layout'])
     if (w.keys.length) await db.query(
       `update projects set ${w.cols.map((c, i) => `${c} = $${i + 2}`).join(', ')} where id = $1`, [p.id, ...w.vals])
     return projectDetail(db, req.me.workspaceId, req.params.key)
   })
 
-  app.delete<{ Params: { key: string } }>('/projects/:key', async (req, reply) => {
+  app.delete('/projects/:key', { schema: { tags: T.projects, summary: 'Delete a project (admin only)', params: keyP } }, async (req, reply) => {
     requireAdmin(req)
     const p = await projectByKey(db, req.me.workspaceId, req.params.key)
     await db.query('delete from projects where id = $1', [p.id])
     reply.code(204).send()
   })
 
-  app.put<{ Params: { key: string } }>('/projects/:key/star', async (req, reply) => {
+  app.put('/projects/:key/star', { schema: { tags: T.projects, summary: 'Star a project', params: keyP } }, async (req, reply) => {
     const p = await projectByKey(db, req.me.workspaceId, req.params.key)
     await db.query('insert into stars (user_id, project_id) values ($1, $2) on conflict do nothing', [req.me.id, p.id])
     reply.code(204).send()
   })
-  app.delete<{ Params: { key: string } }>('/projects/:key/star', async (req, reply) => {
+  app.delete('/projects/:key/star', { schema: { tags: T.projects, summary: 'Unstar a project', params: keyP } }, async (req, reply) => {
     const p = await projectByKey(db, req.me.workspaceId, req.params.key)
     await db.query('delete from stars where user_id = $1 and project_id = $2', [req.me.id, p.id])
     reply.code(204).send()
   })
 
   // Realtime stream of changes in a project (Server-Sent Events)
-  app.get<{ Params: { key: string } }>('/projects/:key/events', async (req, reply) => {
+  app.get('/projects/:key/events', { schema: { tags: T.projects, summary: 'Live change stream (Server-Sent Events)', params: keyP } }, async (req, reply) => {
     const p = await projectByKey(db, req.me.workspaceId, req.params.key)
     reply.hijack()
     subscribe(p.id, reply)
@@ -134,13 +142,12 @@ const plugin: FastifyPluginAsync = async app => {
     const cfg = CHILD[kind] as { table: string; cols: readonly string[]; json?: readonly string[]; ws?: boolean }
     const json = [...(cfg.json ?? [])]
 
-    app.post<{ Params: { key: string } }>(`/projects/:key/${kind}`, async req => {
+    const what = kind === 'fields' ? 'custom field' : kind.replace(/s$/, '')
+    app.post(`/projects/:key/${kind}`, { schema: { tags: T.config, summary: `Add a ${what}`, params: keyP, body: childCreate[kind] } }, async req => {
       requireWrite(req)
       const p = await projectByKey(db, req.me.workspaceId, req.params.key)
       await requireProjectAdmin(req, p)
-      const body = childBody[kind].parse(req.body)
-      for (const r of REQUIRED[kind]) if (body[r] === undefined) throw new HttpError(400, `${r} is required`)
-      const w = pick(body, [...cfg.cols], json)
+      const w = pick(req.body as Record<string, unknown>, [...cfg.cols], json)
       const extra = cfg.ws ? ['workspace_id'] : []
       const cols = ['project_id', ...extra, ...w.cols]
       const vals = [p.id, ...(cfg.ws ? [req.me.workspaceId] : []), ...w.vals]
@@ -149,33 +156,36 @@ const plugin: FastifyPluginAsync = async app => {
       return row
     })
 
-    app.patch<{ Params: { key: string; id: string } }>(`/projects/:key/${kind}/:id`, async req => {
+    app.patch(`/projects/:key/${kind}/:id`, { schema: { tags: T.config, summary: `Update a ${what}`, params: keyIdP, body: childPatch[kind] } }, async req => {
       requireWrite(req)
       const p = await projectByKey(db, req.me.workspaceId, req.params.key)
       await requireProjectAdmin(req, p)
-      const w = pick(childBody[kind].parse(req.body), [...cfg.cols], json)
+      const w = pick(req.body as Record<string, unknown>, [...cfg.cols], json)
       if (!w.keys.length) throw new HttpError(400, 'Nothing to update')
       const [row] = await db.query(
         `update ${cfg.table} set ${w.cols.map((c, i) => `${c} = $${i + 3}`).join(', ')} where id = $1 and project_id = $2 returning *`,
-        [uuid.parse(req.params.id), p.id, ...w.vals])
+        [req.params.id, p.id, ...w.vals])
       if (!row) throw new HttpError(404, 'Not found')
       return row
     })
 
-    app.delete<{ Params: { key: string; id: string } }>(`/projects/:key/${kind}/:id`, async (req, reply) => {
+    app.delete(`/projects/:key/${kind}/:id`, { schema: { tags: T.config, summary: `Remove a ${what}`, params: keyIdP } }, async (req, reply) => {
       requireWrite(req)
       const p = await projectByKey(db, req.me.workspaceId, req.params.key)
       await requireProjectAdmin(req, p)
-      const r = await db.query(`delete from ${cfg.table} where id = $1 and project_id = $2 returning id`, [uuid.parse(req.params.id), p.id])
+      const r = await db.query(`delete from ${cfg.table} where id = $1 and project_id = $2 returning id`, [req.params.id, p.id])
       if (!r.length) throw new HttpError(404, 'Not found')
       reply.code(204).send()
     })
   }
 
   // Releasing a version moves its unfinished work to `moveTo` (or clears it)
-  app.post<{ Params: { key: string; id: string } }>('/projects/:key/releases/:id/release', async req => {
+  app.post('/projects/:key/releases/:id/release', { schema: {
+    tags: T.config, summary: 'Mark a release shipped; unfinished work moves to another release', params: keyIdP,
+    body: z.object({ moveTo: uuid.nullable().default(null).describe('Release that receives unfinished work') }).default({ moveTo: null }),
+  } }, async req => {
     requireWrite(req)
-    const { moveTo } = z.object({ moveTo: uuid.nullable().default(null) }).parse(req.body ?? {})
+    const { moveTo } = req.body
     const p = await projectByKey(db, req.me.workspaceId, req.params.key)
     await requireProjectAdmin(req, p)
     return tx(async d => {
@@ -192,52 +202,57 @@ const plugin: FastifyPluginAsync = async app => {
   // ── Sprints ──
   const sprintBody = z.object({ name: z.string().min(1), goal: z.string(), endsAt: z.string().datetime().nullable() }).partial()
 
-  app.post<{ Params: { key: string } }>('/projects/:key/sprints', async req => {
+  app.post('/projects/:key/sprints', { schema: { tags: T.sprints, summary: 'Create a sprint', params: keyP, body: sprintBody.required({ name: true }) } }, async req => {
     requireWrite(req)
     const p = await projectByKey(db, req.me.workspaceId, req.params.key)
-    const b = sprintBody.required({ name: true }).parse(req.body)
+    const b = req.body
     const [s] = await db.query(
       'insert into sprints (workspace_id, project_id, name, goal, ends_at) values ($1, $2, $3, $4, $5) returning *',
       [req.me.workspaceId, p.id, b.name, b.goal ?? '', b.endsAt ?? null])
     return s
   })
 
-  app.patch<{ Params: { key: string; id: string } }>('/projects/:key/sprints/:id', async req => {
+  app.patch('/projects/:key/sprints/:id', { schema: { tags: T.sprints, summary: 'Update a sprint', params: keyIdP, body: sprintBody } }, async req => {
     requireWrite(req)
     const p = await projectByKey(db, req.me.workspaceId, req.params.key)
-    const w = pick(sprintBody.parse(req.body), ['name', 'goal', 'endsAt'])
+    const w = pick(req.body, ['name', 'goal', 'endsAt'])
     if (!w.keys.length) throw new HttpError(400, 'Nothing to update')
     const [s] = await db.query(
       `update sprints set ${w.cols.map((c, i) => `${c} = $${i + 3}`).join(', ')} where id = $1 and project_id = $2 returning *`,
-      [uuid.parse(req.params.id), p.id, ...w.vals])
+      [req.params.id, p.id, ...w.vals])
     if (!s) throw new HttpError(404, 'Not found')
     return s
   })
 
-  app.delete<{ Params: { key: string; id: string } }>('/projects/:key/sprints/:id', async (req, reply) => {
+  app.delete('/projects/:key/sprints/:id', { schema: { tags: T.sprints, summary: 'Delete a planned sprint', params: keyIdP } }, async (req, reply) => {
     requireWrite(req)
     const p = await projectByKey(db, req.me.workspaceId, req.params.key)
-    await db.query(`delete from sprints where id = $1 and project_id = $2 and state = 'planned'`, [uuid.parse(req.params.id), p.id])
+    await db.query(`delete from sprints where id = $1 and project_id = $2 and state = 'planned'`, [req.params.id, p.id])
     reply.code(204).send()
   })
 
-  app.post<{ Params: { key: string; id: string } }>('/projects/:key/sprints/:id/start', async req => {
+  app.post('/projects/:key/sprints/:id/start', { schema: {
+    tags: T.sprints, summary: 'Start a sprint (snapshots committed points)', params: keyIdP, body: z.object({ endsAt: z.string().datetime() }),
+  } }, async req => {
     requireWrite(req)
-    const { endsAt } = z.object({ endsAt: z.string().datetime() }).parse(req.body)
+    const { endsAt } = req.body
     const p = await projectByKey(db, req.me.workspaceId, req.params.key)
     return tx(async d => {
       const [s] = await d.query(
         `update sprints set state = 'active', started_at = now(), ends_at = $3,
                 committed = (select coalesce(sum(estimate), 0) from issues where sprint_id = sprints.id and deleted_at is null)
-          where id = $1 and project_id = $2 and state = 'planned' returning *`, [uuid.parse(req.params.id), p.id, endsAt])
+          where id = $1 and project_id = $2 and state = 'planned' returning *`, [req.params.id, p.id, endsAt])
       if (!s) throw new HttpError(409, 'Sprint is not planned, or another sprint is already active')
       return s
     })
   })
 
-  app.post<{ Params: { key: string; id: string } }>('/projects/:key/sprints/:id/complete', async req => {
+  app.post('/projects/:key/sprints/:id/complete', { schema: {
+    tags: T.sprints, summary: 'Complete a sprint; unfinished work moves to another sprint or the backlog', params: keyIdP,
+    body: z.object({ moveTo: uuid.nullable().default(null).describe('Sprint that receives unfinished work (null = backlog)') }).default({ moveTo: null }),
+  } }, async req => {
     requireWrite(req)
-    const { moveTo } = z.object({ moveTo: uuid.nullable().default(null) }).parse(req.body ?? {})
+    const { moveTo } = req.body
     const p = await projectByKey(db, req.me.workspaceId, req.params.key)
     return tx(async d => {
       const [s] = await d.query(
@@ -245,7 +260,7 @@ const plugin: FastifyPluginAsync = async app => {
                 completed = (select coalesce(sum(i.estimate), 0) from issues i join statuses st on st.id = i.status_id
                               where i.sprint_id = sprints.id and i.deleted_at is null and st.category = 'done'),
                 issue_ids = array(select id from issues where sprint_id = sprints.id and deleted_at is null)
-          where id = $1 and project_id = $2 and state = 'active' returning *`, [uuid.parse(req.params.id), p.id])
+          where id = $1 and project_id = $2 and state = 'active' returning *`, [req.params.id, p.id])
       if (!s) throw new HttpError(409, 'Sprint is not active')
       await d.query(
         `update issues set sprint_id = $2, version = version + 1, updated_at = now()

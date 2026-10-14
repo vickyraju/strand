@@ -139,3 +139,21 @@ test('import: moves a reducer v4 state in with ids remapped', { skip }, async ()
   assert.equal((await call('GET', '/api/projects')).body.find((x: any) => x.key === 'IMP').starred, true)
   assert.equal((await call('POST', '/api/import', state)).body.skippedProjects[0], 'IMP')   // re-import is a no-op
 })
+
+test('OpenAPI: project routes are documented and the schemas are enforced', { skip }, async () => {
+  const spec = JSON.parse((await app.inject({ method: 'GET', url: '/docs/json' })).body)
+  assert.equal(spec.info.title, 'Strand API')
+  assert.ok(spec.components.securitySchemes.bearer && spec.components.securitySchemes.devSecret)
+  const post = spec.paths['/api/projects/{key}/statuses'].post
+  assert.deepEqual(post.tags, ['Project settings'])
+  assert.deepEqual(post.requestBody.content['application/json'].schema.required.sort(), ['category', 'color', 'name'])
+  // ponytail: only the migrated route files so far; slice 2 widens this to every /api and /scim path
+  for (const [path, ops] of Object.entries<any>(spec.paths))
+    if (path.startsWith('/api/projects') && !/\/(issues|summary)$/.test(path))
+      for (const op of Object.values<any>(ops)) assert.ok(op.summary, `${path} has no summary`)
+
+  // the same schema rejects a bad body before the handler runs
+  const bad = await call('POST', '/api/projects/PAY/statuses', { name: 'x' })
+  assert.equal(bad.status, 400)
+  assert.equal(bad.body.error, 'Invalid input')
+})
