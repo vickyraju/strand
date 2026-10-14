@@ -49,6 +49,8 @@ export const sprintSync = createCollectionSync<Sprint>({
     }
   },
   remove: async s => { await api('DELETE', `/api/projects/${keyOf(s.projectId)}/sprints/${s.id}`) },
+  // the project itself was deleted: the project delete removes its sprints
+  shouldDelete: s => !!sprintDeps.projectKey(s.projectId),
   recover: () => sprintDeps.reloadAll(),
   onError: m => sprintDeps.onError(m),
 })

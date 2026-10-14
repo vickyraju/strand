@@ -45,6 +45,15 @@ test('shouldDelete can veto a server delete', async () => {
   assert.deepEqual(h.log, ['create a:t', 'create b:t', 'remove b'])
 })
 
+test('a vetoed record that comes back (Undo) is not created a second time', async () => {
+  const h = setup({ shouldDelete: (i: Item) => i.parent !== 'gone' })
+  h.sync.load([it('a', 't', 'gone')])
+  h.sync.flush([])                          // its parent vanished
+  h.sync.flush([it('a', 't', 'gone')])      // Undo brought the parent and the record back
+  await idle()
+  assert.deepEqual(h.log, [])
+})
+
 test('a failure reports once, reloads, and drops work queued behind it', async () => {
   const h = setup({ create: async () => { throw new Error('boom') } })
   h.sync.flush([it('a')]); h.sync.flush([it('a'), it('b')])

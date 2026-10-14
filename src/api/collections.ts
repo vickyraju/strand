@@ -10,7 +10,7 @@ export interface CollectionOptions<T> {
   create: (t: T) => Promise<void>
   update: (before: T, after: T) => Promise<void>
   remove: (t: T) => Promise<void>
-  /** Return false to skip the server delete for a record that vanished locally for another reason (e.g. its parent was removed). */
+  /** Return false for a record that vanished locally because its parent did: no server delete, and it stays in the base. */
   shouldDelete?: (t: T) => boolean
   /** Reload this collection from the server and put it in the store. */
   recover: () => Promise<void>
@@ -54,8 +54,11 @@ export function createCollectionSync<T>(o: CollectionOptions<T>) {
       if (only === 'writes') return
       for (const [id, t] of [...base]) {
         if (seen.has(id)) continue
+        // Gone locally only because its parent went (an issue or project that Undo can bring back): leave it
+        // in the base, so when it returns it is recognised as unchanged and not created a second time.
+        if (!(o.shouldDelete?.(t) ?? true)) continue
         base.delete(id)
-        if (o.shouldDelete?.(t) ?? true) run(() => o.remove(t))
+        run(() => o.remove(t))
       }
     },
     has: (id: string) => base.has(id),

@@ -83,6 +83,7 @@ export function createIssueSync(initial?: SyncDeps) {
   let deps = initial
   const base = new Map<string, Issue>()
   const trash = new Map<string, Issue>()
+  const created = new Set<string>()            // issues made in this session (the server has no detail for them to load)
   const keys = new Map<string, string>()        // issue id → the key the server uses (local keys can differ until synced)
   const versions = new Map<string, number>()
   let epoch = 0
@@ -139,7 +140,7 @@ export function createIssueSync(initial?: SyncDeps) {
     const d = deps
 
     for (const issue of plan.creates) {
-      base.set(issue.id, issue)
+      base.set(issue.id, issue); created.add(issue.id)
       enqueue(async () => {
         const key = d.projectKey(issue.projectId)
         if (!key) throw new Error('Project not found')
@@ -164,8 +165,9 @@ export function createIssueSync(initial?: SyncDeps) {
       })
     }
     for (const issue of plan.deletes) {
+      // its whole project was deleted: that request removes the issues too, and Undo may bring them back, so keep them in the base
+      if (!d.projectKey(issue.projectId)) continue
       base.delete(issue.id)
-      if (!d.projectKey(issue.projectId)) continue     // its whole project was deleted: that request removes the issues too
       trash.set(issue.id, issue)
       enqueue(async () => { await d.call('DELETE', `/api/issues/${encodeURIComponent(keyOf(issue))}`) })
     }
@@ -180,6 +182,8 @@ export function createIssueSync(initial?: SyncDeps) {
     serverKey: (issue: Issue) => keyOf(issue),
     /** True once the server has this issue (it came from the server, or its create was answered). */
     known: (id: string) => keys.has(id),
+    /** True for an issue created in this session. */
+    createdHere: (id: string) => created.has(id),
     /** The issues as the server last returned them (before local edits). */
     baseList: () => [...base.values()],
   }

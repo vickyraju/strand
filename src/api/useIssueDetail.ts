@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { apiEnabled } from './client'
-import { commentSync, detailLoaded, fetchIssueDetail } from './comments'
+import { detailLoaded, fetchIssueDetail } from './comments'
+import { adoptDetail } from './detail'
 import { issueSync } from './sync'
 import { useStore } from '../data/store'
 
@@ -15,8 +16,7 @@ export function useIssueDetail(issueId: string | undefined) {
     let cancelled = false
     fetchIssueDetail(issue).then(d => {
       if (cancelled) return
-      detailLoaded.add(d.issueId)
-      commentSync.load(d.comments, c => c.issueId === d.issueId)
+      adoptDetail(d, state.ownerId)
       dispatch({ type: 'loadIssueDetail', ...d })
     }, () => { /* the panel simply shows no comments; opening it again retries */ })
     return () => { cancelled = true }

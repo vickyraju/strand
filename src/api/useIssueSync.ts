@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react'
 import { api, apiEnabled } from './client'
 import { issueSync } from './sync'
-import { commentDeps, commentSync, fetchIssueDetail } from './comments'
+import { commentDeps, commentSync, detailLoaded, fetchIssueDetail } from './comments'
+import { adoptDetail, linkItems, linkSync, watchItems, watchSync, worklogItems, worklogSync } from './detail'
 import { sprintDeps, sprintSync } from './sprints'
 import { loadProjectIssues, loadWorkspace } from './load'
 import { KINDS, kindSyncs, itemsOf, projectSync, sendDetails, settingsDeps, starSync } from './settings'
@@ -16,6 +17,7 @@ export function useIssueSync(toast: Toast) {
   const { state, dispatch } = useStore()
   const latest = useRef(state)
   latest.current = state
+  const projectDeleteTimer = useRef<number>(undefined)
   const toastRef = useRef(toast)
   toastRef.current = toast
 
@@ -43,7 +45,7 @@ export function useIssueSync(toast: Toast) {
       const issue = latest.current.issues.find(i => i.id === id)
       if (!issue) return
       const d = await fetchIssueDetail(issue)
-      commentSync.load(d.comments, c => c.issueId === id)
+      adoptDetail(d, latest.current.ownerId)
       dispatch({ type: 'loadIssueDetail', ...d })
     }
   }, [dispatch])
@@ -111,10 +113,21 @@ export function useIssueSync(toast: Toast) {
 
   useEffect(() => { if (apiEnabled) issueSync.flush() }, [state.issues])
   useEffect(() => { if (apiEnabled) commentSync.flush(state.comments) }, [state.comments])
+  // Time logs, links and watching: only for issues whose detail is known (an issue made here has no server detail to wait for)
+  useEffect(() => {
+    if (!apiEnabled) return
+    for (const i of state.issues) if (issueSync.createdHere(i.id)) detailLoaded.add(i.id)
+    worklogSync.flush(worklogItems(state.issues, detailLoaded))
+    linkSync.flush(linkItems(state.issues, detailLoaded))
+    watchSync.flush(watchItems(state.issues, detailLoaded, state.ownerId))
+  }, [state.issues])
   // … and removals last (a status can only be deleted once its issues have been moved off it)
   useEffect(() => {
     if (!apiEnabled) return
     for (const k of [...KINDS].reverse()) kindSyncs[k].flush(itemsOf(state.projects, k), 'deletes')
-    projectSync.flush(state.projects.map(p => ({ id: p.id, key: p.key, body: {} })))
+    // A deleted project is removed on the server only after the Undo window (the toast offers Undo for 8 s)
+    window.clearTimeout(projectDeleteTimer.current)
+    projectDeleteTimer.current = window.setTimeout(
+      () => projectSync.flush(latest.current.projects.map(p => ({ id: p.id, key: p.key, body: {} }))), 9000)
   }, [state.projects])
 }

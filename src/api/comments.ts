@@ -1,7 +1,7 @@
-import { api } from './client'
-import { createCollectionSync } from './collections'
-import { issueSync } from './sync'
-import { mapIssueDetail } from './map'
+import { api } from './client.ts'
+import { createCollectionSync } from './collections.ts'
+import { issueSync } from './sync.ts'
+import { mapIssueDetail } from './map.ts'
 import type { Comment, Issue } from '../data/reducer'
 
 /** Everything the comment sync needs from the running app (set by useIssueSync). */
@@ -14,7 +14,7 @@ export const commentDeps = {
 /** Issues whose comments are loaded; only these can be reloaded after a failure. */
 export const detailLoaded = new Set<string>()
 
-const keyOf = (issueId: string) => {
+export const keyOf = (issueId: string) => {
   const issue = commentDeps.getIssues().find(i => i.id === issueId)
   if (!issue) throw new Error('Work item not found')
   return encodeURIComponent(issueSync.serverKey(issue))
