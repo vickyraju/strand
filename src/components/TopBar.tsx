@@ -1,6 +1,7 @@
-import { ChevronRight, Plus, Bell, HelpCircle, Settings, UserRoundCog, Check, Keyboard, Moon, Sun, Menu as MenuIcon } from 'lucide-react'
+import { ChevronRight, Plus, Bell, HelpCircle, Settings, UserRoundCog, Check, Keyboard, Moon, Sun, LogOut, Menu as MenuIcon } from 'lucide-react'
 import { useThemePref, setThemePref } from '../theme'
-import { useStore } from '../data/store'
+import { useStore, signOut } from '../data/store'
+import { apiEnabled } from '../api/client'
 import { useApp } from '../appContext'
 import { Avatar, Menu } from './ui'
 
@@ -48,7 +49,8 @@ export default function TopBar({ crumbs, onCreateProject, onShortcuts, onMenu }:
           className="avatar-btn"
           trigger={<Avatar user={state.me} size={28} />}
           items={[
-            ...state.users.map((u, i) => ({
+            // "Act as" is a local-only view switch, so with an API the menu shows just you
+            ...(apiEnabled ? state.users.filter(u => u.id === state.ownerId) : state.users).map((u, i) => ({
               label: u.id === state.ownerId ? `${u.name} (you)` : `Act as ${u.name}`,
               icon: state.me?.id === u.id ? <Check size={14} color="var(--brand)" /> : <Avatar user={u} size={18} />,
               onClick: () => dispatch({ type: 'actAs', userId: u.id }),
@@ -58,6 +60,7 @@ export default function TopBar({ crumbs, onCreateProject, onShortcuts, onMenu }:
             { label: 'Settings', icon: <Settings size={14} />, onClick: () => goTo('settings') },
             { label: dark ? 'Light mode' : 'Dark mode', icon: dark ? <Sun size={14} /> : <Moon size={14} />, onClick: () => setThemePref(dark ? 'light' : 'dark') },
             { label: 'Keyboard shortcuts', icon: <Keyboard size={14} />, onClick: onShortcuts, hint: '?' },
+            ...(apiEnabled ? [{ label: 'Sign out', icon: <LogOut size={14} />, onClick: signOut, divider: true }] : []),
           ]}
         />
       </div>
