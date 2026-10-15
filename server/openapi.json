@@ -368,6 +368,63 @@
         }
       }
     },
+    "/integrations/github/webhook/": {
+      "post": {
+        "summary": "GitHub webhook receiver (signed with X-Hub-Signature-256; called by GitHub, not by clients)",
+        "tags": [
+          "Integrations"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "header",
+            "name": "x-github-event",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "header",
+            "name": "x-github-delivery",
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "duplicate": {
+                      "type": "boolean"
+                    },
+                    "ignored": {
+                      "type": "string"
+                    },
+                    "records": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/me": {
       "get": {
         "summary": "Current user and role",
@@ -13113,6 +13170,397 @@
           }
         ],
         "responses": {
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/issues/{key}/development": {
+      "get": {
+        "summary": "Pull requests, branches and commits linked to an issue",
+        "tags": [
+          "Integrations"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "description": "Issue key, e.g. PAY-12"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "pullRequests": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "description": "uuid"
+                          },
+                          "externalId": {
+                            "type": "string"
+                          },
+                          "url": {
+                            "nullable": true,
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "state": {
+                            "nullable": true,
+                            "type": "string"
+                          },
+                          "author": {
+                            "nullable": true,
+                            "type": "object",
+                            "properties": {
+                              "login": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "avatarUrl": {
+                                "type": "string"
+                              }
+                            },
+                            "additionalProperties": false
+                          },
+                          "branchFrom": {
+                            "nullable": true,
+                            "type": "string"
+                          },
+                          "branchTo": {
+                            "nullable": true,
+                            "type": "string"
+                          },
+                          "reviewState": {
+                            "nullable": true,
+                            "type": "string"
+                          },
+                          "checksState": {
+                            "nullable": true,
+                            "type": "string"
+                          },
+                          "payload": {
+                            "type": "object",
+                            "additionalProperties": {}
+                          },
+                          "updatedAt": {
+                            "type": "string",
+                            "description": "ISO 8601 timestamp"
+                          },
+                          "closing": {
+                            "type": "boolean",
+                            "description": "Linked with a closing word (fixes / closes / resolves)"
+                          },
+                          "repo": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "externalId",
+                          "url",
+                          "title",
+                          "state",
+                          "author",
+                          "branchFrom",
+                          "branchTo",
+                          "reviewState",
+                          "checksState",
+                          "payload",
+                          "updatedAt",
+                          "closing",
+                          "repo"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "branches": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "description": "uuid"
+                          },
+                          "externalId": {
+                            "type": "string"
+                          },
+                          "url": {
+                            "nullable": true,
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "state": {
+                            "nullable": true,
+                            "type": "string"
+                          },
+                          "author": {
+                            "nullable": true,
+                            "type": "object",
+                            "properties": {
+                              "login": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "avatarUrl": {
+                                "type": "string"
+                              }
+                            },
+                            "additionalProperties": false
+                          },
+                          "branchFrom": {
+                            "nullable": true,
+                            "type": "string"
+                          },
+                          "branchTo": {
+                            "nullable": true,
+                            "type": "string"
+                          },
+                          "reviewState": {
+                            "nullable": true,
+                            "type": "string"
+                          },
+                          "checksState": {
+                            "nullable": true,
+                            "type": "string"
+                          },
+                          "payload": {
+                            "type": "object",
+                            "additionalProperties": {}
+                          },
+                          "updatedAt": {
+                            "type": "string",
+                            "description": "ISO 8601 timestamp"
+                          },
+                          "closing": {
+                            "type": "boolean",
+                            "description": "Linked with a closing word (fixes / closes / resolves)"
+                          },
+                          "repo": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "externalId",
+                          "url",
+                          "title",
+                          "state",
+                          "author",
+                          "branchFrom",
+                          "branchTo",
+                          "reviewState",
+                          "checksState",
+                          "payload",
+                          "updatedAt",
+                          "closing",
+                          "repo"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "commits": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "description": "uuid"
+                          },
+                          "externalId": {
+                            "type": "string"
+                          },
+                          "url": {
+                            "nullable": true,
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "state": {
+                            "nullable": true,
+                            "type": "string"
+                          },
+                          "author": {
+                            "nullable": true,
+                            "type": "object",
+                            "properties": {
+                              "login": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "avatarUrl": {
+                                "type": "string"
+                              }
+                            },
+                            "additionalProperties": false
+                          },
+                          "branchFrom": {
+                            "nullable": true,
+                            "type": "string"
+                          },
+                          "branchTo": {
+                            "nullable": true,
+                            "type": "string"
+                          },
+                          "reviewState": {
+                            "nullable": true,
+                            "type": "string"
+                          },
+                          "checksState": {
+                            "nullable": true,
+                            "type": "string"
+                          },
+                          "payload": {
+                            "type": "object",
+                            "additionalProperties": {}
+                          },
+                          "updatedAt": {
+                            "type": "string",
+                            "description": "ISO 8601 timestamp"
+                          },
+                          "closing": {
+                            "type": "boolean",
+                            "description": "Linked with a closing word (fixes / closes / resolves)"
+                          },
+                          "repo": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "externalId",
+                          "url",
+                          "title",
+                          "state",
+                          "author",
+                          "branchFrom",
+                          "branchTo",
+                          "reviewState",
+                          "checksState",
+                          "payload",
+                          "updatedAt",
+                          "closing",
+                          "repo"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "pullRequests",
+                    "branches",
+                    "commits"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
           "400": {
             "description": "Invalid input; `errors` maps each bad field to a message",
             "content": {

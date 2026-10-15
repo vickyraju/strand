@@ -14,6 +14,8 @@ import misc from './routes/misc.ts'
 import files from './routes/files.ts'
 import imports from './routes/import.ts'
 import scim from './routes/scim.ts'
+import development from './routes/development.ts'
+import { githubWebhook } from './routes/github.ts'
 
 export async function build() {
   const app = Fastify({ logger: process.env.NODE_ENV !== 'test', bodyLimit: 20 * 1024 * 1024 })
@@ -80,6 +82,7 @@ export async function build() {
 
   app.get('/health', async () => ({ ok: true }))
   await app.register(scim, { prefix: '/scim/v2' })          // own bearer-token auth
+  await app.register(githubWebhook, { prefix: '/integrations/github/webhook' })   // GitHub signs each call; no user login
 
   const resources: FastifyPluginAsync = async api => {
     api.addHook('preHandler', authenticate)
@@ -87,6 +90,7 @@ export async function build() {
     await api.register(issues)
     await api.register(misc)
     await api.register(files)
+    await api.register(development)
     await api.register(imports)
   }
   await app.register(resources, { prefix: '/api/v1' })

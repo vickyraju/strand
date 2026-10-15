@@ -2,11 +2,12 @@ import { test, before, after } from 'node:test'
 import assert from 'node:assert/strict'
 import { readdirSync, readFileSync } from 'node:fs'
 import pg from 'pg'
+import { createHmac } from 'node:crypto'
 
 // Needs a throwaway Postgres: DATABASE_URL=postgres://… npm test  (skipped otherwise)
 const url = process.env.DATABASE_URL
 const skip = !url && 'DATABASE_URL not set'
-Object.assign(process.env, { AUTH_DEV: '1', SCIM_TOKEN: 'scim-secret', NODE_ENV: 'test', CORS_ORIGINS: 'https://strand-one.vercel.app/, http://localhost:5173' })
+Object.assign(process.env, { AUTH_DEV: '1', SCIM_TOKEN: 'scim-secret', NODE_ENV: 'test', GITHUB_WEBHOOK_SECRET: 'whsec-test', CORS_ORIGINS: 'https://strand-one.vercel.app/, http://localhost:5173' })
 
 let app: Awaited<ReturnType<typeof import('../src/app.ts').build>>
 let pool: pg.Pool
@@ -302,4 +303,94 @@ test('every documented response body is produced by the real handler and matches
   const v = await ok('POST', '/views', { name: 'V', filters: { q: '' } }); await ok('PATCH', `/views/${v.id}`, { shared: true }); await ok('GET', '/views')
   const db = await ok('POST', '/dashboards', { name: 'D', gadgets: [{ id: 'g', kind: 'status' }] }); await ok('PATCH', `/dashboards/${db.id}`, { name: 'D2' }); await ok('GET', '/dashboards')
   await ok('PATCH', '/projects/SCH', { name: 'Schemas 2', boardPrefs: { groupBy: 'none' } })
+})
+
+// ── GitHub webhook ──
+const sign = (raw: string, secret = 'whsec-test') => 'sha256=' + createHmac('sha256', secret).update(raw).digest('hex')
+let delivery = 0
+const hook = async (event: string, payload: unknown, opts: { secret?: string; id?: string } = {}) => {
+  const raw = JSON.stringify(payload)
+  const r = await app.inject({ method: 'POST', url: '/integrations/github/webhook', payload: raw, headers: {
+    'content-type': 'application/json', 'x-github-event': event, 'x-github-delivery': opts.id ?? `d-${++delivery}`, 'x-hub-signature-256': sign(raw, opts.secret) } })
+  return { status: r.statusCode, body: r.body ? JSON.parse(r.body) : null }
+}
+const repository = { id: 4242, full_name: 'acme/pay', default_branch: 'main', html_url: 'https://github.com/acme/pay' }
+const prPayload = (over: object = {}, number = 7) => ({
+  action: 'opened', number, repository, installation: { id: 777 },
+  pull_request: { number, html_url: `https://github.com/acme/pay/pull/${number}`, title: 'GH-1 Fix login', body: '', state: 'open', draft: false, merged: false, merged_at: null,
+    updated_at: '2026-10-14T10:00:00Z', user: { login: 'vicky' }, head: { ref: 'gh-1-fix-login', sha: 'abc' }, base: { ref: 'main' }, ...over },
+})
+
+test('GitHub webhook: signature, dedupe, linking by key, closing words, edits, order and uninstall', { skip }, async () => {
+  const p = (await call('POST', '/api/v1/projects', { name: 'Hub', key: 'GH', template: 'kanban' })).body
+  assert.ok(p.id)
+  for (const t of ['one', 'two']) await call('POST', '/api/v1/projects/GH/issues', { title: t })
+  const ws = (await pool.query(`select workspace_id from projects where key = 'GH'`)).rows[0].workspace_id
+  await pool.query(`insert into integrations (workspace_id, provider, installation_id, account_login) values ($1, 'github', 777, 'acme')`, [ws])
+  const dev = async (key: string) => (await call('GET', `/api/v1/issues/${key}/development`)).body
+
+  // signature is required, and checked against the raw bytes
+  assert.equal((await hook('pull_request', prPayload(), { secret: 'wrong' })).status, 401)
+  const noSig = await app.inject({ method: 'POST', url: '/integrations/github/webhook', payload: '{}', headers: { 'content-type': 'application/json', 'x-github-event': 'ping', 'x-github-delivery': 'x' } })
+  assert.equal(noSig.statusCode, 401)
+  assert.equal((await hook('ping', { zen: 'hi' })).status, 200)
+
+  // opened PR whose title and branch mention GH-1 → linked to GH-1 only
+  assert.equal((await hook('pull_request', prPayload(), { id: 'pr-open' })).status, 200)
+  let d = await dev('GH-1')
+  assert.deepEqual([d.pullRequests.length, d.pullRequests[0].state, d.pullRequests[0].closing, d.pullRequests[0].repo], [1, 'open', false, 'acme/pay'])
+  assert.equal((await dev('GH-2')).pullRequests.length, 0)
+
+  // the same delivery again is a no-op; a redelivery with a new id and the same data changes nothing
+  assert.deepEqual((await hook('pull_request', prPayload(), { id: 'pr-open' })).body, { ok: true, duplicate: true })
+  assert.equal((await pool.query(`select count(*)::int n from dev_entities where kind = 'pull_request'`)).rows[0].n, 1)
+
+  // edit: title now fixes GH-2 instead of GH-1 (branch still says gh-1) → closing link to GH-2, GH-1 keeps its branch link
+  await hook('pull_request', prPayload({ title: 'Fixes GH-2', updated_at: '2026-10-14T11:00:00Z' }))
+  assert.deepEqual([(await dev('GH-2')).pullRequests[0].closing, (await dev('GH-1')).pullRequests[0].closing], [true, false])
+  // edit again so the branch is the only mention of GH-1 is not possible; drop GH-1 completely by changing the branch and title
+  await hook('pull_request', prPayload({ title: 'Fixes GH-2', head: { ref: 'cleanup', sha: 'b' }, updated_at: '2026-10-14T12:00:00Z' }))
+  assert.equal((await dev('GH-1')).pullRequests.length, 0)                                  // link removed when the text no longer mentions it
+
+  // an older delivery arriving late is ignored
+  await hook('pull_request', prPayload({ title: 'GH-1 stale', updated_at: '2026-10-14T09:00:00Z' }))
+  assert.equal((await dev('GH-1')).pullRequests.length, 0)
+
+  // review and merge
+  await hook('pull_request_review', { ...prPayload({ title: 'Fixes GH-2', head: { ref: 'cleanup' }, updated_at: '2026-10-14T12:30:00Z' }), action: 'submitted', review: { state: 'approved' } })
+  assert.equal((await dev('GH-2')).pullRequests[0].reviewState, 'approved')
+  await hook('pull_request', prPayload({ title: 'Fixes GH-2', head: { ref: 'cleanup' }, state: 'closed', merged: true, merged_at: '2026-10-14T13:00:00Z', updated_at: '2026-10-14T13:00:00Z' }, 7))
+  d = await dev('GH-2'); assert.deepEqual([d.pullRequests[0].state, d.pullRequests[0].reviewState], ['merged', 'approved'])
+
+  // push: a branch plus commits; a commit message linking GH-1; the committer email is not stored
+  await hook('push', { ref: 'refs/heads/gh-1-work', repository, installation: { id: 777 }, head_commit: { timestamp: '2026-10-14T14:00:00Z' },
+    commits: [{ id: 'c1', message: 'GH-1 add button\n\nCloses GH-2', url: 'https://github.com/acme/pay/commit/c1', timestamp: '2026-10-14T14:00:00Z', author: { name: 'Vicky', username: 'vicky', email: 'private@x.com' } }] })
+  d = await dev('GH-1'); assert.deepEqual([d.branches.map((b: any) => b.title), d.commits.map((c: any) => c.title)], [['gh-1-work'], ['GH-1 add button']])
+  assert.equal((await dev('GH-2')).commits[0].closing, true)
+  assert.equal(JSON.stringify((await pool.query('select * from dev_entities')).rows).includes('private@x.com'), false)
+  await hook('delete', { ref: 'gh-1-work', ref_type: 'branch', repository, installation: { id: 777 } })
+  assert.equal((await dev('GH-1')).branches.length, 0)                                       // deleted branches are hidden
+
+  // repository mapping: restricting the repo to another project stops linking
+  await pool.query(`update repositories set project_ids = array[(select id from projects where key = 'PAY')]`)
+  await hook('pull_request', prPayload({ title: 'GH-1 again', updated_at: '2026-10-14T15:00:00Z' }, 8))
+  assert.equal((await dev('GH-1')).pullRequests.length, 0)
+  await pool.query(`update repositories set project_ids = '{}'`)
+
+  // unknown installations and failed deliveries
+  assert.equal((await hook('pull_request', { ...prPayload(), installation: { id: 1 } })).body.ignored, 'unknown installation')
+  assert.equal((await pool.query(`select count(*)::int n from webhook_deliveries where status = 'processed'`)).rows[0].n > 5, true)
+
+  // uninstall removes the integration and everything it collected
+  await hook('installation', { action: 'deleted', installation: { id: 777 } })
+  assert.equal((await pool.query('select count(*)::int n from dev_entities')).rows[0].n, 0)
+  assert.equal((await dev('GH-2')).pullRequests.length, 0)
+})
+
+test('GitHub webhook is closed when no secret is configured', { skip }, async () => {
+  const saved = process.env.GITHUB_WEBHOOK_SECRET
+  process.env.GITHUB_WEBHOOK_SECRET = ''
+  const r = await app.inject({ method: 'POST', url: '/integrations/github/webhook', payload: '{}', headers: { 'content-type': 'application/json', 'x-github-event': 'ping', 'x-github-delivery': 'nosecret', 'x-hub-signature-256': sign('{}', '') } })
+  process.env.GITHUB_WEBHOOK_SECRET = saved
+  assert.equal(r.statusCode, 503)
 })

@@ -77,6 +77,14 @@ export const Dashboard = z.object({ id, workspaceId: id, ownerId: id, name: z.st
 export const AttachmentTicket = z.object({ id, name: z.string(), size: z.number(), type: z.string(), addedAt: ts, uploadUrl: z.string().describe('PUT the file bytes here within 5 minutes') })
 export const ImportReport = z.object({ projects: z.number(), issues: z.number(), skippedProjects: z.array(z.string()), skippedAttachments: z.number() })
 
+const DevEntity = z.object({
+  id, externalId: z.string(), url: nullable(z.string()), title: z.string(), state: nullable(z.string()),
+  author: nullable(z.object({ login: z.string().optional(), name: z.string().optional(), avatarUrl: z.string().optional() })),
+  branchFrom: nullable(z.string()), branchTo: nullable(z.string()), reviewState: nullable(z.string()), checksState: nullable(z.string()),
+  payload: z.record(z.string(), z.unknown()), updatedAt: ts, closing: z.boolean().describe('Linked with a closing word (fixes / closes / resolves)'), repo: z.string(),
+})
+export const Development = z.object({ pullRequests: z.array(DevEntity), branches: z.array(DevEntity), commits: z.array(DevEntity) })
+
 // ── Routes. Keys are "METHOD /path" without the /api[/v1] prefix. All answer 200 unless noted. ──
 const kindRow = { statuses: Status, transitions: Transition, fields: Field, templates: Template, rules: Rule, releases: Release } as const
 
@@ -96,6 +104,7 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'POST /projects/:key/sprints/:id/complete': Sprint,
   'POST /projects/:key/releases/:id/release': Release,
   'GET /issues/:key': IssueDetail,
+  'GET /issues/:key/development': Development,
   'PATCH /issues/:key': IssueRow,
   'POST /issues/:key/restore': IssueRow,
   'POST /issues/:key/comments': Comment,

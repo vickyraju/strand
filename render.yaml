@@ -22,6 +22,8 @@ services:
         generateValue: true       # Render creates it; read it in the dashboard for the frontend
       - key: CORS_ORIGINS        # browsers may call the API only from these origins
         value: "https://strand-one.vercel.app"
+      - key: GITHUB_WEBHOOK_SECRET   # set in the dashboard; must match the GitHub App's webhook secret
+        sync: false
       - key: DOCS_ENABLED        # Swagger UI at /docs on the dev deploy; remove for production
         value: "1"
       - key: ENTRA_TENANT_ID
