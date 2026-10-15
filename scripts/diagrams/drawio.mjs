@@ -117,7 +117,7 @@ const strip = s => String(s).replace(/<[^>]+>/g, ' ').replace(/&[a-z]+;/g, ' ').
 
 /** All pages → one uncompressed .drawio document */
 export function drawioFile(pages, { name = 'diagram' } = {}) {
-  return `<mxfile host="app.diagrams.net" agent="strand-diagrams" version="24.0.0" type="device" compressed="false" name="${esc(name)}">\n${pages.map((p, i) => p.xml(i + 1)).join('\n')}\n</mxfile>\n`
+  return `<mxfile host="app.diagrams.net" agent="jira-build-diagrams" version="24.0.0" type="device" compressed="false" name="${esc(name)}">\n${pages.map((p, i) => p.xml(i + 1)).join('\n')}\n</mxfile>\n`
 }
 
 /** Edge presets */

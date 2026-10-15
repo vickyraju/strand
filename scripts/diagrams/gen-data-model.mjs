@@ -3,18 +3,22 @@ import { writeFileSync } from 'node:fs'
 import { Page, drawioFile, esc, style } from './drawio.mjs'
 import { parseSchema } from './schema.mjs'
 
-const { tables, files } = parseSchema()
+const APP = 'jira-build'
+// Integration tables (GitHub) are left out: they belong to a feature that is paused, and this diagram is the core product.
+const OMIT = new Set(['integrations', 'repositories', 'dev_entities', 'dev_links', 'webhook_deliveries', 'user_identities'])
+const parsed = parseSchema()
+const tables = parsed.tables.filter(t => !OMIT.has(t.name))
+const files = [...new Set(tables.map(t => t.file))]
 const byName = new Map(tables.map(t => [t.name, t]))
 
 // ── Layout: domains in two rows; each domain lists its tables per column ──
 const DOMAINS = [
-  { key: 'people', title: 'Workspace & people', c: '#6C8EBF', f: '#EAF1FB', cols: [['workspaces', 'users', 'memberships', 'user_identities']] },
+  { key: 'people', title: 'Workspace & people', c: '#6C8EBF', f: '#EAF1FB', cols: [['workspaces', 'users', 'memberships']] },
   { key: 'projects', title: 'Projects & workflow', c: '#82B366', f: '#EFF7EA', cols: [['statuses', 'transitions', 'field_defs', 'stars'], ['projects', 'rules', 'item_templates']] },
   { key: 'planning', title: 'Planning', c: '#9673A6', f: '#F4EDF7', cols: [['sprints', 'releases']] },
   { key: 'work', title: 'Work items', c: '#D79B00', f: '#FFF6E5', cols: [['issues'], ['issue_links', 'issue_watchers', 'attachments', 'worklogs']] },
   { key: 'collab', title: 'Collaboration', c: '#B85450', f: '#FBEDEC', cols: [['comments', 'activity', 'notifications']] },
   { key: 'personal', title: 'Views & personal', c: '#0E8088', f: '#E6F4F5', cols: [['saved_views', 'dashboards']] },
-  { key: 'integrations', title: 'Integrations: GitHub (webhook built; install flow planned)', c: '#6B6B6B', f: '#F5F5F5', dashed: true, cols: [['integrations', 'repositories'], ['dev_entities', 'dev_links', 'webhook_deliveries']] },
 ]
 const rows1 = ['people', 'projects', 'planning', 'work']
 
@@ -37,15 +41,14 @@ const row1H = Math.max(...rows1.map(k => domainSize(DOMAINS.find(d => d.key === 
 for (const k of rows1) { const d = DOMAINS.find(d => d.key === k); places.push({ d, x, y: 150 }); x += domainSize(d).w + 50 }
 const row2Y = 150 + row1H + 60
 // Row 2 sits under the domains it talks to: Views & personal under people, the notes panel under projects/planning,
-// Collaboration and Integrations (both reference issues) under Work items.
+// Collaboration (references issues) under Work items.
 const at = k => places.find(p => p.d.key === k)
 const dom = k => DOMAINS.find(d => d.key === k)
 places.push({ d: dom('personal'), x: at('people').x, y: row2Y })
 const panelX = at('projects').x
 places.push({ d: dom('collab'), x: at('work').x, y: row2Y })
-places.push({ d: dom('integrations'), x: at('work').x + domainSize(dom('collab')).w + 50, y: row2Y })
 
-page.text('1', 40, 24, 1400, 50, `<b style="font-size:24px">Strand data model</b><br><span style="font-size:12px;color:#545B64">PostgreSQL schema, ${tables.length} tables, generated from ${files.map(f => f.replace(/^\d+_/, '')).join(', ')}</span>`, { size: 12, noOverlap: true })
+page.text('1', 40, 24, 1400, 50, `<b style="font-size:24px">${APP} data model</b><br><span style="font-size:12px;color:#545B64">PostgreSQL schema, ${tables.length} tables, generated from ${files.map(f => f.replace(/^\d+_/, '')).join(', ')}</span>`, { size: 12, noOverlap: true })
 
 for (const { d, x: dx, y: dy } of places) {
   const sz = domainSize(d)
@@ -87,7 +90,7 @@ function sides(from, to) {
 const domainOf = new Map(DOMAINS.flatMap(d => d.cols.flat().map(n => [n, d.key])))
 const HUBS = new Set(['workspaces', 'users'])
 // One long reference would run behind the Work items tables and look like it joins them, so it is text-only too
-const TEXT_ONLY = new Set(['dev_links.issue_id'])
+const TEXT_ONLY = new Set()
 let fkCount = 0, drawn = 0, hubText = 0
 for (const t of tables) for (const c of t.columns) {
   if (!c.ref) continue
@@ -107,7 +110,6 @@ for (const t of tables) for (const c of t.columns) {
 const LOGICAL = [
   ['sprints', 'issue_ids', 'issues', 'id', 'issue_ids[] (snapshot)'],
   ['transitions', 'from_ids', 'statuses', 'id', 'from_ids[]'],
-  ['repositories', 'project_ids', 'projects', 'id', 'project_ids[]'],
   ['issues', 'custom', 'field_defs', 'id', 'custom{field id → value}'],
 ]
 for (const [st, sc, tt, tc, label] of LOGICAL) {
@@ -124,7 +126,6 @@ const notes = [
   ['Concurrency', '<b>issues.version</b> is sent as If-Match on edits; a stale edit gets 409. <b>rank</b> is fractional, so a move rewrites one row.'],
   ['Flexible data', 'jsonb for shapes that vary: custom field values, board prefs, layout, rule triggers/actions, view filters, dashboard gadgets, integration payloads.'],
   ['Search', 'issues.<b>search</b> is a generated tsvector (GIN); titles also have a trigram index. Partial indexes skip deleted rows.'],
-  ['Privacy', 'GitHub author e-mail addresses are never stored (login and display name only).'],
 ]
 const legendH = 40 + notes.length * 44 + 150
 page.box({ id: 'bg_legend', x: panelX, y: row2Y, w: pw, h: Math.max(legendH, 520), back: true, noOverlap: true, st: { rounded: 1, arcSize: 3, fillColor: '#FFFFFF', strokeColor: '#879196', pointerEvents: 0 } })
@@ -138,12 +139,12 @@ const sample = (yy, st) => { const a = page.box({ parent: panel, x: 290, y: yy +
 sample(ly + 24, { html: 1, strokeColor: '#232F3E', strokeWidth: 1.5, startArrow: 'ERmany', endArrow: 'ERmandOne', startFill: 0, endFill: 0 }); page.text(panel, 365, ly + 24, 180, 18, 'one-to-many (required parent)', { size: 10, noOverlap: true })
 sample(ly + 46, { html: 1, strokeColor: '#232F3E', strokeWidth: 1.5, startArrow: 'ERmany', endArrow: 'ERzeroToOne', startFill: 0, endFill: 0 }); page.text(panel, 365, ly + 46, 180, 18, 'one-to-many (optional parent)', { size: 10, noOverlap: true })
 sample(ly + 68, { html: 1, strokeColor: '#6B7280', dashed: 1, dashPattern: '5 4', strokeWidth: 1.2, endArrow: 'open', endFill: 0 }); page.text(panel, 365, ly + 68, 190, 18, 'logical link (ids in array/jsonb, no FK)', { size: 10, noOverlap: true })
-page.text(panel, 290, ly + 90, 260, 30, `${tables.length} tables · ${fkCount} foreign keys (${drawn} drawn, ${hubText} to workspaces/users and one long link shown as text) · ${LOGICAL.length} logical links`, { size: 10, noOverlap: true })
+page.text(panel, 290, ly + 90, 260, 30, `${tables.length} tables · ${fkCount} foreign keys (${drawn} drawn, ${hubText} to workspaces/users shown as text) · ${LOGICAL.length} logical links`, { size: 10, noOverlap: true })
 
 const bottom = Math.max(...places.map(p => p.y + domainSize(p.d).h), row2Y + 560)
 page.width = Math.max(panelX + pw + 60, 2400); page.height = bottom + 60
 const problems = page.problems()
 if (problems.length) { console.error(problems.join('\n')); process.exit(1) }
-const out = new URL('../../docs/architecture/strand-data-model.drawio', import.meta.url)
-writeFileSync(out, drawioFile([page], { name: 'Strand data model' }))
-console.log(`wrote strand-data-model.drawio: ${tables.length} tables, ${fkCount} foreign keys, ${LOGICAL.length} logical links, page ${page.width}x${page.height}`)
+const out = new URL('../../docs/architecture/jira-build-data-model.drawio', import.meta.url)
+writeFileSync(out, drawioFile([page], { name: `${APP} data model` }))
+console.log(`wrote jira-build-data-model.drawio: ${tables.length} tables, ${fkCount} foreign keys, ${LOGICAL.length} logical links, page ${page.width}x${page.height}`)
