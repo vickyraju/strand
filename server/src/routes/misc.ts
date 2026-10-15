@@ -7,7 +7,8 @@ import { projectByKey } from './projects.ts'
 const uuid = z.string().uuid()
 const LIST = `
   select i.id, p.key || '-' || i.number as key, i.project_id, p.key as project_key, i.type, i.title, i.status_id, st.category,
-         i.priority, i.assignee_id, i.labels, i.due_date, i.estimate, i.updated_at, i.version
+         i.priority, i.assignee_id, i.labels, i.due_date, i.estimate, i.updated_at, i.version,
+         to_char(i.updated_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as cursor_ts
     from issues i join projects p on p.id = i.project_id join statuses st on st.id = i.status_id`
 
 const viewFilters = z.object({
@@ -56,7 +57,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     const more = rows.length > q.limit
     const items = more ? rows.slice(0, q.limit) : rows
     const last = items.at(-1)
-    return { items, next: more && last ? Buffer.from(`${new Date(last.updatedAt).toISOString()}|${last.id}`).toString('base64url') : null }
+    return { items, next: more && last ? Buffer.from(`${last.cursorTs}|${last.id}`).toString('base64url') : null }
   })
 
   // "Your work": open items assigned to me

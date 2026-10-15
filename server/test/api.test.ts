@@ -29,7 +29,7 @@ after(async () => { if (skip) return; await app.close(); await pool.end() })
 
 test('project → issue lifecycle with workflow, versions and undo', { skip }, async () => {
   const p = await call('POST', '/api/v1/projects', { name: 'Payments', key: 'PAY', template: 'kanban' })
-  assert.equal(p.status, 200)
+  assert.equal(p.status, 201)
   assert.deepEqual(p.body.statuses.map((s: any) => s.name), ['To do', 'In progress', 'Done'])
   const [todo, doing, done] = p.body.statuses
 
@@ -203,7 +203,7 @@ test('comments, sprints and settings items accept client ids', { skip }, async (
   assert.equal((await call('POST', '/api/v1/issues/IDS-1/comments', { id: cid, body: 'dup' })).status, 409)
   assert.equal((await call('POST', '/api/v1/projects/IDS/sprints', { id: sid, name: 'S1' })).body.id, sid)
   assert.equal((await call('POST', '/api/v1/projects/IDS/fields', { id: fid, name: 'Team', kind: 'text' })).body.id, fid)
-  assert.equal((await call('POST', '/api/v1/projects/IDS/fields', { name: 'No id', kind: 'text' })).status, 200)   // still optional
+  assert.equal((await call('POST', '/api/v1/projects/IDS/fields', { name: 'No id', kind: 'text' })).status, 201)   // still optional
 })
 
 test('workflow override: refused for plain members, honored for the project lead and admins', { skip }, async () => {
@@ -222,7 +222,7 @@ test('views, dashboards and work logs accept client ids; notifications can be re
   const vid = '0192f0c0-0000-7000-8000-0000000000a1', did = '0192f0c0-0000-7000-8000-0000000000a2', wid = '0192f0c0-0000-7000-8000-0000000000a3'
   assert.equal((await call('POST', '/api/v1/views', { id: vid, name: 'Mine', filters: { q: '' } })).body.id, vid)
   assert.equal((await call('POST', '/api/v1/dashboards', { id: did, name: 'Board' })).body.id, did)
-  assert.equal((await call('POST', '/api/v1/projects', { name: 'Logs', key: 'LOG', template: 'kanban' })).status, 200)
+  assert.equal((await call('POST', '/api/v1/projects', { name: 'Logs', key: 'LOG', template: 'kanban' })).status, 201)
   await call('POST', '/api/v1/projects/LOG/issues', { title: 'x' })
   assert.equal((await call('POST', '/api/v1/issues/LOG-1/worklogs', { id: wid, minutes: 30, date: '2026-10-01' })).body.id, wid)
   assert.equal((await call('POST', '/api/v1/views', { id: vid, name: 'dup', filters: { q: '' } })).status, 409)
@@ -393,4 +393,124 @@ test('GitHub webhook is closed when no secret is configured', { skip }, async ()
   const r = await app.inject({ method: 'POST', url: '/integrations/github/webhook', payload: '{}', headers: { 'content-type': 'application/json', 'x-github-event': 'ping', 'x-github-delivery': 'nosecret', 'x-hub-signature-256': sign('{}', '') } })
   process.env.GITHUB_WEBHOOK_SECRET = saved
   assert.equal(r.statusCode, 503)
+})
+
+test('creates answer 201 Created; updates and actions answer 200; deletes 204', { skip }, async () => {
+  assert.equal((await call('POST', '/api/v1/projects', { name: 'Codes', key: 'COD', template: 'kanban' })).status, 201)
+  assert.equal((await call('POST', '/api/v1/projects/COD/issues', { title: 'one' })).status, 201)
+  assert.equal((await call('POST', '/api/v1/issues/COD-1/comments', { body: 'hi' })).status, 201)
+  assert.equal((await call('POST', '/api/v1/issues/COD-1/worklogs', { minutes: 5, date: '2026-10-01' })).status, 201)
+  assert.equal((await call('POST', '/api/v1/projects/COD/sprints', { name: 'S' })).status, 201)
+  assert.equal((await call('POST', '/api/v1/views', { name: 'V', filters: { q: '' } })).status, 201)
+  assert.equal((await call('PATCH', '/api/v1/issues/COD-1', { title: 'two' })).status, 200)
+  assert.equal((await call('DELETE', '/api/v1/issues/COD-1')).status, 204)
+  // the documented response code matches: creates are described under 201
+  const spec = JSON.parse((await app.inject({ method: 'GET', url: '/docs/json' })).body)
+  assert.ok(spec.paths['/api/v1/projects'].post.responses['201'])
+  assert.ok(!spec.paths['/api/v1/projects'].post.responses['200'])
+})
+
+test('issues and projects can be addressed by key or by id', { skip }, async () => {
+  const p = (await call('POST', '/api/v1/projects', { name: 'Refs', key: 'REF', template: 'kanban' })).body
+  const i = (await call('POST', '/api/v1/projects/REF/issues', { title: 'by id' })).body
+  assert.equal((await call('GET', `/api/v1/issues/${i.id}`)).body.key, 'REF-1')
+  assert.equal((await call('PATCH', `/api/v1/issues/${i.id}`, { title: 'renamed' })).body.title, 'renamed')
+  assert.equal((await call('GET', `/api/v1/projects/${p.id}`)).body.key, 'REF')
+  assert.equal((await call('GET', '/api/v1/issues/00000000-0000-4000-8000-000000000000')).status, 404)
+  assert.equal((await call('GET', '/api/v1/issues/not-a-ref')).body.code, 'not_found')
+})
+
+test('issue detail: expand picks the related records; comments and history have their own paged endpoints', { skip }, async () => {
+  await call('POST', '/api/v1/projects', { name: 'Expand', key: 'EXP', template: 'kanban' })
+  await call('POST', '/api/v1/projects/EXP/issues', { title: 'busy' })
+  for (let n = 1; n <= 5; n++) await call('POST', '/api/v1/issues/EXP-1/comments', { body: `c${n}` })
+  for (let n = 1; n <= 4; n++) await call('PATCH', '/api/v1/issues/EXP-1', { title: `t${n}` })
+  const all = (await call('GET', '/api/v1/issues/EXP-1')).body
+  assert.deepEqual(['comments', 'activity', 'worklogs', 'links', 'watcherIds', 'attachments', 'children'].filter(k => !(k in all)), [])
+  const slim = (await call('GET', '/api/v1/issues/EXP-1?expand=comments')).body
+  assert.equal(slim.comments.length, 5); assert.ok(!('activity' in slim) && !('worklogs' in slim))
+  assert.equal((await call('GET', '/api/v1/issues/EXP-1?expand=nope')).status, 400)
+  // comments: oldest first, two per page, no gaps or repeats
+  const seen: string[] = []; let cursor = ''
+  for (let page = 0; page < 5; page++) {
+    const r = (await call('GET', `/api/v1/issues/EXP-1/comments?limit=2${cursor}`)).body
+    seen.push(...r.items.map((c: any) => c.body)); if (!r.next) break
+    cursor = `&cursor=${r.next}`
+  }
+  assert.deepEqual(seen, ['c1', 'c2', 'c3', 'c4', 'c5'])
+  // history: newest first
+  const hist = (await call('GET', '/api/v1/issues/EXP-1/activity?limit=3')).body
+  assert.equal(hist.items.length, 3); assert.ok(hist.next)
+  assert.equal(hist.items[0].toValue, 't4')
+  assert.equal((await call('GET', '/api/v1/issues/EXP-1/comments?cursor=garbage')).status, 400)
+})
+
+test('bulk edit, delete and restore: one call, all or nothing, workflow still enforced', { skip }, async () => {
+  const p = (await call('POST', '/api/v1/projects', { name: 'Bulk', key: 'BLK', template: 'kanban' })).body
+  const [todo, doing, done] = p.statuses
+  for (let n = 1; n <= 4; n++) await call('POST', '/api/v1/projects/BLK/issues', { title: `b${n}` })
+  const edit = await call('POST', '/api/v1/issues/bulk/edit', { issues: ['BLK-1', 'BLK-2', 'BLK-3'], patch: { priority: 'high', labels: ['x'] } })
+  assert.equal(edit.body.count, 3); assert.ok(edit.body.issues.every((i: any) => i.priority === 'high' && i.version === 2))
+  // one missing issue: nothing changes
+  const bad = await call('POST', '/api/v1/issues/bulk/edit', { issues: ['BLK-1', 'BLK-99'], patch: { priority: 'low' } })
+  assert.deepEqual([bad.status, bad.body.code], [404, 'not_found'])
+  assert.equal((await call('GET', '/api/v1/issues/BLK-1')).body.priority, 'high')
+  // workflow applies to each issue
+  await call('POST', '/api/v1/projects/BLK/transitions', { name: 'Start', fromIds: [todo.id], toId: doing.id })
+  assert.equal((await call('POST', '/api/v1/issues/bulk/edit', { issues: ['BLK-1', 'BLK-2'], patch: { statusId: done.id } })).status, 409)
+  assert.equal((await call('POST', '/api/v1/issues/bulk/edit', { issues: ['BLK-1', 'BLK-2'], patch: { statusId: doing.id } })).body.count, 2)
+  // delete + restore, with duplicates in the list ignored
+  assert.equal((await call('POST', '/api/v1/issues/bulk/delete', { issues: ['BLK-1', 'BLK-1', 'BLK-2'] })).body.count, 2)
+  assert.equal((await call('GET', '/api/v1/projects/BLK/issues')).body.items.length, 2)
+  assert.equal((await call('POST', '/api/v1/issues/bulk/restore', { issues: ['BLK-1', 'BLK-2'] })).body.count, 2)
+  assert.equal((await call('GET', '/api/v1/projects/BLK/issues')).body.items.length, 4)
+  // limits and permissions
+  assert.equal((await call('POST', '/api/v1/issues/bulk/delete', { issues: [] })).status, 400)
+  assert.equal((await call('POST', '/api/v1/issues/bulk/delete', { issues: Array.from({ length: 201 }, (_, n) => `BLK-${n + 1}`) })).status, 400)
+  await call('GET', '/api/v1/me', undefined, 'bulk-viewer@x.com')
+  await pool.query(`update memberships set role = 'viewer' where user_id = (select id from users where email = 'bulk-viewer@x.com')`)
+  assert.equal((await call('POST', '/api/v1/issues/bulk/delete', { issues: ['BLK-3'] }, 'bulk-viewer@x.com')).status, 403)
+})
+
+test('project and user search are paginated and filtered; archive hides a project without deleting it', { skip }, async () => {
+  for (const [name, key] of [['Alpha Search', 'SRA'], ['Beta Search', 'SRB'], ['Gamma Other', 'SRG'], ['delta search', 'SRD']]) await call('POST', '/api/v1/projects', { name, key, template: 'kanban' })
+  const all = (await call('GET', '/api/v1/projects/search?query=search&limit=2')).body
+  assert.equal(all.items.length, 2); assert.ok(all.next)
+  assert.deepEqual(all.items.map((p: any) => p.name), ['Alpha Search', 'Beta Search'])                  // name order, case-insensitive
+  const rest = (await call('GET', `/api/v1/projects/search?query=search&limit=2&cursor=${all.next}`)).body
+  assert.deepEqual(rest.items.map((p: any) => p.name), ['delta search']); assert.equal(rest.next, null)
+  assert.equal((await call('GET', '/api/v1/projects/search?query=srg')).body.items[0].key, 'SRG')      // matches the key too
+  assert.equal((await call('GET', '/api/v1/projects/search?query=%25')).body.items.length, 0)          // % is not a wildcard
+  assert.equal((await call('GET', '/api/v1/projects/search?cursor=bad')).status, 400)
+
+  const arch = await call('POST', '/api/v1/projects/SRB/archive')
+  assert.ok(arch.body.archivedAt)
+  assert.ok(!(await call('GET', '/api/v1/projects')).body.some((p: any) => p.key === 'SRB'))
+  assert.ok(!(await call('GET', '/api/v1/projects/search?query=search')).body.items.some((p: any) => p.key === 'SRB'))
+  assert.deepEqual((await call('GET', '/api/v1/projects/search?archived=1')).body.items.map((p: any) => p.key), ['SRB'])
+  assert.equal((await call('GET', '/api/v1/projects/SRB')).body.key, 'SRB')                            // still readable
+  assert.equal((await call('POST', '/api/v1/projects/SRB/restore')).body.archivedAt, null)
+  assert.ok((await call('GET', '/api/v1/projects')).body.some((p: any) => p.key === 'SRB'))
+  assert.equal((await call('POST', '/api/v1/projects/SRB/archive', undefined, 'plain-member@x.com')).status, 403)
+
+  for (const u of ['ann.search@x.com', 'bob.search@x.com', 'carl@x.com']) await call('GET', '/api/v1/me', undefined, u)
+  const users = (await call('GET', '/api/v1/users/search?query=search&limit=1')).body
+  assert.equal(users.items.length, 1); assert.ok(users.next)
+  const next = (await call('GET', `/api/v1/users/search?query=search&limit=5&cursor=${users.next}`)).body
+  assert.deepEqual([users.items[0].email, ...next.items.map((u: any) => u.email)], ['ann.search@x.com', 'bob.search@x.com'])
+})
+
+test('paging never repeats or skips rows, even when many are created in the same millisecond', { skip }, async () => {
+  await call('POST', '/api/v1/projects', { name: 'Paging', key: 'PGE', template: 'kanban' })
+  await Promise.all(Array.from({ length: 12 }, (_, n) => call('POST', '/api/v1/projects/PGE/issues', { title: `paged ${n}` })))
+  await pool.query(`update issues set updated_at = '2026-10-01T10:00:00.123456Z' where project_id = (select id from projects where key = 'PGE')`)   // identical to the millisecond, different only in microseconds below
+  await pool.query(`update issues set updated_at = updated_at + (number * interval '1 microsecond') where project_id = (select id from projects where key = 'PGE')`)
+  const seen: string[] = []; let cursor = ''
+  for (let page = 0; page < 20; page++) {
+    const r = (await call('GET', `/api/v1/search?q=paged&limit=3${cursor}`)).body
+    seen.push(...r.items.map((i: any) => i.key)); if (!r.next) break
+    cursor = `&cursor=${r.next}`
+  }
+  assert.equal(seen.length, 12)
+  assert.equal(new Set(seen).size, 12)
 })

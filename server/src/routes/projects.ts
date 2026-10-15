@@ -14,9 +14,13 @@ const DEFAULT_STATUSES = {
   scrum: [['To do', '#94a3b8', 'todo'], ['In progress', '#3b82f6', 'in-progress'], ['In review', '#a855f7', 'in-progress'], ['Done', '#22c55e', 'done']],
 } as const
 
-export async function projectByKey(d: Db, ws: string, key: string) {
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/** Project key (PAY) or id (uuid), scoped to the workspace. */
+export async function projectByKey(d: Db, ws: string, ref: string) {
+  const byId = UUID.test(ref)
   const [p] = await d.query<{ id: string; leadId: string | null; key: string }>(
-    'select id, lead_id, key from projects where workspace_id = $1 and key = $2', [ws, key.toUpperCase()])
+    `select id, lead_id, key from projects where workspace_id = $1 and ${byId ? 'id = $2' : 'key = $2'}`, [ws, byId ? ref : ref.toUpperCase()])
   if (!p) throw new HttpError(404, 'Project not found')
   return p
 }
@@ -66,24 +70,86 @@ const projectBody = z.object({
   boardPrefs: z.record(z.string(), z.unknown()), layout: z.record(z.string(), z.unknown()),
 }).partial()
 
-const keyP = z.object({ key: z.string().describe('Project key, e.g. PAY') })
+const keyP = z.object({ key: z.string().describe('Project key (PAY) or id (uuid)') })
 const keyIdP = keyP.extend({ id: uuid })
 const T = { me: ['Account'], projects: ['Projects'], config: ['Project settings'], sprints: ['Sprints'] }
 
 const plugin: FastifyPluginAsyncZod = async app => {
   app.get('/me', { schema: { tags: T.me, summary: 'Current user and role' } }, async req => req.me)
 
-  app.get('/users', { schema: { tags: T.me, summary: 'Active users in the workspace' } }, async req => db.query(
-    `select u.id, u.name, u.initials, u.color, u.title, u.email, m.role from users u
-     join memberships m on m.user_id = u.id and m.workspace_id = $1 where u.active order by u.name`, [req.me.workspaceId]))
+  const searchQ = z.object({
+    query: z.string().max(100).optional().describe('Matches anywhere in the name (and e-mail, for users); case-insensitive'),
+    cursor: z.string().optional().describe('`next` from the previous page'),
+    limit: z.coerce.number().int().min(1).max(100).default(30),
+  })
+  const like = (q: string) => '%' + q.replace(/[\\%_]/g, '\\$&') + '%'
+  const cursorOf = (name: string, id: string) => Buffer.from(JSON.stringify([name, id])).toString('base64url')
+  const readCursor = (c?: string): [string, string] | null => {
+    if (!c) return null
+    try { const [n, i] = JSON.parse(Buffer.from(c, 'base64url').toString()); if (typeof n === 'string' && UUID.test(i)) return [n, i] } catch { /* fall through */ }
+    throw new HttpError(400, 'Invalid cursor')
+  }
 
-  app.get('/projects', { schema: { tags: T.projects, summary: 'List projects with star flag and open-issue count' } }, async req => db.query(
-    `select p.id, p.key, p.name, p.description, p.color, p.template, p.lead_id, p.created_at,
+  // First 1000 only: use /users/search to find anyone else. (The app's people picker should move to the search.)
+  app.get('/users', { schema: { tags: T.me, summary: 'Active users in the workspace (first 1000 by name; use /users/search for more)' } }, async req => db.query(
+    `select u.id, u.name, u.initials, u.color, u.title, u.email, m.role from users u
+     join memberships m on m.user_id = u.id and m.workspace_id = $1 where u.active order by lower(u.name), u.id limit 1000`, [req.me.workspaceId]))
+
+  app.get('/users/search', { schema: { tags: T.me, summary: 'Find users by name or e-mail, in name order (keyset-paginated)', querystring: searchQ } }, async req => {
+    const { query, limit } = req.query, cur = readCursor(req.query.cursor)
+    const args: unknown[] = [req.me.workspaceId]
+    const where = ['u.active']
+    if (query) { args.push(like(query)); where.push(`(u.name ilike $${args.length} or u.email ilike $${args.length})`) }
+    if (cur) { args.push(cur[0].toLowerCase(), cur[1]); where.push(`(lower(u.name), u.id) > ($${args.length - 1}, $${args.length}::uuid)`) }
+    args.push(limit + 1)
+    const rows = await db.query<any>(
+      `select u.id, u.name, u.initials, u.color, u.title, u.email, m.role from users u
+         join memberships m on m.user_id = u.id and m.workspace_id = $1 where ${where.join(' and ')} order by lower(u.name), u.id limit $${args.length}`, args)
+    const more = rows.length > limit, items = more ? rows.slice(0, limit) : rows
+    return { items, next: more ? cursorOf(items.at(-1).name, items.at(-1).id) : null }
+  })
+
+  const PROJECT_ROW = `p.id, p.key, p.name, p.description, p.color, p.template, p.lead_id, p.created_at, p.archived_at,
             (s.user_id is not null) as starred,
             (select count(*) from issues i join statuses st on st.id = i.status_id
-              where i.project_id = p.id and i.deleted_at is null and st.category <> 'done') as open_count
-       from projects p left join stars s on s.project_id = p.id and s.user_id = $2
-      where p.workspace_id = $1 order by p.name`, [req.me.workspaceId, req.me.id]))
+              where i.project_id = p.id and i.deleted_at is null and st.category <> 'done') as open_count`
+  // First 1000 only: use /projects/search for more. Archived projects are hidden unless asked for.
+  app.get('/projects', { schema: { tags: T.projects, summary: 'List active projects with star flag and open-issue count (first 1000 by name; use /projects/search for more)' } }, async req => db.query(
+    `select ${PROJECT_ROW} from projects p left join stars s on s.project_id = p.id and s.user_id = $2
+      where p.workspace_id = $1 and p.archived_at is null order by lower(p.name), p.id limit 1000`, [req.me.workspaceId, req.me.id]))
+
+  app.get('/projects/search', { schema: {
+    tags: T.projects, summary: 'Find projects by name or key, in name order (keyset-paginated)',
+    querystring: searchQ.extend({ archived: z.enum(['0', '1']).default('0').describe('1 = archived projects instead of active ones'), starred: z.enum(['0', '1']).optional().describe('1 = only my starred projects') }),
+  } }, async req => {
+    const { query, limit } = req.query, cur = readCursor(req.query.cursor)
+    const args: unknown[] = [req.me.workspaceId, req.me.id]
+    const where = ['p.workspace_id = $1', req.query.archived === '1' ? 'p.archived_at is not null' : 'p.archived_at is null']
+    if (query) { args.push(like(query)); where.push(`(p.name ilike $${args.length} or p.key ilike $${args.length})`) }
+    if (req.query.starred === '1') where.push('s.user_id is not null')
+    if (cur) { args.push(cur[0].toLowerCase(), cur[1]); where.push(`(lower(p.name), p.id) > ($${args.length - 1}, $${args.length}::uuid)`) }
+    args.push(limit + 1)
+    const rows = await db.query<any>(
+      `select ${PROJECT_ROW} from projects p left join stars s on s.project_id = p.id and s.user_id = $2
+        where ${where.join(' and ')} order by lower(p.name), p.id limit $${args.length}`, args)
+    const more = rows.length > limit, items = more ? rows.slice(0, limit) : rows
+    return { items, next: more ? cursorOf(items.at(-1).name, items.at(-1).id) : null }
+  })
+
+  app.post('/projects/:key/archive', { schema: { tags: T.projects, summary: 'Archive a project: hidden from lists, data kept, can be restored', params: keyP } }, async req => {
+    requireWrite(req)
+    const p = await projectByKey(db, req.me.workspaceId, req.params.key)
+    await requireProjectAdmin(req, p)
+    await db.query('update projects set archived_at = coalesce(archived_at, now()) where id = $1', [p.id])
+    return projectDetail(db, req.me.workspaceId, p.key)
+  })
+  app.post('/projects/:key/restore', { schema: { tags: T.projects, summary: 'Restore an archived project', params: keyP } }, async req => {
+    requireWrite(req)
+    const p = await projectByKey(db, req.me.workspaceId, req.params.key)
+    await requireProjectAdmin(req, p)
+    await db.query('update projects set archived_at = null where id = $1', [p.id])
+    return projectDetail(db, req.me.workspaceId, p.key)
+  })
 
   const createProject = projectBody.required({ name: true }).extend({ key: z.string().regex(/^[A-Z][A-Z0-9]{1,9}$/), template: z.enum(['kanban', 'scrum']) })
   app.post('/projects', { schema: { tags: T.projects, summary: 'Create a project with default statuses', body: createProject } }, async req => {

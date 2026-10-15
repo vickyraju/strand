@@ -7,7 +7,7 @@ import { authenticate } from './auth.ts'
 import { pool } from './db.ts'
 import { startListener, stopListener } from './events.ts'
 import { errorSchema, toErrorBody } from './errors.ts'
-import { RESPONSES } from './responses.ts'
+import { CREATED, RESPONSES } from './responses.ts'
 import projects from './routes/projects.ts'
 import issues from './routes/issues.ts'
 import misc from './routes/misc.ts'
@@ -36,7 +36,12 @@ export async function build() {
     for (const m of methods) {
       const response = RESPONSES[`${m} ${path}`]
       if (!response) continue
-      route.schema = { ...(route.schema ?? {}), response: { 200: response, ...((route.schema as any)?.response ?? {}) } } as typeof route.schema
+      const code = m === 'POST' && CREATED.has(`${m} ${path}`) ? 201 : 200
+      route.schema = { ...(route.schema ?? {}), response: { [code]: response, ...((route.schema as any)?.response ?? {}) } } as typeof route.schema
+      if (code === 201) {          // answer 201 Created; set before the handler runs, so the 201 schema is the one used to serialize
+        const pre = route.preHandler ? (Array.isArray(route.preHandler) ? route.preHandler : [route.preHandler]) : []
+        route.preHandler = [...pre, async (_req: any, reply: any) => { reply.code(201) }] as typeof route.preHandler
+      }
     }
   })
 

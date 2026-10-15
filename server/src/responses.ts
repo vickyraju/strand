@@ -25,11 +25,13 @@ export const Sprint = z.object({
 
 export const ProjectListItem = z.object({
   id, key: z.string(), name: z.string(), description: z.string(), color: z.string(), template: z.enum(['kanban', 'scrum']),
-  leadId: nullable(id), createdAt: ts, starred: z.boolean(), openCount: z.number(),
+  leadId: nullable(id), createdAt: ts, archivedAt: nullable(ts), starred: z.boolean(), openCount: z.number(),
 })
+export const ProjectPage = z.object({ items: z.array(ProjectListItem), next: nullable(z.string()).describe('Pass back as `cursor`; null on the last page') })
+export const UserPage = z.object({ items: z.array(User), next: nullable(z.string()) })
 export const ProjectDetail = z.object({
   id, workspaceId: id, key: z.string(), name: z.string(), description: z.string(), color: z.string(), template: z.enum(['kanban', 'scrum']),
-  leadId: nullable(id), nextNumber: z.number(), boardPrefs: z.record(z.string(), z.unknown()), layout: z.record(z.string(), z.unknown()),
+  leadId: nullable(id), archivedAt: nullable(ts), nextNumber: z.number(), boardPrefs: z.record(z.string(), z.unknown()), layout: z.record(z.string(), z.unknown()),
   sample: z.boolean(), createdAt: ts,
   statuses: z.array(Status), transitions: z.array(Transition), fields: z.array(Field), templates: z.array(Template),
   rules: z.array(Rule), releases: z.array(Release), sprints: z.array(Sprint),
@@ -49,11 +51,16 @@ export const Worklog = z.object({ id, issueId: id, userId: nullable(id), minutes
 export const Activity = z.object({ id, issueId: id, actorId: nullable(id), field: nullable(z.string()), fromValue: nullable(z.string()), toValue: nullable(z.string()), text: z.string(), createdAt: ts })
 export const IssueDetail = z.object({
   ...issueFields,
-  links: z.array(z.object({ type: z.enum(['blocks', 'relates']), dir: z.enum(['in', 'out']), issueId: id, key: z.string(), title: z.string() })),
-  watcherIds: z.array(id), comments: z.array(Comment), activity: z.array(Activity), worklogs: z.array(Worklog),
-  attachments: z.array(z.object({ id, name: z.string(), size: z.number(), type: z.string(), addedBy: nullable(id), addedAt: ts })),
-  children: z.array(IssueRow),
+  // present unless left out with ?expand=
+  links: z.array(z.object({ type: z.enum(['blocks', 'relates']), dir: z.enum(['in', 'out']), issueId: id, key: z.string(), title: z.string() })).optional(),
+  watcherIds: z.array(id).optional(), comments: z.array(Comment).optional(), activity: z.array(Activity).optional(), worklogs: z.array(Worklog).optional(),
+  attachments: z.array(z.object({ id, name: z.string(), size: z.number(), type: z.string(), addedBy: nullable(id), addedAt: ts })).optional(),
+  children: z.array(IssueRow).optional(),
 })
+export const CommentPage = z.object({ items: z.array(Comment), next: nullable(z.string()) })
+export const ActivityPage = z.object({ items: z.array(Activity), next: nullable(z.string()) })
+export const BulkEditResult = z.object({ count: z.number(), issues: z.array(IssueRow) })
+export const BulkCount = z.object({ count: z.number() })
 export const IssuePage = z.object({ items: z.array(IssueRow), next: nullable(z.string()).describe('Pass back as `cursor` for the next page; null on the last page') })
 
 const searchRow = z.object({
@@ -88,9 +95,25 @@ export const Development = z.object({ pullRequests: z.array(DevEntity), branches
 // ── Routes. Keys are "METHOD /path" without the /api[/v1] prefix. All answer 200 unless noted. ──
 const kindRow = { statuses: Status, transitions: Transition, fields: Field, templates: Template, rules: Rule, releases: Release } as const
 
+/** Routes that create something answer 201 Created (Jira and REST convention), not 200. */
+export const CREATED = new Set([
+  'POST /projects', 'POST /projects/:key/issues', 'POST /issues/:key/comments', 'POST /issues/:key/worklogs', 'POST /projects/:key/sprints',
+  'POST /views', 'POST /dashboards', 'POST /issues/:key/attachments',
+  ...['statuses', 'transitions', 'fields', 'templates', 'rules', 'releases'].map(k => `POST /projects/:key/${k}`),
+])
+
 export const RESPONSES: Record<string, z.ZodType> = {
   'GET /me': Me,
   'GET /users': z.array(User),
+  'GET /users/search': UserPage,
+  'GET /projects/search': ProjectPage,
+  'POST /projects/:key/archive': ProjectDetail,
+  'POST /projects/:key/restore': ProjectDetail,
+  'GET /issues/:key/comments': CommentPage,
+  'GET /issues/:key/activity': ActivityPage,
+  'POST /issues/bulk/edit': BulkEditResult,
+  'POST /issues/bulk/delete': BulkCount,
+  'POST /issues/bulk/restore': BulkCount,
   'GET /projects': z.array(ProjectListItem),
   'POST /projects': ProjectDetail,
   'GET /projects/:key': ProjectDetail,

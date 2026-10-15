@@ -27,13 +27,17 @@ const patchBody = z.object({
 }).partial()
 const FIELDS = Object.keys(patchBody.shape)
 
-/** "PAY-12" → issue row scoped to the caller's workspace, or 404. */
-async function issueByKey(d: Db, ws: string, key: string, includeDeleted = false) {
-  const m = /^([A-Za-z][A-Za-z0-9]*)-(\d+)$/.exec(key)
-  if (!m) throw new HttpError(404, 'Issue not found')
-  const [i] = await d.query<any>(
-    `${ISSUE} where i.workspace_id = $1 and p.key = $2 and i.number = $3 ${includeDeleted ? '' : 'and i.deleted_at is null'}`,
-    [ws, m[1]!.toUpperCase(), Number(m[2])])
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/** "PAY-12" or the issue's uuid → issue row scoped to the caller's workspace, or 404 (Jira calls this issueIdOrKey). */
+async function issueByKey(d: Db, ws: string, ref: string, includeDeleted = false) {
+  const live = includeDeleted ? '' : 'and i.deleted_at is null'
+  const byId = UUID.test(ref)
+  const m = byId ? null : /^([A-Za-z][A-Za-z0-9]*)-(\d+)$/.exec(ref)
+  if (!byId && !m) throw new HttpError(404, 'Issue not found')
+  const [i] = byId
+    ? await d.query<any>(`${ISSUE} where i.workspace_id = $1 and i.id = $2 ${live}`, [ws, ref])
+    : await d.query<any>(`${ISSUE} where i.workspace_id = $1 and p.key = $2 and i.number = $3 ${live}`, [ws, m![1]!.toUpperCase(), Number(m![2])])
   if (!i) throw new HttpError(404, 'Issue not found')
   return i
 }
@@ -55,7 +59,7 @@ async function checkTransition(d: Db, projectId: string, from: string, to: strin
   if (!ok.length) throw new HttpError(409, 'That move is not allowed by the workflow')
 }
 
-const keyP = z.object({ key: z.string().describe('Issue key, e.g. PAY-12') })
+const keyP = z.object({ key: z.string().describe('Issue key (PAY-12) or id (uuid)') })
 const projKeyP = z.object({ key: z.string().describe('Project key, e.g. PAY') })
 const idP = z.object({ id: uuid })
 const TAG = ['Issues']
@@ -65,6 +69,40 @@ const listQuery = z.object({
   release: uuid.optional(), parent: uuid.optional(), cursor: z.string().optional().describe('`next` from the previous page'),
   limit: z.coerce.number().int().min(1).max(500).default(200),
 })
+
+/** One issue edit: version check, workflow check, history, notifications, automation, live event. Shared by the single and bulk edits. */
+async function applyPatch(d: Db, me: Me, cur: any, patch: z.infer<typeof patchBody>, o: { ifMatch: number | null; override: boolean }) {
+  if (o.ifMatch !== null && o.ifMatch !== cur.version) throw new HttpError(409, `Edited elsewhere (current version ${cur.version})`)
+  const [lead] = await d.query<{ leadId: string | null }>('select lead_id from projects where id = $1', [cur.projectId])
+  const override = o.override && (isAdmin(me.role) || lead?.leadId === me.id)
+  if (patch.statusId && !override) await checkTransition(d, cur.projectId, cur.statusId, patch.statusId)
+  if (patch.parentId === cur.id) throw new HttpError(400, 'An item cannot be its own parent')
+
+  const changed = Object.keys(patch).filter(k => k !== 'rank' && JSON.stringify((patch as any)[k]) !== JSON.stringify(cur[k]))
+  const w = pick(patch, FIELDS, ['custom'])
+  if (!w.keys.length) return cur
+  const [{ n }] = await d.query<{ n: number }>(
+    `update issues set ${w.cols.map((c, i) => `${c} = $${i + 3}`).join(', ')}, version = version + 1, updated_at = now()
+      where id = $1 and version = $2 returning 1 as n`, [cur.id, cur.version, ...w.vals]) as any
+  if (!n) throw new HttpError(409, 'Edited elsewhere')
+
+  for (const f of changed) {
+    const to = (patch as any)[f], from = cur[f]
+    await d.query('insert into activity (issue_id, actor_id, field, from_value, to_value, text) values ($1, $2, $3, $4, $5, $6)',
+      [cur.id, me.id, f, from == null ? null : String(from), to == null ? null : String(to), `Changed ${f.replace(/([A-Z])/g, ' $1').toLowerCase()}`])
+  }
+  const ctx = { projectId: cur.projectId, issueId: cur.id, reporterId: cur.reporterId, leadId: lead?.leadId ?? null }
+  if (changed.includes('assigneeId') && patch.assigneeId) {
+    await note(d, patch.assigneeId, me, cur.id, 'assigned', 'assigned you a work item')
+    await runRules(d, ctx, { kind: 'assigned' })
+  }
+  if (changed.includes('statusId')) {
+    for (const u of await watchersOf(d, cur)) await note(d, u, me, cur.id, 'status', 'changed the status')
+    await runRules(d, ctx, { kind: 'status', to: patch.statusId! })
+  }
+  await publish(d, cur.projectId, { type: 'issue.updated', id: cur.id, key: cur.key })
+  return (await d.query<any>(`${ISSUE} where i.id = $1`, [cur.id]))[0]
+}
 
 const plugin: FastifyPluginAsyncZod = async app => {
   // Board/list page of a project, in backlog order. Keyset-paginated: pass `next` back as `cursor`.
@@ -127,22 +165,54 @@ const plugin: FastifyPluginAsyncZod = async app => {
     })
   })
 
-  app.get('/issues/:key', { schema: { tags: TAG, summary: 'Issue with links, watchers, comments, activity, work logs, attachments and children', params: keyP } }, async req => {
+  const EXPAND = ['links', 'watchers', 'comments', 'activity', 'worklogs', 'attachments', 'children'] as const
+  app.get('/issues/:key', { schema: {
+    tags: TAG, summary: 'Issue, with its related records. `expand` picks which; omit it for all (comments and history have their own paginated endpoints).',
+    params: keyP, querystring: z.object({ expand: z.string().optional().describe(`Comma-separated: ${EXPAND.join(', ')}`) }),
+  } }, async req => {
     const i = await issueByKey(db, req.me.workspaceId, req.params.key)
-    const [links, watchers, comments, activity, worklogs, attachments, children] = await Promise.all([
-      db.query(`select l.type, 'out' as dir, t.id as issue_id, p.key || '-' || t.number as key, t.title
+    const want = new Set(req.query.expand ? req.query.expand.split(',').map(x => x.trim()).filter(Boolean) : EXPAND)
+    for (const w of want) if (!(EXPAND as readonly string[]).includes(w)) throw new HttpError(400, `Unknown expand value: ${w}`)
+    const out: Record<string, unknown> = { ...i }
+    const jobs: Promise<void>[] = []
+    const load = (name: string, sql: string, map?: (rows: any[]) => unknown) => { if (want.has(name)) jobs.push(db.query(sql, [i.id]).then(r => { out[name === 'watchers' ? 'watcherIds' : name] = map ? map(r) : r })) }
+    load('links', `select l.type, 'out' as dir, t.id as issue_id, p.key || '-' || t.number as key, t.title
                   from issue_links l join issues t on t.id = l.target_id join projects p on p.id = t.project_id where l.issue_id = $1 and t.deleted_at is null
                 union all
                 select l.type, 'in', t.id, p.key || '-' || t.number, t.title
-                  from issue_links l join issues t on t.id = l.issue_id join projects p on p.id = t.project_id where l.target_id = $1 and t.deleted_at is null`, [i.id]),
-      db.query('select user_id from issue_watchers where issue_id = $1', [i.id]),
-      db.query('select * from comments where issue_id = $1 order by created_at', [i.id]),
-      db.query('select * from activity where issue_id = $1 order by created_at desc limit 200', [i.id]),
-      db.query('select * from worklogs where issue_id = $1 order by date desc, created_at desc', [i.id]),
-      db.query('select id, name, size, type, added_by, added_at from attachments where issue_id = $1 order by added_at', [i.id]),
-      db.query(`${ISSUE} where i.parent_id = $1 and i.deleted_at is null order by i.rank`, [i.id]),
-    ])
-    return { ...i, links, watcherIds: watchers.map((w: any) => w.userId), comments, activity, worklogs, attachments, children }
+                  from issue_links l join issues t on t.id = l.issue_id join projects p on p.id = t.project_id where l.target_id = $1 and t.deleted_at is null`)
+    load('watchers', 'select user_id from issue_watchers where issue_id = $1', rows => rows.map((w: any) => w.userId))
+    load('comments', 'select * from comments where issue_id = $1 order by created_at, id limit 200')
+    load('activity', 'select * from activity where issue_id = $1 order by created_at desc, id desc limit 200')
+    load('worklogs', 'select * from worklogs where issue_id = $1 order by date desc, created_at desc limit 200')
+    load('attachments', 'select id, name, size, type, added_by, added_at from attachments where issue_id = $1 order by added_at')
+    load('children', `${ISSUE} where i.parent_id = $1 and i.deleted_at is null order by i.rank limit 500`)
+    await Promise.all(jobs)
+    return out
+  })
+
+  // Comments and history, paged (the detail call embeds only the first 200)
+  const page = z.object({ cursor: z.string().optional().describe('`next` from the previous page'), limit: z.coerce.number().int().min(1).max(200).default(50) })
+  // Cursors carry the timestamp as the database printed it (microseconds); a JS Date would cut it to milliseconds and repeat or skip rows
+  const cursorOf = (ts: string, id: string) => Buffer.from(`${ts}|${id}`).toString('base64url')
+  const readCursor = (c?: string) => { if (!c) return null; const [t, id] = Buffer.from(c, 'base64url').toString().split('|'); if (!t || !id || !UUID.test(id) || isNaN(Date.parse(t))) throw new HttpError(400, 'Invalid cursor'); return [t, id] as const }
+  app.get('/issues/:key/comments', { schema: { tags: ['Comments & work logs'], summary: 'Comments on an issue, oldest first (keyset-paginated)', params: keyP, querystring: page } }, async req => {
+    const i = await issueByKey(db, req.me.workspaceId, req.params.key)
+    const cur = readCursor(req.query.cursor)
+    const rows = await db.query<any>(
+      `select *, to_char(created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as cursor_ts from comments where issue_id = $1 ${cur ? 'and (created_at, id) > ($3::timestamptz, $4::uuid)' : ''} order by created_at, id limit $2`,
+      cur ? [i.id, req.query.limit + 1, cur[0], cur[1]] : [i.id, req.query.limit + 1])
+    const more = rows.length > req.query.limit, items = more ? rows.slice(0, req.query.limit) : rows
+    return { items, next: more ? cursorOf(items.at(-1).cursorTs, items.at(-1).id) : null }
+  })
+  app.get('/issues/:key/activity', { schema: { tags: TAG, summary: 'Change history of an issue, newest first (keyset-paginated)', params: keyP, querystring: page } }, async req => {
+    const i = await issueByKey(db, req.me.workspaceId, req.params.key)
+    const cur = readCursor(req.query.cursor)
+    const rows = await db.query<any>(
+      `select *, to_char(created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as cursor_ts from activity where issue_id = $1 ${cur ? 'and (created_at, id) < ($3::timestamptz, $4::uuid)' : ''} order by created_at desc, id desc limit $2`,
+      cur ? [i.id, req.query.limit + 1, cur[0], cur[1]] : [i.id, req.query.limit + 1])
+    const more = rows.length > req.query.limit, items = more ? rows.slice(0, req.query.limit) : rows
+    return { items, next: more ? cursorOf(items.at(-1).cursorTs, items.at(-1).id) : null }
   })
 
   app.patch('/issues/:key', { schema: {
@@ -153,41 +223,39 @@ const plugin: FastifyPluginAsyncZod = async app => {
     }),
   } }, async req => {
     requireWrite(req)
-    const patch = req.body
     const ifMatch = req.headers['if-match'] ? Number(String(req.headers['if-match']).replace(/"/g, '')) : null
+    return tx(async d => applyPatch(d, req.me, await issueByKey(d, req.me.workspaceId, req.params.key), req.body, { ifMatch, override: req.headers['x-workflow-override'] === '1' }))
+  })
+
+  // ── Bulk (up to 200 issues, all or nothing: nothing changes if any issue is missing or refuses the change) ──
+  const refs = z.array(z.string()).min(1).max(200).describe('Issue keys (PAY-12) or ids')
+  const bulkResult = (n: number) => ({ count: n })
+  app.post('/issues/bulk/edit', { schema: { tags: ['Issues: bulk'], summary: 'Apply the same field changes to many issues (workflow rules apply to each)', body: z.object({ issues: refs, patch: patchBody }) } }, async req => {
+    requireWrite(req)
     return tx(async d => {
-      const cur = await issueByKey(d, req.me.workspaceId, req.params.key)
-      if (ifMatch !== null && ifMatch !== cur.version) throw new HttpError(409, `Edited elsewhere (current version ${cur.version})`)
-      const [lead] = await d.query<{ leadId: string | null }>('select lead_id from projects where id = $1', [cur.projectId])
-      const override = req.headers['x-workflow-override'] === '1' && (isAdmin(req.me.role) || lead?.leadId === req.me.id)
-      if (patch.statusId && !override) await checkTransition(d, cur.projectId, cur.statusId, patch.statusId)
-      if (patch.parentId === cur.id) throw new HttpError(400, 'An item cannot be its own parent')
-
-      const changed = Object.keys(patch).filter(k => k !== 'rank' && JSON.stringify((patch as any)[k]) !== JSON.stringify(cur[k]))
-      const w = pick(patch, FIELDS, ['custom'])
-      if (!w.keys.length) return cur
-      const [{ n }] = await d.query<{ n: number }>(
-        `update issues set ${w.cols.map((c, i) => `${c} = $${i + 3}`).join(', ')}, version = version + 1, updated_at = now()
-          where id = $1 and version = $2 returning 1 as n`, [cur.id, cur.version, ...w.vals]) as any
-      if (!n) throw new HttpError(409, 'Edited elsewhere')
-
-      for (const f of changed) {
-        const to = (patch as any)[f], from = cur[f]
-        await d.query('insert into activity (issue_id, actor_id, field, from_value, to_value, text) values ($1, $2, $3, $4, $5, $6)',
-          [cur.id, req.me.id, f, from == null ? null : String(from), to == null ? null : String(to), `Changed ${f.replace(/([A-Z])/g, ' $1').toLowerCase()}`])
-      }
-      const [pr] = await d.query<{ leadId: string | null }>('select lead_id from projects where id = $1', [cur.projectId])
-      const ctx = { projectId: cur.projectId, issueId: cur.id, reporterId: cur.reporterId, leadId: pr!.leadId }
-      if (changed.includes('assigneeId') && patch.assigneeId) {
-        await note(d, patch.assigneeId, req.me, cur.id, 'assigned', 'assigned you a work item')
-        await runRules(d, ctx, { kind: 'assigned' })
-      }
-      if (changed.includes('statusId')) {
-        for (const u of await watchersOf(d, cur)) await note(d, u, req.me, cur.id, 'status', 'changed the status')
-        await runRules(d, ctx, { kind: 'status', to: patch.statusId! })
-      }
-      await publish(d, cur.projectId, { type: 'issue.updated', id: cur.id, key: cur.key })
-      return (await d.query<any>(`${ISSUE} where i.id = $1`, [cur.id]))[0]
+      const out: any[] = []
+      for (const ref of [...new Set(req.body.issues)]) out.push(await applyPatch(d, req.me, await issueByKey(d, req.me.workspaceId, ref), req.body.patch, { ifMatch: null, override: false }))
+      return { count: out.length, issues: out }
+    })
+  })
+  app.post('/issues/bulk/delete', { schema: { tags: ['Issues: bulk'], summary: 'Soft-delete many issues (restorable)', body: z.object({ issues: refs }) } }, async req => {
+    requireWrite(req)
+    return tx(async d => {
+      const rows = []
+      for (const ref of [...new Set(req.body.issues)]) rows.push(await issueByKey(d, req.me.workspaceId, ref))
+      await d.query('update issues set deleted_at = now(), version = version + 1 where id = any($1::uuid[])', [rows.map(r => r.id)])
+      for (const pid of new Set(rows.map(r => r.projectId))) await publish(d, pid, { type: 'issue.deleted' })
+      return bulkResult(rows.length)
+    })
+  })
+  app.post('/issues/bulk/restore', { schema: { tags: ['Issues: bulk'], summary: 'Restore many soft-deleted issues (Undo)', body: z.object({ issues: refs }) } }, async req => {
+    requireWrite(req)
+    return tx(async d => {
+      const rows = []
+      for (const ref of [...new Set(req.body.issues)]) rows.push(await issueByKey(d, req.me.workspaceId, ref, true))
+      await d.query('update issues set deleted_at = null, version = version + 1 where id = any($1::uuid[])', [rows.map(r => r.id)])
+      for (const pid of new Set(rows.map(r => r.projectId))) await publish(d, pid, { type: 'issue.created' })
+      return bulkResult(rows.length)
     })
   })
 
