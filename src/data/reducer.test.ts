@@ -274,3 +274,16 @@ test('setNotifications replaces the list', () => {
   const n = { id: 'n1', userId: 'u', actorId: '', issueId: 'i', kind: 'assigned' as const, text: 't', read: false, archived: false, createdAt: 1 }
   assert.equal(reducer({ ...EMPTY, notifications: [{ ...n, id: 'old' }] }, { type: 'setNotifications', notifications: [n] }).notifications[0]!.id, 'n1')
 })
+
+test('loadProject adds a project with its sprints, then replaces both without touching other projects', () => {
+  const owner = run([{ type: 'setOwner', name: 'Alex' }, { type: 'createProject', project: { id: 'p1', name: 'A', key: 'AAA', color: '#000', template: 'scrum' } }, { type: 'createProject', project: { id: 'p2', name: 'B', key: 'BBB', color: '#000', template: 'scrum' } }])
+  const sp = (id: string, projectId: string) => ({ id, projectId, name: id, goal: '', state: 'planned' as const })
+  const s0 = { ...owner, sprints: [sp('a1', 'p1'), sp('b1', 'p2')] }
+  const p3 = { ...owner.projects[0]!, id: 'p3', key: 'CCC', name: 'C' }
+  const s1 = reducer(s0, { type: 'loadProject', project: p3, sprints: [sp('c1', 'p3')] })
+  assert.deepEqual(s1.projects.map(p => p.key), ['AAA', 'BBB', 'CCC'])
+  assert.deepEqual(s1.sprints.map(s => s.id).sort(), ['a1', 'b1', 'c1'])
+  const s2 = reducer(s1, { type: 'loadProject', project: { ...p3, name: 'C renamed' }, sprints: [sp('c2', 'p3')] })
+  assert.equal(s2.projects.length, 3); assert.equal(s2.projects[2]!.name, 'C renamed')
+  assert.deepEqual(s2.sprints.map(s => s.id).sort(), ['a1', 'b1', 'c2'])
+})

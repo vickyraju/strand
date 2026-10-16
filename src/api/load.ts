@@ -1,24 +1,53 @@
 import { api } from './client'
-import { mapWorkspace, mapIssue } from './map'
+import { mapWorkspace, mapIssue, mapProject, mapSprint } from './map'
 import { sprintSync } from './sprints'
-import { loadSettingsBase } from './settings'
+import { adoptProject, loadSettingsBase } from './settings'
+import { keysToLoad, readRecent } from './recent'
 import { loadPersonalBase } from './personal'
-import type { Issue, State } from '../data/reducer'
+import type { Issue, Sprint, State } from '../data/reducer'
 
-/** Loads who you are, the people and the projects (with workflow, sprints, fields…) from the API.
- *  ponytail: fetches every project's detail up front, which is fine for a dev workspace. Slice 3 loads a
- *  project's detail when it is opened and keeps only the list here, which is what 50k projects needs. */
-export async function loadWorkspace(): Promise<State> {
-  const [me, users, list, views, dashboards, notifications] = await Promise.all([
+/** Run `fn` over `items`, at most `limit` at a time, keeping the order of the results. */
+async function mapLimit<T, R>(items: T[], limit: number, fn: (t: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(items.length)
+  let next = 0
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) { const i = next++; out[i] = await fn(items[i]!) }
+  }))
+  return out
+}
+
+/** One project in full (workflow, fields, releases, templates, rules, sprints), ready for the store. */
+export async function fetchProject(key: string) {
+  const detail = await api<any>('GET', `/api/projects/${encodeURIComponent(key)}`)
+  return { project: mapProject(detail), sprints: (detail.sprints ?? []).map(mapSprint) as Sprint[] }
+}
+
+/** A project opened by link or from search. Its settings and sprints become the sync base, so they are not sent back. */
+export async function loadProjectByKey(key: string) {
+  const { project, sprints } = await fetchProject(key)
+  adoptProject(project)
+  sprintSync.load(sprints, s => s.projectId === project.id)
+  return { project, sprints }
+}
+
+/** Loads who you are, the people, and the projects you are likely to use: starred ones, recently opened ones, and any
+ *  already on screen (`keep`). Every other project is fetched when opened, or found with the project search.
+ *  ponytail: users still load as one list (first 1000 by name). At tens of thousands of users the pickers need to search. */
+export async function loadWorkspace(keep: string[] = []): Promise<State> {
+  const [me, users, starredPage, views, dashboards, notifications] = await Promise.all([
     api<any>('GET', '/api/me'),
     api<any[]>('GET', '/api/users'),
-    api<any[]>('GET', '/api/projects'),
+    api<{ items: any[] }>('GET', '/api/projects/search?starred=1&limit=100'),
     api<any[]>('GET', '/api/views'),
     api<any[]>('GET', '/api/dashboards'),
     api<any[]>('GET', '/api/notifications'),
   ])
-  const details = await Promise.all(list.map(p => api<any>('GET', `/api/projects/${encodeURIComponent(p.key)}`)))
-  const state = mapWorkspace(me, users, details, list.filter(p => p.starred).map(p => p.id), { views, dashboards, notifications })
+  const keys = keysToLoad(starredPage.items.map(p => p.key), readRecent(), keep)
+  const loaded = await mapLimit(keys, 6, async k => { try { return await fetchProject(k) } catch { return null } })   // a project that is gone or hidden is skipped
+  const ok = loaded.filter((x): x is NonNullable<typeof x> => !!x)
+  const state = mapWorkspace(me, users, [], starredPage.items.map(p => p.id), { views, dashboards, notifications })
+  state.projects = ok.map(x => x.project)
+  state.sprints = ok.flatMap(x => x.sprints)
   sprintSync.load(state.sprints)   // the server's data is the base, so none of it is sent back
   loadSettingsBase(state.projects, state.starred)
   loadPersonalBase(state, me.id)

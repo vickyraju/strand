@@ -1,8 +1,9 @@
-import { lazy, Suspense, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { Plus, Star, FolderPlus, Columns2, List, ListChecks, Settings, Gauge, BarChart3, GanttChart, CalendarDays, Rocket, Check, GitBranch, Info, Sparkles, Zap } from 'lucide-react'
 import { useStore, userOf, isDone, timeAgo, PROJECT_COLORS, type Project, type ProjectPatch } from '../data/store'
 import { useApp } from '../appContext'
-import type { ProjectTab } from '../router'
+import { navigate, href, type ProjectTab } from '../router'
+import { api, apiEnabled } from '../api/client'
 import { sampleWorkspace } from '../data/sample'
 import BoardView from './BoardView'
 import BacklogView from './BacklogView'
@@ -58,6 +59,74 @@ export function LoadSampleButton({ className = 'btn btn-secondary' }: { classNam
 
 // ── All projects ───────────────────────────────────────────
 
+/** Search every project in the workspace on the server (the screen below lists only the ones loaded: starred and recent). */
+function RemoteProjectSearch() {
+  const [q, setQ] = useState('')
+  const [rows, setRows] = useState<{ id: string; key: string; name: string; template: string; openCount: number; archivedAt: string | null }[]>([])
+  const [next, setNext] = useState<string | null>(null)
+  const [status, setStatus] = useState<'idle' | 'loading' | 'error'>('idle')
+  const [showArchived, setShowArchived] = useState(false)
+  const term = q.trim()
+
+  const url = (cursor?: string) =>
+    `/api/projects/search?query=${encodeURIComponent(term)}&limit=20${showArchived ? '&archived=1' : ''}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`
+
+  useEffect(() => {
+    if (!term) { setRows([]); setNext(null); setStatus('idle'); return }
+    let cancelled = false
+    setStatus('loading')
+    const t = window.setTimeout(() => {   // wait for a pause in typing
+      api<{ items: typeof rows; next: string | null }>('GET', url()).then(
+        r => { if (!cancelled) { setRows(r.items); setNext(r.next); setStatus('idle') } },
+        () => { if (!cancelled) setStatus('error') },
+      )
+    }, 300)
+    return () => { cancelled = true; window.clearTimeout(t) }
+  }, [term, showArchived]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const more = () => {
+    if (!next) return
+    setStatus('loading')
+    api<{ items: typeof rows; next: string | null }>('GET', url(next)).then(
+      r => { setRows(prev => [...prev, ...r.items]); setNext(r.next); setStatus('idle') }, () => setStatus('error'))
+  }
+
+  return (
+    <div style={{ margin: '0 28px 20px' }}>   {/* same side margin as the tables below it */}
+      <div className="form-row" style={{ alignItems: 'center' }}>
+        <input className="input" style={{ flex: 1, maxWidth: 420 }} type="search" aria-label="Search all projects" placeholder="Search all projects by name or key…"
+          value={q} onChange={e => setQ(e.target.value)} />
+        <label className="cell-flex sm" style={{ gap: 6 }}>
+          <input type="checkbox" checked={showArchived} onChange={e => setShowArchived(e.target.checked)} />Archived
+        </label>
+      </div>
+      {term && (
+        <div className="card-table" style={{ marginTop: 10, marginInline: 0 }} role="region" aria-label="Project search results" aria-live="polite">
+          {status === 'error' ? <p className="muted" style={{ padding: 14 }}>Could not search. Try again.</p>
+            : rows.length === 0 && status === 'loading' ? <p className="muted" style={{ padding: 14 }}>Searching…</p>
+            : rows.length === 0 ? <p className="muted" style={{ padding: 14 }}>No projects match “{term}”.</p>
+            : (
+              <table className="table">
+                <thead><tr><th>Name</th><th style={{ width: 90 }}>Key</th><th style={{ width: 100 }}>Type</th><th style={{ width: 120 }}>Open items</th></tr></thead>
+                <tbody>
+                  {rows.map(p => (
+                    <tr key={p.id} tabIndex={0} onClick={() => navigate(href({ name: 'project', key: p.key }))} onKeyDown={e => e.key === 'Enter' && navigate(href({ name: 'project', key: p.key }))}>
+                      <td className="strong">{p.name}{p.archivedAt && <span className="muted sm"> · archived</span>}</td>
+                      <td className="mono">{p.key}</td>
+                      <td>{p.template === 'scrum' ? 'Scrum' : 'Kanban'}</td>
+                      <td className="muted">{p.openCount}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          {next && <div style={{ padding: 10 }}><button className="btn btn-secondary btn-sm" onClick={more} disabled={status === 'loading'}>Load more</button></div>}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function ProjectsView({ onCreate }: { onCreate: () => void }) {
   const { state } = useStore()
   const { openProject } = useApp()
@@ -67,10 +136,15 @@ export function ProjectsView({ onCreate }: { onCreate: () => void }) {
       <div className="page-hdr">
         <h1 className="page-title">Projects</h1>
         <div style={{ flex: 1 }} />
-        {state.projects.length > 0 && <button className="btn btn-primary" onClick={onCreate}><Plus size={15} />Create project</button>}
+        {(state.projects.length > 0 || apiEnabled) && <button className="btn btn-primary" onClick={onCreate}><Plus size={15} />Create project</button>}
       </div>
 
-      {state.projects.length === 0 ? (
+      {apiEnabled && <RemoteProjectSearch />}
+      {apiEnabled && <p className="muted sm" style={{ margin: '0 28px 8px' }}>Showing your starred and recently opened projects. Search above to find any other project.</p>}
+
+      {state.projects.length === 0 && apiEnabled ? (
+        <p className="muted">No starred or recent projects yet. Search for one above, or create a new project.</p>
+      ) : state.projects.length === 0 ? (
         <Empty
           icon={<FolderPlus size={22} strokeWidth={1.5} />}
           title="Create your first project"

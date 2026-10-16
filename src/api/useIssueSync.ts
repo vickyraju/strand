@@ -66,7 +66,7 @@ export function useIssueSync(toast: Toast) {
     }
     // After a failed request: take projects, sprints and stars from the server (this also resets every sync's base)
     sprintDeps.reloadAll = async () => {
-      const fresh = await loadWorkspace()
+      const fresh = await loadWorkspace(latest.current.projects.map(p => p.key))   // keep what is on screen, not only starred and recent
       dispatch({ type: 'replace', state: { ...latest.current, projects: fresh.projects, sprints: fresh.sprints, starred: fresh.starred,
         views: fresh.views, dashboards: fresh.dashboards, notifications: fresh.notifications } })
     }

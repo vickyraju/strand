@@ -15,6 +15,9 @@ import ShortcutsDialog from './components/ShortcutsDialog'
 import { ProjectsView, ProjectView, TAB_LABEL } from './components/ProjectView'
 import { StoreProvider, useStore, type NewIssue } from './data/store'
 import { useProjectIssues } from './api/useProjectIssues'
+import { useProjectOnDemand } from './api/useProjectOnDemand'
+import { rememberProject } from './api/recent'
+import { apiEnabled } from './api/client'
 import { useIssueSync } from './api/useIssueSync'
 import { useIssueDetail } from './api/useIssueDetail'
 import { AppContext, type AppActions } from './appContext'
@@ -63,7 +66,13 @@ function Shell() {
   const navList = useRef<string[]>([])
 
   const project = route.name === 'project' ? state.projects.find(p => p.key === route.key) : undefined
-  const issuesLoad = useProjectIssues(project)
+  // The project this screen needs, wherever the link points: a project page, an issue page, or an issue peek over any screen.
+  // (`project` above is only the project page's own project, which the title and breadcrumbs use.)
+  const wantedKey = route.name === 'project' ? route.key : route.name === 'issue' ? route.key.split('-')[0] : peek ? peek.split('-')[0] : undefined
+  const onDemand = useProjectOnDemand(wantedKey)
+  const wanted = wantedKey ? state.projects.find(p => p.key === wantedKey) : undefined
+  const issuesLoad = useProjectIssues(wanted)
+  useEffect(() => { if (apiEnabled && project) rememberProject(project.key) }, [project?.key]) // eslint-disable-line react-hooks/exhaustive-deps
   const peekIssue = peek ? state.issues.find(i => i.key === peek) : undefined
   const fullIssue = route.name === 'issue' ? state.issues.find(i => i.key === route.key) : undefined
   useIssueDetail((fullIssue ?? peekIssue)?.id)
@@ -209,10 +218,10 @@ function Shell() {
                 <Empty icon={<SearchX size={20} strokeWidth={1.5} />} title="Could not load work items" body="The server did not respond."
                   action={<button className="btn btn-primary" onClick={issuesLoad.retry}>Try again</button>} />)
               : route.tab && <ProjectView project={project} tab={route.tab} sub={route.sub} />
-              : notFound('Project'))}
+              : onDemand === 'loading' ? <div className="loading" role="status">Loading project…</div> : notFound('Project'))}
             {route.name === 'issue' && (fullIssue
               ? <div className="detail-page"><WorkItemDetail issueId={fullIssue.id} mode="full" navList={navList.current} /></div>
-              : notFound('Work item'))}
+              : onDemand === 'loading' || issuesLoad.status === 'loading' ? <div className="loading" role="status">Loading work item…</div> : notFound('Work item'))}
             {route.name === 'not-found' && notFound('Page')}
 
             {peekIssue && route.name !== 'issue' && route.name !== 'inbox' && (

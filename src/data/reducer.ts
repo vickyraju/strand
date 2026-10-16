@@ -308,6 +308,8 @@ export type Action =
   | { type: 'loadIssues'; projectId: string; issues: Issue[] }
   /** Notifications as the server has them (it creates them when others assign, mention or comment). */
   | { type: 'setNotifications'; notifications: Notification[] }
+  /** A project fetched on demand (opened by link or from search): add or replace it, and replace its sprints. */
+  | { type: 'loadProject'; project: Project; sprints: Sprint[] }
   /** The server's copy of a sprint (point snapshots, member list). */
   | { type: 'syncSprint'; sprint: Sprint }
   /** The parts of one issue that come with the single-issue call: comments, history, time logs, outgoing links, watchers. */
@@ -718,6 +720,13 @@ export function reducer(state: State, action: Action, now = Date.now()): State {
     // ── Bulk data ─────────────────────────────────────────
     case 'setNotifications':
       return { ...state, notifications: action.notifications }
+    case 'loadProject':
+      return {
+        ...state,
+        projects: state.projects.some(p => p.id === action.project.id)
+          ? state.projects.map(p => (p.id === action.project.id ? action.project : p)) : [...state.projects, action.project],
+        sprints: [...state.sprints.filter(s => s.projectId !== action.project.id), ...action.sprints],
+      }
     case 'syncSprint':
       return state.sprints.some(s => s.id === action.sprint.id)
         ? { ...state, sprints: state.sprints.map(s => (s.id === action.sprint.id ? action.sprint : s)) } : state
