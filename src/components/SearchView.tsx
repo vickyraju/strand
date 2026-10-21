@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react'
 import { Search as SearchIcon, X, ChevronDown, Bookmark, MoreHorizontal, Pencil, Trash2, Users, Lock, Save } from 'lucide-react'
-import { useStore, projectOf, uid, type IssueType, type Priority, type ViewFilters, type ViewResolution } from '../data/store'
+import { useStore, projectOf, uid, type Issue, type IssueType, type Priority, type ViewFilters, type ViewResolution } from '../data/store'
 import { applyFilters, filtersActive, EMPTY_FILTERS } from '../data/views'
 import { useApp } from '../appContext'
 import { navigate, href } from '../router'
 import IssueTable, { type TableGroup } from './IssueTable'
 import { Picker, Menu, Modal, Toggle, TYPE_META, PRIORITY_META, typeOptions, priorityOptions, Avatar, type PickerOption } from './ui'
 import { ProjectIcon } from './ProjectView'
+import { apiEnabled } from '../api/client'
+import { useSearch } from '../api/work'
+import { useUserSearch } from '../api/users'
 
 export default function SearchView({ query, viewId }: { query: string; viewId?: string }) {
   const { state, dispatch } = useStore()
@@ -21,13 +24,30 @@ export default function SearchView({ query, viewId }: { query: string; viewId?: 
   useEffect(() => { setF(view?.filters ?? { ...EMPTY_FILTERS, q: query }) }, [viewId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const set = (patch: Partial<ViewFilters>) => setF(prev => ({ ...prev, ...patch }))
-  const results = applyFilters(state, f, state.me?.id)
+  // With an API, results come from the server's cross-project search: the app does not hold
+  // every work item, so this is the only way to find one. Without one, filter the local store.
+  const server = useSearch(f)
+  // Assignee filter: the workspace's people are searched on the server, not held as a local list.
+  const people = useUserSearch()
+  const results: Issue[] = apiEnabled ? server.items : applyFilters(state, f, state.me?.id)
   const labels = [...new Set(state.issues.flatMap(i => i.labels))].sort()
   const dirty = !!view && JSON.stringify(view.filters) !== JSON.stringify(f)
   const canEdit = !view || view.ownerId === state.me?.id
   const any = <T,>(l: string, opts: PickerOption<T>[]) => [{ value: undefined as T, label: l }, ...opts]
   const project = projectOf(state, f.projectId)
-  const assigneeLabel = f.assignee === null ? 'Assignee' : f.assignee === 'me' ? 'Me' : f.assignee === '' ? 'Unassigned' : state.users.find(u => u.id === f.assignee)?.name ?? 'Assignee'
+  const assigneeName = (id: string | null) => {
+    if (id === null) return 'Assignee'
+    if (id === 'me') return 'Me'
+    if (id === '') return 'Unassigned'
+    return people.userById(id)?.name ?? state.users.find(u => u.id === id)?.name ?? 'Assignee'
+  }
+  const assigneeLabel = assigneeName(f.assignee)
+  const assigneeOptions: PickerOption<string | null>[] = [
+    { value: null, label: 'Anyone' },
+    { value: 'me', label: 'Me (whoever is viewing)', icon: <Avatar user={state.me} size={20} /> },
+    { value: '', label: 'Unassigned', icon: <Avatar size={20} /> },
+    ...people.users.map(u => ({ value: u.id as string | null, label: u.name, icon: <Avatar user={u} size={20} /> })),
+  ]
 
   const onText = (q: string) => {
     set({ q })
@@ -78,12 +98,13 @@ export default function SearchView({ query, viewId }: { query: string; viewId?: 
             options={any('Any project', state.projects.map(p => ({ value: p.id as string | undefined, label: p.name, icon: <ProjectIcon project={p} size={16} /> })))}
             onChange={projectId => set({ projectId })} trigger={<>{project ? <><ProjectIcon project={project} size={16} />{project.name}</> : 'Project'}<ChevronDown size={13} /></>} />
           <Picker value={f.assignee} search title="Assignee" className={`chip${f.assignee !== null ? ' chip-on' : ''}`}
-            options={[
+            options={apiEnabled ? assigneeOptions : [
               { value: null as string | null, label: 'Anyone' },
               { value: 'me', label: 'Me (whoever is viewing)', icon: <Avatar user={state.me} size={20} /> },
               { value: '', label: 'Unassigned', icon: <Avatar size={20} /> },
               ...state.users.map(u => ({ value: u.id as string | null, label: u.name, icon: <Avatar user={u} size={20} /> })),
             ]}
+            remote={apiEnabled ? { onSearch: people.search, searching: people.busy } : undefined}
             onChange={assignee => set({ assignee })} trigger={<>{assigneeLabel}<ChevronDown size={13} /></>} />
           <Picker value={f.type} title="Type" options={any('Any type', typeOptions())} onChange={(type: IssueType | undefined) => set({ type })} className={`chip${f.type ? ' chip-on' : ''}`}
             trigger={<>{f.type ? TYPE_META[f.type].label : 'Type'}<ChevronDown size={13} /></>} />
@@ -103,6 +124,16 @@ export default function SearchView({ query, viewId }: { query: string; viewId?: 
       </div>
       <IssueTable id={view ? `view:${view.id}` : 'search'} issues={results} groupBy={groupBy} onGroupBy={setGroupBy} showProjectColumn
         emptyText={state.issues.length ? 'No work items match. Try fewer filters or a different search.' : 'There are no work items yet.'} />
+      {apiEnabled && server.next && (
+        <div style={{ display: 'flex', justifyContent: 'center', padding: '8px 0 24px' }}>
+          <button className="btn btn-ghost" onClick={server.loadMore}>Load more results</button>
+        </div>
+      )}
+      {apiEnabled && server.status === 'error' && (
+        <div style={{ textAlign: 'center', padding: 16 }}>
+          <button className="btn btn-ghost" onClick={server.retry}>Search failed — retry</button>
+        </div>
+      )}
 
       {naming && (
         <NameDialog

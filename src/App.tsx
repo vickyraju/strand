@@ -13,13 +13,15 @@ import CreateProjectModal from './components/CreateProjectModal'
 import CreateIssueModal from './components/CreateIssueModal'
 import ShortcutsDialog from './components/ShortcutsDialog'
 import { ProjectsView, ProjectView, TAB_LABEL } from './components/ProjectView'
-import { StoreProvider, useStore, type NewIssue } from './data/store'
+import { StoreProvider, useStore, type NewIssue, type Issue } from './data/store'
 import { useProjectIssues } from './api/useProjectIssues'
 import { useProjectOnDemand } from './api/useProjectOnDemand'
 import { rememberProject } from './api/recent'
 import { apiEnabled } from './api/client'
 import { useIssueSync } from './api/useIssueSync'
 import { useIssueDetail } from './api/useIssueDetail'
+import { loadProjectByKey } from './api/load'
+import { loadIssueFull } from './api/work'
 import { AppContext, type AppActions } from './appContext'
 import { useLocation, navigate, href, type Route } from './router'
 import { Empty } from './components/ui'
@@ -73,6 +75,25 @@ function Shell() {
   const wanted = wantedKey ? state.projects.find(p => p.key === wantedKey) : undefined
   const issuesLoad = useProjectIssues(wanted)
   useEffect(() => { if (apiEnabled && project) rememberProject(project.key) }, [project?.key]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // When a screen opens an issue it fetched from the server (search, my work, my inbox), the app
+  // loads its project's issues so the detail panel and in-row edits have the full copy.
+  useEffect(() => {
+    if (!apiEnabled) return
+    const on = (e: Event) => {
+      const { id, issue, key } = (e as CustomEvent).detail as { id?: string; issue?: Issue; key?: string }
+      if (id && issue) {
+        // put the full issue into the store so keyOf(id) and the detail panel can find it
+        dispatch({ type: 'syncIssue', issue })
+      }
+      if (key) loadProjectByKey(key).then(({ project, sprints }) => {
+        dispatch({ type: 'loadProject', project, sprints })
+        rememberProject(project.key)
+      }).catch(() => {})
+    }
+    window.addEventListener('strand:issue-full', on)
+    return () => window.removeEventListener('strand:issue-full', on)
+  }, [dispatch])
   const peekIssue = peek ? state.issues.find(i => i.key === peek) : undefined
   const fullIssue = route.name === 'issue' ? state.issues.find(i => i.key === route.key) : undefined
   useIssueDetail((fullIssue ?? peekIssue)?.id)
@@ -85,12 +106,33 @@ function Shell() {
       const p = state.projects.find(x => x.id === id)
       if (p) navigate(href({ name: 'project', key: p.key, tab, sub }))
     },
+    openProjectByKey: (key, tab, sub) => {
+      const p = state.projects.find(x => x.key === key.toUpperCase())
+      if (p) { navigate(href({ name: 'project', key: p.key, tab, sub })); return }
+      // Not loaded yet: fetch it (loadProjectByKey tells the sync layer about it, so it is not sent back), then open it
+      loadProjectByKey(key).then(({ project, sprints }) => {
+        dispatch({ type: 'loadProject', project, sprints })
+        rememberProject(project.key)
+        navigate(href({ name: 'project', key: project.key, tab, sub }))
+      }).catch(() => setToast({ text: 'Project not found', tone: 'warn', n: Date.now() }))
+    },
     openIssue: (id, opts) => {
       const key = keyOf(id)
-      if (!key) return
-      if (opts?.full || route.name === 'issue') navigate(href({ name: 'issue', key }))
-      else navigate(href(route, key), { replace: !!peek })
+      if (key) {
+        if (opts?.full || route.name === 'issue') navigate(href({ name: 'issue', key }))
+        else navigate(href(route, key), { replace: !!peek })
+        return
+      }
+      // A server list row not in the store yet: load its full copy and project, then open it
+      if (apiEnabled) {
+        loadIssueFull(id).then(fullKey => {
+          if (!fullKey) return
+          if (opts?.full || route.name === 'issue') navigate(href({ name: 'issue', key: fullKey }))
+          else navigate(href(route, fullKey), { replace: !!peek })
+        })
+      }
     },
+    loadIssue: id => { if (apiEnabled) loadIssueFull(id).catch(() => {}) },
     closeIssue: () => {
       // Stay inside the app: "back" could leave it (e.g. a shared link opened in a new tab)
       if (route.name === 'issue') {

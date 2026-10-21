@@ -8,8 +8,12 @@ export type AppView = 'home' | 'inbox' | 'search' | 'projects' | 'settings' | 'd
 export interface AppActions {
   goTo:        (view: AppView, query?: string) => void
   openProject: (id: string, tab?: ProjectTab, sub?: string) => void
+  /** Load a project by key (fetching it first if the app does not hold it), then open it. */
+  openProjectByKey: (key: string, tab?: ProjectTab, sub?: string) => void
   /** Opens the side panel; `full` opens the full page instead. */
   openIssue:   (id: string, opts?: { full?: boolean }) => void
+  /** Load an issue's full copy from the server (list rows only carry the fields their table shows). */
+  loadIssue:   (id: string) => void
   closeIssue:  () => void
   createIssue: (defaults?: Partial<NewIssue>) => void
   /** `undo`: the action this toast reports; an Undo button shows while that change is still the latest. */

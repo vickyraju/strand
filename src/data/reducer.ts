@@ -237,6 +237,10 @@ export interface Notification {
   read:      boolean
   archived:  boolean
   createdAt: number
+  /** Joined by the API (`GET /notifications`): the issue and project keys, so inbox rows render without the issue loaded. */
+  issueKey?:   string
+  issueTitle?: string
+  projectKey?: string
 }
 
 export interface State {

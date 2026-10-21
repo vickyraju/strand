@@ -4,8 +4,9 @@ import { useStore, uid, userOf, type NewIssue, type IssueType, type Priority } f
 import { useApp } from '../appContext'
 import {
   Picker, TypeIcon, PriorityIcon, Avatar, TYPE_META, PRIORITY_META, Toggle,
-  statusOptions, priorityOptions, typeOptions, userOptions,
+  statusOptions, priorityOptions, typeOptions,
 } from './ui'
+import { UserPicker } from './UserPicker'
 import { ProjectIcon } from './ProjectView'
 
 export default function CreateIssueModal({ defaults, onClose }: {
@@ -116,7 +117,7 @@ export default function CreateIssueModal({ defaults, onClose }: {
             trigger={<><span className="status-dot" style={{ background: statusObj?.color }} />{statusObj?.name}</>} />
           <Picker value={priority} options={priorityOptions} onChange={setPriority} title="Priority"
             trigger={<><PriorityIcon priority={priority} />{PRIORITY_META[priority].label}</>} />
-          <Picker value={assigneeId} options={userOptions(state.users)} onChange={setAssigneeId} title="Assignee" search
+          <UserPicker value={assigneeId} onChange={setAssigneeId} title="Assignee"
             trigger={<><Avatar user={assignee} size={16} />{assignee?.name ?? 'Assignee'}</>} />
           {type !== 'epic' && parentOptions.length > 0 && (
             <Picker value={parentId} title="Epic or parent" search

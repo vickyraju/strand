@@ -5,7 +5,7 @@ import {
   type Dashboard, type Notification, type SavedView, type Activity, type Comment, type IssueLink, type Worklog, type Issue, type Status, type Transition, type Rule, type FieldDef, type Release, type ItemTemplate,
 } from '../data/reducer.ts'
 
-type Row = Record<string, any>
+export type Row = Record<string, any>
 
 const ms = (iso: unknown): number | undefined => (iso ? new Date(String(iso)).getTime() : undefined)
 
@@ -68,8 +68,9 @@ export function mapWorkspace(me: Row, users: Row[], projects: Row[], starredIds:
   }
 }
 
-/** One row of `GET /api/projects/:key/issues`. Watchers, links, work logs and attachments are not in list
- *  rows (they come with the single-issue call), so they start empty. */
+/** One row of `GET /api/projects/:key/issues` or the list endpoints that return issue rows
+ *  (search, my work, my recent): no description/created, status is the row's `statusId`.
+ *  Watchers, links, work logs and attachments start empty. */
 export const mapIssue = (i: Row): Issue => ({
   id: i.id, key: i.key, projectId: i.projectId, type: i.type, title: i.title, description: i.description ?? '',
   status: i.statusId, priority: i.priority, reporterId: i.reporterId ?? '', labels: i.labels ?? [],
@@ -80,7 +81,28 @@ export const mapIssue = (i: Row): Issue => ({
   ...(i.sprintId ? { sprintId: i.sprintId } : {}), ...(i.releaseId ? { releaseId: i.releaseId } : {}),
   ...(i.parentId ? { parentId: i.parentId } : {}),
   watcherIds: [], links: [], attachments: [], worklogs: [],
-  custom: i.custom ?? {}, rank: i.rank, createdAt: ms(i.createdAt) ?? Date.now(), updatedAt: ms(i.updatedAt) ?? Date.now(),
+  custom: i.custom ?? {}, rank: i.rank ?? 0, createdAt: ms(i.createdAt) ?? Date.now(), updatedAt: ms(i.updatedAt) ?? Date.now(),
+})
+
+/** A search-list row: no description/created, status is the row's `statusId`. Unknown keys (cursorTs…) are dropped. */
+export const mapSearchRow = (i: Row): Issue => ({
+  id: i.id, key: i.key, projectId: i.projectId, type: i.type, title: i.title, description: '',
+  status: i.statusId, priority: i.priority, reporterId: '', labels: i.labels ?? [],
+  ...(i.assigneeId ? { assigneeId: i.assigneeId } : {}),
+  ...(i.estimate != null ? { estimate: i.estimate } : {}),
+  ...(i.dueDate ? { dueDate: i.dueDate } : {}),
+  watcherIds: [], links: [], attachments: [], worklogs: [],
+  custom: {}, rank: 0, createdAt: 0, updatedAt: ms(i.updatedAt) ?? Date.now(),
+})
+
+/** `GET /api/notifications` rows: the server joins the issue's key, title and project key, so inbox rows
+ *  never need the issue itself loaded. */
+export const mapNotification = (n: Row): Notification => ({
+  id: n.id, userId: n.userId, actorId: n.actorId ?? '', issueId: n.issueId, kind: n.kind, text: n.text,
+  read: !!n.read, archived: !!n.archived, createdAt: ms(n.createdAt) ?? Date.now(),
+  ...(n.issueKey ? { issueKey: n.issueKey } : {}),
+  ...(n.issueTitle ? { issueTitle: n.issueTitle } : {}),
+  ...(n.projectKey ? { projectKey: n.projectKey } : {}),
 })
 
 export const mapComment = (c: Row): Comment => ({
@@ -108,7 +130,3 @@ export function mapIssueDetail(d: Row) {
 
 export const mapView = (v: Row): SavedView => ({ id: v.id, name: v.name, ownerId: v.ownerId, shared: !!v.shared, filters: v.filters })
 export const mapDashboard = (d: Row): Dashboard => ({ id: d.id, name: d.name, ownerId: d.ownerId, gadgets: d.gadgets ?? [] })
-export const mapNotification = (n: Row): Notification => ({
-  id: n.id, userId: n.userId, actorId: n.actorId ?? '', issueId: n.issueId, kind: n.kind, text: n.text,
-  read: !!n.read, archived: !!n.archived, createdAt: ms(n.createdAt) ?? Date.now(),
-})

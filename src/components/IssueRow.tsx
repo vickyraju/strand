@@ -1,7 +1,8 @@
 import { CalendarDays, Ban } from 'lucide-react'
 import { useStore, userOf, blockersOf, indexOf, timeAgo, type Issue, type Project } from '../data/store'
 import { useApp } from '../appContext'
-import { Picker, TypeIcon, PriorityIcon, Avatar, Checkbox, statusOptions, priorityOptions, userOptions, formatDate, isOverdue } from './ui'
+import { Picker, TypeIcon, PriorityIcon, Avatar, Checkbox, statusOptions, priorityOptions, formatDate, isOverdue } from './ui'
+import { UserPicker } from './UserPicker'
 import { ProjectIcon } from './ProjectView'
 
 /** A dense, editable work item row for backlogs, sub-items and personal lists. */
@@ -60,7 +61,7 @@ export default function IssueRow({ issue, project, showProject, trailing, select
         className="icon-btn sm" title="Change priority" trigger={<PriorityIcon priority={issue.priority} />} />
       {trailing}
       {showUpdated && <span className="row-updated hide-sm">{timeAgo(issue.updatedAt)}</span>}
-      <Picker value={issue.assigneeId} search options={userOptions(state.users)} onChange={assigneeId => set({ assigneeId })}
+      <UserPicker value={issue.assigneeId} onChange={assigneeId => set({ assigneeId })}
         className="icon-btn" align="right" title="Change assignee" trigger={<Avatar user={userOf(state, issue.assigneeId)} size={24} />} />
     </div>
   )

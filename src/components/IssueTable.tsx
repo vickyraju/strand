@@ -8,8 +8,9 @@ import { useApp, useNavList } from '../appContext'
 import BulkBar from './BulkBar'
 import {
   Avatar, Checkbox, Picker, Popover, Toggle, TypeIcon, PriorityIcon, PRIORITY_META, PRIORITIES, TYPE_META,
-  statusOptions, priorityOptions, userOptions, formatDate, isOverdue,
+  statusOptions, priorityOptions, formatDate, isOverdue,
 } from './ui'
+import { UserPicker } from './UserPicker'
 import { ProjectIcon } from './ProjectView'
 import { fieldText } from './CustomFields'
 import { loggedMinutes, formatDuration } from '../data/time'
@@ -66,7 +67,15 @@ export default function IssueTable({ issues, id, groupBy, onGroupBy, project, sh
     })
   }, [issues])
 
-  const projectFor = (i: Issue) => project ?? projectOf(state, i.projectId)!
+  // Server-backed lists can carry issues whose project is not loaded in the store. A minimal stub
+  // keeps the row rendering (no crash on .statuses); the status picker and project icon degrade
+  // gracefully until the project loads (opening the row triggers useProjectOnDemand in App).
+  const projectFor = (i: Issue): Project => project ?? projectOf(state, i.projectId) ?? {
+    id: i.projectId, key: i.key.split('-')[0], name: i.key.split('-')[0],
+    description: '', color: '#8A8578', template: 'kanban', leadId: '',
+    statuses: [], transitions: [], layout: {}, boardPrefs: { fields: [] as any },
+    nextNumber: 0, createdAt: 0, rules: [], fields: [], releases: [], templates: [],
+  } as unknown as Project
   const statusFor  = (i: Issue) => projectFor(i).statuses.find(s => s.id === i.status)
 
   const sorted = useMemo(() => {
@@ -294,7 +303,7 @@ export default function IssueTable({ issues, id, groupBy, onGroupBy, project, sh
                       )}
                       {cols.assignee && (
                         <td className="col-assignee" onClick={e => e.stopPropagation()}>
-                          <Picker value={i.assigneeId} search options={userOptions(state.users)} onChange={a => set({ assigneeId: a })} title="Change assignee"
+                          <UserPicker value={i.assigneeId} onChange={a => set({ assigneeId: a })} title="Change assignee"
                             className="cell-btn" trigger={<><Avatar user={userOf(state, i.assigneeId)} size={22} /><span className="cell-ellipsis">{userOf(state, i.assigneeId)?.name ?? 'Unassigned'}</span></>} />
                         </td>
                       )}

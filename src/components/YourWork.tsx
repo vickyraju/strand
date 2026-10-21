@@ -1,10 +1,12 @@
 import { useState } from 'react'
-import { FolderPlus, Plus, Clock, Eye, UserCheck, Star, Columns2, CalendarClock, Ban, Inbox } from 'lucide-react'
-import { useStore, projectOf, isDone, blockersOf, type Issue } from '../data/store'
+import { FolderPlus, Plus, Clock, Eye, UserCheck, Star, Columns2, CalendarClock, Inbox } from 'lucide-react'
+import { useStore, projectOf, isDone, type Issue, type Project } from '../data/store'
 import { useApp, useNavList } from '../appContext'
 import IssueRow from './IssueRow'
 import { ProjectIcon, StarButton, LoadSampleButton } from './ProjectView'
 import { Empty } from './ui'
+import { apiEnabled } from '../api/client'
+import { useMyWork, useMyRecent } from '../api/work'
 
 type Tab = 'assigned' | 'worked' | 'viewed' | 'starred'
 
@@ -28,17 +30,31 @@ export default function YourWork({ onCreateProject }: { onCreateProject: () => v
   const [tab, setTab] = useState<Tab>('assigned')
   const me = state.me!
 
-  const projectFor = (i: Issue) => projectOf(state, i.projectId)!
-  const assigned = state.issues.filter(i => i.assigneeId === me.id && i.type !== 'epic' && !isDone(projectFor(i), i))
+  const projectFor = (i: Issue): Project => projectOf(state, i.projectId) ?? {
+    id: i.projectId, key: i.key.split('-')[0], name: i.key.split('-')[0],
+    description: '', color: '#8A8578', template: 'kanban', leadId: '',
+    statuses: [], transitions: [], layout: {}, boardPrefs: { fields: [] as any },
+    nextNumber: 0, createdAt: 0, rules: [], fields: [], releases: [], templates: [],
+  } as unknown as Project
+
+  // API mode: the assigned/worked lists come from the server, not from a scan of every work item.
+  const work = useMyWork()
+  const recent = useMyRecent()
+  const localAssigned = state.issues.filter(i => i.assigneeId === me.id && i.type !== 'epic' && !isDone(projectFor(i), i))
+  const assigned: Issue[] = apiEnabled ? work.items.filter(i => i.type !== 'epic') : localAssigned
   const dueSoon  = assigned.filter(i => i.dueDate && new Date(i.dueDate + 'T23:59').getTime() - Date.now() < 3 * 86_400_000)
-  const blocked  = assigned.filter(i => blockersOf(state, i).length > 0)
   const unread   = state.notifications.filter(n => n.userId === me.id && !n.read && !n.archived).length
 
-  const myLast = new Map<string, number>()
-  for (const a of state.activity) if (a.actorId === me.id) myLast.set(a.issueId, Math.max(myLast.get(a.issueId) ?? 0, a.createdAt))
-  for (const c of state.comments) if (c.authorId === me.id) myLast.set(c.issueId, Math.max(myLast.get(c.issueId) ?? 0, c.createdAt))
-  const worked = [...myLast.entries()].sort((a, b) => b[1] - a[1])
-    .map(([id, ts]) => ({ issue: state.issues.find(i => i.id === id), ts })).filter((x): x is { issue: Issue; ts: number } => !!x.issue).slice(0, 40)
+  const localWorked = (() => {
+    const myLast = new Map<string, number>()
+    for (const a of state.activity) if (a.actorId === me.id) myLast.set(a.issueId, Math.max(myLast.get(a.issueId) ?? 0, a.createdAt))
+    for (const c of state.comments) if (c.authorId === me.id) myLast.set(c.issueId, Math.max(myLast.get(c.issueId) ?? 0, c.createdAt))
+    return [...myLast.entries()].sort((a, b) => b[1] - a[1])
+      .map(([id, ts]) => ({ issue: state.issues.find(i => i.id === id), ts })).filter((x): x is { issue: Issue; ts: number } => !!x.issue).slice(0, 40)
+  })()
+  const worked = apiEnabled
+    ? recent.items.map(i => ({ issue: i, ts: i.updatedAt }))
+    : localWorked
   const viewed = state.viewed.map(id => state.issues.find(i => i.id === id)).filter((i): i is Issue => !!i)
   const starred = state.projects.filter(p => state.starred.includes(p.id))
 
@@ -67,6 +83,15 @@ export default function YourWork({ onCreateProject }: { onCreateProject: () => v
         />
       </div>
     )
+  }
+
+  // No API: the home screen's lists come from the store; with an API, the project cards' progress
+  // columns hide their numbers (the project's issues are not all loaded here).
+  const progressOf = (p: Project) => {
+    if (apiEnabled) return { open: null as string | number | null, done: null as number | null }
+    const items = state.issues.filter(i => i.projectId === p.id && i.type !== 'epic')
+    const done = items.filter(i => isDone(p, i)).length
+    return { open: items.filter(i => i.assigneeId === me.id && !isDone(p, i)).length, done }
   }
 
   const lastTouch = (projectId: string) => Math.max(projectOf(state, projectId)!.createdAt, ...state.issues.filter(i => i.projectId === projectId).map(i => i.updatedAt))
@@ -132,9 +157,6 @@ export default function YourWork({ onCreateProject }: { onCreateProject: () => v
         <button className="focus-card" onClick={() => setTab('assigned')}>
           <CalendarClock size={18} className="tone-amber" /><b>{dueSoon.length}</b><span>due in the next 3 days</span>
         </button>
-        <button className="focus-card" onClick={() => setTab('assigned')}>
-          <Ban size={18} className="tone-red" /><b>{blocked.length}</b><span>blocked by other work</span>
-        </button>
         <button className="focus-card" onClick={() => goTo('inbox')}>
           <Inbox size={18} className="tone-green" /><b>{unread}</b><span>unread in your inbox</span>
         </button>
@@ -146,9 +168,9 @@ export default function YourWork({ onCreateProject }: { onCreateProject: () => v
       </div>
       <div className="project-cards">
         {recentProjects.map(p => {
-          const items = state.issues.filter(i => i.projectId === p.id && i.type !== 'epic')
-          const mineOpen = items.filter(i => i.assigneeId === me.id && !isDone(p, i)).length
-          const done = items.filter(i => isDone(p, i)).length
+          const prog = progressOf(p)
+          const openN = prog.open, doneN = prog.done
+          const showProgress = !apiEnabled && openN !== null && doneN !== null
           return (
             <div key={p.id} className="project-card" style={{ ['--accent' as string]: p.color }}>
               <button className="project-card-head" onClick={() => openProject(p.id)}>
@@ -159,10 +181,12 @@ export default function YourWork({ onCreateProject }: { onCreateProject: () => v
                 </span>
               </button>
               <div className="project-card-stats">
-                <button className="link-row-btn" onClick={() => openProject(p.id, 'list')}>My open work items <b>{mineOpen}</b></button>
-                <button className="link-row-btn" onClick={() => openProject(p.id, 'list')}>Done work items <b>{done}</b></button>
+                <button className="link-row-btn" onClick={() => openProject(p.id, 'list')}>My open work items <b>{openN ?? '…'}</b></button>
+                <button className="link-row-btn" onClick={() => openProject(p.id, 'list')}>Done work items <b>{doneN ?? '…'}</b></button>
               </div>
-              <span className="progress wide"><span style={{ width: `${items.length ? (done / items.length) * 100 : 0}%` }} /></span>
+              {showProgress && (
+                <span className="progress wide"><span style={{ width: `${(openN as number) + (doneN as number) ? ((doneN as number) / ((openN as number) + (doneN as number))) * 100 : 0}%` }} /></span>
+              )}
               <div className="project-card-actions">
                 <button className="link sm" onClick={() => openProject(p.id, 'board')}><Columns2 size={13} />Board</button>
                 <button className="link sm" onClick={() => createIssue({ projectId: p.id })}><Plus size={13} />Work item</button>

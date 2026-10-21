@@ -77,6 +77,18 @@ test('automation rule, notifications and search', { skip }, async () => {
   assert.equal((await call('GET', `/api/v1/search?q=${i.key.toLowerCase()}`)).body.items[0].id, i.id)
   assert.equal((await call('GET', '/api/v1/me/work', undefined, 'dev2@x.com')).body.length, 1)
   assert.ok(me.id !== other.id && todo)
+  // notification rows carry the joined issue key/title/project key, and filter by kind/project
+  const nrow = (await call('GET', '/api/v1/notifications', undefined, 'dev2@x.com')).body[0]
+  assert.equal(nrow.issueKey, i.key); assert.ok(nrow.issueTitle); assert.equal(nrow.projectKey, 'PAY')
+  assert.equal((await call('GET', `/api/v1/notifications?kind=assigned`, undefined, 'dev2@x.com')).body.length, 1)
+  assert.equal((await call('GET', `/api/v1/notifications?kind=commented`, undefined, 'dev2@x.com')).body.length, 0)
+  assert.equal((await call('GET', `/api/v1/notifications?project=${p.id}`, undefined, 'dev2@x.com')).body.length, 2)
+  // me/recent: the issues I last touched (activity/comments/work logs), most recent first.
+  // dev2 only received notifications (owner did the touching), so it is empty for dev2;
+  // the owner's most recent touch is the issue just created and moved above.
+  assert.deepEqual((await call('GET', '/api/v1/me/recent', undefined, 'dev2@x.com')).body.map((x: any) => x.key), [])
+  const recent = (await call('GET', '/api/v1/me/recent')).body.map((x: any) => x.key)
+  assert.equal(recent[0], i.key)   // newest first: the just-created issue is the owner's latest touch
 })
 
 test('roles: viewers read, members write, only admins delete projects', { skip }, async () => {

@@ -13678,6 +13678,152 @@
         }
       }
     },
+    "/api/v1/me/recent": {
+      "get": {
+        "summary": "Work items I last touched (activity, comments or work logs), most recent first",
+        "tags": [
+          "Search & work"
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "description": "uuid"
+                      },
+                      "key": {
+                        "type": "string"
+                      },
+                      "projectId": {
+                        "type": "string",
+                        "description": "uuid"
+                      },
+                      "projectKey": {
+                        "type": "string"
+                      },
+                      "type": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      },
+                      "statusId": {
+                        "type": "string",
+                        "description": "uuid"
+                      },
+                      "category": {
+                        "type": "string",
+                        "enum": [
+                          "todo",
+                          "in-progress",
+                          "done"
+                        ]
+                      },
+                      "priority": {
+                        "type": "string"
+                      },
+                      "assigneeId": {
+                        "nullable": true,
+                        "type": "string",
+                        "description": "uuid"
+                      },
+                      "labels": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "dueDate": {
+                        "nullable": true,
+                        "type": "string",
+                        "description": "YYYY-MM-DD"
+                      },
+                      "estimate": {
+                        "nullable": true,
+                        "type": "number"
+                      },
+                      "updatedAt": {
+                        "type": "string",
+                        "description": "ISO 8601 timestamp"
+                      },
+                      "version": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "key",
+                      "projectId",
+                      "projectKey",
+                      "type",
+                      "title",
+                      "statusId",
+                      "category",
+                      "priority",
+                      "assigneeId",
+                      "labels",
+                      "dueDate",
+                      "estimate",
+                      "updatedAt",
+                      "version"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/projects/{key}/summary": {
       "get": {
         "summary": "Counts by status, assignee and type; created in the last 7 days; overdue",
@@ -13897,6 +14043,33 @@
             "name": "archived",
             "required": false,
             "description": "1 = archived ones"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "assigned",
+                "mentioned",
+                "commented",
+                "status",
+                "due"
+              ]
+            },
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "description": "Only this kind"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "query",
+            "name": "project",
+            "required": false,
+            "description": "Only notifications for this project"
           }
         ],
         "responses": {
@@ -13947,6 +14120,9 @@
                       },
                       "issueTitle": {
                         "type": "string"
+                      },
+                      "projectKey": {
+                        "type": "string"
                       }
                     },
                     "required": [
@@ -13960,7 +14136,8 @@
                       "archived",
                       "createdAt",
                       "issueKey",
-                      "issueTitle"
+                      "issueTitle",
+                      "projectKey"
                     ],
                     "additionalProperties": false
                   }

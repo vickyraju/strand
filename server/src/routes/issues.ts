@@ -70,6 +70,16 @@ const listQuery = z.object({
   limit: z.coerce.number().int().min(1).max(500).default(200),
 })
 
+/** Who has this issue open for editing right now, with the user's name for display (heartbeat < 90 s). */
+async function editorsOf(d: Db, issueId: string) {
+  const rows = await d.query<{ userId: string; name: string; initials: string; color: string }>(
+    `select e.user_id as user_id, u.name, u.initials, u.color
+       from issue_editors e join users u on u.id = e.user_id
+      where e.issue_id = $1 and e.last_heartbeat > now() - interval '90 seconds'
+      order by e.last_heartbeat desc`, [issueId])
+  return rows
+}
+
 /** One issue edit: version check, workflow check, history, notifications, automation, live event. Shared by the single and bulk edits. */
 async function applyPatch(d: Db, me: Me, cur: any, patch: z.infer<typeof patchBody>, o: { ifMatch: number | null; override: boolean }) {
   if (o.ifMatch !== null && o.ifMatch !== cur.version) throw new HttpError(409, `Edited elsewhere (current version ${cur.version})`)
@@ -100,7 +110,7 @@ async function applyPatch(d: Db, me: Me, cur: any, patch: z.infer<typeof patchBo
     for (const u of await watchersOf(d, cur)) await note(d, u, me, cur.id, 'status', 'changed the status')
     await runRules(d, ctx, { kind: 'status', to: patch.statusId! })
   }
-  await publish(d, cur.projectId, { type: 'issue.updated', id: cur.id, key: cur.key })
+  await publish(d, cur.projectId, { type: 'issue.updated', id: cur.id, key: cur.key, editors: await editorsOf(d, cur.id) })
   return (await d.query<any>(`${ISSUE} where i.id = $1`, [cur.id]))[0]
 }
 
@@ -307,6 +317,26 @@ const plugin: FastifyPluginAsyncZod = async app => {
   app.delete('/issues/:key/watch', { schema: { tags: ['Links & watchers'], summary: 'Stop watching an issue', params: keyP } }, async (req, reply) => {
     const i = await issueByKey(db, req.me.workspaceId, req.params.key)
     await db.query('delete from issue_watchers where issue_id = $1 and user_id = $2', [i.id, req.me.id])
+    reply.code(204).send()
+  })
+
+  // ── Edit presence (soft lock, Jira/monday.com style: others can still edit, they just see who is here) ──
+  app.post('/issues/:key/presence', { schema: {
+    tags: TAG, summary: 'Heartbeat: I am editing this issue. Broadcasts `issue.editing` to the project stream; prunes stale rows.',
+    params: keyP,
+  } }, async req => {
+    const i = await issueByKey(db, req.me.workspaceId, req.params.key)
+    await db.query(
+      `insert into issue_editors (issue_id, user_id) values ($1, $2)
+         on conflict (issue_id, user_id) do update set last_heartbeat = now()`, [i.id, req.me.id])
+    await db.query('delete from issue_editors where last_heartbeat < now() - interval \'90 seconds\'')
+    await publish(db, i.projectId, { type: 'issue.editing', key: i.key, editors: await editorsOf(db, i.id) })
+    reply.code(204).send()
+  })
+  app.delete('/issues/:key/presence', { schema: { tags: TAG, summary: 'I stopped editing this issue (panel closed).', params: keyP } }, async (req, reply) => {
+    const i = await issueByKey(db, req.me.workspaceId, req.params.key)
+    await db.query('delete from issue_editors where issue_id = $1 and user_id = $2', [i.id, req.me.id])
+    await publish(db, i.projectId, { type: 'issue.editing', key: i.key, editors: await editorsOf(db, i.id) })
     reply.code(204).send()
   })
 

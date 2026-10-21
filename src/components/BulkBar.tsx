@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { X, Trash2 } from 'lucide-react'
 import { useStore, canTransition, type IssuePatch, type Priority } from '../data/store'
 import { useApp } from '../appContext'
-import { Picker, Modal, statusOptions, priorityOptions, userOptions, plural } from './ui'
+import { Picker, Modal, statusOptions, priorityOptions, plural } from './ui'
+import { UserPicker } from './UserPicker'
 
 /** Floating "N selected" action bar (Linear style) for any list of work items. */
 export default function BulkBar({ ids, onClear }: { ids: string[]; onClear: () => void }) {
@@ -38,7 +39,8 @@ export default function BulkBar({ ids, onClear }: { ids: string[]; onClear: () =
         {project && (
           <Picker value="" options={statusOptions(project)} onChange={s => apply({ status: s }, 'status')} className="btn btn-ghost btn-sm" title="Change status" trigger="Status" />
         )}
-        <Picker value={null as string | undefined | null} search options={userOptions(state.users)} onChange={a => apply({ assigneeId: a ?? undefined }, 'assignee')} className="btn btn-ghost btn-sm" title="Change assignee" trigger="Assignee" />
+        <UserPicker value={undefined} onChange={a => apply({ assigneeId: a }, 'assignee')} className="btn btn-ghost btn-sm" title="Change assignee"
+          trigger="Assignee" allowUnassigned />
         <Picker value={'' as Priority | ''} options={priorityOptions} onChange={p => apply({ priority: p as Priority }, 'priority')} className="btn btn-ghost btn-sm" title="Change priority" trigger="Priority" />
         {sprints.length > 0 && (
           <Picker value={null as string | undefined | null}

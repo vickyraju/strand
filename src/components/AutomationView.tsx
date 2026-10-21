@@ -3,6 +3,7 @@ import { ArrowLeft, Plus, Zap, Pencil, Trash2, X } from 'lucide-react'
 import { useStore, uid, userOf, type Project, type Rule, type RuleAction, type RuleTrigger, type Priority } from '../data/store'
 import { useApp } from '../appContext'
 import { Empty, Modal, Toggle, PRIORITY_META, PRIORITIES, plural } from './ui'
+import { UserSelect } from './UserPicker'
 
 const ACTION_LABEL: Record<RuleAction['kind'], string> = {
   assign: 'Assign to', priority: 'Set priority', label: 'Add label', status: 'Move to status', comment: 'Add a comment',
@@ -132,12 +133,22 @@ function RuleModal({ project, rule, onClose, onSave }: { project: Project; rule:
             {(Object.keys(ACTION_LABEL) as RuleAction['kind'][]).map(k => <option key={k} value={k}>{ACTION_LABEL[k]}</option>)}
           </select>
           {a.kind === 'assign' && (
-            <select className="input" aria-label="Assign to" value={a.to} onChange={e => setAction(i, { kind: 'assign', to: e.target.value })}>
-              <option value="lead">Project lead ({userOf(state, project.leadId)?.name})</option>
-              <option value="reporter">The reporter</option>
-              <option value="unassign">Nobody (unassign)</option>
-              {state.users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-            </select>
+            <div className="rule-user-pick">
+              <select className="input" aria-label="Assign to" value={a.to} onChange={e => setAction(i, { kind: 'assign', to: e.target.value })}>
+                <option value="lead">Project lead ({userOf(state, project.leadId)?.name})</option>
+                <option value="reporter">The reporter</option>
+                <option value="unassign">Nobody (unassign)</option>
+              </select>
+              {a.to && a.to !== 'lead' && a.to !== 'reporter' && a.to !== 'unassign' && (
+                <UserSelect value={a.to} label="Assign to user"
+                  onChange={id => setAction(i, { kind: 'assign', to: id ?? 'unassign' })}
+                  extraOptions={[
+                    { value: 'lead', label: `Project lead (${userOf(state, project.leadId)?.name ?? ''})` },
+                    { value: 'reporter', label: 'The reporter' },
+                    { value: 'unassign', label: 'Nobody (unassign)' },
+                  ]} />
+              )}
+            </div>
           )}
           {a.kind === 'priority' && (
             <select className="input" aria-label="Priority" value={a.value} onChange={e => setAction(i, { kind: 'priority', value: e.target.value as Priority })}>

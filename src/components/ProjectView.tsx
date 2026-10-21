@@ -12,7 +12,8 @@ import SummaryView from './SummaryView'
 import { FieldsPanel } from './CustomFields'
 import { TemplatesPanel, ImportPanel } from './TemplatesImport'
 import { useFilters } from './filters'
-import { Avatar, Empty, Picker, Modal, userOptions, plural } from './ui'
+import { Avatar, Empty, Modal, plural } from './ui'
+import { UserPicker } from './UserPicker'
 
 // Screens most people don't open first load on demand to keep the first page fast
 const ReportsView     = lazy(() => import('./ReportsView'))
@@ -326,9 +327,8 @@ function ProjectSettings({ project }: { project: Project }) {
         <div className="form-row" style={{ marginTop: 14 }}>
           <div>
             <span className="label">Project lead</span>
-            <Picker value={project.leadId as string | undefined} search options={userOptions(state.users).slice(1)}
-              onChange={id => id && update({ leadId: id })} title="Project lead"
-              trigger={<><Avatar user={lead} size={18} />{lead?.name}</>} />
+            <UserPicker value={project.leadId} onChange={id => id && update({ leadId: id })} title="Project lead"
+              excludeId={state.ownerId ?? undefined} trigger={<><Avatar user={lead} size={18} />{lead?.name}</>} />
           </div>
           <div>
             <span className="label">Color</span>

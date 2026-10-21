@@ -11,8 +11,9 @@ import { useApp } from '../appContext'
 import { href, navigate } from '../router'
 import {
   Picker, Menu, TypeIcon, PriorityIcon, Avatar, Modal, TYPE_META, PRIORITY_META, StatusLozenge,
-  priorityOptions, typeOptions, userOptions, plural, formatDate,
+  priorityOptions, typeOptions, plural, formatDate,
 } from './ui'
+import { UserPicker } from './UserPicker'
 import { Markdown, MentionTextarea } from './markdown'
 import { transitionLabel } from './BoardCard'
 import IssueRow from './IssueRow'
@@ -338,7 +339,7 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
           <div className="side-card">
             <h2 className="side-title">Details</h2>
             <Field label="Assignee">
-              <Picker value={issue.assigneeId} search options={userOptions(state.users)} onChange={assigneeId => set({ assigneeId })} className="field-btn" title="Assignee"
+              <UserPicker value={issue.assigneeId} onChange={assigneeId => set({ assigneeId })} className="field-btn" title="Assignee"
                 trigger={<><Avatar user={assignee} size={22} />{assignee?.name ?? 'Unassigned'}</>} />
               {issue.assigneeId !== state.me?.id && <button className="link sm" onClick={() => set({ assigneeId: state.me?.id })}><UserCheck size={12} />Assign to me</button>}
             </Field>

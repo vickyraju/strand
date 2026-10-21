@@ -65,6 +65,19 @@ const plugin: FastifyPluginAsyncZod = async app => {
     `${LIST} where i.workspace_id = $1 and i.assignee_id = $2 and i.deleted_at is null and st.category <> 'done'
       order by i.due_date nulls last, i.updated_at desc limit 200`, [req.me.workspaceId, req.me.id]))
 
+  // "Your work → Worked on": work items I last touched, newest first
+  app.get('/me/recent', { schema: { tags: ['Search & work'], summary: 'Work items I last touched (activity, comments or work logs), most recent first' } }, async req => db.query(
+    `${LIST} where i.workspace_id = $1 and i.deleted_at is null
+      and i.id in (
+        select issue_id from activity where actor_id = $2
+        union select issue_id from comments where author_id = $2
+        union select issue_id from worklogs where user_id = $2)
+      order by greatest(
+        coalesce((select max(created_at) from activity a where a.issue_id = i.id and a.actor_id = $2), 'epoch'::timestamptz),
+        coalesce((select max(created_at) from comments c where c.issue_id = i.id and c.author_id = $2), 'epoch'::timestamptz),
+        coalesce((select max(created_at) from worklogs w where w.issue_id = i.id and w.user_id = $2), 'epoch'::timestamptz)) desc
+      limit 40`, [req.me.workspaceId, req.me.id]))
+
   // Counts for summary/dashboards without scanning issues in the client
   app.get('/projects/:key/summary', { schema: { tags: ['Search & work'], summary: 'Counts by status, assignee and type; created in the last 7 days; overdue', params: z.object({ key: z.string() }) } }, async req => {
     const p = await projectByKey(db, req.me.workspaceId, req.params.key)
@@ -82,10 +95,20 @@ const plugin: FastifyPluginAsyncZod = async app => {
   })
 
   // ── Notifications ──
-  app.get('/notifications', { schema: { tags: ['Notifications'], summary: 'My notifications (newest 200)', querystring: z.object({ archived: z.enum(['0', '1']).optional().describe('1 = archived ones') }) } }, async req => db.query(
-    `select n.*, p.key || '-' || i.number as issue_key, i.title as issue_title
-       from notifications n join issues i on i.id = n.issue_id join projects p on p.id = i.project_id
-      where n.user_id = $1 and n.archived = $2 order by n.created_at desc limit 200`, [req.me.id, req.query.archived === '1']))
+  app.get('/notifications', { schema: { tags: ['Notifications'], summary: 'My notifications (newest 200)', querystring: z.object({
+    archived: z.enum(['0', '1']).optional().describe('1 = archived ones'),
+    kind: z.enum(['assigned', 'mentioned', 'commented', 'status', 'due']).optional().describe('Only this kind'),
+    project: uuid.optional().describe('Only notifications for this project'),
+  }) } }, async req => {
+    const args: unknown[] = [req.me.id, req.query.archived === '1']
+    const where = ['n.user_id = $1', 'n.archived = $2']
+    if (req.query.kind) { args.push(req.query.kind); where.push(`n.kind = $${args.length}`) }
+    if (req.query.project) { args.push(req.query.project); where.push(`i.project_id = $${args.length}`) }
+    return db.query(
+      `select n.*, p.key || '-' || i.number as issue_key, i.title as issue_title, p.key as project_key
+         from notifications n join issues i on i.id = n.issue_id join projects p on p.id = i.project_id
+        where ${where.join(' and ')} order by n.created_at desc limit 200`, args)
+  })
 
   app.patch('/notifications/:id', { schema: { tags: ['Notifications'], summary: 'Mark a notification read / archived', params: idP, body: z.object({ read: z.boolean(), archived: z.boolean() }).partial() } }, async req => {
     const b = req.body

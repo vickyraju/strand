@@ -143,7 +143,16 @@ function useAnchoredPanel(open: boolean, align: 'left' | 'right' = 'left') {
   return { triggerRef, panelRef }
 }
 
-export function Picker<T>({ value, options, onChange, trigger, title, className = 'chip', align = 'left', search, disabled }: {
+export interface PickerRemote {
+  /** Search the server as the user types (debounced). */
+  onSearch: (q: string) => void
+  /** True while a search is in flight. */
+  searching?: boolean
+  /** True when the last search failed (show a hint). */
+  failed?: boolean
+}
+
+export function Picker<T>({ value, options, onChange, trigger, title, className = 'chip', align = 'left', search, disabled, remote }: {
   value:      T
   options:    PickerOption<T>[]
   onChange:   (v: T) => void
@@ -153,16 +162,26 @@ export function Picker<T>({ value, options, onChange, trigger, title, className 
   align?:     'left' | 'right'
   search?:    boolean
   disabled?:  boolean
+  /** When set, the search box queries the server (remote.onSearch) instead of filtering `options`;
+   *  `options` are shown while idle (empty query). Existing pickers are unaffected. */
+  remote?:    PickerRemote
 }) {
   const [open, setOpen]   = useState(false)
   const [query, setQuery] = useState('')
   const { triggerRef, panelRef } = useAnchoredPanel(open, align)
-  const shown = query ? options.filter(o => o.label.toLowerCase().includes(query.toLowerCase())) : options
+  // Remote: the server returns the list to show; local: filter the provided options.
+  const shown = remote && query ? options : (query ? options.filter(o => String(o.label ?? '').toLowerCase().includes(query.toLowerCase())) : options)
 
   useEffect(() => {
-    if (!open) { setQuery(''); return }
+    if (!open) { setQuery(''); if (remote) remote.onSearch(''); return }
     if (!search) panelRef.current?.querySelector<HTMLButtonElement>('[aria-selected=true], button')?.focus()
-  }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
+
+  const onSearchInput = (q: string) => {
+    setQuery(q)
+    if (remote) remote.onSearch(q)   // debounced by the caller (useUserSearch)
+  }
 
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Escape') { e.stopPropagation(); setOpen(false) }
@@ -188,9 +207,12 @@ export function Picker<T>({ value, options, onChange, trigger, title, className 
           <div className="popover-scrim" onClick={() => setOpen(false)} />
           <div ref={panelRef} className="picker-menu picker-fixed" style={{ visibility: 'hidden' }} role="listbox" onKeyDown={onKeyDown}>
             {search && (
-              <input className="picker-search" value={query} onChange={e => setQuery(e.target.value)} placeholder="Search…" autoFocus aria-label="Search options" />
+              <input className="picker-search" value={query} onChange={e => onSearchInput(e.target.value)} placeholder="Search…" autoFocus aria-label="Search options" />
             )}
-            {shown.length === 0 && <div className="picker-empty">No matches</div>}
+            {remote?.searching && <div className="picker-empty">Searching…</div>}
+            {!remote?.searching && shown.length === 0 && (
+              <div className="picker-empty">{remote && query ? 'No matches' : 'No matches'}</div>
+            )}
             {shown.map(o => {
               const selected = o.value === value
               return (

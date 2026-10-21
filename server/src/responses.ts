@@ -77,7 +77,7 @@ export const Summary = z.object({
 })
 
 export const Notification = z.object({ id, userId: id, actorId: nullable(id), issueId: id, kind: z.string(), text: z.string(), read: z.boolean(), archived: z.boolean(), createdAt: ts })
-export const NotificationItem = Notification.extend({ issueKey: z.string(), issueTitle: z.string() })
+export const NotificationItem = Notification.extend({ issueKey: z.string(), issueTitle: z.string(), projectKey: z.string() })
 export const SavedView = z.object({ id, workspaceId: id, ownerId: id, name: z.string(), shared: z.boolean(), filters: z.record(z.string(), z.unknown()) })
 export const Dashboard = z.object({ id, workspaceId: id, ownerId: id, name: z.string(), gadgets: z.array(z.record(z.string(), z.unknown())) })
 
@@ -135,6 +135,7 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'POST /issues/:key/worklogs': Worklog,
   'GET /search': SearchPage,
   'GET /me/work': WorkList,
+  'GET /me/recent': WorkList,
   'GET /notifications': z.array(NotificationItem),
   'PATCH /notifications/:id': Notification,
   'GET /views': z.array(SavedView),

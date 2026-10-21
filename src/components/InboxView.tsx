@@ -1,11 +1,21 @@
-import { useEffect } from 'react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Inbox, AtSign, UserPlus, MessageSquare, ArrowRightLeft, CalendarClock, MoreHorizontal, CheckCheck, Archive, Eye } from 'lucide-react'
 import { useStore, userOf, timeAgo, type Notification, type NotificationKind } from '../data/store'
 import { useApp, useNavList } from '../appContext'
 import { useLocation, navigate, href } from '../router'
 import WorkItemDetail from './WorkItemDetail'
 import { Avatar, Menu, Empty, TypeIcon } from './ui'
+import { apiEnabled, api } from '../api/client'
+import { mapNotification } from '../api/map'
+import { loadProjectIssues } from '../api/load'
+
+/** Notifications from the server. Rows already carry issue key, title and project key, so the inbox
+ *  renders even when the project's issues are not in the local store. */
+async function fetchNotifications(archived = false, kind?: NotificationKind): Promise<Notification[]> {
+  const q = new URLSearchParams({ archived: archived ? '1' : '0' })
+  if (kind) q.set('kind', kind)
+  return (await api<any[]>('GET', `/api/notifications?${q}`)).map(mapNotification)
+}
 
 type Filter = 'all' | 'unread' | 'mentioned' | 'assigned'
 
@@ -21,50 +31,101 @@ function bucket(ts: number) {
   return 'Older'
 }
 
+/** One row per work item: its newest notification, plus how many there are. The server joins the
+ *  issue key, title and project key, so the inbox renders even for unloaded projects. */
+type Row = { issueKey: string; issueTitle: string; projectKey: string; latest: Notification; all: Notification[]; unread: boolean }
+
+/** Filters one user's notifications down to visible rows, grouped per work item. */
+function groupRows(mine: Notification[], filter: Filter, unread: Set<string>): Row[] {
+  const byIssue = new Map<string, Notification[]>()
+  for (const n of [...mine].sort((a, b) => b.createdAt - a.createdAt))
+    byIssue.set(n.issueKey ?? n.issueId, [...(byIssue.get(n.issueKey ?? n.issueId) ?? []), n])
+  return [...byIssue.entries()].map(([issueKey, ns]) => ({
+    issueKey, issueTitle: ns[0].issueTitle ?? '', projectKey: ns[0].projectKey ?? '',
+    latest: ns[0], all: ns, unread: ns.some(n => unread.has(n.id)),
+  })).filter(r => filter === 'all' || (filter === 'unread' ? r.unread : r.all.some(n => n.kind === filter)))
+}
+
 export default function InboxView() {
   const { state, dispatch } = useStore()
   const { toast, goTo } = useApp()
   const { peek } = useLocation()
   const [filter, setFilter] = useState<Filter>('all')
   const [showArchived, setShowArchived] = useState(false)
+  const [rows, setRows] = useState<Row[]>([])
+  const [loadError, setLoadError] = useState(false)
   const me = state.me!
 
-  // One row per work item: its newest notification, plus how many there are
-  const mine = state.notifications.filter(n => n.userId === me.id && (showArchived ? n.archived : !n.archived))
-  const byIssue = new Map<string, Notification[]>()
-  for (const n of [...mine].sort((a, b) => b.createdAt - a.createdAt)) {
-    if (!state.issues.some(i => i.id === n.issueId)) continue
-    byIssue.set(n.issueId, [...(byIssue.get(n.issueId) ?? []), n])
-  }
-  const rows = [...byIssue.entries()].map(([issueId, ns]) => ({ issueId, latest: ns[0], all: ns, unread: ns.some(n => !n.read) }))
-    .filter(r => filter === 'all' || (filter === 'unread' ? r.unread : r.all.some(n => n.kind === filter)))
-  const selectedIssue = peek ? state.issues.find(i => i.key === peek) : undefined
-  const ids = rows.map(r => r.issueId)
-  useNavList(ids)
-  const unreadCount = mine.filter(n => !n.read).length
+  // No API: one row per work item from the store's notifications
+  const localMine = state.notifications.filter(n => n.userId === me.id && (showArchived ? n.archived : !n.archived))
+  const localRows = groupRows(localMine, filter, new Set(localMine.filter(n => !n.read).map(n => n.id)))
 
-  const open = (issueId: string) => {
-    const key = state.issues.find(i => i.id === issueId)?.key
-    if (key) navigate(href({ name: 'inbox' }, key), { replace: !!peek })
-  }
-  const archive = (issueId: string) => {
-    const i = ids.indexOf(issueId)
-    dispatch({ type: 'archive', ids: byIssue.get(issueId)!.map(n => n.id) })
+  // API: the server joins each row's issue key/title/project key, so the inbox renders even when
+  // the project's issues are not loaded. No API: group the store's notifications instead.
+  useEffect(() => {
+    if (!apiEnabled) { setRows(localRows); return }
+    let cancelled = false
+    setLoadError(false)
+    const kind = filter === 'all' || filter === 'unread' ? undefined : filter
+    fetchNotifications(showArchived, kind).then(list => {
+      if (cancelled) return
+      const unread = new Set(list.filter(n => !n.read).map(n => n.id))
+      setRows(groupRows(list, filter, unread))
+    }).catch(() => { if (!cancelled) setLoadError(true) })
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filter, showArchived, apiEnabled])
+
+  // Re-group the same rows from the store when read/archive state changes locally (opening an item marks it read)
+  useEffect(() => {
+    setRows(prev => prev.map(r => {
+      const local = r.all.map(n => state.notifications.find(x => x.id === n.id)).filter((x): x is Notification => !!x)
+      return { ...r, latest: local.length ? local.sort((a, b) => b.createdAt - a.createdAt)[0]! : r.latest,
+               all: local.length ? local : r.all, unread: local.some(n => !n.read) }
+    }))
+  }, [state.notifications])
+
+  const selectedRow = rows.find(r => r.issueKey === peek)
+  const ids = rows.map(r => r.latest.issueId)
+  useNavList(ids)
+  const unreadCount = state.notifications.filter(n => n.userId === me.id && !n.read && !n.archived).length
+
+  // The detail panel needs the full issue. The server's notification rows only carry key/title, so
+  // when the selected issue is not in the store yet, fetch its project's issues on demand.
+  const selectedKey = selectedRow?.issueKey
+  useEffect(() => {
+    if (!apiEnabled || !selectedRow || !selectedKey || state.issues.some(i => i.key === selectedKey)) return
+    let cancelled = false
+    loadProjectIssues(selectedRow.projectKey).then(loaded => {
+      if (cancelled) return
+      dispatch({ type: 'loadIssues', projectId: loaded[0]?.projectId ?? '', issues: loaded.map(({ version, ...i }) => i) })
+    }).catch(() => {})
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedKey])
+
+  const open = (issueKey: string) => navigate(href({ name: 'inbox' }, issueKey), { replace: !!peek })
+  const archive = (row: Row) => {
+    const i = rows.indexOf(row)
+    dispatch({ type: 'archive', ids: row.all.map(n => n.id) })
     toast('Archived', { undo: 'archive' })
-    const next = ids[i + 1] ?? ids[i - 1]
-    if (next && next !== issueId) open(next); else navigate(href({ name: 'inbox' }), { replace: true })
+    const next = rows[i + 1] ?? rows[i - 1]
+    if (next && next.issueKey !== row.issueKey) open(next.issueKey); else navigate(href({ name: 'inbox' }), { replace: true })
   }
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const el = document.activeElement
       if (e.metaKey || e.ctrlKey || (el && ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName))) return
-      if (e.key === 'e' && selectedIssue && byIssue.has(selectedIssue.id) && !showArchived) { e.preventDefault(); archive(selectedIssue.id) }
-      if ((e.key === 'j' || e.key === 'k') && !selectedIssue && ids.length) { e.preventDefault(); open(ids[0]) }
+      if (e.key === 'e' && selectedRow && !showArchived) { e.preventDefault(); archive(selectedRow) }
+      if ((e.key === 'j' || e.key === 'k') && !selectedRow && rows.length) { e.preventDefault(); open(rows[0].issueKey) }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   })
+
+  const mine = state.notifications.filter(n => n.userId === me.id && !n.archived)
+  const issueOf = (key: string) => state.issues.find(i => i.key === key)
 
   let lastBucket = ''
   return (
@@ -87,7 +148,8 @@ export default function InboxView() {
         </div>
 
         <div className="inbox-items">
-          {rows.length === 0 && (
+          {loadError && <div className="inbox-empty"><b>Couldn’t load your inbox</b><p className="muted sm">The server did not respond. Retry with a new filter.</p></div>}
+          {!loadError && rows.length === 0 && (
             <div className="inbox-empty">
               <Inbox size={28} strokeWidth={1.25} />
               <b>{showArchived ? 'Nothing archived' : filter === 'all' ? 'You’re all caught up' : 'Nothing here'}</b>
@@ -100,24 +162,24 @@ export default function InboxView() {
             </div>
           )}
           {rows.map(r => {
-            const issue = state.issues.find(i => i.id === r.issueId)!
+            const issue = issueOf(r.issueKey)   // type icon when the issue is loaded; key + title always
             const actor = userOf(state, r.latest.actorId)
             const Icon = KIND_ICON[r.latest.kind]
             const b = bucket(r.latest.createdAt)
             const header = b !== lastBucket ? (lastBucket = b) : null
             return (
-              <div key={r.issueId}>
+              <div key={r.issueKey}>
                 {header && <div className="inbox-bucket">{header}</div>}
-                <div className={`inbox-row${selectedIssue?.id === r.issueId ? ' active' : ''}${r.unread ? ' unread' : ''}`}>
-                  <button type="button" className="inbox-open" aria-current={selectedIssue?.id === r.issueId}
-                    aria-label={`${issue.key} ${issue.title}. ${r.latest.text}${r.unread ? '. Unread' : ''}`}
-                    onClick={() => open(r.issueId)} />
+                <div className={`inbox-row${selectedRow?.issueKey === r.issueKey ? ' active' : ''}${r.unread ? ' unread' : ''}`}>
+                  <button type="button" className="inbox-open" aria-current={selectedRow?.issueKey === r.issueKey}
+                    aria-label={`${r.issueKey} ${r.issueTitle}. ${r.latest.text}${r.unread ? '. Unread' : ''}`}
+                    onClick={() => open(r.issueKey)} />
                   <span className="inbox-avatar">
                     <Avatar user={actor} size={30} />
                     <span className={`kind-badge kind-${r.latest.kind}`}><Icon size={10} strokeWidth={2.5} /></span>
                   </span>
                   <span className="inbox-text">
-                    <span className="inbox-issue"><TypeIcon type={issue.type} size={12} /><span className="mono muted">{issue.key}</span><span className="cell-ellipsis">{issue.title}</span></span>
+                    <span className="inbox-issue">{issue && <TypeIcon type={issue.type} size={12} />}<span className="mono muted">{r.issueKey}</span><span className="cell-ellipsis">{r.issueTitle}</span></span>
                     <span className="inbox-reason">{r.latest.text}{r.all.length > 1 ? ` · +${r.all.length - 1} more` : ''}</span>
                   </span>
                   <span className="inbox-meta">
@@ -125,8 +187,8 @@ export default function InboxView() {
                     {r.unread && <span className="unread-dot" role="img" aria-label="Unread" />}
                   </span>
                   {!showArchived && (
-                    <button className="icon-btn sm inbox-archive" title="Archive (E)" aria-label={`Archive ${issue.key}`}
-                      onClick={e => { e.stopPropagation(); archive(r.issueId) }}><Archive size={13} /></button>
+                    <button className="icon-btn sm inbox-archive" title="Archive (E)" aria-label={`Archive ${r.issueKey}`}
+                      onClick={e => { e.stopPropagation(); archive(r) }}><Archive size={13} /></button>
                   )}
                 </div>
               </div>
@@ -136,8 +198,8 @@ export default function InboxView() {
       </section>
 
       <section className="inbox-detail" aria-label="Selected work item">
-        {selectedIssue
-          ? <WorkItemDetail issueId={selectedIssue.id} mode="peek" navList={ids} />
+        {selectedRow && issueOf(selectedRow.issueKey)
+          ? <WorkItemDetail issueId={issueOf(selectedRow.issueKey)!.id} mode="peek" navList={ids} />
           : <Empty icon={<Inbox size={22} strokeWidth={1.5} />} title={rows.length ? 'Select a notification' : 'No notification selected'}
               body="Open a notification to see the work item here. Use J and K to move through the list, E to archive." />}
       </section>
