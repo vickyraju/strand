@@ -2,14 +2,19 @@ import { useEffect } from 'react'
 import { apiEnabled } from './client'
 import { detailLoaded, fetchIssueDetail } from './comments'
 import { adoptDetail } from './detail'
+import { useProjectEvents } from './presence'
 import { issueSync } from './sync'
-import { useStore } from '../data/store'
+import { useStore, projectOf } from '../data/store'
 
 /** With an API, loads an opened issue's comments, history, time logs, links and watchers (list rows don't carry them). */
 export function useIssueDetail(issueId: string | undefined) {
   const { state, dispatch } = useStore()
   const issue = issueId ? state.issues.find(i => i.id === issueId) : undefined
+  const project = issue ? projectOf(state, issue.projectId) : undefined
   const known = !!issue && issueSync.known(issue.id)       // not before the server has the issue (a brand-new one)
+
+  // Live edit presence: receive `issue.editing` / `issue.updated` events for this project
+  useProjectEvents(project?.id, project?.key, apiEnabled && !!issue)
 
   useEffect(() => {
     if (!apiEnabled || !issue || !known || detailLoaded.has(issue.id)) return

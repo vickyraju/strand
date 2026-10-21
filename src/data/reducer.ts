@@ -157,6 +157,9 @@ export interface Dashboard { id: string; name: string; ownerId: string; gadgets:
 
 export interface IssueLink { type: 'blocks' | 'relates'; issueId: string }
 
+/** Someone with this issue open for editing right now (the server's edit-presence table). */
+export interface Editor { userId: string; name: string; initials: string; color: string }
+
 export interface Issue {
   id:          string
   key:         string
@@ -260,6 +263,8 @@ export interface State {
   sampleIds:     string[]
   views:         SavedView[]
   dashboards:    Dashboard[]
+  /** Live edit presence, by issue id: who has this issue open right now. */
+  editors:       Record<string, Editor[]>
 }
 
 export type ProjectPatch = Partial<Pick<Project,
@@ -320,6 +325,8 @@ export type Action =
   | { type: 'loadIssueDetail'; issueId: string; comments: Comment[]; activity: Activity[]; worklogs: Worklog[]; links: IssueLink[]; watcherIds: string[] }
   /** The server's copy of one issue (key, rank, rule effects). Keeps the local-only watchers, links, work logs and attachments. */
   | { type: 'syncIssue'; issue: Issue }
+  /** Who has an issue open for editing right now (live `issue.editing` events). Not undoable. */
+  | { type: 'setEditors'; issueId: string; editors: Editor[] }
   /** A project the server created or changed. Replaces the local one with the same id, or adds it. */
   | { type: 'upsertProject'; project: Project }
   | { type: 'merge'; data: Partial<State> }
@@ -349,7 +356,7 @@ export const DEFAULT_BOARD_PREFS: BoardPrefs = { groupBy: 'none', fields: DEFAUL
 export const EMPTY: State = {
   version: 4, workspaceName: 'Forge', ownerId: null, actingAsId: null,
   users: [], projects: [], issues: [], sprints: [], comments: [], activity: [], notifications: [],
-  starred: [], viewed: [], sampleIds: [], views: [], dashboards: [],
+  starred: [], viewed: [], sampleIds: [], views: [], dashboards: [], editors: {},
 }
 
 // ── Helpers ────────────────────────────────────────────────
@@ -755,6 +762,12 @@ export function reducer(state: State, action: Action, now = Date.now()): State {
         : [...state.projects, action.project] }
     case 'loadIssues':
       return { ...state, issues: [...state.issues.filter(i => i.projectId !== action.projectId), ...action.issues] }
+    case 'setEditors': {
+      const editors = action.editors
+      const editors0 = state.editors[action.issueId] ?? []
+      if (JSON.stringify(editors) === JSON.stringify(editors0)) return state
+      return { ...state, editors: { ...state.editors, [action.issueId]: editors } }
+    }
     case 'merge': {
       const d = action.data
       const ids = [
@@ -796,6 +809,7 @@ export function reducer(state: State, action: Action, now = Date.now()): State {
         starred:       state.starred.filter(id => !ids.has(id)),
         viewed:        state.viewed.filter(id => !ids.has(id)),
         sampleIds:     [],
+        editors:       {},
       }
     }
     case 'replace':
@@ -975,6 +989,7 @@ function toV4(s: State): State {
     version:    4,
     views:      s.views ?? [],
     dashboards: s.dashboards ?? [],
+    editors:    {},   // live edit presence is session-only, never persisted
     projects:   s.projects.map(p => ({ ...p, fields: p.fields ?? [], releases: p.releases ?? [], templates: p.templates ?? [] })),
     issues:     s.issues.map(i => ({ ...i, custom: i.custom ?? {}, worklogs: i.worklogs ?? [] })),
   }

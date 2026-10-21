@@ -64,7 +64,7 @@ export function mapWorkspace(me: Row, users: Row[], projects: Row[], starredIds:
     sprints: projects.flatMap(p => (p.sprints ?? []).map(mapSprint)),
     issues: [], comments: [], activity: [], notifications: (extras.notifications ?? []).map(mapNotification),
     starred: starredIds, viewed: [], sampleIds: [],
-    views: (extras.views ?? []).map(mapView), dashboards: (extras.dashboards ?? []).map(mapDashboard),
+    views: (extras.views ?? []).map(mapView), dashboards: (extras.dashboards ?? []).map(mapDashboard), editors: {},
   }
 }
 

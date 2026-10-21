@@ -226,6 +226,17 @@ test('syncIssue adopts the server copy but keeps local-only parts; upsertProject
   assert.equal(reducer(added, { type: 'upsertProject', project: { ...proj, name: 'Renamed' } }).projects[0]!.name, 'Renamed')
 })
 
+test('setEditors stores live edit presence; same list is a no-op; empty clears it', () => {
+  const eds = [{ userId: 'u2', name: 'Maya', initials: 'MC', color: '#7C3AED' }]
+  const mk = (id: string): any => ({ id, key: 'PAY-' + id, projectId: 'p1', type: 'task', title: 'T', description: '', status: 'todo', priority: 'none', reporterId: 'u', labels: [], watcherIds: [], links: [], attachments: [], custom: {}, worklogs: [], rank: 1, createdAt: 1, updatedAt: 1 })
+  const s0 = { ...EMPTY, issues: [mk('i1')] }
+  const s1 = reducer(s0, { type: 'setEditors', issueId: 'i1', editors: eds })
+  assert.deepEqual(s1.editors['i1'], eds)
+  assert.equal(reducer(s1, { type: 'setEditors', issueId: 'i1', editors: eds }), s1)
+  const s2 = reducer(s1, { type: 'setEditors', issueId: 'i1', editors: [] })
+  assert.deepEqual(s2.editors['i1'], [])
+})
+
 test('loadIssues replaces only that project\'s issues and is not undoable', async () => {
   const base = run([
     { type: 'setOwner', name: 'Alex' },

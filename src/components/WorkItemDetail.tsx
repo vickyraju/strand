@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { usePresence } from '../api/presence'
 import {
   Maximize2, Minimize2, X, Link2, Trash2, Plus, Eye, EyeOff, ChevronUp, ChevronDown, MoreHorizontal,
   Ban, Unlink, Pencil, UserCheck, Copy, Paperclip, FileText,
@@ -95,6 +96,14 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
   const sprint   = state.sprints.find(s => s.id === issue.sprintId)
   const watching = !!state.me && issue.watcherIds.includes(state.me.id)
   const watchers = issue.watcherIds.map(id => userOf(state, id)).filter(u => !!u)
+
+  // Live edit presence: heartbeat while the panel is open; who else is here comes from the project stream
+  usePresence(issue, true)
+  const me = state.me
+  const editors = (me ? (state.editors[issue.id] ?? []).filter(e => e.userId !== me.id) : state.editors[issue.id] ?? [])
+  const editingNow = editors.length > 0
+  const editingNames = editors.map(e => e.name).join(', ')
+
   const moves    = transitionsFrom(project, issue.status)
 
   // Links in both directions, described from this item's point of view
@@ -164,6 +173,16 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
             onChange={e => setTitle(e.target.value.replace(/\n/g, ''))}
             onBlur={() => title.trim() ? set({ title: title.trim() }) : setTitle(issue.title)}
             onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur() } }} />
+
+          {editingNow && (
+            <div className="editing-now" role="status" aria-label={`Also editing: ${editingNames}`}>
+              {editors.slice(0, 4).map(e => (
+                <span key={e.userId} className="avatar" style={{ width: 22, height: 22, background: e.color, fontSize: 9 }}
+                  title={`${e.name} is editing this work item`}>{e.initials}</span>
+              ))}
+              <span className="editing-now-label">{editingNames} {editors.length > 1 ? 'are' : 'is'} editing</span>
+            </div>
+          )}
 
           <div className="quick-actions">
             {issue.type !== 'epic' && !issue.parentId && (

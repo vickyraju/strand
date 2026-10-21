@@ -608,6 +608,10 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; line-height:
 .detail-title:hover { background: var(--surface-2) }
 .detail-title:focus { border-color: var(--brand); background: var(--surface) }
 .quick-actions { display: flex; gap: 8px; margin: 12px 0 4px }
+.editing-now { display: flex; align-items: center; gap: 6px; margin: 8px 0 0; min-height: 22px }
+.editing-now .avatar { margin-left: -4px; box-shadow: 0 0 0 1.5px var(--surface) }
+.editing-now .avatar:first-child { margin-left: 0 }
+.editing-now-label { font-size: 12px; color: var(--text-3); font-style: italic }
 .detail-section { margin-top: 26px }
 .section-title { font-size: 14px; font-weight: 600 }
 .section-title-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px }

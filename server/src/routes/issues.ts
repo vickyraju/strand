@@ -116,7 +116,7 @@ async function applyPatch(d: Db, me: Me, cur: any, patch: z.infer<typeof patchBo
 
 const plugin: FastifyPluginAsyncZod = async app => {
   // Board/list page of a project, in backlog order. Keyset-paginated: pass `next` back as `cursor`.
-  app.get('/projects/:key/issues', { schema: { tags: TAG, summary: 'List a project\'s issues in backlog order (keyset-paginated)', params: projKeyP, querystring: listQuery } }, async req => {
+  app.get('/projects/:key/issues', { schema: { tags: TAG, summary: 'List a project\'s issues in backlog order (keyset-paginated)', params: projKeyP, querystring: listQuery } }, async (req, reply) => {
     const q = req.query
     const p = await projectByKey(db, req.me.workspaceId, req.params.key)
     const args: unknown[] = [p.id]
@@ -146,7 +146,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     labels: z.array(z.string()).default([]),
     id: uuid.optional().describe('Client-chosen id: lets the app keep its local id, and makes a retried create a conflict instead of a duplicate'),
   })
-  app.post('/projects/:key/issues', { schema: { tags: TAG, summary: 'Create an issue (key and rank are assigned by the server)', params: projKeyP, body: createBody } }, async req => {
+  app.post('/projects/:key/issues', { schema: { tags: TAG, summary: 'Create an issue (key and rank are assigned by the server)', params: projKeyP, body: createBody } }, async (req, reply) => {
     requireWrite(req)
     const b = req.body
     const p = await projectByKey(db, req.me.workspaceId, req.params.key)
@@ -179,7 +179,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
   app.get('/issues/:key', { schema: {
     tags: TAG, summary: 'Issue, with its related records. `expand` picks which; omit it for all (comments and history have their own paginated endpoints).',
     params: keyP, querystring: z.object({ expand: z.string().optional().describe(`Comma-separated: ${EXPAND.join(', ')}`) }),
-  } }, async req => {
+  } }, async (req, reply) => {
     const i = await issueByKey(db, req.me.workspaceId, req.params.key)
     const want = new Set(req.query.expand ? req.query.expand.split(',').map(x => x.trim()).filter(Boolean) : EXPAND)
     for (const w of want) if (!(EXPAND as readonly string[]).includes(w)) throw new HttpError(400, `Unknown expand value: ${w}`)
@@ -206,7 +206,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
   // Cursors carry the timestamp as the database printed it (microseconds); a JS Date would cut it to milliseconds and repeat or skip rows
   const cursorOf = (ts: string, id: string) => Buffer.from(`${ts}|${id}`).toString('base64url')
   const readCursor = (c?: string) => { if (!c) return null; const [t, id] = Buffer.from(c, 'base64url').toString().split('|'); if (!t || !id || !UUID.test(id) || isNaN(Date.parse(t))) throw new HttpError(400, 'Invalid cursor'); return [t, id] as const }
-  app.get('/issues/:key/comments', { schema: { tags: ['Comments & work logs'], summary: 'Comments on an issue, oldest first (keyset-paginated)', params: keyP, querystring: page } }, async req => {
+  app.get('/issues/:key/comments', { schema: { tags: ['Comments & work logs'], summary: 'Comments on an issue, oldest first (keyset-paginated)', params: keyP, querystring: page } }, async (req, reply) => {
     const i = await issueByKey(db, req.me.workspaceId, req.params.key)
     const cur = readCursor(req.query.cursor)
     const rows = await db.query<any>(
@@ -215,7 +215,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     const more = rows.length > req.query.limit, items = more ? rows.slice(0, req.query.limit) : rows
     return { items, next: more ? cursorOf(items.at(-1).cursorTs, items.at(-1).id) : null }
   })
-  app.get('/issues/:key/activity', { schema: { tags: TAG, summary: 'Change history of an issue, newest first (keyset-paginated)', params: keyP, querystring: page } }, async req => {
+  app.get('/issues/:key/activity', { schema: { tags: TAG, summary: 'Change history of an issue, newest first (keyset-paginated)', params: keyP, querystring: page } }, async (req, reply) => {
     const i = await issueByKey(db, req.me.workspaceId, req.params.key)
     const cur = readCursor(req.query.cursor)
     const rows = await db.query<any>(
@@ -231,7 +231,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
       'if-match': z.string().optional().describe('Issue version you last read'),
       'x-workflow-override': z.string().optional().describe('Send 1 to skip the workflow check. Honored only for workspace admins and the project lead (used when moving work off a status that is being deleted).'),
     }),
-  } }, async req => {
+  } }, async (req, reply) => {
     requireWrite(req)
     const ifMatch = req.headers['if-match'] ? Number(String(req.headers['if-match']).replace(/"/g, '')) : null
     return tx(async d => applyPatch(d, req.me, await issueByKey(d, req.me.workspaceId, req.params.key), req.body, { ifMatch, override: req.headers['x-workflow-override'] === '1' }))
@@ -240,7 +240,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
   // ── Bulk (up to 200 issues, all or nothing: nothing changes if any issue is missing or refuses the change) ──
   const refs = z.array(z.string()).min(1).max(200).describe('Issue keys (PAY-12) or ids')
   const bulkResult = (n: number) => ({ count: n })
-  app.post('/issues/bulk/edit', { schema: { tags: ['Issues: bulk'], summary: 'Apply the same field changes to many issues (workflow rules apply to each)', body: z.object({ issues: refs, patch: patchBody }) } }, async req => {
+  app.post('/issues/bulk/edit', { schema: { tags: ['Issues: bulk'], summary: 'Apply the same field changes to many issues (workflow rules apply to each)', body: z.object({ issues: refs, patch: patchBody }) } }, async (req, reply) => {
     requireWrite(req)
     return tx(async d => {
       const out: any[] = []
@@ -248,7 +248,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
       return { count: out.length, issues: out }
     })
   })
-  app.post('/issues/bulk/delete', { schema: { tags: ['Issues: bulk'], summary: 'Soft-delete many issues (restorable)', body: z.object({ issues: refs }) } }, async req => {
+  app.post('/issues/bulk/delete', { schema: { tags: ['Issues: bulk'], summary: 'Soft-delete many issues (restorable)', body: z.object({ issues: refs }) } }, async (req, reply) => {
     requireWrite(req)
     return tx(async d => {
       const rows = []
@@ -258,7 +258,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
       return bulkResult(rows.length)
     })
   })
-  app.post('/issues/bulk/restore', { schema: { tags: ['Issues: bulk'], summary: 'Restore many soft-deleted issues (Undo)', body: z.object({ issues: refs }) } }, async req => {
+  app.post('/issues/bulk/restore', { schema: { tags: ['Issues: bulk'], summary: 'Restore many soft-deleted issues (Undo)', body: z.object({ issues: refs }) } }, async (req, reply) => {
     requireWrite(req)
     return tx(async d => {
       const rows = []
@@ -279,7 +279,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     })
     reply.code(204).send()
   })
-  app.post('/issues/:key/restore', { schema: { tags: TAG, summary: 'Restore a soft-deleted issue (Undo)', params: keyP } }, async req => {
+  app.post('/issues/:key/restore', { schema: { tags: TAG, summary: 'Restore a soft-deleted issue (Undo)', params: keyP } }, async (req, reply) => {
     requireWrite(req)
     return tx(async d => {
       const i = await issueByKey(d, req.me.workspaceId, req.params.key, true)
@@ -324,12 +324,12 @@ const plugin: FastifyPluginAsyncZod = async app => {
   app.post('/issues/:key/presence', { schema: {
     tags: TAG, summary: 'Heartbeat: I am editing this issue. Broadcasts `issue.editing` to the project stream; prunes stale rows.',
     params: keyP,
-  } }, async req => {
+  } }, async (req, reply) => {
     const i = await issueByKey(db, req.me.workspaceId, req.params.key)
     await db.query(
       `insert into issue_editors (issue_id, user_id) values ($1, $2)
          on conflict (issue_id, user_id) do update set last_heartbeat = now()`, [i.id, req.me.id])
-    await db.query('delete from issue_editors where last_heartbeat < now() - interval \'90 seconds\'')
+    await db.query('delete from issue_editors where last_heartbeat < now() - interval '90 seconds'
     await publish(db, i.projectId, { type: 'issue.editing', key: i.key, editors: await editorsOf(db, i.id) })
     reply.code(204).send()
   })
@@ -343,7 +343,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
   // ── Comments (authors edit/delete their own) ──
   const body = z.object({ body: z.string().min(1).max(20000) })
   const commentCreate = body.extend({ id: uuid.optional().describe('Client-chosen id') })
-  app.post('/issues/:key/comments', { schema: { tags: ['Comments & work logs'], summary: 'Add a comment (notifies watchers)', params: keyP, body: commentCreate } }, async req => {
+  app.post('/issues/:key/comments', { schema: { tags: ['Comments & work logs'], summary: 'Add a comment (notifies watchers)', params: keyP, body: commentCreate } }, async (req, reply) => {
     requireWrite(req)
     const b = req.body
     return tx(async d => {
@@ -354,7 +354,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
       return c
     })
   })
-  app.patch('/comments/:id', { schema: { tags: ['Comments & work logs'], summary: 'Edit your own comment', params: idP, body } }, async req => {
+  app.patch('/comments/:id', { schema: { tags: ['Comments & work logs'], summary: 'Edit your own comment', params: idP, body } }, async (req, reply) => {
     requireWrite(req)
     const [c] = await db.query(
       `update comments set body = $3, edited_at = now() where id = $1 and author_id = $2 returning *`,
@@ -373,7 +373,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
   app.post('/issues/:key/worklogs', { schema: {
     tags: ['Comments & work logs'], summary: 'Log time on an issue', params: keyP,
     body: z.object({ id: uuid.optional().describe('Client-chosen id'), minutes: z.number().int().positive(), date, note: z.string().default('') }),
-  } }, async req => {
+  } }, async (req, reply) => {
     requireWrite(req)
     const b = req.body
     const i = await issueByKey(db, req.me.workspaceId, req.params.key)
