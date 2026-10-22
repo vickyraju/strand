@@ -643,3 +643,120 @@ test('health is open, readiness checks the database', { skip }, async () => {
   assert.deepEqual([ready.statusCode, JSON.parse(ready.body)], [200, { ok: true }])
   assert.equal(ready.headers['x-content-type-options'], 'nosniff')
 })
+
+// ── Personal access tokens ──
+const viaToken = async (token: string, method: string, path: string, body?: unknown) => {
+  const r = await app.inject({ method: method as any, url: path, payload: body as any, headers: { authorization: `Bearer ${token}` } })
+  return { status: r.statusCode, body: r.body ? JSON.parse(r.body) : null }
+}
+const mint = async (who: string, name = 'script', expiresInDays?: number) =>
+  (await call('POST', '/api/v1/me/tokens', { name, ...(expiresInDays ? { expiresInDays } : {}) }, who))
+
+test('tokens: created once with the secret, listed without it, and the secret is never stored', { skip }, async () => {
+  const made = await mint('tok.ann@x.com', '  Release script  ')
+  assert.equal(made.status, 201)
+  const { token } = made.body
+  assert.match(token, /^jbp_[A-Za-z0-9_-]{43}$/)
+  assert.equal(made.body.name, 'Release script')                                    // trimmed
+  assert.equal(made.body.hint, token.slice(-4))
+  assert.equal(made.body.lastUsedAt, null)
+  const days = (Date.parse(made.body.expiresAt) - Date.now()) / 86_400_000
+  assert.ok(days > 89.9 && days < 90.1, `default expiry is 90 days, got ${days}`)
+
+  const list = (await call('GET', '/api/v1/me/tokens', undefined, 'tok.ann@x.com')).body
+  assert.equal(list.length, 1)
+  assert.deepEqual(Object.keys(list[0]).sort(), ['createdAt', 'expired', 'expiresAt', 'hint', 'id', 'lastUsedAt', 'name'])
+  assert.ok(!JSON.stringify(list).includes(token))
+
+  // the database holds a hash only: the secret is nowhere in the row
+  const row = (await pool.query(`select t::text as everything, token_hash from personal_access_tokens t where id = $1`, [made.body.id])).rows[0]
+  assert.ok(!row.everything.includes(token) && !row.everything.includes(token.slice(4)))
+  assert.deepEqual(row.token_hash, createHash('sha256').update(token).digest())
+})
+
+test('tokens: a token acts as its owner, with the owner\'s role, and records when it was last used', { skip }, async () => {
+  const { body } = await mint('tok.ben@x.com')
+  const me = await viaToken(body.token, 'GET', '/api/v1/me')
+  assert.equal(me.status, 200)
+  assert.equal(me.body.email, 'tok.ben@x.com')
+  const ownRole = (await call('GET', '/api/v1/me', undefined, 'tok.ben@x.com')).body.role
+  assert.equal(me.body.role, ownRole)
+  assert.equal((await viaToken(body.token, 'POST', '/api/v1/projects', { name: 'By token', key: 'BYT', template: 'kanban' })).status, 201)
+  const [used] = (await call('GET', '/api/v1/me/tokens', undefined, 'tok.ben@x.com')).body
+  assert.ok(used.lastUsedAt)
+  const first = used.lastUsedAt
+  await viaToken(body.token, 'GET', '/api/v1/me')                                    // within a minute: no new write
+  assert.equal((await call('GET', '/api/v1/me/tokens', undefined, 'tok.ben@x.com')).body[0].lastUsedAt, first)
+})
+
+test('tokens: a token cannot manage tokens, so a leaked one cannot mint or hide others', { skip }, async () => {
+  const { body } = await mint('tok.cat@x.com')
+  for (const [method, path, payload] of [['GET', '/api/v1/me/tokens'], ['POST', '/api/v1/me/tokens', { name: 'more' }], ['DELETE', `/api/v1/me/tokens/${body.id}`]] as const) {
+    const r = await viaToken(body.token, method, path, payload)
+    assert.deepEqual([r.status, r.body.code], [403, 'forbidden'], `${method} ${path}`)
+  }
+  assert.equal((await call('GET', '/api/v1/me/tokens', undefined, 'tok.cat@x.com')).body.length, 1)   // untouched
+})
+
+test('tokens: revoking stops the token at once, and nobody can see or revoke another person\'s', { skip }, async () => {
+  const mine = (await mint('tok.dan@x.com')).body
+  assert.equal((await viaToken(mine.token, 'GET', '/api/v1/me')).status, 200)
+  const theirs = (await mint('tok.eve@x.com')).body
+  assert.equal((await call('DELETE', `/api/v1/me/tokens/${theirs.id}`, undefined, 'tok.dan@x.com')).status, 404)   // not yours
+  assert.equal((await viaToken(theirs.token, 'GET', '/api/v1/me')).status, 200)                                     // still alive
+  assert.deepEqual((await call('GET', '/api/v1/me/tokens', undefined, 'tok.dan@x.com')).body.map((t: any) => t.id), [mine.id])
+  assert.equal((await call('DELETE', `/api/v1/me/tokens/${mine.id}`, undefined, 'tok.dan@x.com')).status, 204)
+  assert.equal((await viaToken(mine.token, 'GET', '/api/v1/me')).status, 401)
+  assert.equal((await call('DELETE', `/api/v1/me/tokens/${mine.id}`, undefined, 'tok.dan@x.com')).status, 404)    // already gone
+})
+
+test('tokens: expired, unknown and malformed tokens are refused; expired ones show as expired, then are dropped after 30 days', { skip }, async () => {
+  const { body } = await mint('tok.fay@x.com')
+  await pool.query(`update personal_access_tokens set expires_at = now() - interval '1 minute' where id = $1`, [body.id])
+  assert.equal((await viaToken(body.token, 'GET', '/api/v1/me')).status, 401)
+  assert.equal((await call('GET', '/api/v1/me/tokens', undefined, 'tok.fay@x.com')).body[0].expired, true)
+  const wrong = 'jbp_' + 'A'.repeat(43)
+  for (const bad of [wrong, 'jbp_short', 'jbp_' + '!'.repeat(43), 'jbp_', body.token.slice(0, -1)])
+    assert.equal((await viaToken(bad, 'GET', '/api/v1/me')).status, 401, bad)
+  await pool.query(`update personal_access_tokens set expires_at = now() - interval '31 days' where id = $1`, [body.id])
+  await mint('tok.fay@x.com', 'next')
+  assert.deepEqual((await call('GET', '/api/v1/me/tokens', undefined, 'tok.fay@x.com')).body.map((t: any) => t.name), ['next'])
+})
+
+test('tokens: at most 10 active at once, even when created in parallel; revoking frees a slot', { skip }, async () => {
+  // A slow insert widens the window between "count the active tokens" and "add one", so only a real lock keeps the limit
+  await pool.query(`create function slow_token_insert() returns trigger language plpgsql as $$ begin perform pg_sleep(0.05); return new; end $$;
+                    create trigger slow_insert before insert on personal_access_tokens for each row execute function slow_token_insert()`)
+  const results = await Promise.all(Array.from({ length: 13 }, (_, i) => mint('tok.gus@x.com', `t${i}`)))
+  await pool.query('drop trigger slow_insert on personal_access_tokens; drop function slow_token_insert()')
+  assert.equal(results.filter(r => r.status === 201).length, 10)
+  const refused = results.filter(r => r.status === 409)
+  assert.equal(refused.length, 3)
+  assert.match(refused[0]!.body.error, /at most 10/)
+  const [first] = (await call('GET', '/api/v1/me/tokens', undefined, 'tok.gus@x.com')).body
+  await call('DELETE', `/api/v1/me/tokens/${first.id}`, undefined, 'tok.gus@x.com')
+  assert.equal((await mint('tok.gus@x.com', 'again')).status, 201)
+})
+
+test('tokens: a deactivated owner\'s tokens stop working, and a viewer\'s token is read-only', { skip }, async () => {
+  const quit = (await mint('tok.hal@x.com')).body
+  assert.equal((await viaToken(quit.token, 'GET', '/api/v1/me')).status, 200)
+  await pool.query(`update users set active = false where email = 'tok.hal@x.com'`)
+  assert.equal((await viaToken(quit.token, 'GET', '/api/v1/me')).status, 403)
+
+  const viewer = (await mint('tok.ida@x.com')).body
+  await pool.query(`update memberships set role = 'viewer' where user_id = (select id from users where email = 'tok.ida@x.com')`)
+  assert.equal((await viaToken(viewer.token, 'GET', '/api/v1/projects')).status, 200)
+  assert.equal((await viaToken(viewer.token, 'POST', '/api/v1/projects', { name: 'Nope', key: 'NOP', template: 'kanban' })).status, 403)
+})
+
+test('tokens: names and lifetimes are validated (1 to 365 days, 1 to 40 characters)', { skip }, async () => {
+  const bad = async (body: object) => (await call('POST', '/api/v1/me/tokens', body, 'tok.jon@x.com')).status
+  assert.equal(await bad({ name: '' }), 400)
+  assert.equal(await bad({ name: '   ' }), 400)
+  assert.equal(await bad({ name: 'x'.repeat(41) }), 400)
+  assert.equal(await bad({ name: 'ok', expiresInDays: 0 }), 400)
+  assert.equal(await bad({ name: 'ok', expiresInDays: 366 }), 400)
+  assert.equal(await bad({ name: 'ok', expiresInDays: 1.5 }), 400)
+  assert.equal(await bad({ name: 'x'.repeat(40), expiresInDays: 365 }), 201)
+})

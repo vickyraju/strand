@@ -6,6 +6,7 @@ Work management: projects, boards, backlogs and sprints, issues, timeline, inbox
 - **API** (`server/`): Fastify 5 on Node 24, runs on Amazon EKS. REST under `/api/v1`, live updates over server-sent events.
 - **Database**: Amazon Aurora PostgreSQL through RDS Proxy. Schema in `server/migrations/`.
 - **Sign-in**: Microsoft Entra ID (OIDC, PKCE). Users are provisioned over SCIM at `/scim/v2`.
+- **Scripts and integrations**: personal access tokens (see below).
 - **Files**: S3, uploaded and downloaded by the browser with presigned URLs.
 - Architecture and data model diagrams (draw.io): `docs/architecture/`.
 
@@ -13,12 +14,25 @@ Work management: projects, boards, backlogs and sprints, issues, timeline, inbox
 
 Settings are listed, with comments, in `server/.env.example` (API) and `.env.example` (web build).
 
-Entra ID needs two app registrations:
+Entra ID needs two app registrations (the web app's sign-in; scripts use tokens instead):
 
 | Registration | Settings |
 |---|---|
 | API | Expose an API with the scope `access_as_user`; app role `Strand.Admin` for administrators. Its client id is `ENTRA_CLIENT_ID` on the API. |
 | Web app | Single-page application, redirect URI `https://<site>/`, API permission on `access_as_user`. Its client id is `VITE_ENTRA_CLIENT_ID` in the web build. |
+
+## API access with personal access tokens
+
+Anyone signed in can create tokens under **Settings > Personal access tokens**: give it a name and a lifetime (1 to 365 days), then copy it. It is shown once. Send it as a bearer token:
+
+```bash
+curl -H "Authorization: Bearer jbp_..." https://<site>/api/v1/me
+```
+
+- A token acts as its owner, with the owner's role. It stops working when it expires, when it is revoked, or when the owner is deactivated (SCIM).
+- At most 10 active tokens per person. Only a hash is stored. "Last used" is recorded at most once a minute.
+- Tokens cannot create, list or revoke tokens; that needs the web sign-in.
+- The API reference is in `server/openapi.json` (and at `/docs` when `DOCS_ENABLED=1`).
 
 ## Deploy
 

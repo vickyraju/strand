@@ -1,5 +1,5 @@
 // Checks a deployed API: node scripts/smoke.ts <base-url>
-// Set SMOKE_TOKEN (an Entra access token for the API) to also check sign-in and the database through it.
+// Set SMOKE_TOKEN (a personal access token) to also check sign-in and the database through it.
 // Read-only apart from the first sign-in, which creates the caller's user like any login.
 const base = (process.argv[2] ?? process.env.API_URL)?.replace(/\/$/, '')
 if (!base) { console.error('usage: node scripts/smoke.ts <base-url>'); process.exit(2) }
