@@ -13,7 +13,10 @@ export const mapUser = (u: Row): User => ({
   id: u.id, name: u.name, initials: u.initials, color: u.color, ...(u.title ? { title: u.title } : {}),
 })
 
-const mapStatus = (s: Row): Status => ({ id: s.id, name: s.name, color: s.color, category: s.category, ...(s.wipLimit ? { wipLimit: s.wipLimit } : {}) })
+const mapStatus = (s: Row): Status => ({
+  id: s.id, name: s.name, color: s.color, category: s.category,
+  ...(s.description ? { description: s.description } : {}), ...(s.wipLimit ? { wipLimit: s.wipLimit } : {}),
+})
 const mapTransition = (t: Row): Transition => ({ id: t.id, name: t.name, from: t.fromIds ?? 'any', to: t.toId })
 const mapRule = (r: Row): Rule => ({ id: r.id, name: r.name, enabled: r.enabled, trigger: r.trigger, actions: r.actions, runs: r.runs ?? 0 })
 const mapField = (f: Row): FieldDef => ({ id: f.id, name: f.name, kind: f.kind, ...(f.options ? { options: f.options } : {}) })

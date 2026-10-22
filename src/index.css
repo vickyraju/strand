@@ -536,6 +536,7 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; line-height:
 .lane-hdr ~ .cell { border-radius: var(--radius-lg) }
 .cell.collapsed { min-height: 60px; padding: 0 }
 .cell.drop-over { background: var(--brand-soft); box-shadow: inset 0 0 0 2px var(--brand) }
+.cell.drop-refused { opacity: 1; background: var(--danger-soft); box-shadow: inset 0 0 0 2px var(--danger) }   /* hovering a column the workflow forbids */
 .cell-create { display: flex; align-items: center; gap: 6px; width: 100%; height: 34px; padding: 0 8px; border-radius: var(--radius); color: var(--text-2); font-size: 13px; font-weight: 500; flex-shrink: 0 }
 .cell-create:hover { background: var(--press); color: var(--text-1) }
 
@@ -546,7 +547,9 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; line-height:
 }
 .card:hover { box-shadow: 0 4px 12px rgba(16,24,16,.1), 0 1px 2px rgba(16,24,16,.06) }
 .card:focus-visible { outline: none; border-color: var(--brand); box-shadow: 0 0 0 2px rgba(54,135,39,.25) }
-.card.dragging { opacity: .4; transform: rotate(1.5deg) }
+.card.dragging { opacity: .4 }
+.card { -webkit-touch-callout: none }
+.card.ghost { cursor: grabbing; box-shadow: 0 10px 28px rgba(16,24,16,.22); transform: rotate(1.5deg); pointer-events: none }
 .card.blocked { box-shadow: inset 3px 0 0 var(--danger), var(--shadow) }
 .card-title { font-size: 14px; line-height: 1.4; margin-bottom: 10px; word-break: break-word; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden }
 .card-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 10px }
@@ -839,27 +842,54 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; line-height:
    WORKFLOW BUILDER
 ══════════════════════════════════════════════════════════ */
 .wf { flex: 1; min-height: 0; display: flex; flex-direction: column }
-.wf-bar { display: flex; align-items: center; gap: 8px; padding: 10px 16px; border-bottom: 1px solid var(--border); flex-wrap: wrap }
+.wf-bar { display: flex; align-items: center; gap: 8px; padding: 10px 16px 6px; flex-wrap: wrap }
+.wf-tools { display: flex; align-items: center; gap: 8px; padding: 6px 16px 10px; border-bottom: 1px solid var(--border); flex-wrap: wrap }
 .wf-title { font-size: 15px; font-weight: 600 }
 .wf-errors { margin: 10px 16px 0 }
+.wf-errors ul { margin-top: 4px }
+.wf-issue { padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; text-decoration: underline; text-underline-offset: 2px; cursor: pointer }
+.wf-labels { height: 32px; padding: 0 6px; white-space: nowrap }
+.wf-fieldset { margin: 0; padding: 0; border: 0; min-width: 0 }
+.wf-fieldset legend { padding: 0 }
 .wf-body { flex: 1; min-height: 0; display: flex }
-.wf-canvas { flex: 1; min-width: 0; overflow: auto; background-color: var(--surface-2); background-image: radial-gradient(var(--border-strong) 1px, transparent 1px); background-size: 20px 20px }
-.wf-svg { display: block; user-select: none; touch-action: none }
-.wf-node { cursor: grab }
-.wf-node:active { cursor: grabbing }
-.wf-node-box { fill: var(--surface); stroke: var(--border-strong); stroke-width: 1.5; filter: drop-shadow(0 1px 2px rgba(16,24,16,.08)) }
-.wf-node.on .wf-node-box, .wf-node:focus-visible .wf-node-box { stroke: var(--brand); stroke-width: 2.5 }
-.wf-node:focus-visible { outline: none }
-.wf-node-text { font-size: 11.5px; font-weight: 700; letter-spacing: .03em; fill: var(--text-1); pointer-events: none }
-.wf-wip { font-size: 9px; fill: var(--text-3); pointer-events: none }
-.wf-start { font-size: 8px; font-weight: 700; fill: var(--surface); letter-spacing: .05em }
-.wf-edge { cursor: pointer }
-.wf-label { fill: var(--surface); stroke: var(--border-strong) }
-.wf-label.on { stroke: var(--brand); fill: var(--brand-soft) }
-.wf-label-text { font-size: 11px; fill: var(--text-2); font-weight: 500; pointer-events: none }
-.wf-any { fill: #1F231D }
-.wf-any.on { fill: var(--brand) }
-.wf-any-text { font-size: 10px; font-weight: 700; fill: #fff; pointer-events: none }
+.wf-canvas { flex: 1; min-width: 0; min-height: 360px; position: relative; overflow: auto; background-color: var(--surface-2) }
+.wf-canvas.diagram { overflow: hidden }
+/* React Flow reads its colours from these variables; point them at the app's tokens so light and dark follow the theme */
+.wf-canvas .react-flow {
+  --xy-background-color: var(--surface-2); --xy-background-pattern-color: var(--border-strong);
+  --xy-edge-stroke: var(--text-3); --xy-edge-stroke-selected: var(--brand);
+  --xy-minimap-background-color: var(--surface); --xy-minimap-mask-background-color: rgba(16, 24, 16, .08); --xy-minimap-mask-stroke-color: var(--brand);
+  --xy-controls-button-background-color: var(--surface); --xy-controls-button-background-color-hover: var(--hover);
+  --xy-controls-button-color: var(--text-2); --xy-controls-button-color-hover: var(--text-1); --xy-controls-button-border-color: var(--border);
+  --xy-attribution-background-color: transparent;
+  font-family: inherit;
+}
+.wf-canvas .react-flow__minimap { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden }
+.wf-canvas .react-flow__controls { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; box-shadow: none }
+.wf-canvas .react-flow__attribution { font-size: 10px; color: var(--text-3) }
+.wf-canvas .react-flow__attribution a { color: inherit }
+.wf2-node { position: relative; width: 156px; height: 40px; display: flex; align-items: center; gap: 6px; padding: 0 8px 0 13px; background: var(--surface); border: 1.5px solid var(--border-strong); border-radius: 6px; box-shadow: 0 1px 2px rgba(16, 24, 16, .08); cursor: grab }
+.wf2-node::before { content: ''; position: absolute; left: -1.5px; top: -1.5px; bottom: -1.5px; width: 5px; border-radius: 6px 0 0 6px; background: var(--status) }
+.wf2-node.on, .react-flow__node:focus-visible .wf2-node { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft) }
+.react-flow__node:focus-visible { outline: none }
+.wf2-node-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11.5px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; color: var(--text-1) }
+.wf2-count { flex-shrink: 0; padding: 1px 6px; border-radius: 8px; background: var(--surface-2); color: var(--text-3); font-size: 10px; font-weight: 600 }
+.wf2-count.over { background: var(--danger-soft); color: var(--danger) }
+.wf2-start { position: absolute; right: 100%; top: 50%; margin-top: -18px; overflow: visible; pointer-events: none }
+.wf2-start circle { fill: var(--text-1) }
+.wf2-start text { fill: var(--surface); font-size: 8px; font-weight: 700; letter-spacing: .05em }
+.wf2-start path { stroke: var(--text-3); stroke-width: 1.5; fill: none }
+.wf2-start polygon { fill: var(--text-3) }
+.wf2-any { position: absolute; top: -11px; right: 10px; height: 18px; padding: 0 8px; border: 0; border-radius: 9px; background: #1F231D; color: #fff; font-size: 10px; font-weight: 700; cursor: pointer }
+.wf2-any:hover, .wf2-any:focus-visible { background: var(--brand) }
+.wf2-node .react-flow__handle { width: 10px; height: 10px; border: 1.5px solid var(--text-3); background: var(--surface); opacity: 0; transition: opacity .12s }
+.react-flow__node:hover .wf2-node .react-flow__handle, .react-flow__node.selected .wf2-node .react-flow__handle, .react-flow__node:focus-visible .wf2-node .react-flow__handle { opacity: 1 }
+.wf2-node .react-flow__handle:hover { border-color: var(--brand); background: var(--brand-soft) }
+.wf2-anchor { fill: var(--surface); stroke: var(--brand); stroke-width: 2; cursor: grab; pointer-events: all; touch-action: none }
+.wf2-anchor:hover { fill: var(--brand-soft) }
+.wf2-ghost { stroke: var(--brand); stroke-width: 2; stroke-dasharray: 5 4; fill: none; pointer-events: none }
+.wf2-label { position: absolute; padding: 2px 8px; border: 1px solid var(--border-strong); border-radius: 10px; background: var(--surface); color: var(--text-2); font: inherit; font-size: 11px; font-weight: 500; white-space: nowrap; cursor: pointer; pointer-events: all }
+.wf2-label.on { border-color: var(--brand); background: var(--brand-soft); color: var(--text-1) }
 .wf-panel { width: 320px; flex-shrink: 0; overflow-y: auto; padding: 18px; border-left: 1px solid var(--border); background: var(--surface) }
 .wf-panel-kind { font-size: 11px; font-weight: 700; color: var(--text-3); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 10px }
 .wf-panel-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--border) }
@@ -870,6 +900,14 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; line-height:
 .wf-arrow { width: 32px; height: 2px; background: var(--text-3); position: relative; flex-shrink: 0 }
 .wf-arrow::after { content: ''; position: absolute; right: -2px; top: -4px; border: 5px solid transparent; border-left-color: var(--text-3) }
 .wf-list { padding: 20px }
+.wf-list-note { margin: -2px 0 10px; font-size: 13px }
+.wf-handle-cell { width: 40px; padding-right: 0 !important }
+.wf-handle { cursor: grab; touch-action: none; color: var(--text-3) }
+.wf-handle:active { cursor: grabbing }
+.wf-handle:hover, .wf-handle:focus-visible { color: var(--text-1) }
+.wf-desc { max-width: 280px; overflow: hidden; text-overflow: ellipsis; color: var(--text-2) }
+.table tr.wf-row-dragging { background: var(--surface); box-shadow: var(--shadow-md); position: relative; z-index: 2 }
+.table tr.wf-row-dragging td { border-bottom-color: transparent }
 .workflow-strip { display: flex; flex-wrap: wrap; gap: 6px }
 
 /* ══════════════════════════════════════════════════════════
@@ -943,6 +981,8 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; line-height:
   .reports-nav { width: auto; flex-direction: row; overflow-x: auto; border-right: none; border-bottom: 1px solid var(--border) }
   .reports-nav-desc { display: none }
   .wf-body { flex-direction: column }
+  .wf-canvas { min-height: 420px }
+  .wf-canvas .react-flow__minimap { display: none }   /* on a phone it would cover a third of the diagram */
   .wf-panel { width: auto; border-left: none; border-top: 1px solid var(--border) }
   .shortcuts { grid-template-columns: 1fr }
   .template-grid { grid-template-columns: 1fr }
@@ -961,6 +1001,12 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; line-height:
 
 /* Backlog ranking */
 .rank-slot { position: relative }
+.rank-end { position: absolute; left: 0; right: 0; bottom: -10px; height: 10px }
+.rank-end.drop-line::before { content: ''; position: absolute; left: 0; right: 0; top: 4px; height: 2px; background: var(--brand); border-radius: 1px; z-index: 2 }
+.row.dragging { opacity: .4 }
+.row.ghost { position: relative; background: var(--surface); border: 1px solid var(--border-strong); border-radius: 8px; box-shadow: 0 10px 28px rgba(16,24,16,.22); cursor: grabbing; pointer-events: none }
+.ghost-count { position: absolute; top: -8px; right: -8px; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 11px; background: var(--brand); color: #fff; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; z-index: 3 }
+.row-title { touch-action: manipulation }
 .rank-slot.drop-before::before { content: ''; position: absolute; left: 0; right: 0; top: -1px; height: 2px; background: var(--brand); z-index: 2; border-radius: 1px }
 .sprint-box > .rank-slot { margin: 0 2px }
 .sprint-box > .rank-slot:first-of-type .row { border-top-left-radius: 8px; border-top-right-radius: 8px }
@@ -1138,8 +1184,8 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; line-height:
 [data-theme='dark'] .status-btn.cat-in-progress { background: #2F6BE0 }
 [data-theme='dark'] .status-btn.cat-done { background: #2C8A48 }
 [data-theme='dark'] .welcome { background: radial-gradient(1200px 600px at 50% -10%, #1E3319, var(--bg)) }
-[data-theme='dark'] .wf-any, [data-theme='dark'] .wf-any-pill { fill: #E8EBE6; background: #E8EBE6; color: #111416 }
-[data-theme='dark'] .wf-any-text { fill: #111416 }
+[data-theme='dark'] .wf2-any, [data-theme='dark'] .wf-any-pill { background: #E8EBE6; color: #111416 }
+[data-theme='dark'] .wf2-any:hover, [data-theme='dark'] .wf2-any:focus-visible { background: var(--brand); color: #fff }
 [data-theme='dark'] .md pre, [data-theme='dark'] .toast, [data-theme='dark'] .bulk-bar, [data-theme='dark'] .chart-tip { background: #0A0C0D; border: 1px solid var(--border) }
 [data-theme='dark'] .swatch { box-shadow: inset 0 0 0 1px rgba(255,255,255,.12) }
 [data-theme='dark'] .modal-backdrop, [data-theme='dark'] .cmd-backdrop { background: rgba(0,0,0,.6) }
@@ -1269,5 +1315,6 @@ h2.empty-title, h2.section-title, h2.side-title { margin: 0 }
   .bulk-bar { left: 8px; right: 8px; transform: none; flex-wrap: wrap; justify-content: center }
   .toast { left: 12px; right: 12px; transform: none }
   .wf-bar { padding: 8px 12px }
+  .wf-tools { padding: 6px 12px 8px }
   .wf-bar .wf-title { display: none }
 }
