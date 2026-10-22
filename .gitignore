@@ -9,3 +9,14 @@ npm-debug.log*
 # environment files (the .example files are the documented settings)
 .env*
 !.env.example
+
+# editor / tooling
+.serena/
+.claude/
+.vscode/
+.idea/
+
+# logs and local scratch
+*.log
+*.local
+*.pem
