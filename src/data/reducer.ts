@@ -22,6 +22,8 @@ export interface Status {
   name:      string
   color:     string
   category:  Category
+  /** What the status means, shown in the workflow editor and as a tooltip on the board. */
+  description?: string
   wipLimit?: number
 }
 

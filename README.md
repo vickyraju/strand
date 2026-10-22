@@ -57,6 +57,8 @@ aws s3 sync dist s3://<web-bucket> --delete --exclude index.html --cache-control
 aws s3 cp dist/index.html s3://<web-bucket>/index.html --cache-control no-cache
 ```
 
+The build also writes `THIRD_PARTY_NOTICES.txt` (the licence notices of the bundled libraries). Upload it with the rest of `dist/`; the licences require it to ship with the app.
+
 **CloudFront** serves the bucket and forwards `/api/*`, `/scim/*` and `/integrations/*` to the ALB (all methods, no caching, `Authorization` header forwarded, origin timeout raised for live updates). Return `/index.html` for 403/404 so deep links work. With one domain for the app and the API, no CORS setup is needed.
 
 ## Develop and test

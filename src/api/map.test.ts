@@ -8,7 +8,7 @@ const apiProject = {
   nextNumber: 4, boardPrefs: {}, layout: {}, sample: false, createdAt: '2026-10-01T10:00:00.000Z',
   statuses: [
     { id: 's1', name: 'To do', color: '#000000', category: 'todo', wipLimit: null, position: 0 },
-    { id: 's2', name: 'Done', color: '#00aa00', category: 'done', wipLimit: 3, position: 1 },
+    { id: 's2', name: 'Done', description: 'Work is finished', color: '#00aa00', category: 'done', wipLimit: 3, position: 1 },
   ],
   transitions: [{ id: 't1', name: 'Finish', fromIds: null, toId: 's2' }, { id: 't2', name: 'Start', fromIds: ['s1'], toId: 's2' }],
   fields: [{ id: 'f1', name: 'Team', kind: 'select', options: ['A', 'B'], position: 0 }, { id: 'f2', name: 'Note', kind: 'text', options: null }],
@@ -25,6 +25,8 @@ test('a project maps to the app shape: nulls become absent, ISO dates become epo
   assert.equal(p.createdAt, Date.parse('2026-10-01T10:00:00.000Z'))
   assert.deepEqual(p.statuses[0], { id: 's1', name: 'To do', color: '#000000', category: 'todo' })      // no wipLimit key
   assert.equal(p.statuses[1]!.wipLimit, 3)
+  assert.equal(p.statuses[1]!.description, 'Work is finished')
+  assert.ok(!('description' in p.statuses[0]!))                                                      // an empty description is left out
   assert.deepEqual(p.transitions.map(t => t.from), ['any', ['s1']])                                      // null = from any status
   assert.deepEqual(p.fields[1], { id: 'f2', name: 'Note', kind: 'text' })                                // no options key
   assert.deepEqual(p.templates[0]!.labels, [])
