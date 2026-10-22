@@ -83,16 +83,28 @@ export async function authenticate(req: FastifyRequest) {
         if (who.oid && u.entraOid && u.entraOid !== who.oid) throw new HttpError(403, 'Email belongs to a different account')
         if (who.oid) await d.query('update users set entra_oid = $2 where id = $1', [u.id, who.oid])
       } else {
-        [u] = await d.query<U>(
+        // A new person's browser sends several requests at once, so another one may be creating this row right now.
+        // `on conflict do nothing` (no target) covers every unique index, not just email; then read the winner's row.
+        ;[u] = await d.query<U>(
           `insert into users (entra_oid, email, name, initials) values ($1, $2, $3, $4)
-           on conflict (email) do update set email = excluded.email returning id, active, entra_oid`,
+           on conflict do nothing returning id, active, entra_oid`,
           [who.oid ?? null, who.email, who.name, initials(who.name)])
+        if (!u) {
+          ;[u] = await d.query<U>('select id, active, entra_oid from users where entra_oid = $1 or email = $2', [who.oid, who.email])
+          if (u?.entraOid && u.entraOid !== who.oid) throw new HttpError(403, 'Email belongs to a different account')
+        }
       }
     }
     if (!u!.active) throw new HttpError(403, 'Account is deactivated')
-    let [ws] = await d.query<{ id: string }>('select id from workspaces order by created_at limit 1')
-    const first = !ws
-    if (!ws) [ws] = await d.query<{ id: string }>(`insert into workspaces (name) values ('Strand') returning id`)
+    const oldest = () => d.query<{ id: string }>('select id from workspaces order by created_at limit 1')
+    let [ws] = await oldest()
+    let first = false
+    if (!ws) {
+      // Only one request may create the workspace; the others wait here and then find it, instead of each making their own.
+      await d.query('select pg_advisory_xact_lock(727275)')
+      ;[ws] = await oldest()
+      if (!ws) { ;[ws] = await d.query<{ id: string }>(`insert into workspaces (name) values ('Strand') returning id`); first = true }
+    }
     const want: Role = first ? 'owner' : who.admin ? 'admin' : 'member'
     const [m] = await d.query<{ role: Role }>(
       `insert into memberships (workspace_id, user_id, role) values ($1, $2, $3)

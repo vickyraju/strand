@@ -1065,6 +1065,9 @@
                           "name": {
                             "type": "string"
                           },
+                          "description": {
+                            "type": "string"
+                          },
                           "color": {
                             "type": "string"
                           },
@@ -1088,6 +1091,7 @@
                           "id",
                           "projectId",
                           "name",
+                          "description",
                           "color",
                           "category",
                           "wipLimit",
@@ -1870,6 +1874,9 @@
                           "name": {
                             "type": "string"
                           },
+                          "description": {
+                            "type": "string"
+                          },
                           "color": {
                             "type": "string"
                           },
@@ -1893,6 +1900,7 @@
                           "id",
                           "projectId",
                           "name",
+                          "description",
                           "color",
                           "category",
                           "wipLimit",
@@ -2437,6 +2445,9 @@
                           "name": {
                             "type": "string"
                           },
+                          "description": {
+                            "type": "string"
+                          },
                           "color": {
                             "type": "string"
                           },
@@ -2460,6 +2471,7 @@
                           "id",
                           "projectId",
                           "name",
+                          "description",
                           "color",
                           "category",
                           "wipLimit",
@@ -3004,6 +3016,9 @@
                           "name": {
                             "type": "string"
                           },
+                          "description": {
+                            "type": "string"
+                          },
                           "color": {
                             "type": "string"
                           },
@@ -3027,6 +3042,7 @@
                           "id",
                           "projectId",
                           "name",
+                          "description",
                           "color",
                           "category",
                           "wipLimit",
@@ -3607,6 +3623,9 @@
                           "name": {
                             "type": "string"
                           },
+                          "description": {
+                            "type": "string"
+                          },
                           "color": {
                             "type": "string"
                           },
@@ -3630,6 +3649,7 @@
                           "id",
                           "projectId",
                           "name",
+                          "description",
                           "color",
                           "category",
                           "wipLimit",
@@ -4503,6 +4523,10 @@
                     "type": "string",
                     "minLength": 1
                   },
+                  "description": {
+                    "type": "string",
+                    "maxLength": 500
+                  },
                   "color": {
                     "type": "string",
                     "pattern": "^#[0-9a-fA-F]{6}$"
@@ -4573,6 +4597,9 @@
                     "name": {
                       "type": "string"
                     },
+                    "description": {
+                      "type": "string"
+                    },
                     "color": {
                       "type": "string"
                     },
@@ -4596,6 +4623,7 @@
                     "id",
                     "projectId",
                     "name",
+                    "description",
                     "color",
                     "category",
                     "wipLimit",
@@ -4708,6 +4736,10 @@
                     "type": "string",
                     "minLength": 1
                   },
+                  "description": {
+                    "type": "string",
+                    "maxLength": 500
+                  },
                   "color": {
                     "type": "string",
                     "pattern": "^#[0-9a-fA-F]{6}$"
@@ -4777,6 +4809,9 @@
                     "name": {
                       "type": "string"
                     },
+                    "description": {
+                      "type": "string"
+                    },
                     "color": {
                       "type": "string"
                     },
@@ -4800,6 +4835,7 @@
                     "id",
                     "projectId",
                     "name",
+                    "description",
                     "color",
                     "category",
                     "wipLimit",
