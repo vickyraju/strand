@@ -202,12 +202,12 @@ test('OpenAPI: project routes are documented and the schemas are enforced', { sk
 test('CORS: only listed origins may call the API from a browser, and preflight needs no login', { skip }, async () => {
   const pre = (origin: string) => app.inject({
     method: 'OPTIONS', url: '/api/v1/projects',
-    headers: { origin, 'access-control-request-method': 'POST', 'access-control-request-headers': 'content-type,authorization,if-match' },
+    headers: { origin, 'access-control-request-method': 'POST', 'access-control-request-headers': 'content-type,authorization,if-match,x-workflow-override' },
   })
   const ok = await pre('https://app.example.com')
   assert.equal(ok.statusCode, 204)
   assert.equal(ok.headers['access-control-allow-origin'], 'https://app.example.com')
-  for (const h of ['authorization', 'if-match']) assert.match(String(ok.headers['access-control-allow-headers']), new RegExp(h))
+  for (const h of ['authorization', 'if-match', 'x-workflow-override']) assert.match(String(ok.headers['access-control-allow-headers']), new RegExp(h))
   assert.equal((await pre('https://admin.example.com')).headers['access-control-allow-origin'], 'https://admin.example.com')
   assert.equal((await pre('https://evil.example')).headers['access-control-allow-origin'], undefined)
   // a normal request from a listed origin carries the header too
