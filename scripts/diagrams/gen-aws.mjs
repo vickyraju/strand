@@ -1,5 +1,5 @@
 // Builds docs/architecture/jira-build-aws-architecture.drawio (2 pages).   node scripts/diagrams/gen-aws.mjs
-// Scope: how the application is deployed on AWS and what each AWS service is used for. Nothing outside AWS except the end users.
+// Scope: how the application is deployed on AWS and what each AWS service is used for. Nothing outside AWS except the end users and the build tooling (Jenkins, SonarQube, JFrog Artifactory).
 // Page 1: production in the primary region. Page 2: disaster-recovery region, recovery targets, where data lives.
 import { writeFileSync } from 'node:fs'
 import { Page, drawioFile, AWS, flow } from './drawio.mjs'
@@ -61,7 +61,7 @@ p1.text(pub, 10, 450, 220, 60, 'Only CloudFront can reach the ALB (managed prefi
 const app = p1.panel(vpc, 290, 60, 700, 520, 'Private app subnets (a · b · c)', { stroke: '#147EBA', fill: '#F1F7FB', size: 12, font: '#147EBA' })
 const eks = p1.panel(app, 20, 44, 660, 460, `Amazon EKS · cluster ${APP}-prod`, { stroke: AWS.compute, size: 12, font: AWS.compute, id: 'eks' })
 p1.aws(eks, 'eks', AWS.compute, 14, 34, '', { size: 44, id: 'eks_icon' })
-p1.text(eks, 70, 32, 580, 52, br('<b>Control plane (AWS-managed)</b>', 'Add-ons: VPC CNI · CoreDNS · AWS Load Balancer Controller · Karpenter · KEDA · ADOT collector · Argo CD'), { size: 10, noOverlap: true })
+p1.text(eks, 70, 32, 580, 52, br('<b>Control plane (AWS-managed)</b>', 'Add-ons: VPC CNI · CoreDNS · AWS Load Balancer Controller · Karpenter · KEDA · ADOT collector'), { size: 10, noOverlap: true })
 ;['a', 'b', 'c'].forEach((z, i) => {
   const az = p1.panel(eks, 14 + i * 215, 96, 205, 250, `AZ ${z} · Karpenter nodes (EC2)`, { stroke: '#147EBA', dashed: true, size: 10, bold: false })
   p1.text(az, 12, 40, 181, 70, br(`<b>${APP}-api</b>`, 'REST API · live-update streams'), { fill: '#E8F1FB', stroke: BLUE, align: 'center', valign: 'middle', size: 10, id: `pod_api_${z}` })
@@ -94,7 +94,7 @@ const svc = [
   ['parameter_store', AWS.mgmt, 'SSM Parameter Store', 'non-secret config', 'ssm', true],
 ]
 svc.forEach(([name, color, l1, l2, id, shape], i) => p1.aws(reg, name, color, 60 + (i % 2) * 280, 70 + Math.floor(i / 2) * 190, br(l1, l2), { id, shape }))
-p1.text(reg, 330, 640, 250, 120, br('<b>VPC endpoints</b>', 'S3 (gateway); ECR, Secrets Manager, SSM, SQS, SES, CloudWatch Logs, STS (interface). Calls to AWS services stay off the internet.'), { size: 10, fill: '#FFFFFF', stroke: '#879196', id: 'vpce' })
+p1.text(reg, 330, 640, 250, 120, br('<b>VPC endpoints</b>', 'S3 (gateway); Secrets Manager, SSM, SQS, SES, CloudWatch Logs, STS (interface). Calls to AWS services stay off the internet.'), { size: 10, fill: '#FFFFFF', stroke: '#879196', id: 'vpce' })
 
 // Operations and security band
 const ops = p1.panel(cloud, 310, 1090, 1700, 170, 'Operations and security', { stroke: '#E7157B', size: 12, font: '#E7157B', id: 'ops' })
@@ -108,11 +108,11 @@ opsIcons.forEach(([n, c, l1, l2, id], i) => p1.aws(ops, n, c, 70 + i * 205, 40, 
 
 // Build and deploy band
 const ci = p1.panel(cloud, 310, 1290, 1700, 170, 'Build and deploy', { stroke: '#C925D1', size: 12, font: '#C925D1', id: 'ci' })
-p1.aws(ci, 'codepipeline', AWS.dev, 70, 40, br('CodePipeline', 'source → build → release'), { id: 'cp' })
-p1.aws(ci, 'codebuild', AWS.dev, 330, 40, br('CodeBuild', 'build, test, scan image'), { id: 'cb' })
-p1.aws(ci, 'ecr', AWS.compute, 590, 40, br('ECR', 'container images'), { id: 'ecr' })
-p1.aws(ci, 'cloudformation', AWS.mgmt, 850, 40, br('CloudFormation / CDK', 'all AWS resources as code'), { id: 'cfn' })
-p1.text(ci, 1090, 36, 590, 110, br('<b>Release:</b> a source change runs the pipeline; the image is pushed to ECR; Argo CD in the cluster rolls the new image out gradually.', '<b>Database migrations</b> run as a pre-deploy Kubernetes Job. A failed health check rolls back to the previous image.'), { size: 10, noOverlap: true })
+p1.text(ci, 40, 40, 190, 80, br('<b>SonarQube</b>', 'code scan · quality gate'), { fill: '#FFFFFF', stroke: '#C925D1', align: 'center', valign: 'middle', size: 10, id: 'sq' })
+p1.text(ci, 330, 40, 190, 80, br('<b>Jenkins Core pipeline</b>', 'build · test · deploy'), { fill: '#FFFFFF', stroke: '#C925D1', align: 'center', valign: 'middle', size: 10, id: 'jk' })
+p1.text(ci, 620, 40, 190, 80, br('<b>JFrog Artifactory</b>', 'container images'), { fill: '#FFFFFF', stroke: '#C925D1', align: 'center', valign: 'middle', size: 10, id: 'af' })
+p1.aws(ci, 'cloudformation', AWS.mgmt, 880, 40, br('CloudFormation / CDK', 'all AWS resources as code'), { id: 'cfn' })
+p1.text(ci, 1090, 36, 590, 110, br('<b>Release:</b> a source change starts the Jenkins Core pipeline: build and test, a SonarQube scan whose quality gate must pass, then the image is pushed to JFrog Artifactory. The same pipeline deploys it to EKS as a rolling update; the cluster pulls the image from Artifactory.', '<b>Database migrations</b> run as a pre-deploy Kubernetes Job. A failed health check rolls back to the previous image. Jenkins, SonarQube and Artifactory are the company\'s own build tools, not AWS services.'), { size: 10, noOverlap: true })
 
 p1.text('1', 360, 1600, 2060, 50, `<span style="color:#545B64"><b>Indicative sizing (to be confirmed):</b> 3 AZs, a NAT gateway per AZ · API 6 to 60 pods · Aurora db.r7g.2xlarge writer + 2 readers · ElastiCache 2 shards × 2 nodes. Region, instance sizes and quotas are placeholders.</span>`, { size: 11, noOverlap: true })
 
@@ -132,8 +132,8 @@ p1.edge({ source: 'eks', target: 'sqs', value: '6  enqueue ⇄ consume', st: flo
 p1.edge({ source: 'eks', target: 'regional', value: '', st: flow(GREY, { strokeWidth: 1.5, dashed: 1, dashPattern: '2 3', ...pt(1, 0.5, 0, 0.5) }) })
 p1.edge({ source: 'eks', target: 'cache', value: 'cache · rate limits', st: flow(GREY, { strokeWidth: 1.5, dashed: 1, dashPattern: '2 3', ...pt(0.9, 1, 0.5, 0) }), points: [[1300, 811], [1160, 811]] })
 f(7, 'vpc', 'ops', 'telemetry: pods → ADOT collector → CloudWatch, X-Ray', GREY, { pts: pt(0.5, 1, 0.5, 0) })
-p1.edge({ source: 'cp', target: 'cb', st: flow(GREY, { strokeWidth: 1.5, ...pt(1, 0.5, 0, 0.5) }) })
-p1.edge({ source: 'cb', target: 'ecr', value: 'push image', st: flow(GREY, { strokeWidth: 1.5, ...pt(1, 0.5, 0, 0.5) }) })
+p1.edge({ source: 'jk', target: 'sq', value: 'scan', st: flow(GREY, { strokeWidth: 1.5, ...pt(0, 0.5, 1, 0.5) }) })
+p1.edge({ source: 'jk', target: 'af', value: 'push image', st: flow(GREY, { strokeWidth: 1.5, ...pt(1, 0.5, 0, 0.5) }) })
 
 // ───────────────────────────── Page 2: disaster recovery and data ─────────────────────────────
 const p2 = new Page('2 · Disaster recovery and data', { width: 2400, height: 1300 })
@@ -152,7 +152,7 @@ for (const [reg, tag, warm] of [[regA, 'A', false], [regB, 'B', true]]) {
   const rx = warm ? 60 : 480, lx = warm ? 480 : 60          // replicated column / local column
   p2.aws(reg, 'aurora', AWS.db, rx, 60, br(warm ? 'Aurora secondary' : 'Aurora primary', warm ? 'read-only, replicating' : 'writer + 2 readers'), { id: `aur${tag}` })
   p2.aws(reg, 's3', AWS.storage, rx, 200, br('S3 attachments', warm ? 'replica bucket' : 'source bucket'), { id: `s3${tag}` })
-  p2.aws(reg, 'ecr', AWS.compute, rx, 340, br('ECR', warm ? 'replicated images' : 'images'), { id: `ecr${tag}` })
+  p2.text(reg, rx - 36, 340, 150, 70, br('<b>JFrog Artifactory</b>', 'container images', 'pulled by EKS'), { fill: '#FFFFFF', stroke: '#C925D1', align: 'center', valign: 'middle', size: 10, id: `art${tag}` })
   p2.aws(reg, 'secrets_manager', AWS.sec, rx, 480, br('Secrets Manager', warm ? 'replica secrets' : 'secrets'), { id: `sm${tag}` })
   p2.aws(reg, 'application_load_balancer', AWS.net, lx, 60, 'ALB', { shape: true, id: `alb${tag}` })
   p2.aws(reg, 'eks', AWS.compute, lx, 184, br('EKS', warm ? 'control plane up · nodes at zero' : '3 AZs · autoscaled'), { id: `eks${tag}` })
@@ -161,7 +161,7 @@ for (const [reg, tag, warm] of [[regA, 'A', false], [regB, 'B', true]]) {
   p2.aws(reg, 'elasticache', AWS.db, lx, 556, br('ElastiCache', warm ? 'cold start' : 'cache'), { id: `cache${tag}` })
 }
 p2.text(regB, 20, 700, 600, 70, br('<b>On failover (runbook):</b> promote the Aurora secondary · scale Karpenter node pools up · point Route 53 and CloudFront at region B · re-enable the SQS workers. Rehearse twice a year.'), { size: 10, noOverlap: true })
-p2.text(regA, 20, 700, 600, 70, br('<b>Normal operation:</b> all traffic is served here. Aurora Global Database copies storage to region B (typically under a second). S3 and ECR replication copy files and images.'), { size: 10, noOverlap: true })
+p2.text(regA, 20, 700, 600, 70, br('<b>Normal operation:</b> all traffic is served here. Aurora Global Database copies storage to region B (typically under a second). S3 replication copies the files.'), { size: 10, noOverlap: true })
 const g = (src, tgt, label, color, o = {}) => p2.edge({ source: src, target: tgt, value: label, st: flow(color, o.st ?? {}), points: o.points ?? [] })
 g('r53b', 'cfb', '', GREY, { st: { strokeWidth: 1.5, ...pt(0.5, 1, 0.5, 0) } })
 g('cfb', 'albA', 'primary origin', BLUE, { st: pt(0, 0.5, 0.5, 0), points: [[138, 318]] })
@@ -169,7 +169,6 @@ g('cfb', 'albB', 'failover origin', ORANGE, { st: { ...dash, ...pt(1, 0.5, 0.5, 
 const repl = (a, b, label, color) => g(a, b, label, color, { st: { strokeWidth: 2.5, ...pt(1, 0.5, 0, 0.5) } })
 repl('aurA', 'aurB', 'Aurora Global DB', GREEN)
 repl('s3A', 's3B', 'S3 replication', TEAL)
-repl('ecrA', 'ecrB', 'ECR replication', GREY)
 repl('smA', 'smB', 'secret replication', GREY)
 
 // Right column: recovery targets and where data lives
@@ -186,7 +185,7 @@ const lives = [
   ['Secrets Manager and KMS', 'database credentials and encryption keys. Replicated; rotated on a schedule.'],
 ]
 lives.forEach(([h, t], i) => p2.text(dl, 14, 44 + i * 56, 732, 54, `<b>${h}.</b> ${t}`, { size: 10, noOverlap: true }))
-p2.text('1', 1620, 850, 760, 80, br('<b>Notes.</b> Region, instance sizes and recovery targets are placeholders to confirm. Region B runs only the data and image replicas until a failover is declared.'), { size: 10, color: '#545B64', noOverlap: true })
+p2.text('1', 1620, 850, 760, 80, br('<b>Notes.</b> Region, instance sizes and recovery targets are placeholders to confirm. Region B runs only the data replicas until a failover is declared. Container images come from JFrog Artifactory; how it is made available to region B is to be agreed with its owners.'), { size: 10, color: '#545B64', noOverlap: true })
 
 // ───────────────────────────── Checks and output ─────────────────────────────
 const pages = [p1, p2]
