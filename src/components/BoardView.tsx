@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { DndContext, DragOverlay, useDroppable, type DragEndEvent, type DragStartEvent } from '@dnd-kit/core'
 import {
   Plus, Columns2, ListChecks, ChevronDown, ChevronRight, ChevronsLeftRight, Settings2, Check, GitBranch, Timer,
 } from 'lucide-react'
@@ -8,7 +9,8 @@ import {
 } from '../data/store'
 import { useApp, useNavList } from '../appContext'
 import { useFilters } from './filters'
-import BoardCard from './BoardCard'
+import BoardCard, { CardGhost } from './BoardCard'
+import { BOARD_INSTRUCTIONS, boardAnnouncements, boardCollision, planDrop, useBoardSensors } from './boardDnd'
 import { CompleteSprintModal } from './BacklogView'
 import { Avatar, Empty, Picker, Popover, Toggle, PriorityIcon, PRIORITY_META, PRIORITIES, TypeIcon, StatusLozenge, plural } from './ui'
 
@@ -25,6 +27,19 @@ interface Lane {
   patch?: IssuePatch
 }
 
+/** One cell of the board (a status column within a swimlane): a place cards can be dropped. */
+function DroppableCell({ id, statusId, laneKey, collapsed, blocked, children }: {
+  id: string; statusId: string; laneKey: string; collapsed: boolean; blocked: boolean; children: React.ReactNode
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id, data: { statusId, laneKey } })
+  return (
+    <div ref={setNodeRef} data-cell data-lane={laneKey}
+      className={`cell${collapsed ? ' collapsed' : ''}${isOver && !blocked ? ' drop-over' : ''}${blocked ? ' disallowed' : ''}${isOver && blocked ? ' drop-refused' : ''}`}>
+      {children}
+    </div>
+  )
+}
+
 export default function BoardView({ project }: { project: Project }) {
   const { state, dispatch } = useStore()
   const { createIssue, openProject, toast } = useApp()
@@ -32,7 +47,6 @@ export default function BoardView({ project }: { project: Project }) {
   const setPrefs = (p: Partial<BoardPrefs>) => dispatch({ type: 'updateProject', id: project.id, patch: { boardPrefs: { ...prefs, ...p } } })
 
   const [dragging, setDragging] = useState<Issue | null>(null)
-  const [over, setOver]         = useState<string | null>(null)
   const [completing, setCompleting] = useState(false)
   // Columns render their first 50 cards; large boards stay responsive
   const [cardLimits, setCardLimits] = useState<Record<string, number>>({})
@@ -113,24 +127,35 @@ export default function BoardView({ project }: { project: Project }) {
   const grouped = prefs.groupBy !== 'none'
 
   // ── Drag and drop ───────────────────────────────────────
+  const sensors = useBoardSensors()
+  /** Forbidden columns grey out while a card is being dragged. */
   const allowed = (statusId: string) => !dragging || canTransition(project, dragging.status, statusId)
-  const drop = (statusId: string, lane: Lane) => {
+  const cardFields = prefs.groupBy === 'epic' ? { ...prefs.fields, epic: false } : prefs.fields
+  const planFor = (issue: Issue, cellId: unknown) => {
+    const [laneKey, statusId] = String(cellId).split('|') as [string, string]
+    const lane = lanes.find(l => l.key === laneKey)!
+    const moveLane = !!lane.patch && !lane.match(issue) && !(prefs.groupBy === 'epic' && issue.parentId && indexOf(state).byId.get(issue.parentId)?.type !== 'epic')   // sub-items keep their parent
+    return planDrop({ project, issue, statusId, lanePatch: lane.patch, moveLane })
+  }
+  const issueOf = (id: unknown) => state.issues.find(i => i.id === id)
+  const announcements = boardAnnouncements({
+    key: id => issueOf(id)?.key ?? 'The work item',
+    status: id => statusOf(project, issueOf(id)?.status ?? '')?.name ?? '',
+    column: cellId => statusOf(project, String(cellId).split('|')[1] ?? '')?.name ?? '',
+    verdict: (id, cellId) => {
+      const issue = issueOf(id)
+      const plan = issue ? planFor(issue, cellId) : { patch: {} }
+      return 'blocked' in plan ? 'blocked' : Object.keys(plan.patch).length ? 'moves' : 'stays'
+    },
+  })
+  const onDragStart = ({ active }: DragStartEvent) => setDragging(issueOf(active.id) ?? null)
+  const onDragEnd = ({ over }: DragEndEvent) => {
     const issue = dragging
-    setDragging(null); setOver(null)
-    if (!issue) return
-    const patch: IssuePatch = {}
-    if (issue.status !== statusId) {
-      if (!canTransition(project, issue.status, statusId)) {
-        toast(`The ${project.name} workflow doesn’t allow ${statusOf(project, issue.status)?.name} → ${statusOf(project, statusId)?.name}`, { tone: 'warn' })
-        return
-      }
-      patch.status = statusId
-    }
-    // Moving between lanes changes the grouped field (sub-items keep their parent)
-    if (lane.patch && !lane.match(issue) && !(prefs.groupBy === 'epic' && issue.parentId && indexOf(state).byId.get(issue.parentId)?.type !== 'epic')) {
-      Object.assign(patch, lane.patch)
-    }
-    if (Object.keys(patch).length) dispatch({ type: 'updateIssues', ids: [issue.id], patch })
+    setDragging(null)
+    if (!issue || !over) return
+    const plan = planFor(issue, over.id)
+    if ('blocked' in plan) { toast(plan.blocked, { tone: 'warn' }); return }
+    if (Object.keys(plan.patch).length) dispatch({ type: 'updateIssues', ids: [issue.id], patch: plan.patch })
   }
 
   const toggleIn = (list: string[], key: string) => list.includes(key) ? list.filter(k => k !== key) : [...list, key]
@@ -140,6 +165,7 @@ export default function BoardView({ project }: { project: Project }) {
 
   // ── Keyboard: arrows move between cards ─────────────────
   const onKeyDown = (e: React.KeyboardEvent) => {
+    if (dragging) return                                          // the arrow keys are moving a card, not the focus
     const card = (e.target as HTMLElement).closest<HTMLElement>('[data-card]')
     if (!card || !['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) return
     e.preventDefault()
@@ -205,13 +231,15 @@ export default function BoardView({ project }: { project: Project }) {
         </Popover>
       </div>
 
+      <DndContext sensors={sensors} collisionDetection={boardCollision} onDragStart={onDragStart} onDragEnd={onDragEnd} onDragCancel={() => setDragging(null)}
+        accessibility={{ announcements, screenReaderInstructions: { draggable: BOARD_INSTRUCTIONS } }}>
       <div className="board-scroll" onKeyDown={onKeyDown}>
         <div className="board-grid" style={{ gridTemplateColumns: template }}>
           {columns.map(col => {
             const count = issues.filter(i => i.status === col.id).length
             const over = col.wipLimit != null && count > col.wipLimit
             return (
-              <div key={col.id} className={`col-hdr${col.collapsed ? ' collapsed' : ''}${over ? ' over-limit' : ''}${dragging && !allowed(col.id) ? ' disallowed' : ''}`}>
+              <div key={col.id} className={`col-hdr${col.collapsed ? ' collapsed' : ''}${over ? ' over-limit' : ''}${dragging && !allowed(col.id) ? ' disallowed' : ''}`} title={statusOf(project, col.id)?.description || undefined}>
                 {col.collapsed ? (
                   <button className="col-hdr-collapsed" onClick={() => setPrefs({ collapsedCols: toggleIn(prefs.collapsedCols, col.id) })}
                     title={`Expand ${col.name}`} aria-label={`Expand ${col.name} column`}>
@@ -256,24 +284,14 @@ export default function BoardView({ project }: { project: Project }) {
                   const cellKey = `${lane.key}|${col.id}`
                   const cards = laneItems.filter(i => i.status === col.id)
                   return (
-                    <div
-                      key={cellKey}
-                      data-cell
-                      data-lane={lane.key}
-                      className={`cell${col.collapsed ? ' collapsed' : ''}${over === cellKey ? ' drop-over' : ''}${dragging && !allowed(col.id) ? ' disallowed' : ''}`}
-                      onDragOver={e => { if (allowed(col.id)) { e.preventDefault(); setOver(cellKey) } }}
-                      onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setOver(null) }}
-                      onDrop={e => { e.preventDefault(); drop(col.id, lane) }}
-                    >
+                    <DroppableCell key={cellKey} id={cellKey} statusId={col.id} laneKey={lane.key} collapsed={col.collapsed} blocked={!allowed(col.id)}>
                       {!col.collapsed && cards.slice(0, cardLimit(cellKey)).map(issue => (
                         <BoardCard
                           key={issue.id}
                           issue={issue}
                           project={project}
-                          fields={prefs.groupBy === 'epic' ? { ...prefs.fields, epic: false } : prefs.fields}
+                          fields={cardFields}
                           dragging={dragging?.id === issue.id}
-                          onDragStart={() => setDragging(issue)}
-                          onDragEnd={() => { setDragging(null); setOver(null) }}
                         />
                       ))}
                       {!col.collapsed && cards.length > cardLimit(cellKey) && (
@@ -286,7 +304,7 @@ export default function BoardView({ project }: { project: Project }) {
                           <Plus size={14} />Create
                         </button>
                       )}
-                    </div>
+                    </DroppableCell>
                   )
                 })}
               </div>
@@ -294,6 +312,10 @@ export default function BoardView({ project }: { project: Project }) {
           })}
         </div>
       </div>
+      <DragOverlay dropAnimation={null}>
+        {dragging && <CardGhost issue={dragging} project={project} fields={cardFields} />}
+      </DragOverlay>
+      </DndContext>
 
       {completing && sprint && (
         <CompleteSprintModal sprint={sprint} project={project}
