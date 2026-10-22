@@ -61,6 +61,14 @@ The build also writes `THIRD_PARTY_NOTICES.txt` (the licence notices of the bund
 
 **CloudFront** serves the bucket and forwards `/api/*`, `/scim/*` and `/integrations/*` to the ALB (all methods, no caching, `Authorization` header forwarded, origin timeout raised for live updates). Return `/index.html` for 403/404 so deep links work. With one domain for the app and the API, no CORS setup is needed.
 
+## Dependency rule: nothing newer than 72 hours
+
+Security requirement: only dependency versions published at least 72 hours ago are used, direct and indirect.
+
+- `.npmrc` (root and `server/`) sets `min-release-age=3`, so `npm install`, `npm update` and adding a package skip anything newer.
+- `npm run check:deps` reads both lockfiles, looks up each pinned version's publish time on the npm registry, and fails with the newest old-enough version for each offender. Run it in the pipeline before building (it needs registry access). Raise the limit with `-- --hours 96`.
+- To fix an offender: `npm install <name>@<old-enough version>`, then run the check again.
+
 ## Develop and test
 
 ```bash
