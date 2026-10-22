@@ -6,7 +6,7 @@ import { useLocation, navigate, href } from '../router'
 import WorkItemDetail from './WorkItemDetail'
 import { Avatar, Menu, Empty, TypeIcon } from './ui'
 import { apiEnabled, api } from '../api/client'
-import { mapNotification } from '../api/map'
+import { mapNotification, notificationReason } from '../api/map'
 import { loadProjectIssues } from '../api/load'
 import { issueSync } from '../api/sync'
 
@@ -166,6 +166,7 @@ export default function InboxView() {
           {rows.map(r => {
             const issue = issueOf(r.issueKey)   // type icon when the issue is loaded; key + title always
             const actor = userOf(state, r.latest.actorId)
+            const reason = notificationReason(r.latest.text, actor?.name, r.issueKey)
             const Icon = KIND_ICON[r.latest.kind]
             const b = bucket(r.latest.createdAt)
             const header = b !== lastBucket ? (lastBucket = b) : null
@@ -174,7 +175,7 @@ export default function InboxView() {
                 {header && <div className="inbox-bucket">{header}</div>}
                 <div className={`inbox-row${selectedRow?.issueKey === r.issueKey ? ' active' : ''}${r.unread ? ' unread' : ''}`}>
                   <button type="button" className="inbox-open" aria-current={selectedRow?.issueKey === r.issueKey}
-                    aria-label={`${r.issueKey} ${r.issueTitle}. ${r.latest.text}${r.unread ? '. Unread' : ''}`}
+                    aria-label={`${r.issueKey} ${r.issueTitle}. ${reason}${r.unread ? '. Unread' : ''}`}
                     onClick={() => open(r.issueKey)} />
                   <span className="inbox-avatar">
                     <Avatar user={actor} size={30} />
@@ -182,7 +183,7 @@ export default function InboxView() {
                   </span>
                   <span className="inbox-text">
                     <span className="inbox-issue">{issue && <TypeIcon type={issue.type} size={12} />}<span className="mono muted">{r.issueKey}</span><span className="cell-ellipsis">{r.issueTitle}</span></span>
-                    <span className="inbox-reason">{r.latest.text}{r.all.length > 1 ? ` · +${r.all.length - 1} more` : ''}</span>
+                    <span className="inbox-reason">{reason}{r.all.length > 1 ? ` · +${r.all.length - 1} more` : ''}</span>
                   </span>
                   <span className="inbox-meta">
                     <span className="muted sm">{timeAgo(r.latest.createdAt)}</span>

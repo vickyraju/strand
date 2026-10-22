@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { usePresence } from '../api/presence'
+import { recordView } from '../api/work'
 import {
   Maximize2, Minimize2, X, Link2, Trash2, Plus, Eye, EyeOff, ChevronUp, ChevronDown, MoreHorizontal,
   Ban, Unlink, Pencil, UserCheck, Copy, Paperclip, FileText,
@@ -57,7 +58,7 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
   useEffect(() => {
     setTitle(issue?.title ?? ''); setDesc(issue?.description ?? ''); setLabels(issue?.labels.join(', ') ?? '')
     setEditing(false); setConfirmDel(false); setLinking(false)
-    if (issue) dispatch({ type: 'markViewed', issueId: issue.id })
+    if (issue) { dispatch({ type: 'markViewed', issueId: issue.id }); recordView(issue.key) }
     // Opening an item marks its notifications for the viewer as read
     const unread = state.notifications.filter(n => n.issueId === issueId && n.userId === state.me?.id && !n.read).map(n => n.id)
     if (unread.length) dispatch({ type: 'markRead', ids: unread })

@@ -123,3 +123,59 @@ export function loadIssueFull(id: string): Promise<string | undefined> {
     return key
   }).catch(() => undefined)
 }
+// ── Search pickers ──
+
+/** A project as the project filter shows it. */
+export interface ProjectOption { id: string; key: string; name: string; color: string }
+export const searchProjects = (query: string) =>
+  api<{ items: Row[] }>('GET', `/api/projects/search?limit=30${query ? `&query=${encodeURIComponent(query)}` : ''}`)
+    .then(p => p.items.map((r): ProjectOption => ({ id: r.id, key: r.key, name: r.name, color: r.color })))
+export const searchLabels = (query: string) => api<string[]>('GET', `/api/labels${query ? `?query=${encodeURIComponent(query)}` : ''}`)
+
+// ── Your work: counts, recent projects, viewed ──
+
+/** The numbers on the Your work cards, counted by the database (so they stay right past the first page of items). */
+export interface WorkSummary { assigned: number; dueSoon: number; overdue: number; blocked: number }
+/** One of the most recently active projects, with the person's open items and how much is done. */
+export interface RecentProject { id: string; key: string; name: string; color: string; template: 'kanban' | 'scrum'; myOpen: number; done: number; total: number }
+
+/** Fetch once when the screen opens; `undefined` until it arrives (or without an API, or if it fails: the screen then shows nothing rather than a wrong number). */
+function useServerValue<T>(path: string): T | undefined {
+  const [value, setValue] = useState<T>()
+  useEffect(() => {
+    if (!apiEnabled) return
+    let cancelled = false
+    api<T>('GET', path).then(v => { if (!cancelled) setValue(v) }, () => {})
+    return () => { cancelled = true }
+  }, [path])
+  return value
+}
+
+export const useWorkSummary = () => useServerValue<WorkSummary>('/api/me/work/summary')
+export const useRecentProjects = () => useServerValue<RecentProject[]>('/api/me/projects/recent')
+
+/** "Your work" → Viewed: the work items I opened most recently, from the server. */
+export function useMyViewed(): Load {
+  const [items, setItems] = useState<Issue[]>([])
+  const [status, setStatus] = useState<Load['status']>(apiEnabled ? 'loading' : 'ready')
+  const [attempt, setAttempt] = useState(0)
+  useEffect(() => {
+    if (!apiEnabled) { setItems([]); return }
+    let cancelled = false
+    setStatus('loading')
+    api<Row[]>('GET', '/api/me/viewed').then(rows => {
+      if (cancelled) return
+      setItems(rows.map(mapSearchRow)); setStatus('ready')
+    }, () => { if (!cancelled) setStatus('error') })
+    return () => { cancelled = true }
+  }, [attempt])
+  return { items, next: null, status, retry: () => setAttempt(a => a + 1), loadMore: () => {} }
+}
+
+/** Tell the server I opened this work item (Your work → Viewed). Once a minute per item is plenty. */
+const lastView = new Map<string, number>()
+export function recordView(key: string, now = Date.now()) {
+  if (!apiEnabled || now - (lastView.get(key) ?? 0) < 60_000) return
+  lastView.set(key, now)
+  api('POST', `/api/issues/${encodeURIComponent(key)}/view`).catch(() => lastView.delete(key))
+}

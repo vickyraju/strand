@@ -108,6 +108,15 @@ export const mapNotification = (n: Row): Notification => ({
   ...(n.projectKey ? { projectKey: n.projectKey } : {}),
 })
 
+/** The sentence shown for a notification. The server stores a phrase ("commented on a work item", "is due on 2026-10-25");
+ *  the browser-only store writes whole sentences ("Maya commented on PAY-3"). Both read as one sentence: a phrase gets the person's
+ *  name in front, or the item's key when nobody caused it (a due date). */
+export function notificationReason(text: string, actorName: string | undefined, issueKey?: string): string {
+  if (actorName && text.startsWith(actorName)) return text
+  if (actorName) return `${actorName} ${text}`
+  return issueKey && !text.includes(issueKey) ? `${issueKey} ${text}` : text
+}
+
 export const mapComment = (c: Row): Comment => ({
   id: c.id, issueId: c.issueId, authorId: c.authorId ?? '', body: c.body, createdAt: ms(c.createdAt) ?? Date.now(),
   ...(c.editedAt ? { editedAt: ms(c.editedAt) } : {}),

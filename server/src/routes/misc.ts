@@ -61,6 +61,14 @@ const plugin: FastifyPluginAsyncZod = async app => {
     return { items, next: more && last ? Buffer.from(`${last.cursorTs}|${last.id}`).toString('base64url') : null }
   })
 
+  // Labels in use, for the label filter (typing narrows it; names are matched anywhere, case-insensitively)
+  app.get('/labels', { schema: { tags: ['Search & work'], summary: 'Labels used in the workspace, alphabetical (up to 50; type part of a name to narrow)', querystring: z.object({
+    query: z.string().max(100).optional().describe('Part of a label, case-insensitive'), limit: z.coerce.number().int().min(1).max(100).default(50),
+  }) } }, async req => {
+    const like = '%' + (req.query.query ?? '').replace(/[\\%_]/g, '\\$&') + '%'
+    return (await db.query<{ name: string }>('select name from labels where workspace_id = $1 and name ilike $2 order by lower(name), name limit $3', [req.me.workspaceId, like, req.query.limit])).map(r => r.name)
+  })
+
   // "Your work": open items assigned to me
   app.get('/me/work', { schema: { tags: ['Search & work'], summary: 'Open issues assigned to me, due soonest first' } }, async req => db.query(
     `${LIST} where i.workspace_id = $1 and i.assignee_id = $2 and i.deleted_at is null and st.category <> 'done'
@@ -79,6 +87,38 @@ const plugin: FastifyPluginAsyncZod = async app => {
         coalesce((select max(created_at) from worklogs w where w.issue_id = i.id and w.user_id = $2), 'epoch'::timestamptz)) desc
       limit 40`, [req.me.workspaceId, req.me.id]))
 
+  // "Your work": the numbers on the cards, counted by the database so they stay right past the first 200 items
+  app.get('/me/work/summary', { schema: { tags: ['Search & work'], summary: 'Counts for the Your work cards: open items assigned to me, due within 3 days (or late), late, and blocked by unfinished work' } }, async req => {
+    const [r] = await db.query<any>(
+      `select count(*)::int as assigned,
+              count(*) filter (where i.due_date is not null and i.due_date <= (now() at time zone 'utc')::date + 3)::int as due_soon,
+              count(*) filter (where i.due_date < (now() at time zone 'utc')::date)::int as overdue,
+              count(*) filter (where exists (
+                select 1 from issue_links l join issues b on b.id = l.issue_id join statuses bs on bs.id = b.status_id
+                 where l.target_id = i.id and l.type = 'blocks' and b.deleted_at is null and bs.category <> 'done'))::int as blocked
+         from issues i join statuses st on st.id = i.status_id
+        where i.workspace_id = $1 and i.assignee_id = $2 and i.deleted_at is null and i.type <> 'epic' and st.category <> 'done'`, [req.me.workspaceId, req.me.id])
+    return r
+  })
+
+  // "Your work → Recent projects": where work happened most recently, with my open items and how much is done
+  app.get('/me/projects/recent', { schema: { tags: ['Search & work'], summary: 'The 4 most recently active projects, with my open items, done items and total items (epics left out)' } }, async req => db.query(
+    `select p.id, p.key, p.name, p.color, p.template,
+            count(*) filter (where i.assignee_id = $2 and st.category <> 'done')::int as my_open,
+            count(*) filter (where st.category = 'done')::int as done,
+            count(i.id)::int as total,
+            coalesce(max(i.updated_at), p.created_at) as last_activity
+       from projects p
+       left join issues i on i.project_id = p.id and i.deleted_at is null and i.type <> 'epic'
+       left join statuses st on st.id = i.status_id
+      where p.workspace_id = $1 and p.archived_at is null
+      group by p.id order by coalesce(max(i.updated_at), p.created_at) desc, p.id limit 4`, [req.me.workspaceId, req.me.id]))
+
+  // "Your work → Viewed"
+  app.get('/me/viewed', { schema: { tags: ['Search & work'], summary: 'Work items I opened most recently (newest 50), most recent first' } }, async req => db.query(
+    `${LIST} join issue_views v on v.issue_id = i.id and v.user_id = $2
+      where i.workspace_id = $1 and i.deleted_at is null order by v.viewed_at desc limit 50`, [req.me.workspaceId, req.me.id]))
+
   // Counts for summary/dashboards without scanning issues in the client
   app.get('/projects/:key/summary', { schema: { tags: ['Search & work'], summary: 'Counts by status, assignee and type; created in the last 7 days; overdue', params: z.object({ key: z.string() }) } }, async req => {
     const p = await projectByKey(db, req.me.workspaceId, req.params.key)
@@ -96,11 +136,30 @@ const plugin: FastifyPluginAsyncZod = async app => {
   })
 
   // ── Notifications ──
+  // "Due soon" has no scheduler behind it: when someone loads their notifications we add one for each open item assigned to them that is due
+  // tomorrow or sooner (up to 3 days late), once per item and due date. Skipped if this person was checked recently.
+  const dueScan = new Map<string, number>()
+  const DUE_SCAN_MS = Number(process.env.DUE_SCAN_INTERVAL_MS ?? 600_000)
+  async function ensureDueNotifications(workspaceId: string, userId: string) {
+    const last = dueScan.get(userId)
+    if (last !== undefined && Date.now() - last < DUE_SCAN_MS) return
+    dueScan.set(userId, Date.now())
+    await db.query(
+      `insert into notifications (user_id, issue_id, kind, text)
+       select $2, i.id, 'due', 'is due on ' || i.due_date::text
+         from issues i join statuses st on st.id = i.status_id
+        where i.workspace_id = $1 and i.assignee_id = $2 and i.deleted_at is null and st.category <> 'done'
+          and i.due_date between (now() at time zone 'utc')::date - 3 and (now() at time zone 'utc')::date + 1   -- UTC, so the answer does not depend on the server's timezone
+          and not exists (select 1 from notifications n where n.user_id = $2 and n.issue_id = i.id and n.kind = 'due' and n.text = 'is due on ' || i.due_date::text)`,
+      [workspaceId, userId])
+  }
+
   app.get('/notifications', { schema: { tags: ['Notifications'], summary: 'My notifications (newest 200)', querystring: z.object({
     archived: z.enum(['0', '1']).optional().describe('1 = archived ones'),
     kind: z.enum(['assigned', 'mentioned', 'commented', 'status', 'due']).optional().describe('Only this kind'),
     project: uuid.optional().describe('Only notifications for this project'),
   }) } }, async req => {
+    await ensureDueNotifications(req.me.workspaceId, req.me.id)
     const args: unknown[] = [req.me.id, req.query.archived === '1']
     const where = ['n.user_id = $1', 'n.archived = $2']
     if (req.query.kind) { args.push(req.query.kind); where.push(`n.kind = $${args.length}`) }

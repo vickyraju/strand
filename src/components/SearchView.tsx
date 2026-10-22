@@ -7,9 +7,12 @@ import { navigate, href } from '../router'
 import IssueTable, { type TableGroup } from './IssueTable'
 import { Picker, Menu, Modal, Toggle, TYPE_META, PRIORITY_META, typeOptions, priorityOptions, Avatar, type PickerOption } from './ui'
 import { ProjectIcon } from './ProjectView'
-import { apiEnabled } from '../api/client'
-import { useSearch } from '../api/work'
+import { api, apiEnabled } from '../api/client'
+import type { Row } from '../api/map'
+import { useSearch, searchProjects, searchLabels } from '../api/work'
 import { useUserSearch } from '../api/users'
+import { useRemoteList } from '../api/remoteList'
+import { useEnsureProjects, projectKeyOf } from '../api/useEnsureProjects'
 
 export default function SearchView({ query, viewId }: { query: string; viewId?: string }) {
   const { state, dispatch } = useStore()
@@ -30,11 +33,22 @@ export default function SearchView({ query, viewId }: { query: string; viewId?: 
   // Assignee filter: the workspace's people are searched on the server, not held as a local list.
   const people = useUserSearch()
   const results: Issue[] = apiEnabled ? server.items : applyFilters(state, f, state.me?.id)
-  const labels = [...new Set(state.issues.flatMap(i => i.labels))].sort()
+  // Projects and labels are searched on the server too: the browser only holds the projects you have opened
+  const projects = useRemoteList(searchProjects, p => p.id)
+  const labelList = useRemoteList(async q => (await searchLabels(q)).map(name => ({ name })), l => l.name)
+  useEnsureProjects(results.map(i => projectKeyOf(i.key)))                       // so each row knows its workflow and shows its status
+  const labels = apiEnabled ? labelList.items.map(l => l.name) : [...new Set(state.issues.flatMap(i => i.labels))].sort()
   const dirty = !!view && JSON.stringify(view.filters) !== JSON.stringify(f)
   const canEdit = !view || view.ownerId === state.me?.id
   const any = <T,>(l: string, opts: PickerOption<T>[]) => [{ value: undefined as T, label: l }, ...opts]
-  const project = projectOf(state, f.projectId)
+  const projectRow = projects.byId(f.projectId)
+  const project = projectOf(state, f.projectId) ?? (projectRow ? { name: projectRow.name, color: projectRow.color } : undefined)
+  // A saved view can name a project this browser has not seen: look its name up once
+  useEffect(() => {
+    if (apiEnabled && f.projectId && !projectOf(state, f.projectId) && !projects.byId(f.projectId))
+      api<Row>('GET', `/api/projects/${encodeURIComponent(f.projectId)}`).then(r => { projects.remember({ id: r.id, key: r.key, name: r.name, color: r.color }); set({}) }, () => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [f.projectId])
   const assigneeName = (id: string | null) => {
     if (id === null) return 'Assignee'
     if (id === 'me') return 'Me'
@@ -95,7 +109,8 @@ export default function SearchView({ query, viewId }: { query: string; viewId?: 
         </label>
         <div className="filters">
           <Picker value={f.projectId} search title="Project" className={`chip${f.projectId ? ' chip-on' : ''}`}
-            options={any('Any project', state.projects.map(p => ({ value: p.id as string | undefined, label: p.name, icon: <ProjectIcon project={p} size={16} /> })))}
+            options={any('Any project', (apiEnabled ? projects.items : state.projects).map(p => ({ value: p.id as string | undefined, label: p.name, icon: <ProjectIcon project={p} size={16} /> })))}
+            remote={apiEnabled ? { onSearch: projects.search, searching: projects.busy } : undefined}
             onChange={projectId => set({ projectId })} trigger={<>{project ? <><ProjectIcon project={project} size={16} />{project.name}</> : 'Project'}<ChevronDown size={13} /></>} />
           <Picker value={f.assignee} search title="Assignee" className={`chip${f.assignee !== null ? ' chip-on' : ''}`}
             options={apiEnabled ? assigneeOptions : [
@@ -110,8 +125,9 @@ export default function SearchView({ query, viewId }: { query: string; viewId?: 
             trigger={<>{f.type ? TYPE_META[f.type].label : 'Type'}<ChevronDown size={13} /></>} />
           <Picker value={f.priority} title="Priority" options={any('Any priority', priorityOptions)} onChange={(priority: Priority | undefined) => set({ priority })} className={`chip${f.priority ? ' chip-on' : ''}`}
             trigger={<>{f.priority ? PRIORITY_META[f.priority].label : 'Priority'}<ChevronDown size={13} /></>} />
-          {labels.length > 0 && (
+          {(apiEnabled || labels.length > 0) && (
             <Picker value={f.label} search title="Label" options={any('Any label', labels.map(l => ({ value: l as string | undefined, label: l })))} onChange={label => set({ label })}
+              remote={apiEnabled ? { onSearch: labelList.search, searching: labelList.busy } : undefined}
               className={`chip${f.label ? ' chip-on' : ''}`} trigger={<>{f.label ?? 'Label'}<ChevronDown size={13} /></>} />
           )}
           <Picker value={f.resolution} title="Resolution" className={`chip${f.resolution !== 'open' ? ' chip-on' : ''}`}
@@ -119,11 +135,11 @@ export default function SearchView({ query, viewId }: { query: string; viewId?: 
             onChange={resolution => set({ resolution })} trigger={<>{f.resolution === 'open' ? 'Open' : f.resolution === 'done' ? 'Done' : 'Open and done'}<ChevronDown size={13} /></>} />
           {filtersActive(f) && <button className="link" onClick={() => setF({ ...EMPTY_FILTERS })}>Clear filters</button>}
           <div style={{ flex: 1 }} />
-          <span className="muted">{results.length} result{results.length === 1 ? '' : 's'}</span>
+          <span className="muted">{apiEnabled && server.status === 'loading' ? 'Searching…' : `${results.length}${apiEnabled && server.next ? '+' : ''} result${results.length === 1 && !(apiEnabled && server.next) ? '' : 's'}`}</span>
         </div>
       </div>
       <IssueTable id={view ? `view:${view.id}` : 'search'} issues={results} groupBy={groupBy} onGroupBy={setGroupBy} showProjectColumn
-        emptyText={state.issues.length ? 'No work items match. Try fewer filters or a different search.' : 'There are no work items yet.'} />
+        emptyText={apiEnabled ? (server.status === 'loading' ? 'Searching…' : filtersActive(f) ? 'No work items match. Try fewer filters or a different search.' : 'There are no work items yet.') : state.issues.length ? 'No work items match. Try fewer filters or a different search.' : 'There are no work items yet.'} />
       {apiEnabled && server.next && (
         <div style={{ display: 'flex', justifyContent: 'center', padding: '8px 0 24px' }}>
           <button className="btn btn-ghost" onClick={server.loadMore}>Load more results</button>

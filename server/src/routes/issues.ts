@@ -46,6 +46,24 @@ const note = (d: Db, to: string, me: Me, issueId: string, kind: string, text: st
   to === me.id ? null : d.query(
     'insert into notifications (user_id, actor_id, issue_id, kind, text) values ($1, $2, $3, $4, $5)', [to, me.id, issueId, kind, text])
 
+/** True when `@name` appears in the text as a whole name (`@Ann` does not match inside `@Anna`). */
+const mentions = (text: string, name: string) => {
+  for (let at = text.indexOf('@' + name); at >= 0; at = text.indexOf('@' + name, at + 1)) {
+    const next = text[at + 1 + name.length]
+    if (!next || !/[A-Za-z0-9_]/.test(next)) return true
+  }
+  return false
+}
+
+/** Workspace members written as `@Full Name` in a text, except the author. Inactive accounts are skipped. */
+export async function mentionedIn(d: Db, workspaceId: string, text: string, authorId: string): Promise<string[]> {
+  if (!text.includes('@')) return []
+  const candidates = await d.query<{ id: string; name: string }>(
+    `select u.id, u.name from users u join memberships m on m.user_id = u.id
+      where m.workspace_id = $1 and u.active and u.id <> $3 and position('@' || u.name in $2) > 0`, [workspaceId, text, authorId])
+  return candidates.filter(c => mentions(text, c.name)).map(c => c.id)
+}
+
 async function watchersOf(d: Db, issue: { id: string; assigneeId: string | null; reporterId: string | null }) {
   const w = await d.query<{ userId: string }>('select user_id from issue_watchers where issue_id = $1', [issue.id])
   return [...new Set([...w.map(x => x.userId), issue.assigneeId, issue.reporterId].filter((x): x is string => !!x))]
@@ -279,6 +297,16 @@ const plugin: FastifyPluginAsyncZod = async app => {
     })
     reply.code(204).send()
   })
+  // Opening a work item records it for "Your work → Viewed". Anyone who can see the item may record that they did (read-only users too).
+  app.post('/issues/:key/view', { schema: { tags: TAG, summary: 'Record that I opened this work item (Your work → Viewed keeps my newest 50)', params: keyP } }, async (req, reply) => {
+    const i = await issueByKey(db, req.me.workspaceId, req.params.key)
+    await tx(async d => {
+      await d.query('insert into issue_views (user_id, issue_id) values ($1, $2) on conflict (user_id, issue_id) do update set viewed_at = now()', [req.me.id, i.id])
+      await d.query('delete from issue_views where user_id = $1 and issue_id in (select issue_id from issue_views where user_id = $1 order by viewed_at desc offset 50)', [req.me.id])
+    })
+    reply.code(204).send()
+  })
+
   app.post('/issues/:key/restore', { schema: { tags: TAG, summary: 'Restore a soft-deleted issue (Undo)', params: keyP } }, async req => {
     requireWrite(req)
     return tx(async d => {
@@ -350,7 +378,11 @@ const plugin: FastifyPluginAsyncZod = async app => {
     return tx(async d => {
       const i = await issueByKey(d, req.me.workspaceId, req.params.key)
       const [c] = await d.query('insert into comments (id, issue_id, author_id, body) values (coalesce($4::uuid, uuid_v7()), $1, $2, $3) returning *', [i.id, req.me.id, b.body, b.id ?? null])
-      for (const u of await watchersOf(d, i)) await note(d, u, req.me, i.id, 'commented', 'commented on a work item')
+      // A mention tells that person; everyone already watching hears "commented" (not both); the commenter and the mentioned start watching
+      const mentioned = await mentionedIn(d, req.me.workspaceId, b.body, req.me.id)
+      for (const u of mentioned) await note(d, u, req.me, i.id, 'mentioned', 'mentioned you in a comment')
+      for (const u of (await watchersOf(d, i)).filter(w => !mentioned.includes(w))) await note(d, u, req.me, i.id, 'commented', 'commented on a work item')
+      for (const u of [req.me.id, ...mentioned]) await d.query('insert into issue_watchers (issue_id, user_id) values ($1, $2) on conflict do nothing', [i.id, u])
       await publish(d, i.projectId, { type: 'comment.created', key: i.key })
       return c
     })
