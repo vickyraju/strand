@@ -79,7 +79,7 @@ export default function YourWork({ onCreateProject }: { onCreateProject: () => v
         <Empty
           icon={<FolderPlus size={22} strokeWidth={1.5} />}
           title="Let’s set up your first project"
-          body="Projects hold your team’s work items, board, backlog and reports. Create one now, or load a sample workspace to explore everything Forge can do."
+          body={apiEnabled ? 'Projects hold your team’s work items, board, backlog and reports. Create one now.' : 'Projects hold your team’s work items, board, backlog and reports. Create one now, or load a sample workspace to explore everything Forge can do.'}
           action={<><button className="btn btn-primary" onClick={onCreateProject}><Plus size={15} />Create project</button><LoadSampleButton /></>}
         />
       </div>
