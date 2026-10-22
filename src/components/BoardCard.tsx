@@ -1,3 +1,4 @@
+import { useDraggable } from '@dnd-kit/core'
 import { MoreHorizontal, CalendarDays, Ban, UserCheck, Link2, Trash2, ArrowRight, Eye } from 'lucide-react'
 import { useStore, userOf, blockersOf, indexOf, transitionsFrom, type Issue, type Project, type CardField } from '../data/store'
 import { useApp } from '../appContext'
@@ -10,14 +11,26 @@ export function transitionLabel(project: Project, t: { name: string; to: string 
   return t.name === target ? `Move to ${target}` : `${t.name} → ${target}`
 }
 
-export default function BoardCard({ issue, project, fields, dragging, onDragStart, onDragEnd }: {
-  issue:        Issue
-  project:      Project
-  fields:       Record<CardField, boolean>
-  dragging?:    boolean
-  onDragStart?: () => void
-  onDragEnd?:   () => void
-}) {
+interface CardProps {
+  issue:     Issue
+  project:   Project
+  fields:    Record<CardField, boolean>
+  /** This is the card being dragged (its place on the board shows it faded). */
+  dragging?: boolean
+}
+
+/** A card on the board: click or press Enter to open it; drag it, or press Space and use the arrow keys, to move it. */
+export default function BoardCard(props: CardProps) {
+  const drag = useDraggable({ id: props.issue.id })
+  return <CardView {...props} drag={drag} />
+}
+
+/** The copy that follows the pointer while dragging: looks like the card, does nothing. */
+export function CardGhost(props: Omit<CardProps, 'dragging'>) {
+  return <CardView {...props} ghost />
+}
+
+function CardView({ issue, project, fields, dragging, ghost, drag }: CardProps & { ghost?: boolean; drag?: ReturnType<typeof useDraggable> }) {
   const { state, dispatch } = useStore()
   const { openIssue, toast } = useApp()
   const status   = project.statuses.find(s => s.id === issue.status)
@@ -47,14 +60,16 @@ export default function BoardCard({ issue, project, fields, dragging, onDragStar
 
   return (
     <div
-      className={`card${dragging ? ' dragging' : ''}${blocked && !done ? ' blocked' : ''}`}
-      draggable
-      data-card={issue.id}
-      onDragStart={e => { e.dataTransfer.setData('text/plain', issue.id); e.dataTransfer.effectAllowed = 'move'; onDragStart?.() }}
-      onDragEnd={onDragEnd}
-      onClick={() => openIssue(issue.id)}
-      onKeyDown={e => { if (e.key === 'Enter') openIssue(issue.id) }}
-      tabIndex={0}
+      ref={drag?.setNodeRef} {...drag?.attributes} {...drag?.listeners}
+      className={`card${dragging ? ' dragging' : ''}${ghost ? ' ghost' : ''}${blocked && !done ? ' blocked' : ''}`}
+      data-card={ghost ? undefined : issue.id}
+      onClick={ghost ? undefined : () => openIssue(issue.id)}
+      onKeyDown={ghost ? undefined : e => {
+        drag?.listeners?.onKeyDown?.(e)                                           // Space starts a keyboard drag
+        if (e.key === 'Enter' && e.target === e.currentTarget && !dragging) openIssue(issue.id)   // not when Enter was pressed on the menu button inside
+      }}
+      tabIndex={ghost ? -1 : 0}
+      aria-hidden={ghost || undefined}
       aria-label={`${issue.key}: ${issue.title}. ${status?.name}${assignee ? `, assigned to ${assignee.name}` : ''}`}
     >
       <div className="card-title">{issue.title}</div>
@@ -84,7 +99,7 @@ export default function BoardCard({ issue, project, fields, dragging, onDragStar
         <div style={{ flex: 1 }} />
         {fields.estimate && issue.estimate != null && <span className="points" title="Story points">{issue.estimate}</span>}
         {fields.priority && issue.priority !== 'none' && <PriorityIcon priority={issue.priority} />}
-        <span className="card-menu"><Menu title={`Actions for ${issue.key}`} className="icon-btn sm" trigger={<MoreHorizontal size={15} />} items={menu} /></span>
+        {!ghost && <span className="card-menu"><Menu title={`Actions for ${issue.key}`} className="icon-btn sm" trigger={<MoreHorizontal size={15} />} items={menu} /></span>}
         {fields.assignee && <Avatar user={assignee} size={24} />}
       </div>
     </div>
