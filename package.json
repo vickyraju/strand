@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "node --test \"src/**/*.test.ts\" \"scripts/**/*.test.mjs\"",
-    "diagrams": "node scripts/diagrams/gen-data-model.mjs && node scripts/diagrams/gen-aws.mjs"
+    "diagrams": "node scripts/diagrams/gen-data-model.mjs && node scripts/diagrams/gen-aws.mjs",
+    "check:deps": "node scripts/check-release-age.mjs"
   },
   "dependencies": {
     "@dagrejs/dagre": "^3.1.1",

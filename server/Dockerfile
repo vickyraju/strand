@@ -1,7 +1,7 @@
 FROM node:24-slim
 WORKDIR /app
 ENV NODE_ENV=production
-COPY package.json package-lock.json ./
+COPY package.json package-lock.json .npmrc ./
 RUN npm ci --omit=dev
 # Node 24 runs TypeScript directly (type stripping), so there is no build step
 COPY src ./src
