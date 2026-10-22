@@ -41,3 +41,12 @@ yarn-error.log*
 # playwright mcp debug output
 .playwright-mcp/
 .serena/
+
+# editor / tooling
+.claude/
+.vscode/
+.idea/
+
+# logs and local scratch
+*.log
+*.local

@@ -1,10 +1,17 @@
 import { createRemoteJWKSet, jwtVerify } from 'jose'
 import { timingSafeEqual } from 'node:crypto'
 import type { FastifyRequest } from 'fastify'
-import { tx } from './db.ts'
+import { createHash } from 'node:crypto'
+import { db, tx } from './db.ts'
 
 export type Role = 'owner' | 'admin' | 'member' | 'viewer'
-export interface Me { id: string; email: string; name: string; workspaceId: string; role: Role }
+/** `via` is how this request signed in: an Entra session (the web app) or a personal access token (scripts). */
+export interface Me { id: string; email: string; name: string; workspaceId: string; role: Role; via: 'entra' | 'pat' }
+
+// Personal access tokens look like jbp_<43 url-safe characters>. The prefix lets secret scanners recognise a leaked one.
+export const PAT_PREFIX = 'jbp_'
+export const PAT_FORMAT = /^jbp_[A-Za-z0-9_-]{43}$/
+export const hashToken = (token: string) => createHash('sha256').update(token).digest()   // tokens are 256-bit random: a fast hash is enough
 
 declare module 'fastify' { interface FastifyRequest { me: Me } }
 
@@ -62,6 +69,8 @@ async function identify(req: FastifyRequest): Promise<Identity> {
 /** Resolve the caller to a user + role, creating them (and the workspace, once) on first sight.
  *  ponytail: one upsert per request; add a short-lived cache keyed by oid if this shows up in profiles. */
 export async function authenticate(req: FastifyRequest) {
+  const bearer = /^Bearer (.+)$/i.exec(req.headers.authorization ?? '')?.[1]
+  if (bearer?.startsWith(PAT_PREFIX)) { req.me = await authenticateToken(bearer); return }
   const who = await identify(req)
   if (!who.email) throw new HttpError(401, 'Token has no email')
   req.me = await tx(async d => {
@@ -94,8 +103,27 @@ export async function authenticate(req: FastifyRequest) {
          else memberships.role end
        returning role`,
       [ws!.id, u!.id, want, who.admin])
-    return { id: u!.id, email: who.email, name: who.name, workspaceId: ws!.id, role: m!.role }
+    return { id: u!.id, email: who.email, name: who.name, workspaceId: ws!.id, role: m!.role, via: 'entra' as const }
   })
+}
+
+/** A personal access token acts as its owner, with the owner's current role. Expired, revoked (deleted) and
+ *  unknown tokens are all just "Invalid token"; a deactivated owner is refused like on an Entra login. */
+async function authenticateToken(token: string): Promise<Me> {
+  if (!PAT_FORMAT.test(token)) throw new HttpError(401, 'Invalid token')
+  const [t] = await db.query<{ id: string; lastUsedAt: string | null; userId: string; email: string; name: string; active: boolean; workspaceId: string; role: Role }>(
+    `select t.id, t.last_used_at, u.id as user_id, u.email, u.name, u.active, m.workspace_id, m.role
+       from personal_access_tokens t
+       join users u on u.id = t.user_id
+       join memberships m on m.user_id = u.id
+       join workspaces w on w.id = m.workspace_id
+      where t.token_hash = $1 and t.expires_at > now()
+      order by w.created_at limit 1`, [hashToken(token)])
+  if (!t) throw new HttpError(401, 'Invalid token')
+  if (!t.active) throw new HttpError(403, 'Account is deactivated')
+  // "last used" is written at most once a minute per token, so a busy script does not turn every call into a write
+  await db.query(`update personal_access_tokens set last_used_at = now() where id = $1 and (last_used_at is null or last_used_at < now() - interval '1 minute')`, [t.id])
+  return { id: t.userId, email: t.email, name: t.name, workspaceId: t.workspaceId, role: t.role, via: 'pat' }
 }
 
 export const canWrite = (r: Role) => r !== 'viewer'
@@ -103,6 +131,10 @@ export const isAdmin = (r: Role) => r === 'owner' || r === 'admin'
 
 export function requireWrite(req: FastifyRequest) {
   if (!canWrite(req.me.role)) throw new HttpError(403, 'Read-only access')
+}
+/** Managing tokens needs a real sign-in: a token (possibly leaked) must not be able to mint more of itself. */
+export function requireSignIn(req: FastifyRequest) {
+  if (req.me.via !== 'entra') throw new HttpError(403, 'Sign in with your account to manage access tokens')
 }
 export function requireAdmin(req: FastifyRequest) {
   if (!isAdmin(req.me.role)) throw new HttpError(403, 'Admin only')
