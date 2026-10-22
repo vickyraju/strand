@@ -29,7 +29,7 @@ export const TAB_LABEL: Record<ProjectTab, string> = {
 
 // ── Shared bits ────────────────────────────────────────────
 
-export function ProjectIcon({ project, size = 16 }: { project: Project; size?: number }) {
+export function ProjectIcon({ project, size = 16 }: { project: Pick<Project, 'name' | 'color'>; size?: number }) {
   return (
     <span className="proj-icon" style={{ background: project.color, width: size, height: size, fontSize: size * 0.5, borderRadius: Math.max(3, size / 5) }} aria-hidden>
       {project.name[0]?.toUpperCase()}

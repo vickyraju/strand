@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mapProject, mapWorkspace, mapSprint, mapIssue, mapIssueDetail } from './map.ts'
+import { mapProject, mapWorkspace, mapSprint, mapIssue, mapIssueDetail, notificationReason } from './map.ts'
 import { DEFAULT_BOARD_PREFS } from '../data/reducer.ts'
 
 const apiProject = {
@@ -105,4 +105,12 @@ test('views, dashboards and notifications map for the workspace load', () => {
   assert.deepEqual([s.views[0]!.shared, s.views[0]!.filters.q], [false, 'x'])
   assert.deepEqual(s.dashboards[0]!.gadgets, [])
   assert.deepEqual([s.notifications[0]!.actorId, s.notifications[0]!.createdAt], ['', Date.parse('2026-10-01T00:00:00.000Z')])
+})
+
+test('a notification reads as one sentence: phrases get the person (or the item) in front, whole sentences are left alone', () => {
+  assert.equal(notificationReason('commented on a work item', 'Maya Chen'), 'Maya Chen commented on a work item')
+  assert.equal(notificationReason('Maya Chen mentioned you on PAY-3', 'Maya Chen'), 'Maya Chen mentioned you on PAY-3')   // browser-only store: already a sentence
+  assert.equal(notificationReason('is due on 2026-10-25', undefined, 'PAY-12'), 'PAY-12 is due on 2026-10-25')               // nobody caused it: say which item
+  assert.equal(notificationReason('PAY-12 is due on 2026-10-25', undefined, 'PAY-12'), 'PAY-12 is due on 2026-10-25')
+  assert.equal(notificationReason('did something', undefined), 'did something')
 })

@@ -42,7 +42,9 @@ export async function loadWorkspace(keep: string[] = []): Promise<State> {
     api<any[]>('GET', '/api/dashboards'),
     api<any[]>('GET', '/api/notifications'),
   ])
-  const keys = keysToLoad(starredPage.items.map(p => p.key), readRecent(), keep)
+  let keys = keysToLoad(starredPage.items.map(p => p.key), readRecent(), keep)
+  // Nothing starred or opened yet (a new teammate, a new browser): start from where work is happening, not from an empty app
+  if (!keys.length) keys = (await api<{ key: string }[]>('GET', '/api/me/projects/recent').catch(() => [])).map(p => p.key)
   const loaded = await mapLimit(keys, 6, async k => { try { return await fetchProject(k) } catch { return null } })   // a project that is gone or hidden is skipped
   const ok = loaded.filter((x): x is NonNullable<typeof x> => !!x)
   const state = mapWorkspace(me, users, [], starredPage.items.map(p => p.id), { views, dashboards, notifications })

@@ -11,7 +11,7 @@ const url = process.env.DATABASE_URL
 const skip = !url && 'DATABASE_URL not set'
 const TENANT = '11111111-1111-4111-8111-111111111111', CLIENT = '22222222-2222-4222-8222-222222222222'
 Object.assign(process.env, {
-  SCIM_TOKEN: 'scim-secret', NODE_ENV: 'test', GITHUB_WEBHOOK_SECRET: 'whsec-test', DOCS_ENABLED: '1',
+  SCIM_TOKEN: 'scim-secret', NODE_ENV: 'test', GITHUB_WEBHOOK_SECRET: 'whsec-test', DOCS_ENABLED: '1', DUE_SCAN_INTERVAL_MS: '0',
   CORS_ORIGINS: 'https://app.example.com/, https://admin.example.com', ENTRA_TENANT_ID: TENANT, ENTRA_CLIENT_ID: CLIENT,
 })
 
@@ -780,4 +780,154 @@ test('statuses carry a description: empty by default, set on create, changed by 
   assert.ok(tooLong.body.errors.description)
   assert.equal((await call('PATCH', `/api/v1/projects/DSC/statuses/${made.body.id}`, { description: 'x'.repeat(500) })).status, 200)
   assert.equal((await call('PATCH', `/api/v1/projects/DSC/statuses/${made.body.id}`, { description: '' })).body.description, '')     // can be cleared
+})
+
+// ── Notifications: mentions and due dates ──
+const inbox = async (who: string, query = '') => (await call('GET', `/api/v1/notifications${query}`, undefined, who)).body as { kind: string; text: string; issueKey: string; actorId: string | null }[]
+
+test('mentions: @Full Name notifies that person (not twice), watchers hear "commented", and mentioned people start watching', { skip }, async () => {
+  const [ann, bob, cy] = ['mention.ann', 'mention.bob', 'mention.cy']
+  for (const n of [ann, bob, cy]) await call('GET', '/api/v1/me', undefined, `${n}@x.com`)
+  await call('POST', '/api/v1/projects', { name: 'Mentions', key: 'MEN', template: 'kanban' })
+  const issue = (await call('POST', '/api/v1/projects/MEN/issues', { title: 'talk', assigneeId: (await call('GET', '/api/v1/me', undefined, `${cy}@x.com`)).body.id })).body
+  const c1 = await call('POST', '/api/v1/issues/MEN-1/comments', { body: `Thanks @${bob}, can you look?` }, `${ann}@x.com`)
+  assert.equal(c1.status, 201)
+  assert.deepEqual((await inbox(`${bob}@x.com`)).filter(n => n.issueKey === 'MEN-1').map(n => n.kind), ['mentioned'])
+  assert.deepEqual((await inbox(`${cy}@x.com`)).filter(n => n.issueKey === 'MEN-1' && n.kind !== 'assigned').map(n => n.kind), ['commented'])   // the assignee watches, was not mentioned
+  assert.deepEqual((await inbox(`${ann}@x.com`)).filter(n => n.issueKey === 'MEN-1'), [])                                                       // never notified about their own comment
+  // the commenter and the mentioned person now watch: a later comment by someone else reaches them as "commented"
+  await call('POST', '/api/v1/issues/MEN-1/comments', { body: 'a later comment' }, `${cy}@x.com`)
+  assert.ok((await inbox(`${bob}@x.com`)).some(n => n.issueKey === 'MEN-1' && n.kind === 'commented'))
+  assert.ok((await inbox(`${ann}@x.com`)).some(n => n.issueKey === 'MEN-1' && n.kind === 'commented'))
+  // a person mentioned AND already watching gets "mentioned" only
+  await call('POST', '/api/v1/issues/MEN-1/comments', { body: `@${bob} again` }, `${cy}@x.com`)
+  const bobNow = (await inbox(`${bob}@x.com`)).filter(n => n.issueKey === 'MEN-1')
+  assert.deepEqual(bobNow.map(n => n.kind).sort(), ['commented', 'mentioned', 'mentioned'])
+  assert.ok(issue.id)
+})
+
+test('mentions: whole names only, odd characters are safe, self-mentions and deactivated accounts are ignored', { skip }, async () => {
+  const mk = async (name: string, email: string) => {
+    const me = (await call('GET', '/api/v1/me', undefined, email)).body
+    await pool.query('update users set name = $2 where id = $1', [me.id, name]); return me.id as string
+  }
+  const ann = await mk('Mention Ann', 'edge.ann@x.com'), anna = await mk('Mention Anna', 'edge.anna@x.com')
+  const odd = await mk('J. O\'Neil (QA)', 'edge.odd@x.com'), gone = await mk('Mention Gone', 'edge.gone@x.com')
+  await pool.query('update users set active = false where id = $1', [gone])
+  const author = 'edge.author@x.com'
+  await call('GET', '/api/v1/me', undefined, author)
+  await call('POST', '/api/v1/projects', { name: 'Edge', key: 'EDG', template: 'kanban' })
+  await call('POST', '/api/v1/projects/EDG/issues', { title: 'edge' })
+  const kinds = async (email: string) => (await inbox(email)).filter(n => n.issueKey === 'EDG-1').map(n => n.kind)
+  await call('POST', '/api/v1/issues/EDG-1/comments', { body: 'Hello @Mention Anna and @J. O\'Neil (QA) and @Mention Gone' }, author)
+  assert.deepEqual(await kinds('edge.anna@x.com'), ['mentioned'])
+  assert.deepEqual(await kinds('edge.ann@x.com'), [])                    // "@Mention Anna" is not a mention of "Mention Ann"
+  assert.deepEqual(await kinds('edge.odd@x.com'), ['mentioned'])         // regex characters in a name are just characters
+  assert.equal((await pool.query('select count(*)::int as n from notifications where user_id = $1', [gone])).rows[0].n, 0)   // deactivated: nobody to notify
+  await call('POST', '/api/v1/issues/EDG-1/comments', { body: 'Ping @Mention Ann, welcome.' }, author)
+  assert.deepEqual(await kinds('edge.ann@x.com'), ['mentioned'])         // punctuation after the name still counts
+  await call('POST', '/api/v1/issues/EDG-1/comments', { body: 'I am @Edge Author' }, author)   // no such person, and no crash
+  assert.ok(ann && anna && odd)
+})
+
+test('due soon: open items assigned to me that are due tomorrow or sooner (3 days late at most) notify me once per due date', { skip }, async () => {
+  const who = 'due.dan@x.com'
+  const me = (await call('GET', '/api/v1/me', undefined, who)).body
+  await call('POST', '/api/v1/projects', { name: 'Due dates', key: 'DUE', template: 'kanban' })
+  const day = (n: number) => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10)
+  const mk = async (title: string, dueDate: string | undefined, extra: object = {}) =>
+    (await call('POST', '/api/v1/projects/DUE/issues', { title, assigneeId: me.id, ...(dueDate ? { dueDate } : {}), ...extra })).body
+  const tomorrow = await mk('tomorrow', day(1)), today = await mk('today', day(0)), late = await mk('late', day(-3))
+  await mk('far', day(2)); await mk('way late', day(-5)); await mk('no date', undefined)
+  const done = (await call('GET', '/api/v1/projects/DUE')).body.statuses.find((s: any) => s.category === 'done')
+  await mk('finished', day(0), { statusId: done.id })
+  await call('POST', '/api/v1/projects/DUE/issues', { title: 'someone else', dueDate: day(0) })        // not assigned to me
+  const due = async () => (await inbox(who)).filter(n => n.kind === 'due').map(n => n.issueKey).sort()
+  assert.deepEqual(await due(), [tomorrow.key, today.key, late.key].sort())
+  assert.match((await inbox(who)).find(n => n.kind === 'due')!.text, /^is due on \d{4}-\d\d-\d\d$/)
+  assert.deepEqual(await due(), [tomorrow.key, today.key, late.key].sort())                            // loading again adds nothing
+  await call('PATCH', `/api/v1/issues/${today.key}`, { dueDate: day(1) })                               // a new due date is news again
+  assert.equal((await due()).filter(k => k === today.key).length, 2)
+  assert.equal((await inbox('due.other@x.com')).filter(n => n.kind === 'due').length, 0)
+})
+
+// ── Your work: summary, recent projects, viewed ──
+test('your work summary counts open assigned items past the first page: due soon, late, blocked by unfinished work; epics and finished items are left out', { skip }, async () => {
+  const who = 'yw.sam@x.com'
+  const me = (await call('GET', '/api/v1/me', undefined, who)).body
+  const p = (await call('POST', '/api/v1/projects', { name: 'Your work', key: 'YWK', template: 'kanban' })).body
+  const done = p.statuses.find((s: any) => s.category === 'done').id
+  const day = (n: number) => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10)
+  const mk = async (title: string, extra: object = {}) => (await call('POST', '/api/v1/projects/YWK/issues', { title, assigneeId: me.id, ...extra })).body
+  const soon = await mk('soon', { dueDate: day(2) }), late = await mk('late', { dueDate: day(-2) }), later = await mk('later', { dueDate: day(10) })
+  await mk('no date'); await mk('epic', { type: 'epic', dueDate: day(0) }); await mk('finished', { statusId: done, dueDate: day(-9) })
+  const blocker = (await call('POST', '/api/v1/projects/YWK/issues', { title: 'blocker' })).body                    // assigned to nobody
+  await call('POST', `/api/v1/issues/${blocker.key}/links`, { type: 'blocks', targetKey: soon.key })
+  await call('POST', `/api/v1/issues/${blocker.key}/links`, { type: 'relates', targetKey: later.key })               // a plain relation does not block
+  const sum = async () => (await call('GET', '/api/v1/me/work/summary', undefined, who)).body
+  assert.deepEqual(await sum(), { assigned: 4, dueSoon: 2, overdue: 1, blocked: 1 })                                     // soon+late are due within 3 days; late is also overdue
+  await call('PATCH', `/api/v1/issues/${blocker.key}`, { statusId: done })
+  assert.equal((await sum()).blocked, 0)                                                                                // once the blocker is done, nothing is blocked
+  assert.deepEqual(await (async () => (await call('GET', '/api/v1/me/work/summary', undefined, 'yw.nobody@x.com')).body)(), { assigned: 0, dueSoon: 0, overdue: 0, blocked: 0 })
+  assert.ok(late.key)
+})
+
+test('recent projects: the 4 most recently active, with my open items, done items and totals (epics left out)', { skip }, async () => {
+  const who = 'yw.pat@x.com'
+  const me = (await call('GET', '/api/v1/me', undefined, who)).body
+  for (const [i, key] of ['RPA', 'RPB', 'RPC', 'RPD', 'RPE'].entries()) {
+    const p = (await call('POST', '/api/v1/projects', { name: `Recent ${key}`, key, template: 'kanban' })).body
+    const done = p.statuses.find((s: any) => s.category === 'done').id
+    await call('POST', `/api/v1/projects/${key}/issues`, { title: 'mine', assigneeId: me.id })
+    await call('POST', `/api/v1/projects/${key}/issues`, { title: 'done one', statusId: done })
+    await call('POST', `/api/v1/projects/${key}/issues`, { title: 'an epic', type: 'epic' })
+    await pool.query(`update issues set updated_at = now() - ($2 || ' minutes')::interval where project_id = (select id from projects where key = $1)`, [key, String((5 - i) * 10)])
+  }
+  await pool.query(`update issues set updated_at = now() - interval '9 days' where project_id in (select id from projects where key not like 'RP_')`)    // other tests' projects are older than these
+  await pool.query(`update projects set created_at = now() - interval '9 days' where key not like 'RP_'`)
+  const rows = (await call('GET', '/api/v1/me/projects/recent', undefined, who)).body
+  assert.equal(rows.length, 4)
+  assert.deepEqual(rows.map((r: any) => r.key).slice(0, 4), ['RPE', 'RPD', 'RPC', 'RPB'])                               // newest activity first; the oldest project is cut
+  assert.deepEqual([rows[0].myOpen, rows[0].done, rows[0].total], [1, 1, 2])                                           // the epic is not counted
+  const other = (await call('GET', '/api/v1/me/projects/recent', undefined, 'yw.other@x.com')).body.find((r: any) => r.key === 'RPE')
+  assert.deepEqual([other.myOpen, other.done, other.total], [0, 1, 2])                                                 // "my" open items are mine, not everyone's
+})
+
+test('viewed: opening an item records it, newest first, once each, 50 at most, private to the person', { skip }, async () => {
+  const who = 'yw.vic@x.com'
+  await call('GET', '/api/v1/me', undefined, who)
+  await call('POST', '/api/v1/projects', { name: 'Viewed', key: 'VWD', template: 'kanban' })
+  for (let n = 1; n <= 52; n++) await call('POST', '/api/v1/projects/VWD/issues', { title: `item ${n}` })
+  const view = (n: number, as = who) => call('POST', `/api/v1/issues/VWD-${n}/view`, undefined, as)
+  assert.equal((await view(1)).status, 204)
+  for (let n = 2; n <= 52; n++) await view(n)
+  let list = (await call('GET', '/api/v1/me/viewed', undefined, who)).body
+  assert.equal(list.length, 50)
+  assert.deepEqual([list[0].key, list.at(-1).key], ['VWD-52', 'VWD-3'])                                             // 1 and 2 fell off the end
+  await view(10)                                                                                                    // opening it again moves it to the top, not twice
+  list = (await call('GET', '/api/v1/me/viewed', undefined, who)).body
+  assert.deepEqual([list[0].key, list.length, list.filter((i: any) => i.key === 'VWD-10').length], ['VWD-10', 50, 1])
+  assert.deepEqual((await call('GET', '/api/v1/me/viewed', undefined, 'yw.nobody2@x.com')).body, [])                // nobody else sees my list
+  assert.equal((await call('POST', '/api/v1/issues/NOPE-1/view', undefined, who)).status, 404)
+  await call('DELETE', '/api/v1/issues/VWD-52')
+  assert.ok(!(await call('GET', '/api/v1/me/viewed', undefined, who)).body.some((i: any) => i.key === 'VWD-52'))     // a deleted item disappears from the list
+})
+
+// ── Labels ──
+test('labels: every label used in the workspace is listed, from any way an item gets one, narrowed by what you type', { skip }, async () => {
+  const who = 'lab.lee@x.com'
+  const labels = async (q = '') => (await call('GET', `/api/v1/labels${q}`, undefined, who)).body as string[]
+  await call('POST', '/api/v1/projects', { name: 'Labelled', key: 'LAB', template: 'kanban' })
+  await call('POST', '/api/v1/projects/LAB/issues', { title: 'one', labels: ['Backend', 'urgent-fix'] }, who)       // on create
+  await call('POST', '/api/v1/projects/LAB/issues', { title: 'two' })
+  await call('PATCH', '/api/v1/issues/LAB-2', { labels: ['frontend'] })                                              // by edit
+  await call('POST', '/api/v1/issues/bulk/edit', { issues: ['LAB-1', 'LAB-2'], patch: { labels: ['bulk-label'] } })    // in bulk
+  const all = await labels()
+  for (const l of ['Backend', 'urgent-fix', 'frontend', 'bulk-label']) assert.ok(all.includes(l), `${l} is missing`)
+  assert.deepEqual(await labels('?query=END'), ['Backend', 'frontend'])                                              // anywhere in the name, any case
+  assert.deepEqual(await labels('?query=' + encodeURIComponent('%')), [])                                            // % is a character, not a wildcard
+  assert.deepEqual((await labels('?limit=2')).length, 2)
+  assert.deepEqual([...all].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase())), all)                     // alphabetical
+  await call('DELETE', '/api/v1/issues/LAB-2')
+  assert.ok((await labels()).includes('frontend'))                                                                   // a label stays offered after its items go (as in Jira)
 })
