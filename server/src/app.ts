@@ -15,6 +15,7 @@ import files from './routes/files.ts'
 import imports from './routes/import.ts'
 import scim from './routes/scim.ts'
 import development from './routes/development.ts'
+import tokens from './routes/tokens.ts'
 import { githubWebhook } from './routes/github.ts'
 
 export async function build() {
@@ -53,7 +54,7 @@ export async function build() {
       info: { title: 'Strand API', version: '1.0.0', description: 'Work management: projects, issues, sprints, releases, automation.' },
       components: {
         securitySchemes: {
-          bearer: { type: 'http', scheme: 'bearer', bearerFormat: 'Entra ID JWT' },
+          bearer: { type: 'http', scheme: 'bearer', bearerFormat: 'Entra ID JWT or personal access token (jbp_…)', description: 'Scripts and integrations: a personal access token created under Settings > Personal access tokens. The web app uses the signed-in user\'s Entra ID access token.' },
           devSecret: { type: 'apiKey', in: 'header', name: 'x-dev-secret', description: 'Dev login only (AUTH_DEV); pair with x-dev-user' },
           scimToken: { type: 'http', scheme: 'bearer', description: 'Shared SCIM_TOKEN (Entra provisioning only)' },
           devUser: { type: 'apiKey', in: 'header', name: 'x-dev-user', description: 'Dev login only: your email' },
@@ -96,6 +97,7 @@ export async function build() {
     await api.register(misc)
     await api.register(files)
     await api.register(development)
+    await api.register(tokens)
     await api.register(imports)
   }
   await app.register(resources, { prefix: '/api/v1' })

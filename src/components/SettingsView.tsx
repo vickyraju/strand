@@ -5,8 +5,10 @@ import { useStore, migrate, type User } from '../data/store'
 import { useApp } from '../appContext'
 import { Avatar, Modal, plural } from './ui'
 import { LoadSampleButton } from './ProjectView'
+import AccessTokens from './AccessTokens'
+import { apiEnabled } from '../api/client'
 
-const SECTIONS = [['profile', 'Profile'], ['appearance', 'Appearance'], ['people', 'People'], ['workspace', 'Workspace'], ['data', 'Data']] as const
+const SECTIONS = [['profile', 'Profile'], ...(apiEnabled ? [['tokens', 'Access tokens']] : []), ['appearance', 'Appearance'], ['people', 'People'], ['workspace', 'Workspace'], ['data', 'Data']] as const
 
 export default function SettingsView() {
   const { state, dispatch } = useStore()
@@ -64,6 +66,8 @@ export default function SettingsView() {
               </div>
             </div>
           </section>
+
+          {apiEnabled && <AccessTokens />}
 
           <section className="panel" id="appearance">
             <h2 className="panel-title">Appearance</h2>

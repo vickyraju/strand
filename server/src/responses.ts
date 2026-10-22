@@ -11,6 +11,9 @@ const nullable = <T extends z.ZodType>(t: T) => t.nullable()
 export const User = z.object({ id, name: z.string(), initials: z.string(), color: z.string(), title: nullable(z.string()), email: z.string(), role: z.string() })
 export const Me = z.object({ id, email: z.string(), name: z.string(), workspaceId: id, role: z.enum(['owner', 'admin', 'member', 'viewer']) })
 
+export const AccessToken = z.object({ id, name: z.string(), hint: z.string().describe('Last 4 characters of the token'), createdAt: ts, expiresAt: ts, lastUsedAt: nullable(ts), expired: z.boolean() })
+export const AccessTokenCreated = AccessToken.extend({ token: z.string().describe('The secret. Shown only in this response') })
+
 export const Status = z.object({ id, projectId: id, name: z.string(), color: z.string(), category: z.enum(['todo', 'in-progress', 'done']), wipLimit: nullable(z.number()), position: z.number() })
 export const Transition = z.object({ id, projectId: id, name: z.string(), fromIds: nullable(z.array(id)), toId: id })
 export const Field = z.object({ id, projectId: id, name: z.string(), kind: z.enum(['text', 'number', 'select', 'date']), options: nullable(z.array(z.string())), position: z.number() })
@@ -98,12 +101,14 @@ const kindRow = { statuses: Status, transitions: Transition, fields: Field, temp
 /** Routes that create something answer 201 Created (Jira and REST convention), not 200. */
 export const CREATED = new Set([
   'POST /projects', 'POST /projects/:key/issues', 'POST /issues/:key/comments', 'POST /issues/:key/worklogs', 'POST /projects/:key/sprints',
-  'POST /views', 'POST /dashboards', 'POST /issues/:key/attachments',
+  'POST /views', 'POST /dashboards', 'POST /issues/:key/attachments', 'POST /me/tokens',
   ...['statuses', 'transitions', 'fields', 'templates', 'rules', 'releases'].map(k => `POST /projects/:key/${k}`),
 ])
 
 export const RESPONSES: Record<string, z.ZodType> = {
   'GET /me': Me,
+  'GET /me/tokens': z.array(AccessToken),
+  'POST /me/tokens': AccessTokenCreated,
   'GET /users': z.array(User),
   'GET /users/search': UserPage,
   'GET /projects/search': ProjectPage,
