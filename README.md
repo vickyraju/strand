@@ -1,33 +1,57 @@
-# Forge
+# jira-build
 
-A work management app in the spirit of Jira and Linear: projects, boards, backlogs and sprints, a list view, timeline and calendar, an inbox, a workflow builder, automation rules and reports.
+Work management: projects, boards, backlogs and sprints, issues, timeline, inbox, workflows, automation and reports.
 
-It is a frontend-only build. All data lives in the browser (`localStorage`); there is no backend or sign-in yet.
+- **Web app** (`src/`): React 19 + Vite, served as static files from S3 behind CloudFront.
+- **API** (`server/`): Fastify 5 on Node 24, runs on Amazon EKS. REST under `/api/v1`, live updates over server-sent events.
+- **Database**: Amazon Aurora PostgreSQL through RDS Proxy. Schema in `server/migrations/`.
+- **Sign-in**: Microsoft Entra ID (OIDC, PKCE). Users are provisioned over SCIM at `/scim/v2`.
+- **Files**: S3, uploaded and downloaded by the browser with presigned URLs.
+- Architecture and data model diagrams (draw.io): `docs/architecture/`.
 
-**Live:** https://strand-one.vercel.app
+## Configuration
 
-## Run it
+Settings are listed, with comments, in `server/.env.example` (API) and `.env.example` (web build).
+
+Entra ID needs two app registrations:
+
+| Registration | Settings |
+|---|---|
+| API | Expose an API with the scope `access_as_user`; app role `Strand.Admin` for administrators. Its client id is `ENTRA_CLIENT_ID` on the API. |
+| Web app | Single-page application, redirect URI `https://<site>/`, API permission on `access_as_user`. Its client id is `VITE_ENTRA_CLIENT_ID` in the web build. |
+
+## Deploy
+
+**Database.** Run `node scripts/migrate.ts` from `server/` (the image contains it) against the Aurora writer endpoint. It applies each migration once and is safe to repeat. `deploy/k8s/migrate-job.yaml` runs it as a Kubernetes Job.
+
+**API.** `server/Dockerfile` builds the image (non-root, trusts the RDS CA bundle). `deploy/k8s/jira-build.yaml` is the Deployment, Service, autoscaler, disruption budget and ALB Ingress. It expects:
+
+- a Secret `jira-build-api` with `DATABASE_URL` (RDS Proxy), `DATABASE_DIRECT_URL` (Aurora writer), `SCIM_TOKEN`, `GITHUB_WEBHOOK_SECRET`;
+- an image pull secret `artifactory-pull` for the registry that holds the image;
+- these variables when applying: `IMAGE`, `API_ROLE_ARN` (IAM role for the service account, S3 access only), `ENTRA_TENANT_ID`, `ENTRA_API_CLIENT_ID`, `ATTACHMENTS_BUCKET`, `AWS_REGION`, `ALB_SECURITY_GROUP_ID`, `ALB_CERTIFICATE_ARN`; the migration Job also needs `BUILD_TAG_SAFE` (a unique suffix).
 
 ```bash
-npm install
-npm run dev     # http://localhost:5173
-npm test        # data layer and report tests (node --test)
-npm run build   # type-check and production build into dist/
+envsubst < deploy/k8s/migrate-job.yaml | kubectl apply -f - && kubectl -n jira-build wait --for=condition=complete job --all --timeout=300s
+envsubst < deploy/k8s/jira-build.yaml  | kubectl apply -f - && kubectl -n jira-build rollout status deployment/jira-build-api
 ```
 
-On first run, enter your name, then use **Load a sample workspace** to explore with realistic data. Settings lets you remove the sample, add people, export/import the workspace and switch to dark mode.
+**Web app.** Build with `VITE_API_URL` (the CloudFront address), `VITE_ENTRA_TENANT_ID` and `VITE_ENTRA_CLIENT_ID` set, then copy `dist/` to the web bucket:
 
-## How it is put together
+```bash
+npm ci && npm run build
+aws s3 sync dist s3://<web-bucket> --delete --exclude index.html --cache-control "public,max-age=31536000,immutable"
+aws s3 cp dist/index.html s3://<web-bucket>/index.html --cache-control no-cache
+```
 
-- **Stack:** Vite, React 19, TypeScript, plain CSS with design tokens (`src/index.css`), `lucide-react` icons. No router or chart library: both are small and in `src/router.ts` and `src/components/charts.tsx`.
-- **Data:** `src/data/reducer.ts` holds every type, action and rule of the domain as pure functions (workflow transitions, notifications, sprints, ranking, automation, migrations). `src/data/store.tsx` wraps it in React and persists it. Reports are computed from the activity history in `src/data/analytics.ts`.
-- **Screens:** one component per screen in `src/components/` (e.g. `BoardView`, `BacklogView`, `IssueTable`, `WorkItemDetail`, `InboxView`, `WorkflowBuilder`, `AutomationView`, `TimelineView`, `ReportsView`).
-- **Sample data:** `src/data/sample.ts` generates a deterministic team, projects, sprint history and activity.
+**CloudFront** serves the bucket and forwards `/api/*`, `/scim/*` and `/integrations/*` to the ALB (all methods, no caching, `Authorization` header forwarded, origin timeout raised for live updates). Return `/index.html` for 403/404 so deep links work. With one domain for the app and the API, no CORS setup is needed.
 
-## Multi-user without a backend
+## Develop and test
 
-Add teammates in Settings, then use **Act as** in the account menu to work as them. Assignments, @mentions, comments and status changes notify the right people in their Inbox.
+```bash
+npm ci && npm test && npm run typecheck && npm run build     # web app
+cd server && npm ci && npm run typecheck                      # API
+DATABASE_URL=postgres://user@host/db npm test                 # API tests: need an empty throwaway PostgreSQL database
+npm run openapi                                               # regenerate server/openapi.json after changing routes
+```
 
-## Deploying
-
-Vercel serves the static build; `vercel.json` rewrites every path to `index.html` so deep links work.
+The API tests sign in with tokens from a local stand-in for Entra, so they need no tenant. `npm run diagrams` regenerates the draw.io files from the migrations.

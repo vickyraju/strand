@@ -1,5 +1,4 @@
 -- Archive projects (hide without deleting) and make name/e-mail search fast on large workspaces.
--- Plain Postgres, no Supabase-specific objects.
 
 alter table projects add column archived_at timestamptz;
 create index on projects (workspace_id, lower(name), id) where archived_at is null;     -- default project list, name order

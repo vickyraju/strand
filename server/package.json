@@ -1,5 +1,5 @@
 {
-  "name": "strand-server",
+  "name": "jira-build-server",
   "private": true,
   "type": "module",
   "scripts": {
@@ -8,7 +8,8 @@
     "test": "node --test test/*.test.ts",
     "typecheck": "tsc --noEmit",
     "openapi": "node scripts/openapi.ts",
-    "smoke": "node --env-file-if-exists=.env scripts/smoke.ts"
+    "smoke": "node --env-file-if-exists=.env scripts/smoke.ts",
+    "migrate": "node --env-file-if-exists=.env scripts/migrate.ts"
   },
   "engines": {
     "node": ">=24"

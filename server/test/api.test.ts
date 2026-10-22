@@ -1,31 +1,53 @@
 import { test, before, after } from 'node:test'
 import assert from 'node:assert/strict'
 import { readdirSync, readFileSync } from 'node:fs'
+import { createServer, type Server } from 'node:http'
 import pg from 'pg'
-import { createHmac } from 'node:crypto'
+import { createHash, createHmac } from 'node:crypto'
+import { SignJWT, exportJWK, generateKeyPair, type CryptoKey } from 'jose'
 
 // Needs a throwaway Postgres: DATABASE_URL=postgres://… npm test  (skipped otherwise)
 const url = process.env.DATABASE_URL
 const skip = !url && 'DATABASE_URL not set'
-Object.assign(process.env, { AUTH_DEV: '1', SCIM_TOKEN: 'scim-secret', NODE_ENV: 'test', GITHUB_WEBHOOK_SECRET: 'whsec-test', CORS_ORIGINS: 'https://strand-one.vercel.app/, http://localhost:5173' })
+const TENANT = '11111111-1111-4111-8111-111111111111', CLIENT = '22222222-2222-4222-8222-222222222222'
+Object.assign(process.env, {
+  SCIM_TOKEN: 'scim-secret', NODE_ENV: 'test', GITHUB_WEBHOOK_SECRET: 'whsec-test', DOCS_ENABLED: '1',
+  CORS_ORIGINS: 'https://app.example.com/, https://admin.example.com', ENTRA_TENANT_ID: TENANT, ENTRA_CLIENT_ID: CLIENT,
+})
 
 let app: Awaited<ReturnType<typeof import('../src/app.ts').build>>
 let pool: pg.Pool
 
+// A stand-in for Entra: a local server publishes the signing key, and tests mint tokens the way Entra would.
+let signingKey: CryptoKey, jwksServer: Server, authority: string
+const uuidOf = (s: string) => { const h = createHash('sha1').update(s).digest('hex'); return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-8${h.slice(17, 20)}-${h.slice(20, 32)}` }
+const tokenFor = (email: string, o: { roles?: string[]; aud?: string; iss?: string; exp?: string; key?: CryptoKey; oid?: string | null } = {}) =>
+  new SignJWT({ ...(o.oid === null ? {} : { oid: o.oid ?? uuidOf(email) }), preferred_username: email, name: email.split('@')[0], roles: o.roles ?? [] })
+    .setProtectedHeader({ alg: 'RS256', kid: 'test' }).setIssuer(o.iss ?? `${authority}/${TENANT}/v2.0`).setAudience(o.aud ?? CLIENT)
+    .setIssuedAt().setExpirationTime(o.exp ?? '1h').sign(o.key ?? signingKey)
+const bearer = async (email: string, o?: Parameters<typeof tokenFor>[1]) => ({ authorization: `Bearer ${await tokenFor(email, o)}` })
+
 const call = async (method: string, path: string, body?: unknown, who = 'owner@x.com', headers: Record<string, string> = {}) => {
-  const r = await app.inject({ method: method as any, url: path, payload: body as any, headers: { 'x-dev-user': who, ...headers } })
+  const r = await app.inject({ method: method as any, url: path, payload: body as any, headers: { ...(await bearer(who)), ...headers } })
   return { status: r.statusCode, body: r.body ? JSON.parse(r.body) : null }
 }
 
 before(async () => {
   if (skip) return
+  const pair = await generateKeyPair('RS256')
+  signingKey = pair.privateKey
+  const jwk = { ...(await exportJWK(pair.publicKey)), kid: 'test', alg: 'RS256', use: 'sig' }
+  jwksServer = createServer((_req, res) => { res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ keys: [jwk] })) })
+  await new Promise<void>(r => jwksServer.listen(0, '127.0.0.1', r))
+  authority = `http://127.0.0.1:${(jwksServer.address() as { port: number }).port}`
+  process.env.ENTRA_AUTHORITY = authority
   pool = new pg.Pool({ connectionString: url })
   await pool.query('drop schema public cascade; create schema public')
-  const dir = new URL('../../supabase/migrations/', import.meta.url)
+  const dir = new URL('../migrations/', import.meta.url)
   for (const f of readdirSync(dir).sort()) await pool.query(readFileSync(new URL(f, dir), 'utf8'))
   app = await (await import('../src/app.ts')).build()
 })
-after(async () => { if (skip) return; await app.close(); await pool.end() })
+after(async () => { if (skip) return; await app.close(); await pool.end(); jwksServer.close() })
 
 test('project → issue lifecycle with workflow, versions and undo', { skip }, async () => {
   const p = await call('POST', '/api/v1/projects', { name: 'Payments', key: 'PAY', template: 'kanban' })
@@ -156,13 +178,13 @@ test('import: moves a reducer v4 state in with ids remapped', { skip }, async ()
 test('OpenAPI: project routes are documented and the schemas are enforced', { skip }, async () => {
   const spec = JSON.parse((await app.inject({ method: 'GET', url: '/docs/json' })).body)
   assert.equal(spec.info.title, 'Strand API')
-  assert.ok(spec.components.securitySchemes.bearer && spec.components.securitySchemes.devSecret)
+  assert.deepEqual(Object.keys(spec.components.securitySchemes).sort(), ['bearer', 'scimToken'])
   const post = spec.paths['/api/v1/projects/{key}/statuses'].post
   assert.deepEqual(post.tags, ['Project settings'])
   assert.deepEqual([...post.requestBody.content['application/json'].schema.required].sort(), ['category', 'color', 'name'])
-  // every route (except the health check and the docs themselves) must be documented
+  // every route (except the health and readiness probes) must be documented
   for (const [path, ops] of Object.entries<any>(spec.paths))
-    if (path !== '/health')
+    if (path !== '/health' && path !== '/ready')
       for (const [method, op] of Object.entries<any>(ops)) {
         assert.ok(op.summary, `${method.toUpperCase()} ${path} has no summary`)
         assert.ok(op.tags?.length, `${method.toUpperCase()} ${path} has no tag`)
@@ -180,17 +202,17 @@ test('OpenAPI: project routes are documented and the schemas are enforced', { sk
 test('CORS: only listed origins may call the API from a browser, and preflight needs no login', { skip }, async () => {
   const pre = (origin: string) => app.inject({
     method: 'OPTIONS', url: '/api/v1/projects',
-    headers: { origin, 'access-control-request-method': 'POST', 'access-control-request-headers': 'content-type,x-dev-user,x-dev-secret,if-match' },
+    headers: { origin, 'access-control-request-method': 'POST', 'access-control-request-headers': 'content-type,authorization,if-match' },
   })
-  const ok = await pre('https://strand-one.vercel.app')
+  const ok = await pre('https://app.example.com')
   assert.equal(ok.statusCode, 204)
-  assert.equal(ok.headers['access-control-allow-origin'], 'https://strand-one.vercel.app')
-  for (const h of ['x-dev-user', 'x-dev-secret', 'if-match']) assert.match(String(ok.headers['access-control-allow-headers']), new RegExp(h))
-  assert.equal((await pre('http://localhost:5173')).headers['access-control-allow-origin'], 'http://localhost:5173')
+  assert.equal(ok.headers['access-control-allow-origin'], 'https://app.example.com')
+  for (const h of ['authorization', 'if-match']) assert.match(String(ok.headers['access-control-allow-headers']), new RegExp(h))
+  assert.equal((await pre('https://admin.example.com')).headers['access-control-allow-origin'], 'https://admin.example.com')
   assert.equal((await pre('https://evil.example')).headers['access-control-allow-origin'], undefined)
   // a normal request from a listed origin carries the header too
-  const r = await app.inject({ method: 'GET', url: '/api/v1/me', headers: { origin: 'https://strand-one.vercel.app', 'x-dev-user': 'owner@x.com' } })
-  assert.equal(r.headers['access-control-allow-origin'], 'https://strand-one.vercel.app')
+  const r = await app.inject({ method: 'GET', url: '/api/v1/me', headers: { origin: 'https://app.example.com', ...(await bearer('owner@x.com')) } })
+  assert.equal(r.headers['access-control-allow-origin'], 'https://app.example.com')
 })
 
 test('create accepts a client id; reusing it conflicts instead of duplicating; patch can null fields', { skip }, async () => {
@@ -250,7 +272,7 @@ test('errors share one shape: message, stable code, and per-field messages for b
   assert.ok(Object.values(bad.body.errors).every(m => typeof m === 'string' && m.length))
   // 401, 403, 404, 409 carry the right codes
   const noAuth = await app.inject({ method: 'GET', url: '/api/v1/me' })
-  assert.equal(noAuth.statusCode, 200)                                   // AUTH_DEV: a header-less call is the default dev user
+  assert.deepEqual([noAuth.statusCode, JSON.parse(noAuth.body).code], [401, 'unauthorized'])
   assert.equal((await call('GET', '/api/v1/projects/NOPE')).body.code, 'not_found')
   assert.equal((await call('GET', '/api/v1/issues/NOPE-1')).body.code, 'not_found')
   assert.equal((await call('POST', '/api/v1/projects', { name: 'Dup', key: 'PAY', template: 'kanban' })).body.code, 'conflict')
@@ -260,17 +282,17 @@ test('errors share one shape: message, stable code, and per-field messages for b
   const unknown = await app.inject({ method: 'GET', url: '/api/v1/nope' })
   assert.deepEqual([unknown.statusCode, JSON.parse(unknown.body)], [404, { error: 'Route not found', code: 'not_found' }])
   // malformed JSON is a 400 with a code, not a stack trace
-  const broken = await app.inject({ method: 'POST', url: '/api/v1/projects', headers: { 'x-dev-user': 'owner@x.com', 'content-type': 'application/json' }, payload: '{nope' })
+  const broken = await app.inject({ method: 'POST', url: '/api/v1/projects', headers: { ...(await bearer('owner@x.com')), 'content-type': 'application/json' }, payload: '{nope' })
   assert.equal(broken.statusCode, 400); assert.equal(JSON.parse(broken.body).code, 'invalid_input')
 })
 
-test('/api/v1 is the documented path; the unversioned /api still works but is hidden from the docs', { skip }, async () => {
-  assert.equal((await app.inject({ method: 'GET', url: '/api/me', headers: { 'x-dev-user': 'owner@x.com' } })).statusCode, 200)
-  assert.equal((await app.inject({ method: 'GET', url: '/api/v1/me', headers: { 'x-dev-user': 'owner@x.com' } })).statusCode, 200)
+test('/api/v1 is the only path, and the docs describe it', { skip }, async () => {
+  assert.equal((await app.inject({ method: 'GET', url: '/api/v1/me', headers: await bearer('owner@x.com') })).statusCode, 200)
+  assert.equal((await app.inject({ method: 'GET', url: '/api/me', headers: await bearer('owner@x.com') })).statusCode, 404)
   const spec = JSON.parse((await app.inject({ method: 'GET', url: '/docs/json' })).body)
   const paths = Object.keys(spec.paths)
   assert.ok(paths.some(p => p.startsWith('/api/v1/')))
-  assert.ok(!paths.some(p => p.startsWith('/api/') && !p.startsWith('/api/v1/')), 'legacy /api paths must not be documented')
+  assert.ok(paths.every(p => !p.startsWith('/api/') || p.startsWith('/api/v1/')), 'only /api/v1 is served')
   // the shared error shape is documented on operations that take input
   const op = spec.paths['/api/v1/projects'].post
   assert.deepEqual(Object.keys(op.responses).filter(c => /^[45]/.test(c)).sort().slice(0, 2), ['400', '401'])
@@ -565,23 +587,59 @@ test('live stream over real HTTP: carries CORS headers for allowed origins only,
   await call('POST', '/api/v1/projects', { name: 'Stream', key: 'STR', template: 'kanban' })
   await call('POST', '/api/v1/projects/STR/issues', { title: 'live' })
   const url = `${addr}/api/v1/projects/STR/events`
-  const origin = 'https://strand-one.vercel.app'
+  const origin = 'https://app.example.com'
   const ac = new AbortController()
-  const res = await fetch(url, { headers: { 'x-dev-user': 'owner@x.com', origin }, signal: ac.signal })
+  const res = await fetch(url, { headers: { ...(await bearer('owner@x.com')), origin }, signal: ac.signal })
   assert.equal(res.status, 200)
   assert.equal(res.headers.get('content-type'), 'text/event-stream')
   assert.equal(res.headers.get('access-control-allow-origin'), origin)                           // a browser may read it
   const other = new AbortController()
-  const res2 = await fetch(url, { headers: { 'x-dev-user': 'owner@x.com', origin: 'https://evil.example' }, signal: other.signal })
+  const res2 = await fetch(url, { headers: { ...(await bearer('owner@x.com')), origin: 'https://evil.example' }, signal: other.signal })
   assert.equal(res2.headers.get('access-control-allow-origin'), null); other.abort()           // an unlisted origin gets none
   // a heartbeat by someone else shows up on the stream, with the person's name
   const reader = res.body!.getReader(); const dec = new TextDecoder()
   let text = ''
-  const beat = fetch(`${addr}/api/v1/issues/STR-1/presence`, { method: 'POST', headers: { 'x-dev-user': 'dan.stream@x.com' } })
+  const beat = fetch(`${addr}/api/v1/issues/STR-1/presence`, { method: 'POST', headers: await bearer('dan.stream@x.com') })
   const until = Date.now() + 8000
   while (Date.now() < until && !text.includes('issue.editing')) { const { value } = await reader.read(); text += dec.decode(value) }
   await beat; ac.abort()
   const data = JSON.parse(text.split('\n').find(l => l.startsWith('data:') && l.includes('issue.editing'))!.slice(5))
   assert.equal(data.key, 'STR-1')
   assert.deepEqual(data.editors.map((e: any) => e.name), ['dan.stream'])
+})
+
+test('login: only a valid Entra token gets in; forged, expired, mis-addressed and header-only logins are refused', { skip }, async () => {
+  const me = (h: Record<string, string>) => app.inject({ method: 'GET', url: '/api/v1/me', headers: h })
+  const other = (await generateKeyPair('RS256')).privateKey
+  const refused: [string, Record<string, string>][] = [
+    ['no credentials', {}],
+    ['dev headers are not a login', { 'x-dev-user': 'owner@x.com', 'x-dev-secret': 'anything' }],
+    ['not a JWT', { authorization: 'Bearer nonsense' }],
+    ['signed with another key', await bearer('owner@x.com', { key: other })],
+    ['expired', await bearer('owner@x.com', { exp: '-1m' })],
+    ['another app\'s audience', await bearer('owner@x.com', { aud: '33333333-3333-4333-8333-333333333333' })],
+    ['another tenant\'s issuer', await bearer('owner@x.com', { iss: `${authority}/44444444-4444-4444-8444-444444444444/v2.0` })],
+    ['no oid claim', await bearer('owner@x.com', { oid: null })],
+  ]
+  for (const [why, h] of refused) assert.equal((await me(h)).statusCode, 401, why)
+  const ok = await me(await bearer('owner@x.com', { aud: `api://${CLIENT}` }))        // the audience an exposed API scope produces
+  assert.equal(ok.statusCode, 200)
+  assert.equal(JSON.parse(ok.body).email, 'owner@x.com')
+})
+
+test('login: the Entra admin role claim decides admin rights, and an email cannot be taken over by another oid', { skip }, async () => {
+  await call('GET', '/api/v1/me', undefined, 'first.person@x.com')                       // someone else may already be the owner
+  const boss = await app.inject({ method: 'GET', url: '/api/v1/me', headers: await bearer('boss@x.com', { roles: ['Strand.Admin'] }) })
+  assert.equal(JSON.parse(boss.body).role, 'admin')
+  const demoted = await app.inject({ method: 'GET', url: '/api/v1/me', headers: await bearer('boss@x.com') })   // claim removed in Entra
+  assert.equal(JSON.parse(demoted.body).role, 'member')
+  const thief = await app.inject({ method: 'GET', url: '/api/v1/me', headers: await bearer('boss@x.com', { oid: uuidOf('someone else') }) })
+  assert.equal(thief.statusCode, 403)
+})
+
+test('health is open, readiness checks the database', { skip }, async () => {
+  assert.equal((await app.inject({ method: 'GET', url: '/health' })).statusCode, 200)
+  const ready = await app.inject({ method: 'GET', url: '/ready' })
+  assert.deepEqual([ready.statusCode, JSON.parse(ready.body)], [200, { ok: true }])
+  assert.equal(ready.headers['x-content-type-options'], 'nosniff')
 })

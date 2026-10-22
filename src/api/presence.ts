@@ -2,17 +2,18 @@
 // knows, and it tells the people in the same project. No hard lock — everyone can still edit; they just
 // see who else is here ("Maya is editing").
 //
-// Transport: the project's SSE stream (GET /api/projects/:key/events), read with fetch so the login headers go along. One shared stream per project;
+// Transport: the project's SSE stream (GET /api/projects/:key/events), read with fetch so the bearer token goes along. One shared stream per project;
 // every client of that project receives `issue.editing` / `issue.updated` payloads with the editors list.
 // A heartbeat (POST /issues/:key/presence) every 30 s keeps your row alive; the server prunes anything
 // older than 90 s, so a closed tab disappears on its own. The explicit DELETE clears it immediately.
 import { useEffect, useRef } from 'react'
-import { api, apiEnabled, buildRequest, getLogin, API_URL } from './client'
+import { api, apiEnabled, buildRequest, API_URL } from './client'
+import { accessToken } from './auth.ts'
 import { useStore } from '../data/store'
 import type { Editor, Issue } from '../data/reducer'
 
 // —— The project event stream (one shared fetch-based SSE reader per project) ——
-// EventSource cannot send the login headers, so the stream is read with fetch and parsed by hand.
+// EventSource cannot send an Authorization header, so the stream is read with fetch and parsed by hand.
 
 interface StreamEvent { type: string; key?: string; id?: string; editors?: Editor[] }
 interface Stream { abort: AbortController; handlers: Set<(e: StreamEvent) => void> }
@@ -23,7 +24,7 @@ async function run(key: string, s: Stream) {
   let wait = 1000
   while (!s.abort.signal.aborted) {
     try {
-      const [url, init] = buildRequest(API_URL!, getLogin(), 'GET', `/api/projects/${encodeURIComponent(key)}/events`, undefined, { accept: 'text/event-stream' })
+      const [url, init] = buildRequest(API_URL!, await accessToken(), 'GET', `/api/projects/${encodeURIComponent(key)}/events`, undefined, { accept: 'text/event-stream' })
       const res = await fetch(url, { ...init, signal: s.abort.signal })
       if (!res.ok || !res.body) throw new Error(String(res.status))
       wait = 1000

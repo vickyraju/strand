@@ -1,5 +1,4 @@
 import { createRemoteJWKSet, jwtVerify } from 'jose'
-import { timingSafeEqual } from 'node:crypto'
 import type { FastifyRequest } from 'fastify'
 import { tx } from './db.ts'
 
@@ -15,41 +14,28 @@ export class HttpError extends Error {
 
 const tenant = process.env.ENTRA_TENANT_ID
 const clientId = process.env.ENTRA_CLIENT_ID
-const jwks = tenant ? createRemoteJWKSet(new URL(`https://login.microsoftonline.com/${tenant}/discovery/v2.0/keys`)) : null
-const devAuth = process.env.AUTH_DEV === '1'
-if (!devAuth && !jwks) throw new Error('Set ENTRA_TENANT_ID + ENTRA_CLIENT_ID (or AUTH_DEV=1 for development)')
-// Dev login without Entra: a shared secret keeps a public dev URL from being open to anyone. Mandatory in production mode.
-// Fails closed: only an explicit NODE_ENV=development|test (local runs, tests) may skip the secret; anything else needs one.
-const devSecret = process.env.DEV_AUTH_SECRET ?? ''
-const localDev = ['development', 'test'].includes(process.env.NODE_ENV ?? '')
-if (devAuth && jwks) throw new Error('AUTH_DEV and ENTRA_* are both set; remove AUTH_DEV so dev login cannot bypass Entra')
-if (devAuth && !localDev && devSecret.length < 16)
-  throw new Error('AUTH_DEV needs DEV_AUTH_SECRET (16+ chars) unless NODE_ENV is development or test')
-const sameSecret = (got: unknown) => {
-  const a = Buffer.from(String(got ?? '')), b = Buffer.from(devSecret)
-  return devSecret !== '' && a.length === b.length && timingSafeEqual(a, b)
-}
+if (!tenant || !clientId) throw new Error('Set ENTRA_TENANT_ID and ENTRA_CLIENT_ID (Microsoft Entra ID sign-in is the only login)')
+// Public cloud by default; set ENTRA_AUTHORITY for a sovereign cloud (e.g. https://login.microsoftonline.us)
+const authority = (process.env.ENTRA_AUTHORITY ?? 'https://login.microsoftonline.com').replace(/\/$/, '')
+const jwks = createRemoteJWKSet(new URL(`${authority}/${tenant}/discovery/v2.0/keys`))
 
 const initials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]!.toUpperCase()).join('') || '?'
 
-interface Identity { oid?: string; email: string; name: string; admin: boolean }
+interface Identity { oid: string; email: string; name: string; admin: boolean }
 
 async function identify(req: FastifyRequest): Promise<Identity> {
-  if (devAuth && !req.headers.authorization) {
-    if ((devSecret || !localDev) && !sameSecret(req.headers['x-dev-secret'])) throw new HttpError(401, 'Missing or wrong dev secret')
-    const email = String(req.headers['x-dev-user'] ?? 'dev@strand.local').toLowerCase()
-    return { email, name: email.split('@')[0]!, admin: localDev && req.headers['x-dev-admin'] === '1' }   // never self-grantable on a deployed dev server
-  }
-  const token = req.headers.authorization?.replace(/^Bearer /i, '')
-  if (!token || !jwks) throw new HttpError(401, 'Missing bearer token')
+  const token = /^Bearer (.+)$/i.exec(req.headers.authorization ?? '')?.[1]
+  if (!token) throw new HttpError(401, 'Missing bearer token')
   try {
     const { payload } = await jwtVerify(token, jwks, {
-      audience: clientId,
-      issuer: `https://login.microsoftonline.com/${tenant}/v2.0`,
+      algorithms: ['RS256'],
+      audience: [clientId!, `api://${clientId}`],
+      issuer: `${authority}/${tenant}/v2.0`,
     })
+    if (typeof payload.oid !== 'string') throw new Error('no oid')
     const roles = (payload.roles as string[] | undefined) ?? []
     return {
-      oid: payload.oid as string,
+      oid: payload.oid,
       email: String(payload.preferred_username ?? payload.email ?? '').toLowerCase(),
       name: String(payload.name ?? payload.preferred_username ?? ''),
       admin: roles.includes('Strand.Admin'),
@@ -67,17 +53,17 @@ export async function authenticate(req: FastifyRequest) {
   req.me = await tx(async d => {
     // Identity is the Entra `oid`. Email (a mutable claim) only links a row that has no oid yet.
     type U = { id: string; active: boolean; entraOid: string | null }
-    let [u] = who.oid ? await d.query<U>('select id, active, entra_oid from users where entra_oid = $1', [who.oid]) : []
+    let [u] = await d.query<U>('select id, active, entra_oid from users where entra_oid = $1', [who.oid])
     if (!u) {
       [u] = await d.query<U>('select id, active, entra_oid from users where email = $1', [who.email])
       if (u) {
-        if (who.oid && u.entraOid && u.entraOid !== who.oid) throw new HttpError(403, 'Email belongs to a different account')
-        if (who.oid) await d.query('update users set entra_oid = $2 where id = $1', [u.id, who.oid])
+        if (u.entraOid && u.entraOid !== who.oid) throw new HttpError(403, 'Email belongs to a different account')
+        await d.query('update users set entra_oid = $2 where id = $1', [u.id, who.oid])
       } else {
         [u] = await d.query<U>(
           `insert into users (entra_oid, email, name, initials) values ($1, $2, $3, $4)
            on conflict (email) do update set email = excluded.email returning id, active, entra_oid`,
-          [who.oid ?? null, who.email, who.name, initials(who.name)])
+          [who.oid, who.email, who.name, initials(who.name)])
       }
     }
     if (!u!.active) throw new HttpError(403, 'Account is deactivated')

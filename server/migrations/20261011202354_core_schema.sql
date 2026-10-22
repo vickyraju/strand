@@ -1,7 +1,6 @@
 -- Core schema: workspaces, users, memberships, projects, workflow, issues.
--- Plain Postgres only (no Supabase-specific objects) so it moves to Aurora unchanged.
--- Access control lives in the API, which connects with a privileged role.
--- RLS is enabled with no policies, so anon/authenticated roles see nothing.
+-- Plain PostgreSQL (Aurora PostgreSQL 15+). Access control lives in the API, which connects with a privileged role.
+-- Row-level security is enabled with no policies, so any other database role sees nothing.
 
 -- Time-ordered UUIDs (Postgres 17 has no native uuidv7)
 create function uuid_v7() returns uuid language sql volatile as $$
@@ -135,7 +134,7 @@ create function next_issue_number(p_project uuid) returns integer language sql a
   update projects set next_number = next_number + 1 where id = p_project returning next_number - 1
 $$;
 
--- Deny-by-default for Supabase's anon/authenticated roles; the API uses a privileged role.
+-- Deny by default: only the API's privileged role (the table owner) can read or write.
 alter table workspaces    enable row level security;
 alter table users         enable row level security;
 alter table memberships   enable row level security;

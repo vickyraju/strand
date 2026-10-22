@@ -1,0 +1,152 @@
+# The API on Amazon EKS. Apply with `envsubst < jira-build.yaml | kubectl apply -f -`: it fills the ${VARIABLES} below
+# from the environment (listed in the README). Nothing else needs editing.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: jira-build
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: jira-build-api
+  namespace: jira-build
+  annotations:
+    eks.amazonaws.com/role-arn: ${API_ROLE_ARN}          # IRSA: S3 access to the attachments bucket, nothing else
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jira-build-api
+  namespace: jira-build
+data:
+  PORT: "3001"
+  NODE_ENV: production
+  PG_POOL: "10"
+  ENTRA_TENANT_ID: "${ENTRA_TENANT_ID}"
+  ENTRA_CLIENT_ID: "${ENTRA_API_CLIENT_ID}"
+  S3_BUCKET: "${ATTACHMENTS_BUCKET}"
+  AWS_REGION: "${AWS_REGION}"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jira-build-api
+  namespace: jira-build
+  labels: { app: jira-build-api }
+spec:
+  # replicas is owned by the HorizontalPodAutoscaler below
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxSurge: 25%, maxUnavailable: 0 }
+  selector:
+    matchLabels: { app: jira-build-api }
+  template:
+    metadata:
+      labels: { app: jira-build-api }
+    spec:
+      serviceAccountName: jira-build-api
+      imagePullSecrets:
+        - name: artifactory-pull
+      terminationGracePeriodSeconds: 45
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile: { type: RuntimeDefault }
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector: { matchLabels: { app: jira-build-api } }
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector: { matchLabels: { app: jira-build-api } }
+      containers:
+        - name: api
+          image: ${IMAGE}
+          ports:
+            - { name: http, containerPort: 3001 }
+          envFrom:
+            - configMapRef: { name: jira-build-api }
+            - secretRef: { name: jira-build-api }
+          resources:
+            requests: { cpu: 250m, memory: 384Mi }
+            limits: { memory: 512Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          startupProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 2
+            failureThreshold: 30
+          readinessProbe:
+            httpGet: { path: /ready, port: http }           # also checks the database
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 20
+            failureThreshold: 3
+          lifecycle:
+            preStop:
+              exec: { command: ["sleep", "5"] }             # let the load balancer stop sending traffic before SIGTERM
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jira-build-api
+  namespace: jira-build
+spec:
+  selector: { app: jira-build-api }
+  ports:
+    - { name: http, port: 80, targetPort: http }
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: jira-build-api
+  namespace: jira-build
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: jira-build-api }
+  minReplicas: 6
+  maxReplicas: 60
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 60 } }
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: jira-build-api
+  namespace: jira-build
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels: { app: jira-build-api }
+---
+# The ALB that CloudFront uses as its API origin; the AWS Load Balancer Controller creates it from this Ingress.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: jira-build-api
+  namespace: jira-build
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/security-groups: ${ALB_SECURITY_GROUP_ID}     # allows only CloudFront's managed prefix list
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+    alb.ingress.kubernetes.io/certificate-arn: ${ALB_CERTIFICATE_ARN}
+    alb.ingress.kubernetes.io/ssl-policy: ELBSecurityPolicy-TLS13-1-2-2021-06
+    alb.ingress.kubernetes.io/healthcheck-path: /ready
+    alb.ingress.kubernetes.io/load-balancer-attributes: idle_timeout.timeout_seconds=3600,routing.http.drop_invalid_header_fields.enabled=true
+    alb.ingress.kubernetes.io/target-group-attributes: deregistration_delay.timeout_seconds=30
+spec:
+  ingressClassName: alb
+  rules:
+    - http:
+        paths:
+          - { path: /api/v1, pathType: Prefix, backend: { service: { name: jira-build-api, port: { name: http } } } }
+          - { path: /scim/v2, pathType: Prefix, backend: { service: { name: jira-build-api, port: { name: http } } } }
+          - { path: /integrations/github/webhook, pathType: Prefix, backend: { service: { name: jira-build-api, port: { name: http } } } }

@@ -1,0 +1,32 @@
+# Applies database migrations; run it before each rollout and wait for it to complete (see the README).
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: jira-build-migrate-${BUILD_TAG_SAFE}
+  namespace: jira-build
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 86400
+  template:
+    spec:
+      restartPolicy: Never
+      serviceAccountName: jira-build-api
+      imagePullSecrets:
+        - name: artifactory-pull
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: migrate
+          image: ${IMAGE}
+          command: ["node", "scripts/migrate.ts"]
+          envFrom:
+            - secretRef: { name: jira-build-api }
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { memory: 256Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }

@@ -1,48 +1,50 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { api, apiEnabled, getLogin, setLogin, ApiError } from '../api/client'
+import { api, apiEnabled } from '../api/client'
+import { authConfigured, completeSignIn, hasSession, signIn } from '../api/auth'
 import { Logomark } from './NavRail'
 
-/** With an API configured, nothing renders until the dev login is accepted by the server. */
+type Phase = 'checking' | 'signed-out' | 'ready'
+
+/** With an API configured, nothing renders until the user has signed in with Microsoft and the API accepts the token. */
 export default function ApiGate({ children }: { children: ReactNode }) {
-  const [ok, setOk] = useState(!apiEnabled)
-  const [checking, setChecking] = useState(apiEnabled && !!getLogin())
-  const [email, setEmail] = useState('')
-  const [secret, setSecret] = useState('')
+  const [phase, setPhase] = useState<Phase>(apiEnabled ? 'checking' : 'ready')
   const [error, setError] = useState('')
 
   useEffect(() => {
-    if (!checking) return
-    api('GET', '/api/me').then(() => setOk(true), () => setLogin(null)).finally(() => setChecking(false))
-  }, [checking])
+    if (!apiEnabled || !authConfigured) return
+    let live = true
+    completeSignIn()
+      .catch(e => { if (live) setError(e instanceof Error ? e.message : 'Sign-in failed') })
+      .then(() => (hasSession() ? api('GET', '/api/me').then(() => 'ready' as const, () => 'signed-out' as const) : 'signed-out' as const))
+      .then(p => { if (live) setPhase(p) })
+    const out = () => setPhase('signed-out')                                       // the API refused the token mid-session
+    window.addEventListener('jira-build:signed-out', out)
+    return () => { live = false; window.removeEventListener('jira-build:signed-out', out) }
+  }, [])
 
-  if (ok) return <>{children}</>
-  if (checking) return null
-
-  const submit = async () => {
-    setError('')
-    setLogin({ email: email.trim().toLowerCase(), secret })
-    try {
-      await api('GET', '/api/me')
-      setOk(true)
-    } catch (e) {
-      setLogin(null)
-      setError(e instanceof ApiError && e.status === 401 ? 'That email or secret was not accepted.' : 'Could not reach the server.')
-    }
-  }
+  // A production build without these settings would silently fall back to a local demo store: refuse instead.
+  if ((import.meta.env.PROD && !apiEnabled) || (apiEnabled && !authConfigured))
+    return <Card title="Not configured" text="This build is missing VITE_API_URL, VITE_ENTRA_TENANT_ID or VITE_ENTRA_CLIENT_ID." />
+  if (phase === 'ready') return <>{children}</>
+  if (phase === 'checking') return null
 
   return (
+    <Card title="Sign in" text="Use your company Microsoft account.">
+      {error && <p role="alert" className="text-danger" style={{ marginTop: 12 }}>{error}</p>}
+      <button type="button" className="btn btn-primary btn-lg welcome-btn" onClick={() => void signIn()}>Sign in with Microsoft</button>
+    </Card>
+  )
+}
+
+function Card({ title, text, children }: { title: string; text: string; children?: ReactNode }) {
+  return (
     <div className="welcome">
-      <form className="welcome-card" onSubmit={e => { e.preventDefault(); void submit() }}>
+      <div className="welcome-card">
         <Logomark size={40} />
-        <h1 className="welcome-title">Sign in</h1>
-        <p className="welcome-sub">This is a development server. Use your work email and the shared dev secret.</p>
-        <label className="label" htmlFor="login-email">Work email</label>
-        <input id="login-email" className="input" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@company.com" autoFocus autoComplete="email" required />
-        <label className="label" htmlFor="login-secret" style={{ marginTop: 14 }}>Dev secret</label>
-        <input id="login-secret" className="input" type="password" value={secret} onChange={e => setSecret(e.target.value)} autoComplete="off" required />
-        {error && <p role="alert" className="text-danger" style={{ marginTop: 12 }}>{error}</p>}
-        <button type="submit" className="btn btn-primary btn-lg welcome-btn" disabled={!email || !secret}>Sign in</button>
-      </form>
+        <h1 className="welcome-title">{title}</h1>
+        <p className="welcome-sub">{text}</p>
+        {children}
+      </div>
     </div>
   )
 }

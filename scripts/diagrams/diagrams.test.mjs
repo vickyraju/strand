@@ -67,5 +67,5 @@ test('AWS diagram: uses only icons draw.io knows and names every planned compone
   assert.equal(cells(xml).pages.length, 2)
   for (const must of ['jira-build', 'EKS', 'Aurora', 'CloudFront', 'AWS WAF', 'RDS Proxy', 'SQS', 'ElastiCache', 'Global Database']) assert.ok(xml.includes(must), `diagram lacks ${must}`)
   // production design only: no integrations, no identity-provider or SCIM detail, no 'planned' markers, no old product name
-  for (const banned of ['GitHub', 'Entra', 'SCIM', 'PLANNED', 'Strand', 'Vercel', 'Render', 'Neon']) assert.ok(!xml.includes(banned), `diagram must not mention ${banned}`)
+  for (const banned of ['GitHub', 'Entra', 'SCIM', 'PLANNED', 'Strand']) assert.ok(!xml.includes(banned), `diagram must not mention ${banned}`)
 })

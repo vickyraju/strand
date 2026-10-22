@@ -7,13 +7,10 @@ import { db } from '../db.ts'
 import { HttpError, requireWrite } from '../auth.ts'
 
 // Files go browser → S3 directly via presigned URLs; the API never proxies bytes.
-// Dev: point S3_ENDPOINT at Supabase Storage's S3 endpoint. Prod: leave unset (IRSA credentials on EKS).
+// Credentials come from the pod's IAM role (IRSA); the bucket's default encryption (SSE-KMS) applies to every object.
 const MAX_BYTES = 25 * 1024 * 1024
 const bucket = process.env.S3_BUCKET ?? ''
-const s3 = new S3Client({
-  region: process.env.AWS_REGION ?? 'us-east-1',
-  ...(process.env.S3_ENDPOINT ? { endpoint: process.env.S3_ENDPOINT, forcePathStyle: true } : {}),
-})
+const s3 = new S3Client({ region: process.env.AWS_REGION })   // AWS_REGION is set by EKS; the SDK reads it when this is undefined
 const needBucket = () => { if (!bucket) throw new HttpError(503, 'File storage is not configured (S3_BUCKET)') }
 
 const plugin: FastifyPluginAsyncZod = async app => {

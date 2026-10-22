@@ -7,10 +7,16 @@ pg.types.setTypeParser(1082, v => v)
 // timestamps → ISO strings (what JSON would produce anyway), so response schemas can say `string` and nothing is a Date
 for (const oid of [1114, 1184]) pg.types.setTypeParser(oid, v => new Date(/[zZ]|[+-]\d\d(:?\d\d)?$/.test(v) ? v : v + 'Z').toISOString())
 
+// DATABASE_URL: the RDS Proxy endpoint (pooled). TLS: use ?sslmode=verify-full; the container trusts the RDS CA bundle.
 export const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
   max: Number(process.env.PG_POOL ?? 10),
+  connectionTimeoutMillis: 5_000,
+  idleTimeoutMillis: 30_000,
+  statement_timeout: Number(process.env.PG_STATEMENT_TIMEOUT_MS ?? 30_000),
 })
+// A dropped idle connection (database failover, proxy restart) emits 'error'; unhandled, that would kill the process.
+pool.on('error', err => console.error(JSON.stringify({ level: 'error', msg: 'idle database connection failed', err: err.message })))
 
 const camel = (s: string) => s.replace(/_([a-z])/g, (_, c) => c.toUpperCase())
 export const snake = (s: string) => s.replace(/[A-Z]/g, c => '_' + c.toLowerCase())

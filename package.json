@@ -1,5 +1,5 @@
 {
-  "name": "strand",
+  "name": "jira-build",
   "private": true,
   "version": "1.0.0",
   "type": "module",
@@ -7,6 +7,7 @@
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
     "preview": "vite preview",
+    "typecheck": "tsc --noEmit -p .",
     "test": "node --test \"src/**/*.test.ts\" \"scripts/**/*.test.mjs\"",
     "diagrams": "node scripts/diagrams/gen-data-model.mjs && node scripts/diagrams/gen-aws.mjs"
   },
@@ -21,9 +22,11 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^6.0.0",
-    "supabase": "^2.120.0",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.7.0",
     "vite": "^8.0.0"
+  },
+  "engines": {
+    "node": ">=24"
   }
 }

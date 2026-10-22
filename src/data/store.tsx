@@ -2,7 +2,8 @@ import { createContext, useContext, useEffect, useMemo, useReducer, useRef, useS
 import { migrate, EMPTY, AUTOMATION, type Action, type State, type User } from './reducer'
 import { undoableReducer, canUndo, type StoreAction, type Undoable } from './history'
 import { pruneFiles } from './files'
-import { apiEnabled, setLogin } from '../api/client'
+import { apiEnabled } from '../api/client'
+import { signOut as endSession } from '../api/auth'
 import { loadWorkspace } from '../api/load'
 
 export * from './reducer'
@@ -103,8 +104,8 @@ export function useStore() {
   return ctx
 }
 
-/** Forget the dev login and return to the sign-in screen. */
-export function signOut() { setLogin(null); location.reload() }
+/** End the Microsoft session and return to the sign-in screen. */
+export const signOut = endSession
 
 export const projectOf = (state: State, id: string | undefined) => state.projects.find(p => p.id === id)
 /** The pseudo-user shown for changes made by automation rules. */

@@ -1,8 +1,8 @@
-// Reads supabase/migrations/*.sql into { tables: [{ name, columns, pk, uniques }] }. Plain regex parsing, enough for this
+// Reads server/migrations/*.sql into { tables: [{ name, columns, pk, uniques }] }. Plain regex parsing, enough for this
 // project's migrations (create table, add column, add foreign key); anything it cannot read throws, it never guesses.
 import { readdirSync, readFileSync } from 'node:fs'
 
-const dir = new URL('../../supabase/migrations/', import.meta.url)
+const dir = new URL('../../server/migrations/', import.meta.url)
 
 /** Split on commas that are not inside parentheses or quotes */
 function splitTop(body) {

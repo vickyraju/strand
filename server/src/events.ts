@@ -2,28 +2,36 @@ import pg from 'pg'
 import type { FastifyReply } from 'fastify'
 import type { Db } from './db.ts'
 
-// Realtime over Postgres LISTEN/NOTIFY → SSE. Works on Supabase and Aurora alike;
+// Realtime over Postgres LISTEN/NOTIFY → SSE.
+// LISTEN needs a session that stays open, so it connects to DATABASE_DIRECT_URL: the Aurora writer's own endpoint, not RDS Proxy.
 // ponytail: one LISTEN connection per API pod. Move to Redis pub/sub if fan-out or payload size outgrows NOTIFY.
 const subs = new Map<string, Set<FastifyReply>>()   // projectId → open streams
-let started = false
 let listener: pg.Client | null = null
+let stopping = false
 
-export async function startListener() {
-  if (started || !process.env.DATABASE_URL) return
-  started = true
-  const c = listener = new pg.Client({ connectionString: process.env.DATABASE_URL })
-  c.on('error', () => { started = false; if (listener) setTimeout(startListener, 2000).unref() })
+export function startListener() { stopping = false; return connect() }
+
+async function connect() {
+  const url = process.env.DATABASE_DIRECT_URL ?? process.env.DATABASE_URL
+  if (!url || listener || stopping) return
+  const c = listener = new pg.Client({ connectionString: url })
+  const retry = () => { if (listener === c) listener = null; if (!stopping) setTimeout(() => void connect(), 2000).unref() }
+  c.on('error', retry)
   c.on('notification', m => {
     const { projectId } = JSON.parse(m.payload ?? '{}')
     for (const r of subs.get(projectId) ?? []) r.raw.write(`data: ${m.payload}\n\n`)
   })
-  await c.connect()
-  await c.query('listen strand')
+  try {
+    await c.connect()
+    await c.query('listen strand')
+  } catch { c.end().catch(() => {}); retry() }   // the API keeps serving; live updates resume when the database is back
 }
 
 export async function stopListener() {
+  stopping = true
   const c = listener
-  listener = null; started = false
+  listener = null
+  for (const set of subs.values()) for (const r of set) r.raw.end()   // open streams would otherwise hold shutdown until the pod is killed
   await c?.end().catch(() => {})
 }
 

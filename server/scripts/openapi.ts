@@ -2,7 +2,7 @@
 import { writeFileSync } from 'node:fs'
 
 delete process.env.DATABASE_URL            // skip the LISTEN connection
-Object.assign(process.env, { AUTH_DEV: '1', NODE_ENV: 'test' })
+Object.assign(process.env, { NODE_ENV: 'test', ENTRA_TENANT_ID: 'tenant', ENTRA_CLIENT_ID: 'client' })   // placeholders: nothing signs in here
 const { build } = await import('../src/app.ts')
 const app = await build()
 await app.ready()
