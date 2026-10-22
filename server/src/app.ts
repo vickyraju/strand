@@ -26,7 +26,8 @@ export async function build() {
   await app.register(cors, {
     origin: origins,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
-    allowedHeaders: ['content-type', 'authorization', 'if-match', 'x-dev-user', 'x-dev-secret'],
+    // every custom header the web app sends must be listed, or the browser blocks the request (x-workflow-override: moving work off a deleted status)
+    allowedHeaders: ['content-type', 'authorization', 'if-match', 'x-workflow-override', 'x-dev-user', 'x-dev-secret'],
     maxAge: 600,
   })
 
