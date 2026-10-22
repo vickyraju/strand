@@ -14,7 +14,7 @@ export const Me = z.object({ id, email: z.string(), name: z.string(), workspaceI
 export const AccessToken = z.object({ id, name: z.string(), hint: z.string().describe('Last 4 characters of the token'), createdAt: ts, expiresAt: ts, lastUsedAt: nullable(ts), expired: z.boolean() })
 export const AccessTokenCreated = AccessToken.extend({ token: z.string().describe('The secret. Shown only in this response') })
 
-export const Status = z.object({ id, projectId: id, name: z.string(), color: z.string(), category: z.enum(['todo', 'in-progress', 'done']), wipLimit: nullable(z.number()), position: z.number() })
+export const Status = z.object({ id, projectId: id, name: z.string(), description: z.string(), color: z.string(), category: z.enum(['todo', 'in-progress', 'done']), wipLimit: nullable(z.number()), position: z.number() })
 export const Transition = z.object({ id, projectId: id, name: z.string(), fromIds: nullable(z.array(id)), toId: id })
 export const Field = z.object({ id, projectId: id, name: z.string(), kind: z.enum(['text', 'number', 'select', 'date']), options: nullable(z.array(z.string())), position: z.number() })
 export const Template = z.object({ id, projectId: id, name: z.string(), type: z.string(), title: z.string(), description: z.string(), priority: z.string(), labels: z.array(z.string()), estimate: nullable(z.number()) })

@@ -760,3 +760,24 @@ test('tokens: names and lifetimes are validated (1 to 365 days, 1 to 40 characte
   assert.equal(await bad({ name: 'ok', expiresInDays: 1.5 }), 400)
   assert.equal(await bad({ name: 'x'.repeat(40), expiresInDays: 365 }), 201)
 })
+
+test('statuses carry a description: empty by default, set on create, changed by patch, shown with the project, limited to 500 characters', { skip }, async () => {
+  const p = (await call('POST', '/api/v1/projects', { name: 'Describe', key: 'DSC', template: 'kanban' })).body
+  assert.ok(p.statuses.every((s: any) => s.description === ''))
+  const made = await call('POST', '/api/v1/projects/DSC/statuses', { name: 'Waiting', color: '#aaaaaa', category: 'in-progress', description: 'Waiting for the customer to reply' })
+  assert.equal(made.status, 201)
+  assert.equal(made.body.description, 'Waiting for the customer to reply')
+  const noText = await call('POST', '/api/v1/projects/DSC/statuses', { name: 'Parked', color: '#aaaaaa', category: 'todo' })
+  assert.equal(noText.body.description, '')                                                    // optional on create
+  assert.deepEqual([made.body.position, noText.body.position], [3, 4])                       // no position given: goes to the end, after the 3 defaults
+  const patched = await call('PATCH', `/api/v1/projects/DSC/statuses/${made.body.id}`, { description: 'Blocked on someone else' })
+  assert.equal(patched.body.description, 'Blocked on someone else')
+  assert.equal((await call('PATCH', `/api/v1/projects/DSC/statuses/${made.body.id}`, { name: 'Waiting on customer' })).body.description, 'Blocked on someone else')   // other edits leave it alone
+  const detail = (await call('GET', '/api/v1/projects/DSC')).body
+  assert.equal(detail.statuses.find((s: any) => s.id === made.body.id).description, 'Blocked on someone else')
+  const tooLong = await call('PATCH', `/api/v1/projects/DSC/statuses/${made.body.id}`, { description: 'x'.repeat(501) })
+  assert.equal(tooLong.status, 400)
+  assert.ok(tooLong.body.errors.description)
+  assert.equal((await call('PATCH', `/api/v1/projects/DSC/statuses/${made.body.id}`, { description: 'x'.repeat(500) })).status, 200)
+  assert.equal((await call('PATCH', `/api/v1/projects/DSC/statuses/${made.body.id}`, { description: '' })).body.description, '')     // can be cleared
+})

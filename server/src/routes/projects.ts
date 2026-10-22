@@ -32,7 +32,7 @@ async function requireProjectAdmin(req: FastifyRequest, p: { leadId: string | nu
 
 // Child collections of a project. `json` columns are stored as jsonb.
 const CHILD = {
-  statuses:    { table: 'statuses',       cols: ['name', 'color', 'category', 'wipLimit', 'position'] },
+  statuses:    { table: 'statuses',       cols: ['name', 'description', 'color', 'category', 'wipLimit', 'position'] },
   transitions: { table: 'transitions',    cols: ['name', 'fromIds', 'toId'] },
   fields:      { table: 'field_defs',     cols: ['name', 'kind', 'options', 'position'] },
   templates:   { table: 'item_templates', cols: ['name', 'type', 'title', 'description', 'priority', 'labels', 'estimate'] },
@@ -42,7 +42,7 @@ const CHILD = {
 type Kind = keyof typeof CHILD
 
 const childPatch = {
-  statuses: z.object({ name: z.string().min(1), color, category, wipLimit: z.number().int().positive().nullable(), position: z.number().int() }).partial(),
+  statuses: z.object({ name: z.string().min(1), description: z.string().max(500), color, category, wipLimit: z.number().int().positive().nullable(), position: z.number().int() }).partial(),
   transitions: z.object({ name: z.string().min(1), fromIds: z.array(uuid).nullable(), toId: uuid }).partial(),
   fields: z.object({ name: z.string().min(1), kind: z.enum(['text', 'number', 'select', 'date']), options: z.array(z.string()).nullable(), position: z.number().int() }).partial(),
   templates: z.object({
@@ -216,6 +216,11 @@ const plugin: FastifyPluginAsyncZod = async app => {
       await requireProjectAdmin(req, p)
       const body = req.body as Record<string, unknown>
       const w = pick(body, [...cfg.cols], json)
+      // Ordered collections (statuses, fields) go to the end unless the caller says where
+      if ((cfg.cols as readonly string[]).includes('position') && body.position === undefined) {
+        const [n] = await db.query<{ next: number }>(`select coalesce(max(position), -1) + 1 as next from ${cfg.table} where project_id = $1`, [p.id])
+        w.cols.push('position'); w.vals.push(n!.next)
+      }
       const extra = cfg.ws ? ['workspace_id'] : []
       const cid = typeof body.id === 'string' ? ['id'] : []
       const cols = ['project_id', ...extra, ...cid, ...w.cols]
