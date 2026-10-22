@@ -3,8 +3,7 @@
 // already-loaded shape, so the screens keep working off the local store.
 import { useEffect, useRef, useState } from 'react'
 import { api, apiEnabled } from './client'
-import { mapIssue, mapSearchRow, type Row } from './map'
-import { loadProjectIssues } from './load'
+import { mapSearchRow, type Row } from './map'
 import type { Issue, ViewFilters } from '../data/reducer'
 
 /** One page of a list endpoint; `loading` until the first answer, `error` if it fails. */
@@ -22,7 +21,7 @@ export type Load = {
 function searchParams(f: ViewFilters, limit: number, cursor?: string | null): URLSearchParams {
   const q = new URLSearchParams({ q: f.q, resolution: f.resolution })
   if (f.projectId) q.set('project', f.projectId)
-  if (f.assignee !== null) q.set('assignee', f.assignee)
+  if (f.assignee !== null) q.set('assignee', f.assignee || 'none')   // '' = Unassigned
   if (f.type) q.set('type', f.type)
   if (f.priority) q.set('priority', f.priority)
   if (f.label) q.set('label', f.label)
@@ -114,22 +113,13 @@ export function useMyRecent(): Load {
   return { items, next: null, status, retry: () => setAttempt(a => a + 1), loadMore: () => {} }
 }
 
-/** Loads one issue's full copy from the server (the list endpoints return rows without
- *  description/createdAt), then its project's issues, and tells the app's merge listener.
- *  Resolves with the issue's key so the caller can navigate straight to it. */
+/** Resolves a server list row (not in the store yet) to its issue key and asks the app to load its project;
+ *  the project's issues then arrive through useProjectIssues, which also registers them with the sync layer. */
 export function loadIssueFull(id: string): Promise<string | undefined> {
   if (!apiEnabled) return Promise.resolve(undefined)
   return api<any>('GET', `/api/issues/${encodeURIComponent(id)}`).then(detail => {
-    const full = mapIssue(detail)
-    const key = full.key.split('-')[0]
-    return loadProjectIssues(key)
-      .then(() => {
-        window.dispatchEvent(new CustomEvent('strand:issue-full', { detail: { id, issue: full, key } }))
-        return full.key
-      })
-      .catch(() => {
-        window.dispatchEvent(new CustomEvent('strand:issue-full', { detail: { id, issue: full, key } }))
-        return full.key
-      })
+    const key = String(detail.key)
+    window.dispatchEvent(new CustomEvent('strand:issue-full', { detail: { key: key.split('-')[0] } }))
+    return key
   }).catch(() => undefined)
 }

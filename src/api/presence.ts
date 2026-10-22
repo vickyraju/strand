@@ -2,7 +2,7 @@
 // knows, and it tells the people in the same project. No hard lock — everyone can still edit; they just
 // see who else is here ("Maya is editing").
 //
-// Transport: the project's SSE stream (GET /api/projects/:key/events). One shared stream per project;
+// Transport: the project's SSE stream (GET /api/projects/:key/events), read with fetch so the login headers go along. One shared stream per project;
 // every client of that project receives `issue.editing` / `issue.updated` payloads with the editors list.
 // A heartbeat (POST /issues/:key/presence) every 30 s keeps your row alive; the server prunes anything
 // older than 90 s, so a closed tab disappears on its own. The explicit DELETE clears it immediately.
@@ -11,30 +11,57 @@ import { api, apiEnabled, buildRequest, getLogin, API_URL } from './client'
 import { useStore } from '../data/store'
 import type { Editor, Issue } from '../data/reducer'
 
-// —— The project event stream (one shared EventSource per project) ——
-
-const streams = new Map<string, EventSource>()
-const subs = new Map<string, number>()   // projectId → how many live subscribers
+// —— The project event stream (one shared fetch-based SSE reader per project) ——
+// EventSource cannot send the login headers, so the stream is read with fetch and parsed by hand.
 
 interface StreamEvent { type: string; key?: string; id?: string; editors?: Editor[] }
+interface Stream { abort: AbortController; handlers: Set<(e: StreamEvent) => void> }
+const streams = new Map<string, Stream>()
 
-/** Open the project's stream once (auth headers come from the shared dev login). */
-function openStream(projectId: string, key: string): EventSource {
-  const existing = streams.get(projectId)
-  if (existing) return existing
-  const [url, init] = buildRequest(API_URL!, getLogin(), 'GET', `/api/projects/${encodeURIComponent(key)}/events`)
-  const es = new EventSource(url, init as EventSourceInit)
-  streams.set(projectId, es)
-  return es
+/** Read the stream until aborted, reconnecting with a growing pause (1 s … 30 s) after any failure. */
+async function run(key: string, s: Stream) {
+  let wait = 1000
+  while (!s.abort.signal.aborted) {
+    try {
+      const [url, init] = buildRequest(API_URL!, getLogin(), 'GET', `/api/projects/${encodeURIComponent(key)}/events`, undefined, { accept: 'text/event-stream' })
+      const res = await fetch(url, { ...init, signal: s.abort.signal })
+      if (!res.ok || !res.body) throw new Error(String(res.status))
+      wait = 1000
+      const reader = res.body.pipeThrough(new TextDecoderStream()).getReader()
+      let buf = ''
+      for (;;) {
+        const { value, done } = await reader.read()
+        if (done) break
+        buf += value
+        let i: number
+        while ((i = buf.indexOf('\n\n')) >= 0) {
+          const data = buf.slice(0, i).split('\n').filter(l => l.startsWith('data:')).map(l => l.slice(5).trim()).join('\n')
+          buf = buf.slice(i + 2)
+          if (!data) continue
+          let ev: StreamEvent
+          try { ev = JSON.parse(data) } catch { continue }
+          s.handlers.forEach(h => h(ev))
+        }
+      }
+    } catch { /* aborted or dropped: fall through to reconnect */ }
+    if (s.abort.signal.aborted) return
+    await new Promise(r => setTimeout(r, wait))
+    wait = Math.min(wait * 2, 30_000)
+  }
 }
 
-function closeStream(projectId: string) {
-  const es = streams.get(projectId)
-  if (es) { es.close(); streams.delete(projectId) }
+/** Subscribe to one project's stream; the stream is shared and stops when the last subscriber leaves. */
+function subscribe(projectId: string, key: string, handler: (e: StreamEvent) => void): () => void {
+  let s = streams.get(projectId)
+  if (!s) { s = { abort: new AbortController(), handlers: new Set() }; streams.set(projectId, s); void run(key, s) }
+  s.handlers.add(handler)
+  return () => {
+    s.handlers.delete(handler)
+    if (!s.handlers.size) { s.abort.abort(); streams.delete(projectId) }
+  }
 }
 
-/** Subscribe to one project's stream; dispatches `setEditors` for any event that carries an editors list.
- *  The stream is shared; it closes only when the last subscriber leaves. */
+/** Dispatches `setEditors` for any event that carries an editors list. */
 export function useProjectEvents(projectId: string | undefined, projectKey: string | undefined, enabled: boolean) {
   const { state, dispatch } = useStore()
   const stateRef = useRef(state)
@@ -42,30 +69,13 @@ export function useProjectEvents(projectId: string | undefined, projectKey: stri
 
   useEffect(() => {
     if (!apiEnabled || !projectId || !projectKey || !enabled) return
-    let stopped = false
-    const es = openStream(projectId, projectKey)
-    const onMessage = (e: MessageEvent) => {
-      if (stopped) return
-      let data: StreamEvent
-      try { data = JSON.parse(e.data) } catch { return }
-      if (data.editors && data.key) {
-        // resolve the key ("PAY-12") to the local issue id; skip keys we don't have loaded
-        const issue = stateRef.current.issues.find(i => i.key === data.key)
-        if (!issue) return
-        dispatch({ type: 'setEditors', issueId: issue.id, editors: data.editors })
-      }
-    }
-    es.addEventListener('message', onMessage)
-    const count = (subs.get(projectId) ?? 0) + 1
-    subs.set(projectId, count)
-    return () => {
-      stopped = true
-      es.removeEventListener('message', onMessage)
-      const left = (subs.get(projectId) ?? 1) - 1
-      subs.set(projectId, left)
-      if (left <= 0) { subs.delete(projectId); closeStream(projectId) }
-    }
-  }, [projectId, projectKey, enabled, dispatch]) // eslint-disable-line react-hooks/exhaustive-deps
+    return subscribe(projectId, projectKey, data => {
+      if (!data.editors || !data.key) return
+      // resolve the key ("PAY-12") to the local issue id; skip keys we don't have loaded
+      const issue = stateRef.current.issues.find(i => i.key === data.key)
+      if (issue) dispatch({ type: 'setEditors', issueId: issue.id, editors: data.editors })
+    })
+  }, [projectId, projectKey, enabled, dispatch])
 }
 
 

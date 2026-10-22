@@ -8,6 +8,7 @@ import { Avatar, Menu, Empty, TypeIcon } from './ui'
 import { apiEnabled, api } from '../api/client'
 import { mapNotification } from '../api/map'
 import { loadProjectIssues } from '../api/load'
+import { issueSync } from '../api/sync'
 
 /** Notifications from the server. Rows already carry issue key, title and project key, so the inbox
  *  renders even when the project's issues are not in the local store. */
@@ -97,8 +98,9 @@ export default function InboxView() {
     if (!apiEnabled || !selectedRow || !selectedKey || state.issues.some(i => i.key === selectedKey)) return
     let cancelled = false
     loadProjectIssues(selectedRow.projectKey).then(loaded => {
-      if (cancelled) return
-      dispatch({ type: 'loadIssues', projectId: loaded[0]?.projectId ?? '', issues: loaded.map(({ version, ...i }) => i) })
+      if (cancelled || !loaded.length) return
+      issueSync.load(loaded[0].projectId, loaded)   // tell the sync layer these exist on the server, or they would be POSTed as new
+      dispatch({ type: 'loadIssues', projectId: loaded[0].projectId, issues: loaded.map(({ version, ...i }) => i) })
     }).catch(() => {})
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps

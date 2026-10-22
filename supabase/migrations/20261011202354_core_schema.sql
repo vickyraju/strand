@@ -130,15 +130,6 @@ create table issue_watchers (
   primary key (issue_id, user_id)
 );
 
--- Soft edit presence (Jira/monday.com style): who has this issue open for editing right now.
--- The app heartbeats every 30 s; rows older than 90 s are pruned lazily and read as gone.
-create table issue_editors (
-  issue_id       uuid not null references issues on delete cascade,
-  user_id        uuid not null references users on delete cascade,
-  last_heartbeat timestamptz not null default now(),
-  primary key (issue_id, user_id)
-);
-
 -- Allocate the next issue key number atomically (call inside the insert transaction)
 create function next_issue_number(p_project uuid) returns integer language sql as $$
   update projects set next_number = next_number + 1 where id = p_project returning next_number - 1
@@ -154,4 +145,3 @@ alter table transitions   enable row level security;
 alter table issues        enable row level security;
 alter table issue_links   enable row level security;
 alter table issue_watchers enable row level security;
-alter table issue_editors  enable row level security;

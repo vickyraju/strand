@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { FolderPlus, Plus, Clock, Eye, UserCheck, Star, Columns2, CalendarClock, Inbox } from 'lucide-react'
-import { useStore, projectOf, isDone, type Issue, type Project } from '../data/store'
+import { FolderPlus, Plus, Clock, Eye, UserCheck, Star, Columns2, CalendarClock, Ban, Inbox } from 'lucide-react'
+import { useStore, projectOf, isDone, blockersOf, type Issue, type Project } from '../data/store'
 import { useApp, useNavList } from '../appContext'
 import IssueRow from './IssueRow'
 import { ProjectIcon, StarButton, LoadSampleButton } from './ProjectView'
@@ -43,6 +43,7 @@ export default function YourWork({ onCreateProject }: { onCreateProject: () => v
   const localAssigned = state.issues.filter(i => i.assigneeId === me.id && i.type !== 'epic' && !isDone(projectFor(i), i))
   const assigned: Issue[] = apiEnabled ? work.items.filter(i => i.type !== 'epic') : localAssigned
   const dueSoon  = assigned.filter(i => i.dueDate && new Date(i.dueDate + 'T23:59').getTime() - Date.now() < 3 * 86_400_000)
+  const blocked  = apiEnabled ? [] : assigned.filter(i => blockersOf(state, i).length > 0)   // needs every link loaded: local mode only
   const unread   = state.notifications.filter(n => n.userId === me.id && !n.read && !n.archived).length
 
   const localWorked = (() => {
@@ -88,10 +89,10 @@ export default function YourWork({ onCreateProject }: { onCreateProject: () => v
   // No API: the home screen's lists come from the store; with an API, the project cards' progress
   // columns hide their numbers (the project's issues are not all loaded here).
   const progressOf = (p: Project) => {
-    if (apiEnabled) return { open: null as string | number | null, done: null as number | null }
+    if (apiEnabled) return { open: null as string | number | null, done: null as number | null, total: 0 }
     const items = state.issues.filter(i => i.projectId === p.id && i.type !== 'epic')
     const done = items.filter(i => isDone(p, i)).length
-    return { open: items.filter(i => i.assigneeId === me.id && !isDone(p, i)).length, done }
+    return { open: items.filter(i => i.assigneeId === me.id && !isDone(p, i)).length, done, total: items.length }
   }
 
   const lastTouch = (projectId: string) => Math.max(projectOf(state, projectId)!.createdAt, ...state.issues.filter(i => i.projectId === projectId).map(i => i.updatedAt))
@@ -157,6 +158,11 @@ export default function YourWork({ onCreateProject }: { onCreateProject: () => v
         <button className="focus-card" onClick={() => setTab('assigned')}>
           <CalendarClock size={18} className="tone-amber" /><b>{dueSoon.length}</b><span>due in the next 3 days</span>
         </button>
+        {!apiEnabled && (
+          <button className="focus-card" onClick={() => setTab('assigned')}>
+            <Ban size={18} className="tone-red" /><b>{blocked.length}</b><span>blocked by other work</span>
+          </button>
+        )}
         <button className="focus-card" onClick={() => goTo('inbox')}>
           <Inbox size={18} className="tone-green" /><b>{unread}</b><span>unread in your inbox</span>
         </button>
@@ -185,7 +191,7 @@ export default function YourWork({ onCreateProject }: { onCreateProject: () => v
                 <button className="link-row-btn" onClick={() => openProject(p.id, 'list')}>Done work items <b>{doneN ?? '…'}</b></button>
               </div>
               {showProgress && (
-                <span className="progress wide"><span style={{ width: `${(openN as number) + (doneN as number) ? ((doneN as number) / ((openN as number) + (doneN as number))) * 100 : 0}%` }} /></span>
+                <span className="progress wide"><span style={{ width: `${prog.total ? ((doneN as number) / prog.total) * 100 : 0}%` }} /></span>
               )}
               <div className="project-card-actions">
                 <button className="link sm" onClick={() => openProject(p.id, 'board')}><Columns2 size={13} />Board</button>

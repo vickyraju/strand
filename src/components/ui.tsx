@@ -173,7 +173,8 @@ export function Picker<T>({ value, options, onChange, trigger, title, className 
   const shown = remote && query ? options : (query ? options.filter(o => String(o.label ?? '').toLowerCase().includes(query.toLowerCase())) : options)
 
   useEffect(() => {
-    if (!open) { setQuery(''); if (remote) remote.onSearch(''); return }
+    if (!open) { if (query) { setQuery(''); remote?.onSearch('') } return }
+    remote?.onSearch('')   // seeds the list on first open (one shared request)
     if (!search) panelRef.current?.querySelector<HTMLButtonElement>('[aria-selected=true], button')?.focus()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])

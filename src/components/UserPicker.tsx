@@ -2,7 +2,7 @@
 // `userOptions` did; with an API it searches the server (`/users/search`) as you type, so a
 // workspace can hold more people than the first page of `/users`. The selected person always
 // renders (from the search cache or the store) even when they are not in the current result page.
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useStore } from '../data/store'
 import { apiEnabled } from '../api/client'
 import { useUserSearch } from '../api/users'
@@ -26,6 +26,7 @@ export function UserSelect({ value, onChange, className, excludeId, extraOptions
   const { state } = useStore()
   const remote = useUserSearch()
   const [q, setQ] = useState('')
+  useEffect(() => { remote.search('') }, [])   // eslint-disable-line react-hooks/exhaustive-deps
   const users = apiEnabled ? remote.users : state.users
   const options = (apiEnabled ? [] : state.users.map(u => ({ value: u.id, label: u.name })))
     .concat(users.filter(u => u.id !== excludeId).map(u => ({ value: u.id, label: u.name })))

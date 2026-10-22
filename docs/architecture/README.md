@@ -2,7 +2,7 @@
 
 | File | What it shows |
 |---|---|
-| [jira-build-data-model.drawio](jira-build-data-model.drawio) | The PostgreSQL schema of the core product: 22 tables with columns, keys and relationships, grouped by domain. One page. |
+| [jira-build-data-model.drawio](jira-build-data-model.drawio) | The PostgreSQL schema of the core product: 23 tables with columns, keys and relationships, grouped by domain. One page. |
 | [jira-build-aws-architecture.drawio](jira-build-aws-architecture.drawio) | Page 1: how the application is deployed on AWS in production and which AWS service does what (edge, VPC, EKS, Aurora, regional services, operations and security, build and deploy, numbered request flows). Page 2: the disaster-recovery region, recovery targets, and where data lives. |
 
 Both are standard draw.io files (uncompressed XML, no external images) built with draw.io's own AWS icon set.

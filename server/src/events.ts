@@ -32,7 +32,9 @@ export function publish(d: Db, projectId: string, event: Record<string, unknown>
 }
 
 export function subscribe(projectId: string, reply: FastifyReply) {
-  reply.raw.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' })
+  // reply.hijack() skips Fastify's own header handling, so carry over what plugins already set (the CORS headers)
+  const inherited = Object.fromEntries(Object.entries(reply.getHeaders()).filter(([k]) => /^access-control-|^vary$/i.test(k)))
+  reply.raw.writeHead(200, { ...inherited, 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' })
   reply.raw.write(': connected\n\n')
   const set = subs.get(projectId) ?? subs.set(projectId, new Set()).get(projectId)!
   set.add(reply)

@@ -82,6 +82,9 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
     return () => window.removeEventListener('keydown', onKey)
   }, [prev, next, openIssue])
 
+  // Live edit presence: heartbeat while panel is open; who else is here comes from project stream
+  usePresence(issue, true)
+
   if (!issue || !project) return null
 
   const set = (patch: IssuePatch) => dispatch({ type: 'updateIssues', ids: [issue.id], patch })
@@ -97,8 +100,6 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
   const watching = !!state.me && issue.watcherIds.includes(state.me.id)
   const watchers = issue.watcherIds.map(id => userOf(state, id)).filter(u => !!u)
 
-  // Live edit presence: heartbeat while the panel is open; who else is here comes from the project stream
-  usePresence(issue, true)
   const me = state.me
   const editors = (me ? (state.editors[issue.id] ?? []).filter(e => e.userId !== me.id) : state.editors[issue.id] ?? [])
   const editingNow = editors.length > 0

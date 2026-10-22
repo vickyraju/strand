@@ -28,7 +28,7 @@ const PROJECT_LINKS: { tab: ProjectTab; label: string; Icon: typeof List; scrumO
   { tab: 'reports', label: 'Reports', Icon: BarChart3 },
 ]
 
-export default function NavRail({ collapsed, onCollapseToggle, onCmdK, route, onCreateProject, drawer }: {
+export default function NavRail({ collapsed, onCollapseToggle, onCmdK, route, drawer }: {
   /** Phones: the rail is an off-canvas drawer */
   drawer?:          'open' | 'closed'
   collapsed:        boolean

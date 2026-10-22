@@ -526,3 +526,62 @@ test('paging never repeats or skips rows, even when many are created in the same
   assert.equal(seen.length, 12)
   assert.equal(new Set(seen).size, 12)
 })
+
+test('search can ask for unassigned work (assignee=none), and "me" and ids still work', { skip }, async () => {
+  const me = (await call('GET', '/api/v1/me')).body
+  await call('POST', '/api/v1/projects', { name: 'Unassigned', key: 'UNA', template: 'kanban' })
+  for (const t of ['una-a', 'una-b']) await call('POST', '/api/v1/projects/UNA/issues', { title: t, assigneeId: me.id })
+  for (const t of ['una-c', 'una-d', 'una-e']) await call('POST', '/api/v1/projects/UNA/issues', { title: t })
+  const keys = async (q: string) => (await call('GET', `/api/v1/search?q=una-&${q}`)).body.items.length
+  assert.equal(await keys(''), 5)
+  assert.equal(await keys('assignee=none'), 3)
+  assert.equal(await keys('assignee=me'), 2)
+  assert.equal(await keys(`assignee=${me.id}`), 2)
+})
+
+test('edit presence: heartbeat, who is editing, explicit leave, pruning of stale rows, read-only users refused', { skip }, async () => {
+  await call('POST', '/api/v1/projects', { name: 'Presence', key: 'PRS', template: 'kanban' })
+  await call('POST', '/api/v1/projects/PRS/issues', { title: 'shared' })
+  assert.equal((await call('POST', '/api/v1/issues/PRS-1/presence', undefined, 'ann.presence@x.com')).status, 204)
+  assert.equal((await call('POST', '/api/v1/issues/PRS-1/presence', undefined, 'ann.presence@x.com')).status, 204)       // a second beat is an update, not a second row
+  assert.equal((await call('POST', '/api/v1/issues/PRS-1/presence', undefined, 'ben.presence@x.com')).status, 204)
+  const rows = async () => (await pool.query(`select u.email from issue_editors e join users u on u.id = e.user_id order by u.email`)).rows.map(r => r.email)
+  assert.deepEqual(await rows(), ['ann.presence@x.com', 'ben.presence@x.com'])
+  assert.equal((await call('DELETE', '/api/v1/issues/PRS-1/presence', undefined, 'ann.presence@x.com')).status, 204)
+  assert.deepEqual(await rows(), ['ben.presence@x.com'])
+  // stale rows (no beat for 2 minutes) are pruned by the next heartbeat from anyone
+  await pool.query(`update issue_editors set last_heartbeat = now() - interval '2 minutes'`)
+  await call('POST', '/api/v1/issues/PRS-1/presence', undefined, 'cat.presence@x.com')
+  assert.deepEqual(await rows(), ['cat.presence@x.com'])
+  // viewers can look but are not "editing"
+  await call('GET', '/api/v1/me', undefined, 'view.presence@x.com')
+  await pool.query(`update memberships set role = 'viewer' where user_id = (select id from users where email = 'view.presence@x.com')`)
+  assert.equal((await call('POST', '/api/v1/issues/PRS-1/presence', undefined, 'view.presence@x.com')).status, 403)
+  assert.equal((await call('POST', '/api/v1/issues/NOPE-1/presence', undefined, 'ann.presence@x.com')).status, 404)
+})
+
+test('live stream over real HTTP: carries CORS headers for allowed origins only, and delivers presence to the project', { skip }, async () => {
+  const addr = await app.listen({ port: 0, host: '127.0.0.1' })
+  await call('POST', '/api/v1/projects', { name: 'Stream', key: 'STR', template: 'kanban' })
+  await call('POST', '/api/v1/projects/STR/issues', { title: 'live' })
+  const url = `${addr}/api/v1/projects/STR/events`
+  const origin = 'https://strand-one.vercel.app'
+  const ac = new AbortController()
+  const res = await fetch(url, { headers: { 'x-dev-user': 'owner@x.com', origin }, signal: ac.signal })
+  assert.equal(res.status, 200)
+  assert.equal(res.headers.get('content-type'), 'text/event-stream')
+  assert.equal(res.headers.get('access-control-allow-origin'), origin)                           // a browser may read it
+  const other = new AbortController()
+  const res2 = await fetch(url, { headers: { 'x-dev-user': 'owner@x.com', origin: 'https://evil.example' }, signal: other.signal })
+  assert.equal(res2.headers.get('access-control-allow-origin'), null); other.abort()           // an unlisted origin gets none
+  // a heartbeat by someone else shows up on the stream, with the person's name
+  const reader = res.body!.getReader(); const dec = new TextDecoder()
+  let text = ''
+  const beat = fetch(`${addr}/api/v1/issues/STR-1/presence`, { method: 'POST', headers: { 'x-dev-user': 'dan.stream@x.com' } })
+  const until = Date.now() + 8000
+  while (Date.now() < until && !text.includes('issue.editing')) { const { value } = await reader.read(); text += dec.decode(value) }
+  await beat; ac.abort()
+  const data = JSON.parse(text.split('\n').find(l => l.startsWith('data:') && l.includes('issue.editing'))!.slice(5))
+  assert.equal(data.key, 'STR-1')
+  assert.deepEqual(data.editors.map((e: any) => e.name), ['dan.stream'])
+})

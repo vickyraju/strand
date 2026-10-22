@@ -13,7 +13,7 @@ import CreateProjectModal from './components/CreateProjectModal'
 import CreateIssueModal from './components/CreateIssueModal'
 import ShortcutsDialog from './components/ShortcutsDialog'
 import { ProjectsView, ProjectView, TAB_LABEL } from './components/ProjectView'
-import { StoreProvider, useStore, type NewIssue, type Issue } from './data/store'
+import { StoreProvider, useStore, type NewIssue } from './data/store'
 import { useProjectIssues } from './api/useProjectIssues'
 import { useProjectOnDemand } from './api/useProjectOnDemand'
 import { rememberProject } from './api/recent'
@@ -81,11 +81,7 @@ function Shell() {
   useEffect(() => {
     if (!apiEnabled) return
     const on = (e: Event) => {
-      const { id, issue, key } = (e as CustomEvent).detail as { id?: string; issue?: Issue; key?: string }
-      if (id && issue) {
-        // put the full issue into the store so keyOf(id) and the detail panel can find it
-        dispatch({ type: 'syncIssue', issue })
-      }
+      const { key } = (e as CustomEvent).detail as { key?: string }
       if (key) loadProjectByKey(key).then(({ project, sprints }) => {
         dispatch({ type: 'loadProject', project, sprints })
         rememberProject(project.key)

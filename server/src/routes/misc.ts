@@ -25,7 +25,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
   app.get('/search', { schema: {
     tags: ['Search & work'], summary: 'Search issues across projects (text, key like PAY-12, or filters); newest first, keyset-paginated',
     querystring: z.object({
-      q: z.string().default('').describe('Free text or an issue key'), project: uuid.optional(), assignee: z.string().optional().describe('User id, or "me"'),
+      q: z.string().default('').describe('Free text or an issue key'), project: uuid.optional(), assignee: z.string().optional().describe('User id, "me", or "none" for unassigned work'),
       type: z.string().optional(), priority: z.string().optional(), label: z.string().optional(),
       resolution: z.enum(['open', 'done', 'all']).default('open'), ...pageQ, limit: z.coerce.number().int().min(1).max(200).default(50),
     }),
@@ -41,7 +41,8 @@ const plugin: FastifyPluginAsyncZod = async app => {
       else add(`(i.search @@ websearch_to_tsquery('simple', ?) or i.title ilike '%' || ? || '%')`, text.replace(/[%_\\]/g, '\\$&'))
     }
     if (q.project) add('i.project_id = ?', q.project)
-    if (q.assignee) add('i.assignee_id = ?', q.assignee === 'me' ? req.me.id : q.assignee)
+    if (q.assignee === 'none') where.push('i.assignee_id is null')
+    else if (q.assignee) add('i.assignee_id = ?', q.assignee === 'me' ? req.me.id : q.assignee)
     if (q.type) add('i.type = ?', q.type)
     if (q.priority) add('i.priority = ?', q.priority)
     if (q.label) add('? = any(i.labels)', q.label)
