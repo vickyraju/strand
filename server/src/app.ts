@@ -4,6 +4,7 @@ import swagger from '@fastify/swagger'
 import swaggerUi from '@fastify/swagger-ui'
 import { jsonSchemaTransform, serializerCompiler, validatorCompiler } from 'fastify-type-provider-zod'
 import { authenticate } from './auth.ts'
+import { RATE_LIMIT, rateLimiter } from './rateLimit.ts'
 import { pool } from './db.ts'
 import { startListener, stopListener } from './events.ts'
 import { errorSchema, toErrorBody } from './errors.ts'
@@ -83,6 +84,7 @@ export async function build() {
 
   app.setErrorHandler((err: any, _req, reply) => {
     const { status, body } = toErrorBody(err)
+    if (err.retryAfter) reply.header('retry-after', String(err.retryAfter))
     if (status >= 500) app.log.error(err)
     return reply.code(status).send(body)
   })
@@ -94,6 +96,12 @@ export async function build() {
 
   const resources: FastifyPluginAsync = async api => {
     api.addHook('preHandler', authenticate)
+    // per person (a token counts as its owner), after sign-in so the count belongs to someone
+    if (RATE_LIMIT > 0) {
+      const limiter = rateLimiter(RATE_LIMIT)
+      api.addHook('preHandler', async req => limiter.check(req.me.id))
+      api.addHook('onClose', async () => limiter.stop())
+    }
     await api.register(projects)
     await api.register(members)
     await api.register(issues)

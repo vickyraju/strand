@@ -8,7 +8,7 @@ import { createHash, createHmac } from 'node:crypto'
 // Needs a throwaway Postgres: DATABASE_URL=postgres://… npm test  (skipped otherwise)
 const url = process.env.DATABASE_URL
 const skip = !url && 'DATABASE_URL not set'
-Object.assign(process.env, { AUTH_DEV: '1', SCIM_TOKEN: 'scim-secret', NODE_ENV: 'test', DUE_SCAN_INTERVAL_MS: '0', GITHUB_WEBHOOK_SECRET: 'whsec-test', CORS_ORIGINS: 'https://strand-one.vercel.app/, http://localhost:5173' })
+Object.assign(process.env, { AUTH_DEV: '1', SCIM_TOKEN: 'scim-secret', NODE_ENV: 'test', RATE_LIMIT_PER_MIN: '1000000', DUE_SCAN_INTERVAL_MS: '0', GITHUB_WEBHOOK_SECRET: 'whsec-test', CORS_ORIGINS: 'https://strand-one.vercel.app/, http://localhost:5173' })
 
 let app: Awaited<ReturnType<typeof import('../src/app.ts').build>>
 
