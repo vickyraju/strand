@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, type ReactNode } from 'react'
-import { Search, Plus, FolderPlus, LayoutGrid, FolderKanban, SearchCode, Settings, Inbox, LayoutDashboard, Bookmark } from 'lucide-react'
+import { Search, Plus, FolderPlus, LayoutGrid, FolderKanban, SearchCode, Settings, Inbox, Bookmark } from 'lucide-react'
 import { navigate, href } from '../router'
 import { useStore, projectOf } from '../data/store'
 import { useApp, type AppView } from '../appContext'
@@ -28,7 +28,6 @@ export default function CommandPalette({ onClose, onCreateProject }: { onClose: 
     go('projects', 'Go to All projects',  <FolderKanban size={14} />),
     ...(q ? [{ id: 'search-all', section: 'Actions', icon: <SearchCode size={14} />, label: `Search all work items for “${query.trim()}”`, run: () => goTo('search', query.trim()) }] : []),
     go('search',   'Go to Search',        <SearchCode size={14} />),
-    go('dashboards', 'Go to Dashboards',  <LayoutDashboard size={14} />),
     go('settings', 'Go to Settings',      <Settings size={14} />),
   ].filter(i => i.id === 'search-all' || match(String(i.label)))
 

@@ -82,7 +82,6 @@ export const Summary = z.object({
 export const Notification = z.object({ id, userId: id, actorId: nullable(id), issueId: id, kind: z.string(), text: z.string(), read: z.boolean(), archived: z.boolean(), createdAt: ts })
 export const NotificationItem = Notification.extend({ issueKey: z.string(), issueTitle: z.string(), projectKey: z.string() })
 export const SavedView = z.object({ id, workspaceId: id, ownerId: id, name: z.string(), shared: z.boolean(), filters: z.record(z.string(), z.unknown()) })
-export const Dashboard = z.object({ id, workspaceId: id, ownerId: id, name: z.string(), gadgets: z.array(z.record(z.string(), z.unknown())) })
 
 export const AttachmentTicket = z.object({ id, name: z.string(), size: z.number(), type: z.string(), addedAt: ts, uploadUrl: z.string().describe('PUT the file bytes here within 5 minutes') })
 export const ImportReport = z.object({ projects: z.number(), issues: z.number(), skippedProjects: z.array(z.string()), skippedAttachments: z.number() })
@@ -101,7 +100,7 @@ const kindRow = { statuses: Status, transitions: Transition, fields: Field, temp
 /** Routes that create something answer 201 Created (Jira and REST convention), not 200. */
 export const CREATED = new Set([
   'POST /projects', 'POST /projects/:key/issues', 'POST /issues/:key/comments', 'POST /issues/:key/worklogs', 'POST /projects/:key/sprints',
-  'POST /views', 'POST /dashboards', 'POST /issues/:key/attachments', 'POST /me/tokens',
+  'POST /views', 'POST /issues/:key/attachments', 'POST /me/tokens',
   ...['statuses', 'transitions', 'fields', 'templates', 'rules', 'releases'].map(k => `POST /projects/:key/${k}`),
 ])
 
@@ -150,9 +149,6 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'GET /views': z.array(SavedView),
   'POST /views': SavedView,
   'PATCH /views/:id': SavedView,
-  'GET /dashboards': z.array(Dashboard),
-  'POST /dashboards': Dashboard,
-  'PATCH /dashboards/:id': Dashboard,
   'POST /issues/:key/attachments': AttachmentTicket,
   'GET /attachments/:id/url': z.object({ url: z.string() }),
   'POST /import': ImportReport,

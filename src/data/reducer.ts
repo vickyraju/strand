@@ -153,10 +153,6 @@ export interface SavedView {
   filters:  ViewFilters
 }
 
-export type GadgetKind = 'assigned' | 'view' | 'status' | 'created' | 'workload' | 'burndown' | 'due'
-export interface Gadget { id: string; kind: GadgetKind; projectId?: string; viewId?: string; wide?: boolean }
-export interface Dashboard { id: string; name: string; ownerId: string; gadgets: Gadget[] }
-
 export interface IssueLink { type: 'blocks' | 'relates'; issueId: string }
 
 /** Someone with this issue open for editing right now (the server's edit-presence table). */
@@ -264,7 +260,6 @@ export interface State {
   viewed:        string[]
   sampleIds:     string[]
   views:         SavedView[]
-  dashboards:    Dashboard[]
   /** Live edit presence, by issue id: who has this issue open right now. */
   editors:       Record<string, Editor[]>
 }
@@ -299,8 +294,6 @@ export type Action =
   | { type: 'releaseVersion'; projectId: string; releaseId: string; moveTo?: string }
   | { type: 'saveView'; view: SavedView }
   | { type: 'deleteView'; id: string }
-  | { type: 'saveDashboard'; dashboard: Dashboard }
-  | { type: 'deleteDashboard'; id: string }
   | { type: 'addLink'; issueId: string; link: IssueLink }
   | { type: 'removeLink'; issueId: string; otherId: string }
   | { type: 'addComment'; issueId: string; body: string }
@@ -358,7 +351,7 @@ export const DEFAULT_BOARD_PREFS: BoardPrefs = { groupBy: 'none', fields: DEFAUL
 export const EMPTY: State = {
   version: 4, workspaceName: 'Forge', ownerId: null, actingAsId: null,
   users: [], projects: [], issues: [], sprints: [], comments: [], activity: [], notifications: [],
-  starred: [], viewed: [], sampleIds: [], views: [], dashboards: [], editors: {},
+  starred: [], viewed: [], sampleIds: [], views: [], editors: {},
 }
 
 // ── Helpers ────────────────────────────────────────────────
@@ -484,7 +477,6 @@ export function reducer(state: State, action: Action, now = Date.now()): State {
         sprints:  state.sprints.filter(s => s.projectId !== action.id),
         starred:  state.starred.filter(id => id !== action.id),
         views:    state.views.map(v => v.filters.projectId === action.id ? { ...v, filters: { ...v.filters, projectId: undefined } } : v),
-        dashboards: state.dashboards.map(d => ({ ...d, gadgets: d.gadgets.filter(g => g.projectId !== action.id) })),
       }, issueIds)
     }
     case 'remapStatus': {
@@ -655,12 +647,7 @@ export function reducer(state: State, action: Action, now = Date.now()): State {
       return {
         ...state,
         views: state.views.filter(v => v.id !== action.id),
-        dashboards: state.dashboards.map(d => ({ ...d, gadgets: d.gadgets.filter(g => g.viewId !== action.id) })),
       }
-    case 'saveDashboard':
-      return { ...state, dashboards: state.dashboards.some(d => d.id === action.dashboard.id) ? state.dashboards.map(d => d.id === action.dashboard.id ? action.dashboard : d) : [...state.dashboards, action.dashboard] }
-    case 'deleteDashboard':
-      return { ...state, dashboards: state.dashboards.filter(d => d.id !== action.id) }
 
     case 'markViewed':
       if (state.viewed[0] === action.issueId) return state
@@ -984,13 +971,12 @@ export function migrate(raw: any): State {
   }))
 }
 
-/** v4: custom fields, releases, templates, time tracking, saved views and dashboards. */
+/** v4: custom fields, releases, templates, time tracking, saved views. */
 function toV4(s: State): State {
   return {
     ...s,
     version:    4,
     views:      s.views ?? [],
-    dashboards: s.dashboards ?? [],
     editors:    {},   // live edit presence is session-only, never persisted
     projects:   s.projects.map(p => ({ ...p, fields: p.fields ?? [], releases: p.releases ?? [], templates: p.templates ?? [] })),
     issues:     s.issues.map(i => ({ ...i, custom: i.custom ?? {}, worklogs: i.worklogs ?? [] })),

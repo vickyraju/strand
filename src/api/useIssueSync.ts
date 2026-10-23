@@ -7,7 +7,7 @@ import { sprintDeps, sprintSync } from './sprints'
 import { loadProjectIssues, loadWorkspace } from './load'
 import { KINDS, kindSyncs, itemsOf, projectSync, sendDetails, settingsDeps, starSync } from './settings'
 import { isDone } from '../data/reducer'
-import { dashboardSync, notificationSync, personalDeps, refreshNotifications, viewSync } from './personal'
+import { notificationSync, personalDeps, refreshNotifications, viewSync } from './personal'
 import { useStore } from '../data/store'
 
 type Toast = (text: string, opts?: { tone?: 'ok' | 'warn' }) => void
@@ -68,11 +68,11 @@ export function useIssueSync(toast: Toast) {
     sprintDeps.reloadAll = async () => {
       const fresh = await loadWorkspace(latest.current.projects.map(p => p.key))   // keep what is on screen, not only starred and recent
       dispatch({ type: 'replace', state: { ...latest.current, projects: fresh.projects, sprints: fresh.sprints, starred: fresh.starred,
-        views: fresh.views, dashboards: fresh.dashboards, notifications: fresh.notifications } })
+        views: fresh.views, notifications: fresh.notifications } })
     }
   }, [dispatch])
 
-  // Personal: views, dashboards, notifications (read/archive), plus a periodic refresh of new notifications
+  // Personal: views, notifications (read/archive), plus a periodic refresh of new notifications
   useEffect(() => {
     if (!apiEnabled) return
     personalDeps.meId = () => latest.current.ownerId
@@ -85,7 +85,6 @@ export function useIssueSync(toast: Toast) {
     return () => { window.clearInterval(t); document.removeEventListener('visibilitychange', tick) }
   }, [dispatch])
   useEffect(() => { if (apiEnabled) viewSync.flush(state.views.filter(v => v.ownerId === state.ownerId)) }, [state.views])
-  useEffect(() => { if (apiEnabled) dashboardSync.flush(state.dashboards.filter(d => d.ownerId === state.ownerId)) }, [state.dashboards])
   useEffect(() => { if (apiEnabled) notificationSync.flush(state.notifications.filter(n => n.userId === state.ownerId)) }, [state.notifications])
 
   // Project settings: workflow, fields, templates, rules, releases, stars, details, delete

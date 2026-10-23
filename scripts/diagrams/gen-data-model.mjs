@@ -18,7 +18,7 @@ const DOMAINS = [
   { key: 'planning', title: 'Planning', c: '#9673A6', f: '#F4EDF7', cols: [['sprints', 'releases']] },
   { key: 'work', title: 'Work items', c: '#D79B00', f: '#FFF6E5', cols: [['issues'], ['issue_links', 'issue_watchers', 'issue_editors', 'attachments', 'worklogs', 'labels']] },
   { key: 'collab', title: 'Collaboration', c: '#B85450', f: '#FBEDEC', cols: [['comments', 'activity', 'notifications']] },
-  { key: 'personal', title: 'Views & personal', c: '#0E8088', f: '#E6F4F5', cols: [['saved_views', 'dashboards', 'issue_views']] },
+  { key: 'personal', title: 'Views & personal', c: '#0E8088', f: '#E6F4F5', cols: [['saved_views', 'issue_views']] },
 ]
 const rows1 = ['people', 'projects', 'planning', 'work']
 
@@ -124,7 +124,7 @@ const notes = [
   ['Access', 'Row-level security is <b>on, with no policies</b>: only the API (a privileged role) reads or writes. Authorisation is in the API.'],
   ['Deletes', 'Issues are soft-deleted (<b>deleted_at</b>) so Undo can restore them. Everything else cascades from its parent.'],
   ['Concurrency', '<b>issues.version</b> is sent as If-Match on edits; a stale edit gets 409. <b>rank</b> is fractional, so a move rewrites one row.'],
-  ['Flexible data', 'jsonb for shapes that vary: custom field values, board prefs, layout, rule triggers/actions, view filters, dashboard gadgets, integration payloads.'],
+  ['Flexible data', 'jsonb for shapes that vary: custom field values, board prefs, layout, rule triggers/actions, view filters, integration payloads.'],
   ['Search', 'issues.<b>search</b> is a generated tsvector (GIN); titles also have a trigram index. Partial indexes skip deleted rows.'],
 ]
 const legendH = 40 + notes.length * 44 + 150

@@ -70,6 +70,10 @@ export function parseSchema() {
       const c = tables.get(table)?.columns.find(k => k.name === col); if (!c) throw new Error(`alter FK on unknown column ${table}.${col}`)
       c.ref = ref; c.onDelete = onDelete ?? null
     }
+    for (const m of sql.matchAll(/^drop table (\w+)\s*;/gim)) {
+      if (!tables.delete(m[1])) throw new Error(`${f}: drop of unknown table ${m[1]}`)
+      for (const t of tables.values()) if (t.columns.some(c => c.ref === m[1])) throw new Error(`${t.name} still references the dropped table ${m[1]}`)
+    }
     const all = [...sql.matchAll(/^alter table \w+\s+add (?:column|foreign key)/gim)].length
     if (all !== handled) throw new Error(`${f}: ${all - handled} alter table statement(s) the diagram parser cannot read`)
   }

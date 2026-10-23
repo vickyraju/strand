@@ -4,7 +4,7 @@ import { reducer, type Action, type State } from './reducer.ts'
 
 export const UNDOABLE = new Set<Action['type']>([
   'deleteIssues', 'updateIssues', 'moveIssue', 'deleteSprint', 'completeSprint', 'deleteComment', 'removeAttachment',
-  'deleteView', 'deleteDashboard', 'releaseVersion', 'removeUser', 'archive', 'deleteProject', 'removeLink',
+  'deleteView', 'releaseVersion', 'removeUser', 'archive', 'deleteProject', 'removeLink',
 ])
 
 export type StoreAction = Action | { type: 'undo' }

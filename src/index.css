@@ -1228,20 +1228,6 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; line-height:
 .import-map-row > span { width: 96px; flex-shrink: 0; color: var(--text-2) }
 .import-map-row .input { height: 32px }
 
-/* Dashboards */
-.dash-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; padding: 0 28px }
-.gadget { min-width: 0; display: flex; flex-direction: column }
-.gadget.wide { grid-column: span 2 }
-.gadget-hdr { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px }
-.gadget-empty { padding: 18px 0 }
-.mini-list { display: flex; flex-direction: column }
-.mini-row { display: flex; align-items: center; gap: 8px; padding: 7px 6px; border-radius: 6px; font-size: 13px; text-align: left; min-width: 0 }
-.mini-row:hover { background: var(--hover) }
-.mini-row .cell-ellipsis { flex: 1 }
-.gadget-picker { display: grid; grid-template-columns: 1fr 1fr; gap: 8px }
-@media (max-width: 1024px) { .dash-grid { grid-template-columns: 1fr } .gadget.wide { grid-column: auto } }
-.loading { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--text-3); font-size: 13px; padding: 48px }
-
 /* Inbox rows: one full-row open button, with Archive above it */
 .inbox-open { position: absolute; inset: 0; z-index: 1; border-radius: 8px }
 .inbox-open:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px }
@@ -1273,7 +1259,7 @@ h2.empty-title, h2.section-title, h2.side-title { margin: 0 }
   .topbar .btn-primary { width: 36px; padding: 0 }
   .topbar-actions .icon-btn[aria-label='Keyboard shortcuts'] { display: none }
   .page-hdr, .home-hdr { padding: 18px 16px 12px }
-  .focus-grid, .project-cards, .section-hdr, .home-tabs, .home-body, .dash-grid, .card-table, .settings-layout { padding-left: 16px; padding-right: 16px; margin-left: 0; margin-right: 0 }
+  .focus-grid, .project-cards, .section-hdr, .home-tabs, .home-body, .card-table, .settings-layout { padding-left: 16px; padding-right: 16px; margin-left: 0; margin-right: 0 }
   .home-tabs { margin: 20px 16px 0 }
   .focus-grid { grid-template-columns: 1fr 1fr; gap: 8px }
   .focus-card b { font-size: 22px }

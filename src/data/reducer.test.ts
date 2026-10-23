@@ -194,17 +194,15 @@ test('releasing a version moves unfinished work to the next one', () => {
   assert.equal(s.issues.find(i => i.id === 'i2')!.releaseId, 'r1')
 })
 
-test('deleting a project clears it from views and dashboards', () => {
+test('deleting a project clears it from saved views', () => {
   let { s, owner } = workspace()
   s = run([
     { type: 'saveView', view: { id: 'v', name: 'Mine', ownerId: owner, shared: false, filters: { q: '', projectId: 'p1', assignee: 'me', resolution: 'open' } } },
-    { type: 'saveDashboard', dashboard: { id: 'd', name: 'Home', ownerId: owner, gadgets: [{ id: 'g1', kind: 'status', projectId: 'p1' }, { id: 'g2', kind: 'view', viewId: 'v' }] } },
     { type: 'deleteProject', id: 'p1' },
   ], s)
   assert.equal(s.views[0].filters.projectId, undefined)
-  assert.deepEqual(s.dashboards[0].gadgets.map(g => g.id), ['g2'])
   s = run([{ type: 'deleteView', id: 'v' }], s)
-  assert.deepEqual(s.dashboards[0].gadgets, [])
+  assert.equal(s.views.length, 0)
 })
 
 test('syncIssue adopts the server copy but keeps local-only parts; upsertProject adds then replaces', () => {

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, lazy, Suspense } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { X, CheckCircle2, AlertTriangle, SearchX } from 'lucide-react'
 import NavRail from './components/NavRail'
 import TopBar, { type Crumb } from './components/TopBar'
@@ -27,7 +27,6 @@ import { useLocation, navigate, href, type Route } from './router'
 import { Empty } from './components/ui'
 import ErrorBoundary from './components/ErrorBoundary'
 
-const DashboardsView = lazy(() => import('./components/DashboardsView'))
 
 function useMedia(query: string) {
   const [match, setMatch] = useState(() => window.matchMedia(query).matches)
@@ -186,7 +185,7 @@ function Shell() {
       fullIssue ? [`${fullIssue.key} ${fullIssue.title}`]
       : project ? [project.name]
       : route.name === 'inbox' ? ['Inbox'] : route.name === 'search' ? ['Search'] : route.name === 'projects' ? ['Projects']
-      : route.name === 'settings' ? ['Settings'] : route.name === 'dashboards' ? ['Dashboards'] : route.name === 'home' ? ['Your work'] : []
+      : route.name === 'settings' ? ['Settings'] : route.name === 'home' ? ['Your work'] : []
     document.title = [...parts, state.workspaceName || 'Forge'].join(' · ')
   }, [route, fullIssue, project, state.workspaceName])
 
@@ -217,7 +216,7 @@ function Shell() {
       { label: state.projects.find(p => p.id === fullIssue.projectId)?.name ?? '', onClick: () => actions.openProject(fullIssue.projectId) },
       { label: fullIssue.key },
     ]
-    : [{ label: { home: 'Your work', inbox: 'Inbox', search: 'Search', projects: 'Projects', settings: 'Settings', dashboards: 'Dashboards' }[route.name as 'home'] ?? '' }]
+    : [{ label: { home: 'Your work', inbox: 'Inbox', search: 'Search', projects: 'Projects', settings: 'Settings' }[route.name as 'home'] ?? '' }]
 
   const acting = state.actingAsId ? state.me : null
 
@@ -249,7 +248,6 @@ function Shell() {
             {route.name === 'search'   && <SearchView query={route.q} viewId={route.view} />}
             {route.name === 'projects' && <ProjectsView onCreate={() => setCreateProjectOpen(true)} />}
             {route.name === 'settings' && <SettingsView />}
-            {route.name === 'dashboards' && <Suspense fallback={<div className="loading" role="status">Loading…</div>}><DashboardsView id={route.id} /></Suspense>}
             {route.name === 'project'  && (project
               ? issuesLoad.status === 'loading' ? <div className="loading" role="status">Loading work items…</div>
               : issuesLoad.status === 'error' ? (

@@ -119,7 +119,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     `${LIST} join issue_views v on v.issue_id = i.id and v.user_id = $2
       where i.workspace_id = $1 and i.deleted_at is null order by v.viewed_at desc limit 50`, [req.me.workspaceId, req.me.id]))
 
-  // Counts for summary/dashboards without scanning issues in the client
+  // Counts for a project's summary without scanning issues in the client
   app.get('/projects/:key/summary', { schema: { tags: ['Search & work'], summary: 'Counts by status, assignee and type; created in the last 7 days; overdue', params: z.object({ key: z.string() }) } }, async req => {
     const p = await projectByKey(db, req.me.workspaceId, req.params.key)
     const [byStatus, byAssignee, byType, created, overdue] = await Promise.all([
@@ -183,7 +183,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     reply.code(204).send()
   })
 
-  // ── Saved views & dashboards (owner edits; shared views visible to all) ──
+  // ── Saved views (owner edits; shared views visible to all) ──
   app.get('/views', { schema: { tags: ['Saved views'], summary: 'My saved views plus shared ones' } }, async req => db.query(
     'select * from saved_views where workspace_id = $1 and (owner_id = $2 or shared) order by name', [req.me.workspaceId, req.me.id]))
   app.post('/views', { schema: { tags: ['Saved views'], summary: 'Save a view', body: z.object({ id: uuid.optional().describe('Client-chosen id'), name: z.string().min(1), shared: z.boolean().default(false), filters: viewFilters }) } }, async req => {
@@ -205,34 +205,6 @@ const plugin: FastifyPluginAsyncZod = async app => {
   app.delete('/views/:id', { schema: { tags: ['Saved views'], summary: 'Delete my saved view', params: idP } }, async (req, reply) => {
     requireWrite(req)
     const r = await db.query('delete from saved_views where id = $1 and owner_id = $2 returning id', [req.params.id, req.me.id])
-    if (!r.length) throw new HttpError(404, 'Not found, or not yours')
-    reply.code(204).send()
-  })
-
-  const gadget = z.object({
-    id: z.string(), kind: z.enum(['assigned', 'view', 'status', 'created', 'workload', 'burndown', 'due']),
-    projectId: uuid.optional(), viewId: uuid.optional(), wide: z.boolean().optional(),
-  })
-  app.get('/dashboards', { schema: { tags: ['Dashboards'], summary: 'My dashboards' } }, async req => db.query(
-    'select * from dashboards where workspace_id = $1 and owner_id = $2 order by name', [req.me.workspaceId, req.me.id]))
-  app.post('/dashboards', { schema: { tags: ['Dashboards'], summary: 'Create a dashboard', body: z.object({ id: uuid.optional().describe('Client-chosen id'), name: z.string().min(1), gadgets: z.array(gadget).default([]) }) } }, async req => {
-    requireWrite(req)
-    const b = req.body
-    return (await db.query('insert into dashboards (id, workspace_id, owner_id, name, gadgets) values (coalesce($5::uuid, uuid_v7()), $1, $2, $3, $4) returning *',
-      [req.me.workspaceId, req.me.id, b.name, JSON.stringify(b.gadgets), b.id ?? null]))[0]
-  })
-  app.patch('/dashboards/:id', { schema: { tags: ['Dashboards'], summary: 'Edit my dashboard', params: idP, body: z.object({ name: z.string().min(1), gadgets: z.array(gadget) }).partial() } }, async req => {
-    requireWrite(req)
-    const b = req.body
-    const [d] = await db.query(
-      `update dashboards set name = coalesce($3, name), gadgets = coalesce($4::jsonb, gadgets) where id = $1 and owner_id = $2 returning *`,
-      [req.params.id, req.me.id, b.name ?? null, b.gadgets ? JSON.stringify(b.gadgets) : null])
-    if (!d) throw new HttpError(404, 'Not found, or not yours')
-    return d
-  })
-  app.delete('/dashboards/:id', { schema: { tags: ['Dashboards'], summary: 'Delete my dashboard', params: idP } }, async (req, reply) => {
-    requireWrite(req)
-    const r = await db.query('delete from dashboards where id = $1 and owner_id = $2 returning id', [req.params.id, req.me.id])
     if (!r.length) throw new HttpError(404, 'Not found, or not yours')
     reply.code(204).send()
   })

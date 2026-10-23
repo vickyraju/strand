@@ -2,7 +2,7 @@
 // (epoch-millisecond numbers, optional fields). Pure: no React, no fetch, so it is unit-tested.
 import {
   DEFAULT_BOARD_PREFS, type Project, type Sprint, type State, type User,
-  type Dashboard, type Notification, type SavedView, type Activity, type Comment, type IssueLink, type Worklog, type Issue, type Status, type Transition, type Rule, type FieldDef, type Release, type ItemTemplate,
+  type Notification, type SavedView, type Activity, type Comment, type IssueLink, type Worklog, type Issue, type Status, type Transition, type Rule, type FieldDef, type Release, type ItemTemplate,
 } from '../data/reducer.ts'
 
 export type Row = Record<string, any>
@@ -58,7 +58,7 @@ export function mapProject(p: Row): Project {
 }
 
 /** Everything slice 2 loads: who you are, the people, and the projects with their sprints. */
-export function mapWorkspace(me: Row, users: Row[], projects: Row[], starredIds: string[], extras: { views?: Row[]; dashboards?: Row[]; notifications?: Row[] } = {}): State {
+export function mapWorkspace(me: Row, users: Row[], projects: Row[], starredIds: string[], extras: { views?: Row[]; notifications?: Row[] } = {}): State {
   return {
     version: 4, workspaceName: 'Strand',
     ownerId: me.id, actingAsId: null,
@@ -67,7 +67,7 @@ export function mapWorkspace(me: Row, users: Row[], projects: Row[], starredIds:
     sprints: projects.flatMap(p => (p.sprints ?? []).map(mapSprint)),
     issues: [], comments: [], activity: [], notifications: (extras.notifications ?? []).map(mapNotification),
     starred: starredIds, viewed: [], sampleIds: [],
-    views: (extras.views ?? []).map(mapView), dashboards: (extras.dashboards ?? []).map(mapDashboard), editors: {},
+    views: (extras.views ?? []).map(mapView), editors: {},
   }
 }
 
@@ -141,4 +141,3 @@ export function mapIssueDetail(d: Row) {
 }
 
 export const mapView = (v: Row): SavedView => ({ id: v.id, name: v.name, ownerId: v.ownerId, shared: !!v.shared, filters: v.filters })
-export const mapDashboard = (d: Row): Dashboard => ({ id: d.id, name: d.name, ownerId: d.ownerId, gadgets: d.gadgets ?? [] })

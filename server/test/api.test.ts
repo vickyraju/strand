@@ -153,7 +153,7 @@ test('SCIM: token required, provisioning and deactivation block login', { skip }
 
 test('import: moves a reducer v4 state in with ids remapped', { skip }, async () => {
   const state = {
-    version: 4, starred: ['p1'], views: [], dashboards: [], comments: [{ issueId: 'i1', body: 'hi', createdAt: 1 }], activity: [],
+    version: 4, starred: ['p1'], views: [], dashboards: [{ id: 'old', name: 'An old dashboard', ownerId: 'u', gadgets: [{ id: 'g', kind: 'status' }] }], comments: [{ issueId: 'i1', body: 'hi', createdAt: 1 }], activity: [],
     sprints: [],
     projects: [{
       id: 'p1', key: 'IMP', name: 'Imported', template: 'kanban', color: '#112233', nextNumber: 3, createdAt: 1,
@@ -252,10 +252,9 @@ test('workflow override: refused for plain members, honored for the project lead
   assert.equal((await call('GET', '/api/v1/issues/OVR-1')).body.statusId, done.id)
 })
 
-test('views, dashboards and work logs accept client ids; notifications can be read and archived', { skip }, async () => {
-  const vid = '0192f0c0-0000-7000-8000-0000000000a1', did = '0192f0c0-0000-7000-8000-0000000000a2', wid = '0192f0c0-0000-7000-8000-0000000000a3'
+test('views and work logs accept client ids; notifications can be read and archived', { skip }, async () => {
+  const vid = '0192f0c0-0000-7000-8000-0000000000a1', wid = '0192f0c0-0000-7000-8000-0000000000a3'
   assert.equal((await call('POST', '/api/v1/views', { id: vid, name: 'Mine', filters: { q: '' } })).body.id, vid)
-  assert.equal((await call('POST', '/api/v1/dashboards', { id: did, name: 'Board' })).body.id, did)
   assert.equal((await call('POST', '/api/v1/projects', { name: 'Logs', key: 'LOG', template: 'kanban' })).status, 201)
   await call('POST', '/api/v1/projects/LOG/issues', { title: 'x' })
   assert.equal((await call('POST', '/api/v1/issues/LOG-1/worklogs', { id: wid, minutes: 30, date: '2026-10-01' })).body.id, wid)
@@ -335,7 +334,6 @@ test('every documented response body is produced by the real handler and matches
   assert.ok(note.issueKey)
   await ok('PATCH', `/notifications/${note.id}`, { read: true }, 'someone@x.com')
   const v = await ok('POST', '/views', { name: 'V', filters: { q: '' } }); await ok('PATCH', `/views/${v.id}`, { shared: true }); await ok('GET', '/views')
-  const db = await ok('POST', '/dashboards', { name: 'D', gadgets: [{ id: 'g', kind: 'status' }] }); await ok('PATCH', `/dashboards/${db.id}`, { name: 'D2' }); await ok('GET', '/dashboards')
   await ok('PATCH', '/projects/SCH', { name: 'Schemas 2', boardPrefs: { groupBy: 'none' } })
 })
 
@@ -930,4 +928,12 @@ test('labels: every label used in the workspace is listed, from any way an item 
   assert.deepEqual([...all].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase())), all)                     // alphabetical
   await call('DELETE', '/api/v1/issues/LAB-2')
   assert.ok((await labels()).includes('frontend'))                                                                   // a label stays offered after its items go (as in Jira)
+})
+
+test('dashboards are gone: no endpoints, no table, and an old export that still has them imports fine', { skip }, async () => {
+  assert.equal((await call('GET', '/api/v1/dashboards')).status, 404)
+  assert.equal((await call('POST', '/api/v1/dashboards', { name: 'x' })).status, 404)
+  assert.equal((await pool.query(`select to_regclass('public.dashboards') as t`)).rows[0].t, null)
+  const spec = JSON.parse((await app.inject({ method: 'GET', url: '/docs/json' })).body)
+  assert.ok(!Object.keys(spec.paths).some(p => p.includes('dashboard')))
 })

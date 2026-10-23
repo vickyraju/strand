@@ -77,7 +77,7 @@ p1.aws(aur, 'aurora', AWS.db, 40, 40, br('Writer', 'AZ a'), { size: 52, id: 'aur
 p1.aws(aur, 'aurora', AWS.db, 196, 40, br('Reader', 'AZ b'), { size: 52, id: 'aur_r1' })
 p1.aws(aur, 'aurora', AWS.db, 352, 40, br('Reader', 'AZ c'), { size: 52, id: 'aur_r2' })
 p1.text(aur, 14, 140, 452, 42, br('<b>Cluster endpoint</b>: writes, and LISTEN/NOTIFY for live updates (direct to the writer, not through RDS Proxy)'), { size: 10, fill: '#FDF3FB', stroke: AWS.db, id: 'aur_cluster_ep' })
-p1.text(aur, 14, 190, 452, 40, br('<b>Reader endpoint</b>: read-only queries (lists, search, dashboards)'), { size: 10, fill: '#FDF3FB', stroke: AWS.db, id: 'aur_reader' })
+p1.text(aur, 14, 190, 452, 40, br('<b>Reader endpoint</b>: read-only queries (lists, search, summaries)'), { size: 10, fill: '#FDF3FB', stroke: AWS.db, id: 'aur_reader' })
 const cache = p1.panel(data, 646, 40, 310, 244, 'ElastiCache', { stroke: AWS.db, size: 12, font: AWS.db, id: 'cache_p' })
 p1.aws(cache, 'elasticache', AWS.db, 127, 40, br('Redis / Valkey', 'Multi-AZ'), { size: 52, id: 'cache' })
 p1.text(cache, 14, 156, 282, 70, 'API rate limiting, cached project configuration, and fan-out of live-update events across API pods', { size: 10, noOverlap: true })
