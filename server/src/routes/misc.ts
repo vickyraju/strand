@@ -154,7 +154,9 @@ const plugin: FastifyPluginAsyncZod = async app => {
          from issues i join statuses st on st.id = i.status_id
         where i.workspace_id = $1 and i.assignee_id = $2 and i.deleted_at is null and ${visibleAs(me, 'i.project_id', 2)} and st.category <> 'done'
           and i.due_date between (now() at time zone 'utc')::date - 3 and (now() at time zone 'utc')::date + 1   -- UTC, so the answer does not depend on the server's timezone
-          and not exists (select 1 from notifications n where n.user_id = $2 and n.issue_id = i.id and n.kind = 'due' and n.text = 'is due on ' || i.due_date::text)`,
+          and not exists (select 1 from notifications n where n.user_id = $2 and n.issue_id = i.id and n.kind = 'due' and n.text = 'is due on ' || i.due_date::text)
+       on conflict (user_id, issue_id, text) where kind = 'due' do nothing  -- another API pod may have just made it
+      `,
       [workspaceId, userId])
   }
 

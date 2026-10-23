@@ -1217,3 +1217,17 @@ test('attachments: shown only once the file has arrived; removed files leave sto
   // only the uploader confirms, and outsiders cannot see attachments at all
   assert.equal((await call('GET', `/api/v1/attachments/${t.id}/url`, undefined, 'files.outsider@x.com')).status, 404)
 })
+
+test('due reminders: many requests at once (as from several API pods) still make one reminder per item and due date', { skip }, async () => {
+  const who = 'due.burst@x.com'
+  const me = (await call('GET', '/api/v1/me', undefined, who)).body
+  await call('POST', '/api/v1/projects', { name: 'Burst', key: 'BST', template: 'kanban' })
+  await join('BST', who)
+  const tomorrow = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10)
+  await call('POST', '/api/v1/projects/BST/issues', { title: 'soon', assigneeId: me.id, dueDate: tomorrow })
+  // each pod throttles reminders in its own memory, so several can try at once; the database keeps one
+  await Promise.all(Array.from({ length: 5 }, () => call('GET', '/api/v1/notifications', undefined, who)))
+  const dup = pool.query(`insert into notifications (user_id, issue_id, kind, text) select user_id, issue_id, kind, text from notifications where user_id = $1 and kind = 'due'`, [me.id])
+  await assert.rejects(dup, /notifications_due_once/)                      // the database refuses a second one
+  assert.equal((await pool.query(`select count(*)::int as n from notifications where user_id = $1 and kind = 'due'`, [me.id])).rows[0].n, 1)
+})
