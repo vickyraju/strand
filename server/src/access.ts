@@ -23,7 +23,7 @@ export const minFor = (method: string): ProjectRole => (method === 'GET' || meth
 
 /** An SQL condition limiting `col` (a project id column) to projects I can see; adds its parameter to `args`. */
 export function visible(me: Me, col: string, args: unknown[]): string {
-  if (me.admin) return 'true'
+  if (me.admin) { args.push(me.workspaceId); return `${col} in (select id from projects where workspace_id = $${args.length})` }   // admins see their whole workspace, never another's
   args.push(me.id)
   return `${col} in (select project_id from project_members where user_id = $${args.length})`
 }
