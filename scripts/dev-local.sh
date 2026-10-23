@@ -3,6 +3,7 @@
 # First run creates the database, applies the migrations and loads the sample workspace. Later runs reuse it.
 #   Sign in at http://localhost:5173 with SEED_EMAIL (default alex@local.dev) and the secret "local-dev-secret".
 #   Start over:  psql -h 127.0.0.1 -p 54322 -U postgres -c "truncate workspaces, users cascade"  and run this again.
+# Attachments need S3-compatible storage: set S3_BUCKET, S3_ENDPOINT, AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY before running.
 # Ctrl+C stops the API and the web app. Postgres keeps running; stop it with: pg_ctl -D ~/.strand-local/pg stop
 set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -32,7 +33,9 @@ fi
 
 # The API gets an explicit environment so it can never pick up the hosted database from server/.env
 (cd "$ROOT/server" && exec env -i PATH="$PATH" HOME="$HOME" DATABASE_URL="$DB" PORT=3001 NODE_ENV=development AUTH_DEV=1 \
-  DEV_AUTH_SECRET=local-dev-secret CORS_ORIGINS=http://localhost:5173 DOCS_ENABLED=1 PG_POOL=10 node src/index.ts) &
+  DEV_AUTH_SECRET=local-dev-secret CORS_ORIGINS=http://localhost:5173 DOCS_ENABLED=1 PG_POOL=10 \
+  S3_BUCKET="${S3_BUCKET:-}" S3_ENDPOINT="${S3_ENDPOINT:-}" AWS_REGION="${AWS_REGION:-us-east-1}" \
+  AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID:-}" AWS_SECRET_ACCESS_KEY="${AWS_SECRET_ACCESS_KEY:-}" node src/index.ts) &
 API=$!
 trap 'kill $API 2>/dev/null' EXIT INT TERM
 cd "$ROOT"

@@ -55,6 +55,10 @@ try {
       `insert into projects (id, workspace_id, key, name, description, color, template, lead_id, next_number, board_prefs, layout, sample, created_at)
        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, '{}', $10, true, $11)`,
       [p.id, ws, p.key, p.name, p.description, p.color, p.template, p.leadId || null, p.nextNumber, JSON.stringify(layout), at(p.createdAt)])
+    // everyone in the sample team works on every sample project; the lead administers it (the owner sees all as workspace owner)
+    await run(`insert into project_members (project_id, user_id, role)
+               select $1, m.user_id, case when m.user_id = $2 then 'admin' else 'member' end from memberships m where m.workspace_id = $3`,
+      [p.id, p.leadId || null, ws])
     for (const [i, s] of p.statuses.entries())
       await run('insert into statuses (id, project_id, name, description, color, category, wip_limit, position) values ($1, $2, $3, $4, $5, $6, $7, $8)',
         [sid(p.id, s.id), p.id, s.name, s.description ?? '', s.color, s.category, s.wipLimit ?? null, i])
