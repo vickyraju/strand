@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { randomUUID } from 'node:crypto'
 import { tx, type Db } from '../db.ts'
 import { requireAdmin } from '../auth.ts'
+import { audit } from '../audit.ts'
 
 // One-time import of a client-side `forge:v1` state (reducer v4) into the shared workspace.
 // Local users are placeholders, so everything they authored is attributed to the importing admin.
@@ -110,6 +111,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
       }
 
       await importViews(d, s, me, id, done)
+      await audit(d, req, { action: 'workspace.imported', type: 'workspace', id: me.workspaceId, after: report })
     })
     return report
   })

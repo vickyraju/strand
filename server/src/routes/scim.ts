@@ -3,6 +3,7 @@ import { timingSafeEqual } from 'node:crypto'
 import { z } from 'zod'
 import { db } from '../db.ts'
 import { HttpError } from '../auth.ts'
+import { audit, changes } from '../audit.ts'
 
 // SCIM 2.0 Users for Microsoft Entra provisioning. Authenticated by one shared bearer token (SCIM_TOKEN).
 // Deprovisioning is a soft `active=false`: history stays attributed, and login is refused.
@@ -68,6 +69,15 @@ const plugin: FastifyPluginAsyncZod = async app => {
     return toScim(u)
   })
 
+  /** Provisioning changes go to the audit log; the actor is SCIM (the identity provider), not a person. */
+  const userBefore = async (id: string) => (await db.query<any>('select * from users where id = $1', [id]))[0] ?? null
+  const logUser = async (ip: string, before: any, u: any) => {
+    const view = (x: any) => ({ email: x.email, name: x.name, title: x.title ?? null, active: x.active })
+    const action = !before ? 'user.provisioned' : before.active && !u.active ? 'user.deactivated' : !before.active && u.active ? 'user.reactivated' : 'user.updated'
+    const c = before ? changes(view(before), view(u)) : { before: undefined, after: view(u), changed: true }
+    if (c.changed) await audit(db, { system: 'SCIM', ip }, { action, type: 'user', id: u.id, name: u.email, workspaceId: null, before: c.before, after: c.after })
+  }
+
   app.post('/Users', { schema: { tags: TAG, summary: 'Provision a user', security: sec, body: userBody } }, async (req, reply) => {
     const b = req.body
     const email = b.userName.toLowerCase()
@@ -75,6 +85,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     const [u] = await db.query<any>(
       `insert into users (entra_oid, email, name, initials, title, active) values ($1, $2, $3, $4, $5, $6) returning *`,
       [b.externalId ?? null, email, name, initials(name), b.title ?? null, b.active === undefined ? true : asBool(b.active)])
+    await logUser(req.ip, null, u)
     reply.code(201)
     return toScim(u)
   })
@@ -82,10 +93,12 @@ const plugin: FastifyPluginAsyncZod = async app => {
   app.put('/Users/:id', { schema: { tags: TAG, summary: 'Replace a user', security: sec, params: idP, body: userBody } }, async req => {
     const b = req.body
     const name = displayName(b)
+    const before = await userBefore(req.params.id)
     const [u] = await db.query<any>(
       `update users set entra_oid = coalesce($2, entra_oid), email = lower($3), name = $4, initials = $5, title = $6, active = $7 where id = $1 returning *`,
       [req.params.id, b.externalId ?? null, b.userName, name, initials(name), b.title ?? null, b.active === undefined ? true : asBool(b.active)])
     if (!u) throw new HttpError(404, 'Not found')
+    await logUser(req.ip, before, u)
     return toScim(u)
   })
 
@@ -109,15 +122,19 @@ const plugin: FastifyPluginAsyncZod = async app => {
     }
     const cols = Object.keys(set)
     if (!cols.length) throw new HttpError(400, 'Nothing to update')
+    const before = await userBefore(req.params.id)
     const [u] = await db.query<any>(
       `update users set ${cols.map((c, i) => `${c} = $${i + 2}`).join(', ')} where id = $1 returning *`,
       [req.params.id, ...cols.map(c => set[c])])
     if (!u) throw new HttpError(404, 'Not found')
+    await logUser(req.ip, before, u)
     return toScim(u)
   })
 
   app.delete('/Users/:id', { schema: { tags: TAG, summary: 'Deactivate a user (soft)', security: sec, params: idP } }, async (req, reply) => {
-    await db.query('update users set active = false where id = $1', [req.params.id])
+    const before = await userBefore(req.params.id)
+    const [u] = await db.query<any>('update users set active = false where id = $1 returning *', [req.params.id])
+    if (u) await logUser(req.ip, before, u)
     reply.code(204).send()
   })
 }

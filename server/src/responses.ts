@@ -161,6 +161,14 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'PATCH /views/:id': SavedView,
   'POST /issues/:key/attachments': AttachmentTicket,
   'GET /attachments/:id/url': z.object({ url: z.string() }),
+  'GET /audit': z.object({
+    items: z.array(z.object({
+      id, at: ts, actorId: nullable(id), actor: z.string().describe("Who acted: their email at the time, or 'SCIM'"), action: z.string(),
+      projectId: nullable(id), projectKey: nullable(z.string()), targetType: z.string(), targetId: nullable(z.string()), target: nullable(z.string()),
+      before: z.unknown(), after: z.unknown(), ip: nullable(z.string()),
+    })),
+    next: nullable(z.string()),
+  }),
   'POST /attachments/:id/complete': z.object({ id, name: z.string(), size: z.number(), type: z.string(), addedBy: nullable(id), addedAt: ts }),
   'POST /import': ImportReport,
   ...Object.fromEntries(Object.entries(kindRow).flatMap(([kind, row]) => [

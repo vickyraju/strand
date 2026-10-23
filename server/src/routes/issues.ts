@@ -4,6 +4,7 @@ import { db, tx, pick, type Db } from '../db.ts'
 import { HttpError, type Me } from '../auth.ts'
 import { canJoinWork, minFor, need, roleOf, visible, type ProjectRole } from '../access.ts'
 import { publish } from '../events.ts'
+import { audit } from '../audit.ts'
 import { runRules, moveAllowed } from '../rules.ts'
 import { projectByKey } from './projects.ts'
 
@@ -143,13 +144,17 @@ async function keepRanksApart(d: Db, projectId: string, issueId: string, rank: n
 }
 
 /** One issue edit: version check, workflow check, history, notifications, automation, live event. Shared by the single and bulk edits. */
-async function applyPatch(d: Db, me: Me, cur: any, patch: z.infer<typeof patchBody>, o: { ifMatch: number | null; override: boolean }) {
+async function applyPatch(d: Db, me: Me, cur: any, patch: z.infer<typeof patchBody>, o: { ifMatch: number | null; override: boolean; ip?: string }) {
   if (o.ifMatch !== null && o.ifMatch !== cur.version) throw new HttpError(409, `Edited elsewhere (current version ${cur.version})`)
   const [lead] = await d.query<{ leadId: string | null }>('select lead_id from projects where id = $1', [cur.projectId])
   const override = o.override && (await roleOf(d, me, cur.projectId)) === 'admin'
   if (patch.assigneeId && patch.assigneeId !== cur.assigneeId && !(await canJoinWork(d, cur.projectId, patch.assigneeId)))
     throw new HttpError(400, 'The assignee must be a member of this project')
   if (patch.statusId && !override) await checkTransition(d, cur.projectId, cur.statusId, patch.statusId)
+  // a move the workflow does not allow, made by a project admin with the override, is recorded
+  if (patch.statusId && override && !(await moveAllowed(d, cur.projectId, cur.statusId, patch.statusId)))
+    await audit(d, { me, ip: o.ip }, { action: 'issue.workflow_overridden', type: 'issue', id: cur.id, name: cur.key, project: { id: cur.projectId, key: cur.key.split('-')[0] },
+      before: { statusId: cur.statusId }, after: { statusId: patch.statusId } })
   if (patch.parentId === cur.id) throw new HttpError(400, 'An item cannot be its own parent')
   if (patch.custom) await checkCustom(d, cur.projectId, patch.custom, cur.custom)
 
@@ -314,7 +319,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     }),
   } }, async req => {
     const ifMatch = req.headers['if-match'] ? Number(String(req.headers['if-match']).replace(/"/g, '')) : null
-    return tx(async d => applyPatch(d, req.me, await issueByKey(d, req, req.params.key), req.body, { ifMatch, override: req.headers['x-workflow-override'] === '1' }))
+    return tx(async d => applyPatch(d, req.me, await issueByKey(d, req, req.params.key), req.body, { ifMatch, override: req.headers['x-workflow-override'] === '1', ip: req.ip }))
   })
 
   // ── Bulk (up to 200 issues, all or nothing: nothing changes if any issue is missing or refuses the change) ──
@@ -332,6 +337,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
       const rows = []
       for (const ref of [...new Set(req.body.issues)]) rows.push(await issueByKey(d, req, ref))
       await d.query('update issues set deleted_at = now(), version = version + 1 where id = any($1::uuid[])', [rows.map(r => r.id)])
+      for (const r of rows) await audit(d, req, { action: 'issue.deleted', type: 'issue', id: r.id, name: r.key, project: { id: r.projectId, key: r.key.split('-')[0]! }, after: { bulk: true } })
       for (const pid of new Set(rows.map(r => r.projectId))) await publish(d, pid, { type: 'issue.deleted' })
       return bulkResult(rows.length)
     })
@@ -341,6 +347,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
       const rows = []
       for (const ref of [...new Set(req.body.issues)]) rows.push(await issueByKey(d, req, ref, true))
       await d.query('update issues set deleted_at = null, version = version + 1 where id = any($1::uuid[])', [rows.map(r => r.id)])
+      for (const r of rows) await audit(d, req, { action: 'issue.restored', type: 'issue', id: r.id, name: r.key, project: { id: r.projectId, key: r.key.split('-')[0]! }, after: { bulk: true } })
       for (const pid of new Set(rows.map(r => r.projectId))) await publish(d, pid, { type: 'issue.created' })
       return bulkResult(rows.length)
     })
@@ -351,6 +358,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     await tx(async d => {
       const i = await issueByKey(d, req, req.params.key)
       await d.query('update issues set deleted_at = now(), version = version + 1 where id = $1', [i.id])
+      await audit(d, req, { action: 'issue.deleted', type: 'issue', id: i.id, name: i.key, project: { id: i.projectId, key: i.key.split('-')[0]! } })
       await publish(d, i.projectId, { type: 'issue.deleted', id: i.id, key: i.key })
     })
     reply.code(204).send()
@@ -369,6 +377,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     return tx(async d => {
       const i = await issueByKey(d, req, req.params.key, true)
       await d.query('update issues set deleted_at = null, version = version + 1 where id = $1', [i.id])
+      await audit(d, req, { action: 'issue.restored', type: 'issue', id: i.id, name: i.key, project: { id: i.projectId, key: i.key.split('-')[0]! } })
       await publish(d, i.projectId, { type: 'issue.created', id: i.id })
       return (await d.query<any>(`${ISSUE} where i.id = $1`, [i.id]))[0]
     })

@@ -1175,3 +1175,42 @@ test('due reminders: many requests at once (as from several API pods) still make
   await assert.rejects(dup, /notifications_due_once/)                      // the database refuses a second one
   assert.equal((await pool.query(`select count(*)::int as n from notifications where user_id = $1 and kind = 'due'`, [me.id])).rows[0].n, 1)
 })
+
+test('audit log: who changed people, settings, workflow and deletions is recorded; only admins read it; nobody can change it', { skip }, async () => {
+  const p = (await call('POST', '/api/v1/projects', { name: 'Audited', key: 'AUD', template: 'kanban' })).body
+  await join('AUD', 'aud.admin@x.com', 'admin')
+  const memberId = (await call('GET', '/api/v1/me', undefined, 'aud.member@x.com')).body.id
+  await call('POST', '/api/v1/projects/AUD/members', { userIds: [memberId], role: 'member' }, 'aud.admin@x.com')
+  await call('PATCH', `/api/v1/projects/AUD/members/${memberId}`, { role: 'viewer' }, 'aud.admin@x.com')
+  await call('PATCH', '/api/v1/projects/AUD', { name: 'Audited 2' }, 'aud.admin@x.com')
+  await call('PATCH', '/api/v1/projects/AUD', { boardPrefs: { groupBy: 'none' } }, 'aud.admin@x.com')       // presentation only: not recorded
+  await call('POST', '/api/v1/projects/AUD/transitions', { name: 'Start', fromIds: [p.statuses[0].id], toId: p.statuses[1].id }, 'aud.admin@x.com')
+  const i = (await call('POST', '/api/v1/projects/AUD/issues', { title: 'to delete' })).body
+  await call('DELETE', `/api/v1/issues/${i.key}`, undefined, 'aud.admin@x.com')
+  await call('DELETE', `/api/v1/projects/AUD/members/${memberId}`, undefined, 'aud.admin@x.com')
+
+  const log = (await call('GET', '/api/v1/audit?project=AUD', undefined, 'aud.admin@x.com'))
+  assert.equal(log.status, 200)
+  const actions = log.body.items.map((x: any) => x.action).reverse()
+  assert.deepEqual(actions, ['project.created', 'project.member.added', 'project.member.role_changed', 'project.updated',
+    'project.transition.created', 'issue.deleted', 'project.member.removed'])
+  const role = log.body.items.find((x: any) => x.action === 'project.member.role_changed')
+  assert.deepEqual([role.actor, role.target, role.before, role.after], ['aud.admin@x.com', 'aud.member@x.com', { role: 'member' }, { role: 'viewer' }])
+  assert.deepEqual(log.body.items.find((x: any) => x.action === 'project.updated').after, { name: 'Audited 2' })
+
+  // who may read it
+  assert.equal((await call('GET', '/api/v1/audit')).status, 200)                                                  // workspace owner: everything
+  assert.equal((await call('GET', '/api/v1/audit', undefined, 'aud.admin@x.com')).status, 403)                     // project admin: only with project
+  await join('AUD', 'aud.plain@x.com', 'member')
+  assert.equal((await call('GET', '/api/v1/audit?project=AUD', undefined, 'aud.plain@x.com')).status, 403)
+  assert.equal((await call('GET', '/api/v1/audit?project=AUD', undefined, 'aud.outsider@x.com')).status, 404)
+  assert.ok((await call('GET', '/api/v1/audit?action=project.member')).body.items.every((x: any) => x.action.startsWith('project.member')))
+
+  // append-only, and it outlives the project
+  await assert.rejects(pool.query(`update audit_log set actor = 'someone else'`), /can only be added to/)
+  await assert.rejects(pool.query('delete from audit_log'), /can only be added to/)
+  await call('DELETE', '/api/v1/projects/AUD')
+  const all = (await call('GET', '/api/v1/audit?action=project.deleted')).body.items
+  assert.equal(all[0].projectKey, 'AUD')
+  assert.equal(all[0].before.items, 1)
+})
