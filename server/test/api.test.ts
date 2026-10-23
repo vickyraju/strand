@@ -588,6 +588,36 @@ test('live stream over real HTTP: carries CORS headers for allowed origins only,
   assert.deepEqual(data.editors.map((e: any) => e.name), ['dan.stream'])
 })
 
+test('live stream: losing access closes the stream at once (removed from the project, or deactivated); others keep theirs', { skip }, async () => {
+  const addr = await app.listen({ port: 0, host: '127.0.0.1' }).catch(() => `http://127.0.0.1:${(app.server.address() as any).port}`)
+  await call('POST', '/api/v1/projects', { name: 'Revoke', key: 'RVK', template: 'kanban' })
+  for (const who of ['rv.ann', 'rv.ben', 'rv.cat']) await join('RVK', `${who}@x.com`)
+  const open = async (who: string) => {
+    const res = await fetch(`${addr}/api/v1/projects/RVK/events`, { headers: { 'x-dev-user': `${who}@x.com` } })
+    assert.equal(res.status, 200)
+    const reader = res.body!.getReader()
+    await reader.read()                                              // ": connected"
+    return reader
+  }
+  /** Resolves true when the server ends the stream, false if it is still open after `ms`. */
+  const ends = async (r: ReadableStreamDefaultReader<Uint8Array>, ms = 3000) => {
+    const timeout = new Promise<false>(res => setTimeout(() => res(false), ms))
+    const done = (async () => { for (;;) { const { done } = await r.read(); if (done) return true } })()
+    return Promise.race([done, timeout])
+  }
+  const [ann, ben, cat] = [await open('rv.ann'), await open('rv.ben'), await open('rv.cat')]
+  try {
+  const id = async (who: string) => (await call('GET', '/api/v1/me', undefined, `${who}@x.com`)).body.id
+  assert.equal((await call('DELETE', `/api/v1/projects/RVK/members/${await id('rv.ann')}`)).status, 204)
+  assert.equal(await ends(ann), true)                                // removed: stream closed
+  await pool.query(`update users set active = false where email = 'rv.ben@x.com'`)
+  assert.equal(await ends(ben), true)                                // deactivated: stream closed
+  assert.equal(await ends(cat, 1500), false)                         // still a member: stream stays open
+  } finally { for (const r of [ann, ben, cat]) await r.cancel().catch(() => {}) }   // a failure must not leave streams holding the run open
+  assert.equal((await fetch(`${addr}/api/v1/projects/RVK/events`, { headers: { 'x-dev-user': 'rv.ann@x.com' } })).status, 404)   // and cannot reopen it
+})
+
+
 // ── Personal access tokens ──
 const viaToken = async (token: string, method: string, path: string, body?: unknown) => {
   const r = await app.inject({ method: method as any, url: path, payload: body as any, headers: { authorization: `Bearer ${token}` } })

@@ -214,7 +214,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
   app.get('/projects/:key/events', { schema: { tags: T.projects, summary: 'Live change stream (Server-Sent Events)', params: keyP } }, async (req, reply) => {
     const p = await projectByKey(db, req, req.params.key)
     reply.hijack()
-    subscribe(p.id, reply)
+    subscribe(p.id, reply, req.me.id)
   })
 
   // ── Child collections: POST/PATCH/DELETE /projects/:key/<kind>[/:id] ──
