@@ -96,14 +96,12 @@ test('issue detail maps comments, history (null actor = automation), time logs, 
   assert.deepEqual(d.watcherIds, ['u1'])
 })
 
-test('views, dashboards and notifications map for the workspace load', () => {
+test('views and notifications map for the workspace load', () => {
   const s = mapWorkspace({ id: 'u1' }, [], [], [], {
     views: [{ id: 'v1', name: 'Mine', ownerId: 'u1', shared: null, filters: { q: 'x', resolution: 'open' } }],
-    dashboards: [{ id: 'd1', name: 'Board', ownerId: 'u1', gadgets: null }],
     notifications: [{ id: 'n1', userId: 'u1', actorId: null, issueId: 'i1', kind: 'assigned', text: 'assigned you', read: false, archived: false, createdAt: '2026-10-01T00:00:00.000Z', issueKey: 'PAY-1' }],
   })
   assert.deepEqual([s.views[0]!.shared, s.views[0]!.filters.q], [false, 'x'])
-  assert.deepEqual(s.dashboards[0]!.gadgets, [])
   assert.deepEqual([s.notifications[0]!.actorId, s.notifications[0]!.createdAt], ['', Date.parse('2026-10-01T00:00:00.000Z')])
 })
 

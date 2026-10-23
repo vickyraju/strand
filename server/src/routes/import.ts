@@ -117,10 +117,6 @@ async function importViews(d: Db, s: any, me: { id: string; workspaceId: string 
     await d.query('insert into saved_views (id, workspace_id, owner_id, name, shared, filters) values ($1, $2, $3, $4, $5, $6)',
       [newId, me.workspaceId, me.id, v.name, !!v.shared, JSON.stringify(f)])
   }
-  for (const b of s.dashboards ?? []) {
-    const gadgets = (b.gadgets ?? []).map((g: any) => ({ ...g, projectId: g.projectId && done.has(g.projectId) ? id.get(g.projectId) : undefined, viewId: g.viewId ? viewIds.get(g.viewId) : undefined }))
-    await d.query('insert into dashboards (workspace_id, owner_id, name, gadgets) values ($1, $2, $3, $4)', [me.workspaceId, me.id, b.name, JSON.stringify(gadgets)])
-  }
   for (const pid of s.starred ?? []) if (done.has(pid))
     await d.query('insert into stars (user_id, project_id) values ($1, $2) on conflict do nothing', [me.id, id.get(pid)])
 }

@@ -34,12 +34,11 @@ export async function loadProjectByKey(key: string) {
  *  already on screen (`keep`). Every other project is fetched when opened, or found with the project search.
  *  ponytail: users still load as one list (first 1000 by name). At tens of thousands of users the pickers need to search. */
 export async function loadWorkspace(keep: string[] = []): Promise<State> {
-  const [me, users, starredPage, views, dashboards, notifications] = await Promise.all([
+  const [me, users, starredPage, views, notifications] = await Promise.all([
     api<any>('GET', '/api/me'),
     api<any[]>('GET', '/api/users'),
     api<{ items: any[] }>('GET', '/api/projects/search?starred=1&limit=100'),
     api<any[]>('GET', '/api/views'),
-    api<any[]>('GET', '/api/dashboards'),
     api<any[]>('GET', '/api/notifications'),
   ])
   let keys = keysToLoad(starredPage.items.map(p => p.key), readRecent(), keep)
@@ -47,7 +46,7 @@ export async function loadWorkspace(keep: string[] = []): Promise<State> {
   if (!keys.length) keys = (await api<{ key: string }[]>('GET', '/api/me/projects/recent').catch(() => [])).map(p => p.key)
   const loaded = await mapLimit(keys, 6, async k => { try { return await fetchProject(k) } catch { return null } })   // a project that is gone or hidden is skipped
   const ok = loaded.filter((x): x is NonNullable<typeof x> => !!x)
-  const state = mapWorkspace(me, users, [], starredPage.items.map(p => p.id), { views, dashboards, notifications })
+  const state = mapWorkspace(me, users, [], starredPage.items.map(p => p.id), { views, notifications })
   state.projects = ok.map(x => x.project)
   state.sprints = ok.flatMap(x => x.sprints)
   sprintSync.load(state.sprints)   // the server's data is the base, so none of it is sent back

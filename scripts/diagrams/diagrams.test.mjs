@@ -40,8 +40,8 @@ test('data model: every table, column and foreign key in the migrations is in th
   const { tables: all } = parseSchema()
   const tables = all.filter(t => !OMIT.includes(t.name))
   const ids = new Set(cells(xml).ids)
-  assert.equal(all.length, 32)
-  assert.equal(tables.length, 26)
+  assert.equal(all.length, 31)
+  assert.equal(tables.length, 25)
   for (const o of OMIT) assert.ok(!ids.has(`t_${o}`), `${o} should not be in the diagram`)
   let fks = 0
   for (const t of tables) {

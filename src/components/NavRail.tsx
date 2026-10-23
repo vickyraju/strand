@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import {
-  LayoutGrid, LayoutDashboard, Inbox, Search, Settings, PanelLeftClose, PanelLeftOpen, SearchCode, FolderKanban,
+  LayoutGrid, Inbox, Search, Settings, PanelLeftClose, PanelLeftOpen, SearchCode, FolderKanban,
   ChevronRight, ChevronDown, Bookmark, Columns2, ListChecks, List, BarChart3, Gauge, Hash, GanttChart, CalendarDays, Rocket, Star,
 } from 'lucide-react'
 import { useStore } from '../data/store'
@@ -112,7 +112,6 @@ export default function NavRail({ collapsed, onCollapseToggle, onCmdK, route, dr
         {item(route.name === 'home', 'Your work', LayoutGrid, () => goTo('home'))}
         {item(route.name === 'inbox', 'Inbox', Inbox, () => goTo('inbox'), unread)}
         {item(route.name === 'search' && !route.view, 'Search', SearchCode, () => goTo('search'))}
-        {item(route.name === 'dashboards', 'Dashboards', LayoutDashboard, () => goTo('dashboards'))}
         {item(route.name === 'projects', 'All projects', FolderKanban, () => goTo('projects'))}
 
         {views.length > 0 && !collapsed && <div className="nav-section">Views</div>}
