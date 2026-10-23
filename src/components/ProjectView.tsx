@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
-import { Plus, Star, FolderPlus, Columns2, List, ListChecks, Settings, Gauge, BarChart3, GanttChart, CalendarDays, Rocket, Check, GitBranch, Info, Sparkles, Zap } from 'lucide-react'
+import { Plus, Star, FolderPlus, Columns2, List, ListChecks, Settings, Gauge, BarChart3, GanttChart, CalendarDays, Rocket, Check, GitBranch, Info, Sparkles, Zap, Users } from 'lucide-react'
 import { useStore, userOf, isDone, timeAgo, PROJECT_COLORS, type Project, type ProjectPatch } from '../data/store'
 import { useApp } from '../appContext'
 import { navigate, href, type ProjectTab } from '../router'
@@ -22,6 +22,7 @@ const CalendarView    = lazy(() => import('./CalendarView'))
 const ReleasesView    = lazy(() => import('./ReleasesView'))
 const WorkflowBuilder = lazy(() => import('./WorkflowBuilder'))
 const AutomationView  = lazy(() => import('./AutomationView'))
+const ProjectPeople   = lazy(() => import('./ProjectPeople'))
 
 export const TAB_LABEL: Record<ProjectTab, string> = {
   summary: 'Summary', backlog: 'Backlog', board: 'Board', list: 'List', timeline: 'Timeline', calendar: 'Calendar', releases: 'Releases', reports: 'Reports', settings: 'Settings',
@@ -252,7 +253,7 @@ export function ProjectView({ project, tab, sub }: { project: Project; tab: Proj
       {tab === 'calendar' && <CalendarView project={project} />}
       {tab === 'releases' && <ReleasesView project={project} releaseId={sub} />}
       {tab === 'reports'  && <ReportsView project={project} report={sub} />}
-      {tab === 'settings' && (sub === 'workflow' ? <WorkflowBuilder project={project} /> : sub === 'automation' ? <AutomationView project={project} /> : <ProjectSettings project={project} />)}
+      {tab === 'settings' && (sub === 'workflow' ? <WorkflowBuilder project={project} /> : sub === 'automation' ? <AutomationView project={project} /> : sub === 'people' ? <ProjectPeople project={project} /> : <ProjectSettings project={project} />)}
       </Suspense>
     </div>
   )
@@ -372,6 +373,16 @@ function ProjectSettings({ project }: { project: Project }) {
             <p className="muted">{project.rules.length ? `${plural(project.rules.filter(r => r.enabled).length, 'active rule')} of ${project.rules.length}.` : 'No rules yet.'} Rules update work items for you when they’re created, assigned or moved.</p>
           </div>
           <button className="btn btn-secondary" onClick={() => openProject(project.id, 'settings', 'automation')}><Zap size={14} />Manage rules</button>
+        </div>
+      </section>
+
+      <section className="panel">
+        <div className="panel-title-row">
+          <div>
+            <h2 className="panel-title">People and access</h2>
+            <p className="muted">Who can see this project, and what each person can do.</p>
+          </div>
+          <button className="btn btn-secondary" onClick={() => openProject(project.id, 'settings', 'people')}><Users size={14} />Manage people</button>
         </div>
       </section>
 

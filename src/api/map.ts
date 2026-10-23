@@ -53,6 +53,7 @@ export function mapProject(p: Row): Project {
     fields: (p.fields ?? []).map(mapField),
     releases: (p.releases ?? []).map(mapRelease),
     templates: (p.templates ?? []).map(mapTemplate),
+    ...(p.role ? { role: p.role } : {}),
     ...(p.sample ? { sample: true } : {}),
   }
 }
