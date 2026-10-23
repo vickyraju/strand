@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { DndContext, DragOverlay, useDraggable, useDroppable, type DragEndEvent, type DragOverEvent, type DragStartEvent } from '@dnd-kit/core'
 import { ChevronDown, ChevronRight, Plus, MoreHorizontal, ArrowRightLeft, Pencil, Trash2, Play, ArrowUpToLine, ArrowDownToLine } from 'lucide-react'
 import { useStore, isDone, userOf, type Project, type Sprint, type Issue } from '../data/store'
+import { canEdit } from '../data/access'
 import { useApp, useNavList } from '../appContext'
 import { useFilters } from './filters'
 import IssueRow from './IssueRow'
@@ -57,7 +58,7 @@ export default function BacklogView({ project }: { project: Project }) {
   }
 
   // ── Drag and drop ───────────────────────────────────────
-  const sensors = useBoardSensors(backlogKeyboard)
+  const sensors = useBoardSensors(backlogKeyboard, canEdit(project))
   /** Dragging a selected row moves the whole selection, keeping its order. */
   const idsFor = (id: string | null) => !id ? [] : selected.has(id) ? ordered.filter(i => selected.has(i.id)).map(i => i.id) : [id]
   const carried = new Set(idsFor(dragging))

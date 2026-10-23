@@ -7,10 +7,11 @@ import { mapUser, type Row } from './map'
 import type { User } from '../data/reducer'
 
 /** One page of `GET /users/search` (keyset-paginated, name order). */
-export function searchUsers(query = '', limit = 30, cursor?: string | null): Promise<{ items: User[]; next: string | null }> {
+export function searchUsers(query = '', limit = 30, cursor?: string | null, project?: string): Promise<{ items: User[]; next: string | null }> {
   const q = new URLSearchParams({ limit: String(limit) })
   if (query) q.set('query', query)
   if (cursor) q.set('cursor', cursor)
+  if (project) q.set('project', project)   // key or id: only people who can work in that project
   return api<{ items: Row[]; next: string | null }>('GET', `/api/users/search?${q}`)
     .then(page => ({ items: page.items.map(mapUser), next: page.next }))
 }
@@ -21,7 +22,7 @@ const sharedFirstPage = () => (firstPage ??= searchUsers().catch(e => { firstPag
 
 /** Debounced people search for a picker: shows the first page while idle, searches as the user types,
  *  remembers every user it has seen so a selected person renders even when they are not in the page. */
-export function useUserSearch() {
+export function useUserSearch(project?: string) {
   const [results, setResults] = useState<User[]>([])
   const [next, setNext] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -45,7 +46,7 @@ export function useUserSearch() {
     timer.current = setTimeout(() => {
       const mySeq = ++seq.current
       setBusy(true)
-      ;(q ? searchUsers(q) : sharedFirstPage()).then(page => {
+      ;(q || project ? searchUsers(q, 30, null, project) : sharedFirstPage()).then(page => {
         if (mySeq !== seq.current) return
         remember(page.items); setResults(page.items); setNext(page.next); setBusy(false); setFailed(false)
       }).catch(() => { if (mySeq === seq.current) { setBusy(false); setFailed(true) } })
@@ -57,7 +58,7 @@ export function useUserSearch() {
     if (!apiEnabled || !next || busy) return
     const mySeq = ++seq.current
     setBusy(true)
-    searchUsers(lastQuery.current, 30, next).then(page => {
+    searchUsers(lastQuery.current, 30, next, project).then(page => {
       if (mySeq !== seq.current) return
       remember(page.items); setResults(prev => [...prev, ...page.items]); setNext(page.next); setBusy(false)
     }).catch(() => { if (mySeq === seq.current) { setBusy(false); setFailed(true) } })

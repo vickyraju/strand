@@ -10,6 +10,7 @@ import {
   type Issue, type IssuePatch, type IssueLink,
 } from '../data/store'
 import { useApp } from '../appContext'
+import { canEdit } from '../data/access'
 import { href, navigate } from '../router'
 import {
   Picker, Menu, TypeIcon, PriorityIcon, Avatar, Modal, TYPE_META, PRIORITY_META, StatusLozenge,
@@ -42,6 +43,7 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
   const { createIssue, openIssue, closeIssue, openProject, toast } = useApp()
   const issue = state.issues.find(i => i.id === issueId)
   const project = projectOf(state, issue?.projectId)
+  const readOnly = !canEdit(project)
 
   const [title, setTitle]         = useState(issue?.title ?? '')
   const [desc, setDesc]           = useState(issue?.description ?? '')
@@ -84,7 +86,7 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
   }, [prev, next, openIssue])
 
   // Live edit presence: heartbeat while panel is open; who else is here comes from project stream
-  usePresence(issue, true)
+  usePresence(issue, !readOnly)   // viewers do not edit
 
   if (!issue || !project) return null
 
@@ -156,10 +158,10 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
         <button className="icon-btn" onClick={copyLink} title="Copy link" aria-label="Copy link"><Link2 size={16} /></button>
         <Menu title="More actions" trigger={<MoreHorizontal size={16} />} items={[
           { label: 'Copy key', icon: <Copy size={14} />, onClick: () => { navigator.clipboard?.writeText(issue.key); toast(`Copied ${issue.key}`) } },
-          { label: 'Link work item', icon: <Link2 size={14} />, onClick: () => setLinking(true) },
-          { label: 'Save as template', icon: <FileText size={14} />, onClick: () => setTemplating(true) },
-          ...(issue.type !== 'epic' && !issue.parentId ? [{ label: 'Add sub-item', icon: <Plus size={14} />, onClick: () => createIssue({ projectId: project.id, parentId: issue.id, sprintId: issue.sprintId }) }] : []),
-          { label: 'Delete', icon: <Trash2 size={14} />, danger: true, divider: true, onClick: () => setConfirmDel(true) },
+          ...(readOnly ? [] : [{ label: 'Link work item', icon: <Link2 size={14} />, onClick: () => setLinking(true) }]),
+          ...(readOnly ? [] : [{ label: 'Save as template', icon: <FileText size={14} />, onClick: () => setTemplating(true) }]),
+          ...(!readOnly && issue.type !== 'epic' && !issue.parentId ? [{ label: 'Add sub-item', icon: <Plus size={14} />, onClick: () => createIssue({ projectId: project.id, parentId: issue.id, sprintId: issue.sprintId }) }] : []),
+          ...(readOnly ? [] : [{ label: 'Delete', icon: <Trash2 size={14} />, danger: true, divider: true, onClick: () => setConfirmDel(true) }]),
         ]} />
         <button className="icon-btn" onClick={() => mode === 'peek' ? openIssue(issue.id, { full: true }) : navigate(href({ name: 'project', key: project.key }, issue.key))}
           title={mode === 'peek' ? 'Open full page' : 'Open in side panel'} aria-label={mode === 'peek' ? 'Open full page' : 'Open in side panel'}>
@@ -171,7 +173,8 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
       <div className="detail-body">
         <div className="detail-main">
           {mode === 'full' && <h1 className="sr-only">{issue.key}: {issue.title}</h1>}
-          <AutoText className="detail-title" value={title} aria-label="Title"
+          {readOnly && <p className="muted sm" role="status">You have view-only access to this project. You can comment, but not change the work item.</p>}
+          <AutoText className="detail-title" value={title} aria-label="Title" readOnly={readOnly}
             onChange={e => setTitle(e.target.value.replace(/\n/g, ''))}
             onBlur={() => title.trim() ? set({ title: title.trim() }) : setTitle(issue.title)}
             onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur() } }} />
@@ -186,13 +189,15 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
             </div>
           )}
 
-          <div className="quick-actions">
-            {issue.type !== 'epic' && !issue.parentId && (
-              <button className="btn btn-secondary btn-sm" onClick={() => createIssue({ projectId: project.id, parentId: issue.id, sprintId: issue.sprintId })}><Plus size={14} />Sub-item</button>
-            )}
-            <button className="btn btn-secondary btn-sm" onClick={() => setLinking(true)}><Link2 size={14} />Link</button>
-            <button className="btn btn-secondary btn-sm" onClick={() => attachRef.current?.click()}><Paperclip size={14} />Attach</button>
-          </div>
+          {!readOnly && (
+            <div className="quick-actions">
+              {issue.type !== 'epic' && !issue.parentId && (
+                <button className="btn btn-secondary btn-sm" onClick={() => createIssue({ projectId: project.id, parentId: issue.id, sprintId: issue.sprintId })}><Plus size={14} />Sub-item</button>
+              )}
+              <button className="btn btn-secondary btn-sm" onClick={() => setLinking(true)}><Link2 size={14} />Link</button>
+              <button className="btn btn-secondary btn-sm" onClick={() => attachRef.current?.click()}><Paperclip size={14} />Attach</button>
+            </div>
+          )}
 
           <section className="detail-section">
             <h2 className="section-title">Description</h2>
@@ -208,10 +213,10 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
                 </div>
               </>
             ) : (
-              <div className={`desc-view${issue.description ? '' : ' is-empty'}`} role="button" tabIndex={0}
-                onClick={e => { if (!(e.target as HTMLElement).closest('a')) setEditing(true) }}
-                onKeyDown={e => e.key === 'Enter' && setEditing(true)} aria-label="Edit description">
-                {issue.description ? <Markdown text={issue.description} users={state.users} /> : 'Add a description…'}
+              <div className={`desc-view${issue.description ? '' : ' is-empty'}`} {...(readOnly ? {} : { role: 'button', tabIndex: 0, 'aria-label': 'Edit description' })}
+                onClick={e => { if (!readOnly && !(e.target as HTMLElement).closest('a')) setEditing(true) }}
+                onKeyDown={e => !readOnly && e.key === 'Enter' && setEditing(true)}>
+                {issue.description ? <Markdown text={issue.description} users={state.users} /> : readOnly ? 'No description' : 'Add a description…'}
               </div>
             )}
           </section>
@@ -342,6 +347,7 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
         </div>
 
         <section className="detail-side" aria-label="Details">
+          <fieldset className="plain-fieldset" disabled={readOnly}>
           <div className="status-action">
             <Picker
               value={issue.status}
@@ -360,7 +366,7 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
           <div className="side-card">
             <h2 className="side-title">Details</h2>
             <Field label="Assignee">
-              <UserPicker value={issue.assigneeId} onChange={assigneeId => set({ assigneeId })} className="field-btn" title="Assignee"
+              <UserPicker value={issue.assigneeId} onChange={assigneeId => set({ assigneeId })} projectId={issue.projectId} className="field-btn" title="Assignee"
                 trigger={<><Avatar user={assignee} size={22} />{assignee?.name ?? 'Unassigned'}</>} />
               {issue.assigneeId !== state.me?.id && <button className="link sm" onClick={() => set({ assigneeId: state.me?.id })}><UserCheck size={12} />Assign to me</button>}
             </Field>
@@ -428,6 +434,7 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
             <div>Created {new Date(issue.createdAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</div>
             <div>Updated {timeAgo(issue.updatedAt)}</div>
           </div>
+          </fieldset>
         </section>
       </div>
 

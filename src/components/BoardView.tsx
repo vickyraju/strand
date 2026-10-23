@@ -7,6 +7,7 @@ import {
   useStore, userOf, canTransition, statusOf, indexOf, DEFAULT_FIELDS,
   type Project, type Issue, type BoardPrefs, type CardField, type GroupBy, type IssuePatch,
 } from '../data/store'
+import { canEdit } from '../data/access'
 import { useApp, useNavList } from '../appContext'
 import { useFilters } from './filters'
 import BoardCard, { CardGhost } from './BoardCard'
@@ -127,7 +128,7 @@ export default function BoardView({ project }: { project: Project }) {
   const grouped = prefs.groupBy !== 'none'
 
   // ── Drag and drop ───────────────────────────────────────
-  const sensors = useBoardSensors()
+  const sensors = useBoardSensors(undefined, canEdit(project))
   /** Forbidden columns grey out while a card is being dragged. */
   const allowed = (statusId: string) => !dragging || canTransition(project, dragging.status, statusId)
   const cardFields = prefs.groupBy === 'epic' ? { ...prefs.fields, epic: false } : prefs.fields

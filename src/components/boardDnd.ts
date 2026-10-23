@@ -59,12 +59,16 @@ export const boardKeyboard: KeyboardCoordinateGetter = (event, { context: { acti
 
 /** Mouse after a 6 px move (so a click still opens the card), finger after a short hold (so the page still scrolls),
  *  keyboard with Space. Enter is left alone: it opens the card. The backlog passes its own arrow-key getter. */
-export function useBoardSensors(coordinateGetter: KeyboardCoordinateGetter = boardKeyboard) {
-  return useSensors(
+const NO_SENSORS: ReturnType<typeof useSensors> = []
+
+/** Mouse, touch and keyboard sensors; `enabled = false` (a viewer) leaves nothing that can start a drag. */
+export function useBoardSensors(coordinateGetter: KeyboardCoordinateGetter = boardKeyboard, enabled = true) {
+  const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 220, tolerance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter, keyboardCodes: { start: ['Space'], cancel: ['Escape'], end: ['Space'] } }),
   )
+  return enabled ? sensors : NO_SENSORS
 }
 
 // ── What a screen reader hears ───────────────────────────

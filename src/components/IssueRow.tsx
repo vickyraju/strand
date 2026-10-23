@@ -68,7 +68,7 @@ export default function IssueRow({ issue, project, showProject, trailing, select
         className="icon-btn sm" title="Change priority" trigger={<PriorityIcon priority={issue.priority} />} />
       {trailing}
       {showUpdated && <span className="row-updated hide-sm">{timeAgo(issue.updatedAt)}</span>}
-      <UserPicker value={issue.assigneeId} onChange={assigneeId => set({ assigneeId })}
+      <UserPicker value={issue.assigneeId} onChange={assigneeId => set({ assigneeId })} projectId={issue.projectId}
         className="icon-btn" align="right" title="Change assignee" trigger={<Avatar user={userOf(state, issue.assigneeId)} size={24} />} />
     </div>
   )

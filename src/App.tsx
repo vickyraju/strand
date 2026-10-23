@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { canEdit } from './data/access'
 import { X, CheckCircle2, AlertTriangle, SearchX } from 'lucide-react'
 import NavRail from './components/NavRail'
 import TopBar, { type Crumb } from './components/TopBar'
@@ -138,7 +139,12 @@ function Shell() {
     },
     createIssue: (defaults = {}) => {
       if (!state.projects.length) { setCreateProjectOpen(true); return }
-      setCreateDefaults({ projectId: project?.id ?? (fullIssue ?? peekIssue)?.projectId, ...defaults })
+      // Viewers cannot create work: refuse an explicit viewer-only project, and otherwise start from one they can write to
+      const open = state.projects.filter(canEdit)
+      const named = defaults.projectId ? state.projects.find(p => p.id === defaults.projectId) : undefined
+      if (named ? !canEdit(named) : !open.length) { actions.toast(named ? `You have view-only access to ${named.name}` : 'You have view-only access to every project', { tone: 'warn' }); return }
+      const context = project ?? state.projects.find(p => p.id === (fullIssue ?? peekIssue)?.projectId)
+      setCreateDefaults({ ...defaults, projectId: named?.id ?? (context && canEdit(context) ? context.id : open[0]!.id) })
     },
     toast: (text, opts) => {
       window.clearTimeout(toastTimer.current)
