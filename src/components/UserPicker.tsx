@@ -10,7 +10,9 @@ import { Avatar, Picker, userOptions, type PickerOption } from './ui'
 
 // A native <select> that picks one user (for compact surfaces, e.g. automation "assign to" steps).
 // Local mode: the workspace's people. API mode: the first search page, replaced as you type.
-export function UserSelect({ value, onChange, className, excludeId, extraOptions, placeholder = 'Select…', label }: {
+export function UserSelect({ value, onChange, className, excludeId, extraOptions, placeholder = 'Select…', label, projectId }: {
+  /** Offer only people who can work in this project (key or id) */
+  projectId?: string
   /** Selected user id; `''`/`undefined` = nothing selected. */
   value:    string | undefined
   /** Called with the chosen user id, or `undefined` when the placeholder is picked. */
@@ -24,7 +26,7 @@ export function UserSelect({ value, onChange, className, excludeId, extraOptions
   label: string
 }) {
   const { state } = useStore()
-  const remote = useUserSearch()
+  const remote = useUserSearch(projectId)
   const [q, setQ] = useState('')
   useEffect(() => { remote.search('') }, [])   // eslint-disable-line react-hooks/exhaustive-deps
   const users = apiEnabled ? remote.users : state.users
@@ -49,7 +51,9 @@ export function UserSelect({ value, onChange, className, excludeId, extraOptions
   )
 }
 
-export function UserPicker({ value, onChange, trigger, title = 'Assignee', className, align, allowUnassigned = true, excludeId, placeholder = 'Unassigned' }: {
+export function UserPicker({ value, onChange, trigger, title = 'Assignee', className, align, allowUnassigned = true, excludeId, placeholder = 'Unassigned', projectId }: {
+  /** Offer only people who can work in this project (key or id) */
+  projectId?: string
   /** Selected user id; `undefined`/`''` = nobody. */
   value:    string | undefined
   /** Called with the chosen user id, or `undefined` when the option is cleared / "Unassigned" is picked. */
@@ -66,7 +70,7 @@ export function UserPicker({ value, onChange, trigger, title = 'Assignee', class
   placeholder?: string
 }) {
   const { state } = useStore()
-  const remote = useUserSearch()
+  const remote = useUserSearch(projectId)
   const selected = remote.userById(value) ?? state.users.find(u => u.id === value)
 
   // Local mode: the plain list, exactly as before.

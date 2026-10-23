@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { ChevronRight, Maximize2, Minimize2, X, CalendarDays, Tag, Zap, IterationCcw, Hash, FileText } from 'lucide-react'
 import { useStore, uid, userOf, type NewIssue, type IssueType, type Priority } from '../data/store'
 import { useApp } from '../appContext'
+import { canEdit } from '../data/access'
 import {
   Picker, TypeIcon, PriorityIcon, Avatar, TYPE_META, PRIORITY_META, Toggle,
   statusOptions, priorityOptions, typeOptions,
@@ -16,7 +17,7 @@ export default function CreateIssueModal({ defaults, onClose }: {
   const { state, dispatch } = useStore()
   const { toast } = useApp()
 
-  const [projectId, setProjectId] = useState(defaults.projectId ?? state.projects[0]?.id)
+  const [projectId, setProjectId] = useState(defaults.projectId ?? state.projects.find(canEdit)?.id ?? '')
   const project = state.projects.find(p => p.id === projectId)
 
   const [title, setTitle]             = useState('')
@@ -45,6 +46,7 @@ export default function CreateIssueModal({ defaults, onClose }: {
     setStatus(state.projects.find(p => p.id === id)!.statuses[0].id)
     setParentId(undefined)
     setSprintId(undefined)
+    setAssigneeId(undefined)   // they may not be in the new project
   }
 
   const submit = () => {
@@ -81,7 +83,7 @@ export default function CreateIssueModal({ defaults, onClose }: {
       >
         <div className="compose-hdr">
           <Picker value={projectId} search title="Project" className="chip chip-ghost"
-            options={state.projects.map(p => ({ value: p.id, label: p.name, icon: <ProjectIcon project={p} size={16} /> }))}
+            options={state.projects.filter(canEdit).map(p => ({ value: p.id, label: p.name, icon: <ProjectIcon project={p} size={16} /> }))}
             onChange={changeProject}
             trigger={<><ProjectIcon project={project} size={16} />{project.key}</>} />
           <ChevronRight size={13} className="muted" />
@@ -117,7 +119,7 @@ export default function CreateIssueModal({ defaults, onClose }: {
             trigger={<><span className="status-dot" style={{ background: statusObj?.color }} />{statusObj?.name}</>} />
           <Picker value={priority} options={priorityOptions} onChange={setPriority} title="Priority"
             trigger={<><PriorityIcon priority={priority} />{PRIORITY_META[priority].label}</>} />
-          <UserPicker value={assigneeId} onChange={setAssigneeId} title="Assignee"
+          <UserPicker value={assigneeId} onChange={setAssigneeId} projectId={projectId} title="Assignee"
             trigger={<><Avatar user={assignee} size={16} />{assignee?.name ?? 'Assignee'}</>} />
           {type !== 'epic' && parentOptions.length > 0 && (
             <Picker value={parentId} title="Epic or parent" search

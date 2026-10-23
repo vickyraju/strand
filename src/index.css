@@ -1305,3 +1305,4 @@ h2.empty-title, h2.section-title, h2.side-title { margin: 0 }
 
 .role-help { display: grid; gap: 10px; margin: 0 }
 .role-help dd { margin: 2px 0 0 }
+.plain-fieldset { border: 0; padding: 0; margin: 0; min-width: 0; display: contents }

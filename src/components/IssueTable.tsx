@@ -303,7 +303,7 @@ export default function IssueTable({ issues, id, groupBy, onGroupBy, project, sh
                       )}
                       {cols.assignee && (
                         <td className="col-assignee" onClick={e => e.stopPropagation()}>
-                          <UserPicker value={i.assigneeId} onChange={a => set({ assigneeId: a })} title="Change assignee"
+                          <UserPicker value={i.assigneeId} onChange={a => set({ assigneeId: a })} projectId={i.projectId} title="Change assignee"
                             className="cell-btn" trigger={<><Avatar user={userOf(state, i.assigneeId)} size={22} /><span className="cell-ellipsis">{userOf(state, i.assigneeId)?.name ?? 'Unassigned'}</span></>} />
                         </td>
                       )}

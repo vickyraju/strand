@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useState } from 'react'
 import { Plus, Star, FolderPlus, Columns2, List, ListChecks, Settings, Gauge, BarChart3, GanttChart, CalendarDays, Rocket, Check, GitBranch, Info, Zap, Users } from 'lucide-react'
 import { useStore, userOf, isDone, timeAgo, PROJECT_COLORS, type Project, type ProjectPatch } from '../data/store'
 import { useApp } from '../appContext'
+import { canAdmin } from '../data/access'
 import { navigate, href, type ProjectTab } from '../router'
 import { api, apiEnabled } from '../api/client'
 import BoardView from './BoardView'
@@ -242,7 +243,7 @@ export function ProjectView({ project, tab, sub }: { project: Project; tab: Proj
       {tab === 'calendar' && <CalendarView project={project} />}
       {tab === 'releases' && <ReleasesView project={project} releaseId={sub} />}
       {tab === 'reports'  && <ReportsView project={project} report={sub} />}
-      {tab === 'settings' && (sub === 'workflow' ? <WorkflowBuilder project={project} /> : sub === 'automation' ? <AutomationView project={project} /> : sub === 'people' ? <ProjectPeople project={project} /> : <ProjectSettings project={project} />)}
+      {tab === 'settings' && (!canAdmin(project) ? <ProjectPeople project={project} /> : sub === 'workflow' ? <WorkflowBuilder project={project} /> : sub === 'automation' ? <AutomationView project={project} /> : sub === 'people' ? <ProjectPeople project={project} /> : <ProjectSettings project={project} />)}
       </Suspense>
     </div>
   )
@@ -318,7 +319,7 @@ function ProjectSettings({ project }: { project: Project }) {
         <div className="form-row" style={{ marginTop: 14 }}>
           <div>
             <span className="label">Project lead</span>
-            <UserPicker value={project.leadId} onChange={id => id && update({ leadId: id })} title="Project lead"
+            <UserPicker value={project.leadId} onChange={id => id && update({ leadId: id })} projectId={project.id} title="Project lead"
               excludeId={state.ownerId ?? undefined} trigger={<><Avatar user={lead} size={18} />{lead?.name}</>} />
           </div>
           <div>

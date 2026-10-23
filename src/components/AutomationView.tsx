@@ -140,7 +140,7 @@ function RuleModal({ project, rule, onClose, onSave }: { project: Project; rule:
                 <option value="unassign">Nobody (unassign)</option>
               </select>
               {a.to && a.to !== 'lead' && a.to !== 'reporter' && a.to !== 'unassign' && (
-                <UserSelect value={a.to} label="Assign to user"
+                <UserSelect value={a.to} projectId={project.id} label="Assign to user"
                   onChange={id => setAction(i, { kind: 'assign', to: id ?? 'unassign' })}
                   extraOptions={[
                     { value: 'lead', label: `Project lead (${userOf(state, project.leadId)?.name ?? ''})` },
