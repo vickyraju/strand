@@ -123,7 +123,8 @@ export const mapComment = (c: Row): Comment => ({
 })
 export const mapActivity = (a: Row): Activity => ({
   id: a.id, issueId: a.issueId, actorId: a.actorId ?? 'automation', text: a.text, createdAt: ms(a.createdAt) ?? Date.now(),
-  ...(a.field ? { field: a.field } : {}), ...(a.fromValue != null ? { from: a.fromValue } : {}), ...(a.toValue != null ? { to: a.toValue } : {}),
+  // the server names the column (statusId); the app records status changes as 'status'
+  ...(a.field ? { field: a.field === 'statusId' ? 'status' : a.field } : {}), ...(a.fromValue != null ? { from: a.fromValue } : {}), ...(a.toValue != null ? { to: a.toValue } : {}),
 })
 export const mapWorklog = (w: Row): Worklog => ({
   id: w.id, userId: w.userId ?? '', minutes: w.minutes, date: w.date, note: w.note ?? '', at: ms(w.createdAt) ?? Date.now(),
@@ -141,3 +142,23 @@ export function mapIssueDetail(d: Row) {
 }
 
 export const mapView = (v: Row): SavedView => ({ id: v.id, name: v.name, ownerId: v.ownerId, shared: !!v.shared, filters: v.filters })
+
+// ── Reports (GET /projects/:key/report-data) ──
+export interface StatusChange { issueId: string; fromId: string | null; toId: string; at: string }
+
+/** Server rows → the issues and status history the report maths read. Each item gets a first entry for the
+ *  status it was created in (the first change's "from", or its status now if it never moved), as the local store records it. */
+export function toReportData(rows: Row[], changes: StatusChange[]): { issues: Issue[]; activity: Activity[] } {
+  const issues = rows.map(mapIssue)
+  const first = new Map<string, StatusChange>()
+  for (const c of changes) if (!first.has(c.issueId)) first.set(c.issueId, c)
+  const activity: Activity[] = issues.map(i => ({
+    id: `created-${i.id}`, issueId: i.id, actorId: i.reporterId, text: 'created the work item', field: 'status',
+    to: first.get(i.id)?.fromId ?? i.status, createdAt: i.createdAt,
+  }))
+  for (const c of changes) activity.push({
+    id: `${c.issueId}-${c.at}`, issueId: c.issueId, actorId: '', text: 'changed status', field: 'status',
+    ...(c.fromId ? { from: c.fromId } : {}), to: c.toId, createdAt: Date.parse(c.at),
+  })
+  return { issues, activity }
+}

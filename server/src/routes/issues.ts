@@ -144,6 +144,20 @@ async function applyPatch(d: Db, me: Me, cur: any, patch: z.infer<typeof patchBo
 
 const plugin: FastifyPluginAsyncZod = async app => {
   // Board/list page of a project, in backlog order. Keyset-paginated: pass `next` back as `cursor`.
+  // Everything the project's reports are calculated from: every item (not just a page) and every status change.
+  // ponytail: whole project in one response; move the calculations to SQL when projects outgrow a few tens of thousands of items.
+  app.get('/projects/:key/report-data', { schema: { tags: TAG, summary: 'All live items of a project and the full history of their status changes, for reports', params: projKeyP } }, async req => {
+    const p = await projectByKey(db, req, req.params.key)
+    const [issues, statusChanges] = await Promise.all([
+      db.query(`${ISSUE} where i.project_id = $1 and i.deleted_at is null order by i.rank, i.id`, [p.id]),
+      db.query(`select a.issue_id, a.from_value as from_id, a.to_value as to_id, a.created_at as at
+                  from activity a join issues i on i.id = a.issue_id
+                 where i.project_id = $1 and i.deleted_at is null and a.field = 'statusId' and a.to_value is not null
+                 order by a.created_at, a.id`, [p.id]),
+    ])
+    return { issues, statusChanges }
+  })
+
   app.get('/projects/:key/issues', { schema: { tags: TAG, summary: 'List a project\'s issues in backlog order (keyset-paginated)', params: projKeyP, querystring: listQuery } }, async req => {
     const q = req.query
     const p = await projectByKey(db, req, req.params.key)

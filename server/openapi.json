@@ -9589,6 +9589,315 @@
         }
       }
     },
+    "/api/v1/projects/{key}/report-data": {
+      "get": {
+        "summary": "All live items of a project and the full history of their status changes, for reports",
+        "tags": [
+          "Issues"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "description": "Project key, e.g. PAY"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "description": "uuid"
+                          },
+                          "key": {
+                            "type": "string",
+                            "description": "e.g. PAY-12"
+                          },
+                          "projectId": {
+                            "type": "string",
+                            "description": "uuid"
+                          },
+                          "number": {
+                            "type": "number"
+                          },
+                          "type": {
+                            "type": "string",
+                            "enum": [
+                              "epic",
+                              "story",
+                              "task",
+                              "bug"
+                            ]
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "statusId": {
+                            "type": "string",
+                            "description": "uuid"
+                          },
+                          "priority": {
+                            "type": "string",
+                            "enum": [
+                              "urgent",
+                              "high",
+                              "medium",
+                              "low",
+                              "none"
+                            ]
+                          },
+                          "assigneeId": {
+                            "nullable": true,
+                            "type": "string",
+                            "description": "uuid"
+                          },
+                          "reporterId": {
+                            "nullable": true,
+                            "type": "string",
+                            "description": "uuid"
+                          },
+                          "labels": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "estimate": {
+                            "nullable": true,
+                            "type": "number"
+                          },
+                          "timeEstimate": {
+                            "nullable": true,
+                            "type": "number"
+                          },
+                          "dueDate": {
+                            "nullable": true,
+                            "type": "string",
+                            "description": "YYYY-MM-DD"
+                          },
+                          "startDate": {
+                            "nullable": true,
+                            "type": "string",
+                            "description": "YYYY-MM-DD"
+                          },
+                          "sprintId": {
+                            "nullable": true,
+                            "type": "string",
+                            "description": "uuid"
+                          },
+                          "releaseId": {
+                            "nullable": true,
+                            "type": "string",
+                            "description": "uuid"
+                          },
+                          "parentId": {
+                            "nullable": true,
+                            "type": "string",
+                            "description": "uuid"
+                          },
+                          "custom": {
+                            "type": "object",
+                            "additionalProperties": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "number"
+                                }
+                              ]
+                            }
+                          },
+                          "rank": {
+                            "type": "number"
+                          },
+                          "version": {
+                            "type": "number",
+                            "description": "Send as If-Match to reject stale edits"
+                          },
+                          "createdAt": {
+                            "type": "string",
+                            "description": "ISO 8601 timestamp"
+                          },
+                          "updatedAt": {
+                            "type": "string",
+                            "description": "ISO 8601 timestamp"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "key",
+                          "projectId",
+                          "number",
+                          "type",
+                          "title",
+                          "description",
+                          "statusId",
+                          "priority",
+                          "assigneeId",
+                          "reporterId",
+                          "labels",
+                          "estimate",
+                          "timeEstimate",
+                          "dueDate",
+                          "startDate",
+                          "sprintId",
+                          "releaseId",
+                          "parentId",
+                          "custom",
+                          "rank",
+                          "version",
+                          "createdAt",
+                          "updatedAt"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "statusChanges": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "issueId": {
+                            "type": "string",
+                            "description": "uuid"
+                          },
+                          "fromId": {
+                            "nullable": true,
+                            "type": "string",
+                            "description": "uuid"
+                          },
+                          "toId": {
+                            "type": "string",
+                            "description": "uuid"
+                          },
+                          "at": {
+                            "type": "string",
+                            "description": "ISO 8601 timestamp"
+                          }
+                        },
+                        "required": [
+                          "issueId",
+                          "fromId",
+                          "toId",
+                          "at"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "description": "Every status change, oldest first"
+                    }
+                  },
+                  "required": [
+                    "issues",
+                    "statusChanges"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/projects/{key}/issues": {
       "get": {
         "summary": "List a project's issues in backlog order (keyset-paginated)",

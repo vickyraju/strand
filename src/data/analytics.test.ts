@@ -2,6 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { reducer, EMPTY, type State } from './reducer.ts'
 import { withSample } from './testdata.ts'
+import { toReportData } from '../api/map.ts'
 import { burndown, cumulativeFlow, cycleTimes, velocity, createdVsResolved, statusAt, statusHistory } from './analytics.ts'
 
 function sample(): State {
@@ -52,4 +53,23 @@ test('velocity, created vs resolved and cycle time are consistent', () => {
   const ct = cycleTimes(s, p)
   assert.ok(ct.points.length > 0)
   assert.ok(ct.median > 0 && ct.median <= ct.p85)
+})
+
+test('reports from server data (items plus status changes) match reports from the full local history', () => {
+  const s = sample(), p = pay(s), now = Date.now()
+  const iso = (t: number) => new Date(t).toISOString()
+  // What /projects/:key/report-data returns: item rows, and every status change (the server records no "created" entry)
+  const rows = s.issues.map(i => ({ ...i, statusId: i.status, createdAt: iso(i.createdAt), updatedAt: iso(i.updatedAt) }))
+  const changes = s.activity.filter(a => a.field === 'status' && a.from)
+    .sort((a, b) => a.createdAt - b.createdAt)
+    .map(a => ({ issueId: a.issueId, fromId: a.from!, toId: a.to!, at: iso(a.createdAt) }))
+  assert.ok(changes.length > 50)
+  const fromServer: State = { ...s, ...toReportData(rows, changes) }
+  // compare the numbers and which items count; items themselves differ (server rows carry no watchers or work logs)
+  const ids = (x: unknown) => JSON.parse(JSON.stringify(x, (_k, v) => v && typeof v === 'object' && 'watcherIds' in v ? v.id : v))
+  assert.deepEqual(cumulativeFlow(fromServer, p, 30, now), cumulativeFlow(s, p, 30, now))
+  assert.deepEqual(ids(cycleTimes(fromServer, p)), ids(cycleTimes(s, p)))
+  assert.deepEqual(createdVsResolved(fromServer, p, 30, now), createdVsResolved(s, p, 30, now))
+  for (const sp of s.sprints.filter(x => x.projectId === p.id && x.startedAt))
+    assert.deepEqual(ids(burndown(fromServer, p, sp, now)), ids(burndown(s, p, sp, now)))
 })
