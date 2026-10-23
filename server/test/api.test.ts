@@ -63,7 +63,7 @@ before(async () => {
   await new Promise<void>(r => s3Server.listen(0, '127.0.0.1', r))
   Object.assign(process.env, {
     S3_BUCKET: 'files', S3_ENDPOINT: `http://127.0.0.1:${(s3Server.address() as { port: number }).port}`, AWS_REGION: 'us-east-1',
-    AWS_ACCESS_KEY_ID: 'test', AWS_SECRET_ACCESS_KEY: 'test', FILE_SWEEP_MS: '0',
+    AWS_ACCESS_KEY_ID: 'test', AWS_SECRET_ACCESS_KEY: 'test', FILE_SWEEP_MS: '0', JOBS_POLL_MS: '0',
   })
   pool = new pg.Pool({ connectionString: url })
   await pool.query('drop schema public cascade; create schema public')
@@ -1269,4 +1269,48 @@ test('audit log: who changed people, settings, workflow and deletions is recorde
   const all = (await call('GET', '/api/v1/audit?action=project.deleted')).body.items
   assert.equal(all[0].projectKey, 'AUD')
   assert.equal(all[0].before.items, 1)
+})
+
+test('jobs: run once each, retry with growing waits, give up after the limit, survive a crashed worker, never run twice at once', { skip }, async () => {
+  const { registerJob, enqueue, runJobs, backoffMs } = await import('../src/jobs.ts')
+  const { db } = await import('../src/db.ts')
+  const ran: string[] = []
+  let flaky = 0
+  registerJob('test.ok', async p => { ran.push(p.n); return { doubled: p.n * 2 } })
+  registerJob('test.flaky', async () => { if (++flaky < 3) throw new Error(`try ${flaky}`); return 'finally' })
+  registerJob('test.broken', async () => { throw new Error('always') })
+  const row = async (id: string) => (await pool.query('select status, attempts, result, last_error from jobs where id = $1', [id])).rows[0]
+  const due = (id: string) => pool.query(`update jobs set run_at = now() where id = $1`, [id])   // skip the wait
+
+  const ok = await enqueue(db, 'test.ok', { n: 21 })
+  assert.equal(await enqueue(db, 'test.ok', { n: 1 }, { dedupeKey: 'once' }), await enqueue(db, 'test.ok', { n: 1 }, { dedupeKey: 'once' }))
+  await runJobs()
+  assert.deepEqual(await row(ok), { status: 'done', attempts: 1, result: { doubled: 42 }, last_error: null })
+  assert.equal(ran.filter(x => x === 1 as any).length, 1)                 // the deduplicated job ran once
+
+  const flakyId = await enqueue(db, 'test.flaky', {})
+  await runJobs()
+  assert.deepEqual([(await row(flakyId)).status, (await row(flakyId)).last_error], ['queued', 'try 1'])
+  await runJobs(); assert.equal((await row(flakyId)).attempts, 1)          // not due yet: it waits before retrying
+  await due(flakyId); await runJobs(); await due(flakyId); await runJobs()
+  assert.deepEqual([(await row(flakyId)).status, (await row(flakyId)).result], ['done', 'finally'])
+  assert.deepEqual([backoffMs(1), backoffMs(2), backoffMs(20)], [10_000, 20_000, 3_600_000])
+
+  const broken = await enqueue(db, 'test.broken', {}, { maxAttempts: 2 })
+  await runJobs(); await due(broken); await runJobs(); await due(broken); await runJobs()
+  assert.deepEqual([(await row(broken)).status, (await row(broken)).attempts], ['failed', 2])
+
+  // a worker died while running it: the lease runs out and another worker picks it up
+  const orphan = await enqueue(db, 'test.ok', { n: 7 })
+  await pool.query(`update jobs set status = 'running', attempts = 1, locked_until = now() - interval '1 second' where id = $1`, [orphan])
+  await runJobs()
+  assert.deepEqual([(await row(orphan)).status, (await row(orphan)).attempts], ['done', 2])
+
+  // several runners at once (as on several pods): each job runs exactly once
+  const runs = new Map<number, number>()
+  registerJob('test.count', async p => { runs.set(p.n, (runs.get(p.n) ?? 0) + 1) })
+  for (let n = 0; n < 40; n++) await enqueue(db, 'test.count', { n })
+  await Promise.all(Array.from({ length: 12 }, () => runJobs(100)))
+  assert.equal(runs.size, 40)
+  assert.deepEqual([...runs.values()].filter(c => c !== 1), [])                 // none ran twice
 })

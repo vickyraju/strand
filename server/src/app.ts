@@ -7,6 +7,7 @@ import { authenticate } from './auth.ts'
 import { RATE_LIMIT, rateLimiter } from './rateLimit.ts'
 import { pool } from './db.ts'
 import { startListener, stopListener } from './events.ts'
+import { startJobWorker } from './jobs.ts'
 import { errorSchema, toErrorBody } from './errors.ts'
 import { CREATED, RESPONSES } from './responses.ts'
 import projects from './routes/projects.ts'
@@ -118,6 +119,8 @@ export async function build() {
   await app.register(resources, { prefix: '/api/v1' })
 
   await startListener()
+  const stopJobs = startJobWorker(app.log)
+  app.addHook('onClose', async () => stopJobs())
   app.addHook('onClose', async () => { await stopListener(); await pool.end() })
   return app
 }
