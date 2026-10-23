@@ -4,7 +4,7 @@
 // that address. Refuses to run on a database that already has projects, or on a non-local host (pass --remote to allow).
 import { randomUUID } from 'node:crypto'
 import pg from 'pg'
-import { sampleWorkspace } from '../../src/data/sample.ts'
+import { sampleWorkspace } from '../../src/data/testdata.ts'
 
 const url = process.env.DATABASE_URL
 if (!url) { console.error('Set DATABASE_URL (a local database)'); process.exit(2) }
@@ -92,8 +92,14 @@ try {
     for (const w of i.worklogs) await run('insert into worklogs (id, issue_id, user_id, minutes, date, note, created_at) values ($1, $2, $3, $4, $5, $6, $7)', [w.id, i.id, w.userId || null, w.minutes, w.date, w.note, at(w.at)])
   }
   for (const m of data.comments ?? []) await run('insert into comments (id, issue_id, author_id, body, created_at, edited_at) values ($1, $2, $3, $4, $5, $6)', [m.id, m.issueId, m.authorId || null, m.body, at(m.createdAt), at(m.editedAt)])
-  for (const a of data.activity ?? []) await run('insert into activity (id, issue_id, actor_id, field, from_value, to_value, text, created_at) values ($1, $2, $3, $4, $5, $6, $7, $8)',
-    [a.id, a.issueId, a.actorId && a.actorId !== 'automation' ? a.actorId : null, a.field ?? null, a.from ?? null, a.to ?? null, a.text, at(a.createdAt)])
+  const projectOf = new Map((data.issues ?? []).map(i => [i.id, i.projectId]))
+  for (const a of data.activity ?? []) {
+    // a status change is stored the server's way: field 'statusId', with the real status ids
+    const st = a.field === 'status', pid = projectOf.get(a.issueId) ?? ''
+    await run('insert into activity (id, issue_id, actor_id, field, from_value, to_value, text, created_at) values ($1, $2, $3, $4, $5, $6, $7, $8)',
+      [a.id, a.issueId, a.actorId && a.actorId !== 'automation' ? a.actorId : null, st ? 'statusId' : a.field ?? null,
+       (st && a.from ? sid(pid, a.from) : a.from) ?? null, (st && a.to ? sid(pid, a.to) : a.to) ?? null, a.text, at(a.createdAt)])
+  }
   for (const n of data.notifications ?? []) await run('insert into notifications (id, user_id, actor_id, issue_id, kind, text, read, archived, created_at) values ($1, $2, $3, $4, $5, $6, $7, $8, $9)',
     [n.id, n.userId, n.actorId || null, n.issueId, n.kind, n.text, n.read, n.archived, at(n.createdAt)])
   for (const p of data.starred ?? []) await run('insert into stars (user_id, project_id) values ($1, $2) on conflict do nothing', [owner.id, p])
