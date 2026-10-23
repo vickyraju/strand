@@ -42,6 +42,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
           template: p.template, lead_id: me.id, next_number: p.nextNumber ?? 1, board_prefs: JSON.stringify(p.boardPrefs ?? {}),
           layout: JSON.stringify(p.layout ?? {}), sample: !!p.sample, created_at: ms(p.createdAt) ?? new Date().toISOString(),
         })
+        await ins('project_members', { project_id: pid, user_id: me.id, role: 'admin', added_by: me.id })   // the importer administers what they imported
         for (const [i, st] of (p.statuses ?? []).entries())
           await ins('statuses', { id: nid(st.id), project_id: pid, name: st.name, color: st.color, category: st.category, wip_limit: st.wipLimit ?? null, position: i })
         for (const t of p.transitions ?? [])

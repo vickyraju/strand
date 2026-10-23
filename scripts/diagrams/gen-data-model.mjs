@@ -14,7 +14,7 @@ const byName = new Map(tables.map(t => [t.name, t]))
 // ── Layout: domains in two rows; each domain lists its tables per column ──
 const DOMAINS = [
   { key: 'people', title: 'Workspace & people', c: '#6C8EBF', f: '#EAF1FB', cols: [['workspaces', 'users', 'memberships', 'personal_access_tokens']] },
-  { key: 'projects', title: 'Projects & workflow', c: '#82B366', f: '#EFF7EA', cols: [['statuses', 'transitions', 'field_defs', 'stars'], ['projects', 'rules', 'item_templates']] },
+  { key: 'projects', title: 'Projects & workflow', c: '#82B366', f: '#EFF7EA', cols: [['statuses', 'transitions', 'field_defs', 'stars'], ['projects', 'project_members', 'rules', 'item_templates']] },
   { key: 'planning', title: 'Planning', c: '#9673A6', f: '#F4EDF7', cols: [['sprints', 'releases']] },
   { key: 'work', title: 'Work items', c: '#D79B00', f: '#FFF6E5', cols: [['issues'], ['issue_links', 'issue_watchers', 'issue_editors', 'attachments', 'worklogs', 'labels']] },
   { key: 'collab', title: 'Collaboration', c: '#B85450', f: '#FBEDEC', cols: [['comments', 'activity', 'notifications']] },

@@ -1,7 +1,8 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
 import { db } from '../db.ts'
-import { HttpError, requireWrite } from '../auth.ts'
+import { HttpError, type Me } from '../auth.ts'
+import { visible, visibleAs } from '../access.ts'
 import { projectByKey } from './projects.ts'
 
 const uuid = z.string().uuid()
@@ -32,7 +33,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
   } }, async req => {
     const q = req.query
     const args: unknown[] = [req.me.workspaceId]
-    const where = ['i.workspace_id = $1', 'i.deleted_at is null']
+    const where = ['i.workspace_id = $1', 'i.deleted_at is null', visible(req.me, 'i.project_id', args)]
     const add = (sql: string, v: unknown) => { args.push(v); where.push(sql.replace(/\?/g, `$${args.length}`)) }
     const text = q.q.trim()
     if (text) {
@@ -62,21 +63,23 @@ const plugin: FastifyPluginAsyncZod = async app => {
   })
 
   // Labels in use, for the label filter (typing narrows it; names are matched anywhere, case-insensitively)
-  app.get('/labels', { schema: { tags: ['Search & work'], summary: 'Labels used in the workspace, alphabetical (up to 50; type part of a name to narrow)', querystring: z.object({
+  app.get('/labels', { schema: { tags: ['Search & work'], summary: 'Labels used in projects I can see, alphabetical (up to 50; type part of a name to narrow)', querystring: z.object({
     query: z.string().max(100).optional().describe('Part of a label, case-insensitive'), limit: z.coerce.number().int().min(1).max(100).default(50),
   }) } }, async req => {
     const like = '%' + (req.query.query ?? '').replace(/[\\%_]/g, '\\$&') + '%'
-    return (await db.query<{ name: string }>('select name from labels where workspace_id = $1 and name ilike $2 order by lower(name), name limit $3', [req.me.workspaceId, like, req.query.limit])).map(r => r.name)
+    const args: unknown[] = [like, req.query.limit]
+    const see = visible(req.me, 'l.project_id', args)
+    return (await db.query<{ name: string }>(`select l.name from labels l where l.name ilike $1 and ${see} group by l.name order by lower(l.name), l.name limit $2`, args)).map(r => r.name)
   })
 
   // "Your work": open items assigned to me
   app.get('/me/work', { schema: { tags: ['Search & work'], summary: 'Open issues assigned to me, due soonest first' } }, async req => db.query(
-    `${LIST} where i.workspace_id = $1 and i.assignee_id = $2 and i.deleted_at is null and st.category <> 'done'
+    `${LIST} where i.workspace_id = $1 and i.assignee_id = $2 and i.deleted_at is null and ${visibleAs(req.me, 'i.project_id', 2)} and st.category <> 'done'
       order by i.due_date nulls last, i.updated_at desc limit 200`, [req.me.workspaceId, req.me.id]))
 
   // "Your work → Worked on": work items I last touched, newest first
   app.get('/me/recent', { schema: { tags: ['Search & work'], summary: 'Work items I last touched (activity, comments or work logs), most recent first' } }, async req => db.query(
-    `${LIST} where i.workspace_id = $1 and i.deleted_at is null
+    `${LIST} where i.workspace_id = $1 and i.deleted_at is null and ${visibleAs(req.me, 'i.project_id', 2)}
       and i.id in (
         select issue_id from activity where actor_id = $2
         union select issue_id from comments where author_id = $2
@@ -97,7 +100,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
                 select 1 from issue_links l join issues b on b.id = l.issue_id join statuses bs on bs.id = b.status_id
                  where l.target_id = i.id and l.type = 'blocks' and b.deleted_at is null and bs.category <> 'done'))::int as blocked
          from issues i join statuses st on st.id = i.status_id
-        where i.workspace_id = $1 and i.assignee_id = $2 and i.deleted_at is null and i.type <> 'epic' and st.category <> 'done'`, [req.me.workspaceId, req.me.id])
+        where i.workspace_id = $1 and i.assignee_id = $2 and i.deleted_at is null and ${visibleAs(req.me, 'i.project_id', 2)} and i.type <> 'epic' and st.category <> 'done'`, [req.me.workspaceId, req.me.id])
     return r
   })
 
@@ -111,17 +114,17 @@ const plugin: FastifyPluginAsyncZod = async app => {
        from projects p
        left join issues i on i.project_id = p.id and i.deleted_at is null and i.type <> 'epic'
        left join statuses st on st.id = i.status_id
-      where p.workspace_id = $1 and p.archived_at is null
+      where p.workspace_id = $1 and p.archived_at is null and ${visibleAs(req.me, 'p.id', 2)}
       group by p.id order by coalesce(max(i.updated_at), p.created_at) desc, p.id limit 4`, [req.me.workspaceId, req.me.id]))
 
   // "Your work → Viewed"
   app.get('/me/viewed', { schema: { tags: ['Search & work'], summary: 'Work items I opened most recently (newest 50), most recent first' } }, async req => db.query(
     `${LIST} join issue_views v on v.issue_id = i.id and v.user_id = $2
-      where i.workspace_id = $1 and i.deleted_at is null order by v.viewed_at desc limit 50`, [req.me.workspaceId, req.me.id]))
+      where i.workspace_id = $1 and i.deleted_at is null and ${visibleAs(req.me, 'i.project_id', 2)} order by v.viewed_at desc limit 50`, [req.me.workspaceId, req.me.id]))
 
   // Counts for a project's summary without scanning issues in the client
   app.get('/projects/:key/summary', { schema: { tags: ['Search & work'], summary: 'Counts by status, assignee and type; created in the last 7 days; overdue', params: z.object({ key: z.string() }) } }, async req => {
-    const p = await projectByKey(db, req.me.workspaceId, req.params.key)
+    const p = await projectByKey(db, req, req.params.key)
     const [byStatus, byAssignee, byType, created, overdue] = await Promise.all([
       db.query(`select s.id as status_id, s.name, s.category, count(i.id)::int as count from statuses s
                   left join issues i on i.status_id = s.id and i.deleted_at is null where s.project_id = $1 group by s.id order by s.position`, [p.id]),
@@ -140,7 +143,8 @@ const plugin: FastifyPluginAsyncZod = async app => {
   // tomorrow or sooner (up to 3 days late), once per item and due date. Skipped if this person was checked recently.
   const dueScan = new Map<string, number>()
   const DUE_SCAN_MS = Number(process.env.DUE_SCAN_INTERVAL_MS ?? 600_000)
-  async function ensureDueNotifications(workspaceId: string, userId: string) {
+  async function ensureDueNotifications(me: Me) {
+    const workspaceId = me.workspaceId, userId = me.id
     const last = dueScan.get(userId)
     if (last !== undefined && Date.now() - last < DUE_SCAN_MS) return
     dueScan.set(userId, Date.now())
@@ -148,7 +152,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
       `insert into notifications (user_id, issue_id, kind, text)
        select $2, i.id, 'due', 'is due on ' || i.due_date::text
          from issues i join statuses st on st.id = i.status_id
-        where i.workspace_id = $1 and i.assignee_id = $2 and i.deleted_at is null and st.category <> 'done'
+        where i.workspace_id = $1 and i.assignee_id = $2 and i.deleted_at is null and ${visibleAs(me, 'i.project_id', 2)} and st.category <> 'done'
           and i.due_date between (now() at time zone 'utc')::date - 3 and (now() at time zone 'utc')::date + 1   -- UTC, so the answer does not depend on the server's timezone
           and not exists (select 1 from notifications n where n.user_id = $2 and n.issue_id = i.id and n.kind = 'due' and n.text = 'is due on ' || i.due_date::text)`,
       [workspaceId, userId])
@@ -159,9 +163,9 @@ const plugin: FastifyPluginAsyncZod = async app => {
     kind: z.enum(['assigned', 'mentioned', 'commented', 'status', 'due']).optional().describe('Only this kind'),
     project: uuid.optional().describe('Only notifications for this project'),
   }) } }, async req => {
-    await ensureDueNotifications(req.me.workspaceId, req.me.id)
+    await ensureDueNotifications(req.me)
     const args: unknown[] = [req.me.id, req.query.archived === '1']
-    const where = ['n.user_id = $1', 'n.archived = $2']
+    const where = ['n.user_id = $1', 'n.archived = $2', visibleAs(req.me, 'i.project_id', 1)]
     if (req.query.kind) { args.push(req.query.kind); where.push(`n.kind = $${args.length}`) }
     if (req.query.project) { args.push(req.query.project); where.push(`i.project_id = $${args.length}`) }
     return db.query(
@@ -187,13 +191,11 @@ const plugin: FastifyPluginAsyncZod = async app => {
   app.get('/views', { schema: { tags: ['Saved views'], summary: 'My saved views plus shared ones' } }, async req => db.query(
     'select * from saved_views where workspace_id = $1 and (owner_id = $2 or shared) order by name', [req.me.workspaceId, req.me.id]))
   app.post('/views', { schema: { tags: ['Saved views'], summary: 'Save a view', body: z.object({ id: uuid.optional().describe('Client-chosen id'), name: z.string().min(1), shared: z.boolean().default(false), filters: viewFilters }) } }, async req => {
-    requireWrite(req)
     const b = req.body
     return (await db.query('insert into saved_views (id, workspace_id, owner_id, name, shared, filters) values (coalesce($6::uuid, uuid_v7()), $1, $2, $3, $4, $5) returning *',
       [req.me.workspaceId, req.me.id, b.name, b.shared, JSON.stringify(b.filters), b.id ?? null]))[0]
   })
   app.patch('/views/:id', { schema: { tags: ['Saved views'], summary: 'Edit my saved view', params: idP, body: z.object({ name: z.string().min(1), shared: z.boolean(), filters: viewFilters }).partial() } }, async req => {
-    requireWrite(req)
     const b = req.body
     const [v] = await db.query(
       `update saved_views set name = coalesce($3, name), shared = coalesce($4, shared), filters = coalesce($5::jsonb, filters)
@@ -203,7 +205,6 @@ const plugin: FastifyPluginAsyncZod = async app => {
     return v
   })
   app.delete('/views/:id', { schema: { tags: ['Saved views'], summary: 'Delete my saved view', params: idP } }, async (req, reply) => {
-    requireWrite(req)
     const r = await db.query('delete from saved_views where id = $1 and owner_id = $2 returning id', [req.params.id, req.me.id])
     if (!r.length) throw new HttpError(404, 'Not found, or not yours')
     reply.code(204).send()

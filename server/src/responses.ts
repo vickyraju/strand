@@ -9,10 +9,12 @@ const day = z.string().describe('YYYY-MM-DD')
 const nullable = <T extends z.ZodType>(t: T) => t.nullable()
 
 export const User = z.object({ id, name: z.string(), initials: z.string(), color: z.string(), title: nullable(z.string()), email: z.string(), role: z.string() })
-export const Me = z.object({ id, email: z.string(), name: z.string(), workspaceId: id, role: z.enum(['owner', 'admin', 'member', 'viewer']) })
+export const Me = z.object({ id, email: z.string(), name: z.string(), workspaceId: id, role: z.enum(['owner', 'admin', 'member']), admin: z.boolean() })
 
 export const AccessToken = z.object({ id, name: z.string(), hint: z.string().describe('Last 4 characters of the token'), createdAt: ts, expiresAt: ts, lastUsedAt: nullable(ts), expired: z.boolean() })
 export const AccessTokenCreated = AccessToken.extend({ token: z.string().describe('The secret. Shown only in this response') })
+
+export const Member = z.object({ userId: id, name: z.string(), email: z.string(), initials: z.string(), color: z.string(), title: nullable(z.string()), role: z.enum(['admin', 'member', 'viewer']), addedAt: ts })
 
 export const Status = z.object({ id, projectId: id, name: z.string(), description: z.string(), color: z.string(), category: z.enum(['todo', 'in-progress', 'done']), wipLimit: nullable(z.number()), position: z.number() })
 export const Transition = z.object({ id, projectId: id, name: z.string(), fromIds: nullable(z.array(id)), toId: id })
@@ -35,7 +37,7 @@ export const UserPage = z.object({ items: z.array(User), next: nullable(z.string
 export const ProjectDetail = z.object({
   id, workspaceId: id, key: z.string(), name: z.string(), description: z.string(), color: z.string(), template: z.enum(['kanban', 'scrum']),
   leadId: nullable(id), archivedAt: nullable(ts), nextNumber: z.number(), boardPrefs: z.record(z.string(), z.unknown()), layout: z.record(z.string(), z.unknown()),
-  sample: z.boolean(), createdAt: ts,
+  sample: z.boolean(), createdAt: ts, role: z.enum(['admin', 'member', 'viewer']).describe('My role in this project'),
   statuses: z.array(Status), transitions: z.array(Transition), fields: z.array(Field), templates: z.array(Template),
   rules: z.array(Rule), releases: z.array(Release), sprints: z.array(Sprint),
 })
@@ -141,6 +143,9 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'GET /me/work': WorkList,
   'GET /me/recent': WorkList,
   'GET /me/viewed': WorkList,
+  'GET /projects/:key/members': z.array(Member),
+  'POST /projects/:key/members': z.array(Member),
+  'PATCH /projects/:key/members/:userId': Member,
   'GET /labels': z.array(z.string()),
   'GET /me/work/summary': z.object({ assigned: z.number(), dueSoon: z.number(), overdue: z.number(), blocked: z.number() }),
   'GET /me/projects/recent': z.array(z.object({ id, key: z.string(), name: z.string(), color: z.string(), template: z.string(), myOpen: z.number(), done: z.number(), total: z.number(), lastActivity: ts })),
