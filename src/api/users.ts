@@ -67,13 +67,13 @@ export function useUserSearch(project?: string) {
   return { users: results, userById, search, loadMore, hasMore: !!next, busy, failed }
 }
 /** Everyone who can work in a project (its people, its groups' people, workspace admins), for @mention suggestions.
- *  Without an API, the local people. ponytail: the first 200 by name; search on the server as you type if projects get bigger. */
+ *  Without an API, the local people. ponytail: the first 100 by name (the search's page limit); search as you type if projects get bigger. */
 export function useProjectPeople(projectId: string | undefined, local: User[]): User[] {
   const [people, setPeople] = useState<{ id: string; users: User[] } | null>(null)
   useEffect(() => {
     if (!apiEnabled || !projectId) return
     let live = true
-    searchUsers('', 200, null, projectId).then(p => { if (live) setPeople({ id: projectId, users: p.items }) }, () => {})
+    searchUsers('', 100, null, projectId).then(p => { if (live) setPeople({ id: projectId, users: p.items }) }, () => {})
     return () => { live = false }
   }, [projectId])
   return apiEnabled && people && people.id === projectId ? people.users : local

@@ -13,7 +13,8 @@ const TEMPLATES: { id: Template; name: string; desc: string; Icon: typeof Column
 
 export default function CreateProjectModal({ onClose, onCreated }: {
   onClose:   () => void
-  onCreated: (projectId: string) => void
+  /** Called with the new project's key (the store may not hold it yet when this runs) */
+  onCreated: (projectKey: string) => void
 }) {
   const { state, dispatch } = useStore()
   const [name, setName]           = useState('')
@@ -40,7 +41,7 @@ export default function CreateProjectModal({ onClose, onCreated }: {
         const created = mapProject(await api('POST', '/api/projects', { name: name.trim(), key, color, template }))
         adoptProject(created)          // its default workflow is already on the server: do not send it back
         dispatch({ type: 'upsertProject', project: created })
-        onCreated(created.id)
+        onCreated(created.key)
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Could not create the project')
         setBusy(false)
@@ -49,7 +50,7 @@ export default function CreateProjectModal({ onClose, onCreated }: {
     }
     const id = uid()
     dispatch({ type: 'createProject', project: { id, name: name.trim(), key, color, template } })
-    onCreated(id)
+    onCreated(key)
   }
 
   return (

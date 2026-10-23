@@ -79,3 +79,11 @@ npm run openapi                                               # regenerate serve
 ```
 
 The API tests sign in with tokens from a local stand-in for Entra, so they need no tenant. `npm run diagrams` regenerates the draw.io files from the migrations.
+
+End-to-end journeys run the real web app and API in Google Chrome (installed; nothing is downloaded) against a throwaway database, which they wipe:
+
+```bash
+E2E_DATABASE_URL=postgres://user@host/scratch npm run e2e     # CHROME_PATH=… to use another Chromium
+```
+
+They cover creating a project and giving a teammate read-only access, @mentions reaching the Inbox, the workflow deciding which moves are offered, a sprint from start to completion, and losing access while the project is open.
