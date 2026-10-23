@@ -6,7 +6,7 @@ import { db, tx } from '../db.ts'
 import { HttpError, requireAdmin } from '../auth.ts'
 import { audit, changes } from '../audit.ts'
 import { enqueue, kickJobs } from '../jobs.ts'
-import { backupBucket, backupSettings } from '../backups.ts'
+import { allowedBackupBuckets, backupBucket, backupSettings } from '../backups.ts'
 import { s3 } from '../storage.ts'
 
 const idP = z.object({ id: z.string().uuid() })
@@ -17,7 +17,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
   app.get('/admin/settings/project-backups', { schema: { tags: TAG, summary: 'Whether deleting a project backs it up first, and where (global admins)' } }, async req => {
     requireAdmin(req)
     const s = await backupSettings(db, req.me.workspaceId)
-    return { enabled: s.enabled, bucket: s.bucket ?? null, prefix: s.prefix ?? 'project-backups/', effectiveBucket: backupBucket(s) || null }
+    return { enabled: s.enabled, bucket: s.bucket ?? null, prefix: s.prefix ?? 'project-backups/', effectiveBucket: backupBucket(s) || null, allowedBuckets: allowedBackupBuckets() }
   })
 
   app.put('/admin/settings/project-backups', { schema: {
@@ -29,6 +29,8 @@ const plugin: FastifyPluginAsyncZod = async app => {
     }),
   } }, async req => {
     requireAdmin(req)
+    if (req.body.bucket && !allowedBackupBuckets().includes(req.body.bucket))
+      throw new HttpError(400, 'That bucket is not one the operators allow for backups (BACKUP_BUCKETS)', { bucket: 'Not an allowed backup bucket' })
     const next = { enabled: req.body.enabled, ...(req.body.bucket ? { bucket: req.body.bucket } : {}), ...(req.body.prefix !== undefined ? { prefix: req.body.prefix } : {}) }
     await tx(async d => {
       const before = await backupSettings(d, req.me.workspaceId)
@@ -40,7 +42,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
       if (c.changed) await audit(d, req, { action: 'settings.project_backups.updated', type: 'settings', name: 'Project backups', before: c.before, after: c.after })
     })
     const s = await backupSettings(db, req.me.workspaceId)
-    return { enabled: s.enabled, bucket: s.bucket ?? null, prefix: s.prefix ?? 'project-backups/', effectiveBucket: backupBucket(s) || null }
+    return { enabled: s.enabled, bucket: s.bucket ?? null, prefix: s.prefix ?? 'project-backups/', effectiveBucket: backupBucket(s) || null, allowedBuckets: allowedBackupBuckets() }
   })
 
   app.get('/admin/project-backups', { schema: { tags: TAG, summary: 'Backups of deleted projects, newest first (global admins)' } }, async req => {

@@ -2,6 +2,7 @@
 // The backup is one JSON document (every row of the project, as stored) plus a copy of each attachment's file.
 // Both deleting and restoring run as background jobs (jobs.ts): they can take a while and must survive restarts.
 // ponytail: the whole project is held in memory while it is written; stream it table by table if projects get very large.
+import { createHash } from 'node:crypto'
 import { CopyObjectCommand, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3'
 import { db, pool, type Db } from './db.ts'
 import { HttpError } from './auth.ts'
@@ -17,8 +18,13 @@ export async function backupSettings(d: Db, workspaceId: string): Promise<Backup
   return { ...r?.projectBackups, enabled: r?.projectBackups?.enabled ?? true }
 }
 
+/** Buckets a workspace may choose for its backups (operators list them in BACKUP_BUCKETS, comma-separated). A workspace
+ *  admin cannot send backups, or take restores, from anywhere else. */
+export const allowedBackupBuckets = () => (process.env.BACKUP_BUCKETS ?? '').split(',').map(b => b.trim()).filter(Boolean)
+
 /** Where backups go: the workspace's chosen bucket, else BACKUP_BUCKET, else the attachments bucket. Empty: nowhere configured. */
-export const backupBucket = (s: BackupSettings) => s.bucket || process.env.BACKUP_BUCKET || filesBucket()
+export const backupBucket = (s: BackupSettings) =>
+  (s.bucket && allowedBackupBuckets().includes(s.bucket) ? s.bucket : '') || process.env.BACKUP_BUCKET || filesBucket()
 const prefixOf = (s: BackupSettings) => (s.prefix ?? 'project-backups/').replace(/^\/+/, '')
 
 /** The project's rows, table by table, in the order they must be restored (parents before children). */
@@ -63,7 +69,7 @@ async function deleteProject(p: { projectId: string; actorId: string | null; act
   if (!proj) return { skipped: 'project not found or not being deleted' }
   const settings = await backupSettings(wrapPool(), proj.workspace_id)
   const who = { me: { id: p.actorId ?? '', email: p.actorEmail, workspaceId: proj.workspace_id } as any, ip: p.ip }
-  let backup: { id: string; bucket: string; objectKey: string; items: number; files: number; bytes: number } | null = null
+  let backup: { id: string; bucket: string; objectKey: string; items: number; files: number; bytes: number; sha256: string } | null = null
 
   if (settings.enabled) {
     const bucket = backupBucket(settings)
@@ -78,7 +84,8 @@ async function deleteProject(p: { projectId: string; actorId: string | null; act
     const doc: BackupDoc = { format: 1, takenAt: new Date().toISOString(), project: { id: proj.id, key: proj.key, name: proj.name }, tables }
     const body = JSON.stringify(doc)
     await s3().send(new PutObjectCommand({ Bucket: bucket, Key: `${base}/project.json`, Body: body, ContentType: 'application/json' }))
-    backup = { id: job.id, bucket, objectKey: `${base}/project.json`, items: tables.issues?.length ?? 0, files: tables.attachments?.length ?? 0, bytes: bytes + body.length }
+    backup = { id: job.id, bucket, objectKey: `${base}/project.json`, items: tables.issues?.length ?? 0, files: tables.attachments?.length ?? 0, bytes: bytes + body.length,
+      sha256: createHash('sha256').update(body).digest('hex') }
   }
 
   const c = await pool.connect()
@@ -86,9 +93,9 @@ async function deleteProject(p: { projectId: string; actorId: string | null; act
   try {
     await c.query('begin')
     if (backup) await c.query(
-      `insert into project_backups (id, workspace_id, project_id, project_key, project_name, bucket, object_key, items, files, bytes, created_by)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) on conflict (id) do nothing`,
-      [backup.id, proj.workspace_id, proj.id, proj.key, proj.name, backup.bucket, backup.objectKey, backup.items, backup.files, backup.bytes, p.actorId])
+      `insert into project_backups (id, workspace_id, project_id, project_key, project_name, bucket, object_key, items, files, bytes, created_by, sha256)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) on conflict (id) do nothing`,
+      [backup.id, proj.workspace_id, proj.id, proj.key, proj.name, backup.bucket, backup.objectKey, backup.items, backup.files, backup.bytes, p.actorId, backup.sha256])
     await audit(d, who, { action: 'project.deleted', type: 'project', id: proj.id, name: proj.key, project: { id: proj.id, key: proj.key },
       before: { name: proj.name }, after: backup ? { backupId: backup.id, items: backup.items, files: backup.files } : { backup: 'off' } })
     await c.query('delete from projects where id = $1', [proj.id])
@@ -97,13 +104,38 @@ async function deleteProject(p: { projectId: string; actorId: string | null; act
   return backup ? { backupId: backup.id, items: backup.items, files: backup.files } : { backup: 'off' }
 }
 
+/** Refuses a backup that reaches outside its own project and workspace (defence in depth: the checksum already proves
+ *  the document is the one this server wrote). */
+function checkBackup(doc: BackupDoc, b: { project_id: string; project_key: string; workspace_id: string }) {
+  const fail = (why: string) => { throw new Error(`The backup does not match its record (${why}); it will not be restored`) }
+  if (doc.format !== 1 || doc.project?.id !== b.project_id || doc.project?.key !== b.project_key) fail('project')
+  const t = doc.tables ?? {}
+  if (t.projects?.length !== 1 || t.projects[0]!.id !== b.project_id || t.projects[0]!.workspace_id !== b.workspace_id) fail('project row')
+  for (const [table] of TABLES) {
+    if (table === 'projects') continue
+    for (const r of t[table] ?? []) {
+      if ('project_id' in r && r.project_id !== b.project_id) fail(table)
+      if ('workspace_id' in r && r.workspace_id !== b.workspace_id) fail(table)
+    }
+  }
+  const items = new Set((t.issues ?? []).map(i => i.id))
+  for (const table of ['issue_watchers', 'comments', 'activity', 'worklogs', 'attachments'])
+    for (const r of t[table] ?? []) if (!items.has(r.issue_id)) fail(table)
+  for (const l of t.issue_links ?? []) if (!items.has(l.issue_id) && !items.has(l.target_id)) fail('issue_links')
+  for (const a of t.attachments ?? []) if (!String(a.object_key).startsWith(`${b.workspace_id}/`) || String(a.object_key).includes('..')) fail('attachment')
+}
+
 /** Puts a backed-up project back exactly as it was (same ids, keys and history), with its files. */
 async function restoreProject(p: { backupId: string; actorId: string | null; actorEmail: string; ip?: string }) {
   const [b] = (await pool.query('select * from project_backups where id = $1', [p.backupId])).rows
   if (!b) return { skipped: 'backup not found' }
   if (b.restored_at) return { skipped: 'already restored' }
   const got = await s3().send(new GetObjectCommand({ Bucket: b.bucket, Key: b.object_key }))
-  const doc = JSON.parse(await got.Body!.transformToString()) as BackupDoc
+  const body = await got.Body!.transformToString()
+  // the document must be exactly what was written, and only about this project in this workspace
+  if (!b.sha256 || createHash('sha256').update(body).digest('hex') !== b.sha256) throw new Error('The backup document has changed since it was written; it will not be restored')
+  const doc = JSON.parse(body) as BackupDoc
+  checkBackup(doc, b)
   const base = b.object_key.replace(/\/project\.json$/, '')
 
   // the files first: copying again on a retry is harmless
