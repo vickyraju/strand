@@ -131,7 +131,8 @@ test('SCIM: token required, provisioning and deactivation block login', { skip }
 
 test('import: moves a reducer v4 state in with ids remapped', { skip }, async () => {
   const state = {
-    version: 4, starred: ['p1'], views: [], dashboards: [{ id: 'old', name: 'An old dashboard', ownerId: 'u', gadgets: [{ id: 'g', kind: 'status' }] }], comments: [{ issueId: 'i1', body: 'hi', createdAt: 1 }], activity: [],
+    version: 4, starred: ['p1'], views: [], dashboards: [{ id: 'old', name: 'An old dashboard', ownerId: 'u', gadgets: [{ id: 'g', kind: 'status' }] }], comments: [{ issueId: 'i1', body: 'hi', createdAt: 1 }],
+    activity: [{ issueId: 'i2', field: 'status', to: 's1', text: 'created', createdAt: 1 }, { issueId: 'i2', field: 'status', from: 's1', to: 's2', text: 'moved', createdAt: 2 }],
     sprints: [],
     projects: [{
       id: 'p1', key: 'IMP', name: 'Imported', template: 'kanban', color: '#112233', nextNumber: 3, createdAt: 1,
@@ -150,6 +151,11 @@ test('import: moves a reducer v4 state in with ids remapped', { skip }, async ()
   assert.equal(child.links[0].key, 'IMP-1')
   assert.equal((await call('GET', '/api/v1/issues/IMP-1')).body.children[0].key, 'IMP-2')
   assert.equal((await call('GET', '/api/v1/projects')).body.find((x: any) => x.key === 'IMP').starred, true)
+  // status history arrives as the server records it, with the new status ids, so reports can read it
+  const p = (await call('GET', '/api/v1/projects/IMP')).body
+  const [todo, done] = [p.statuses.find((x: any) => x.name === 'To do').id, p.statuses.find((x: any) => x.name === 'Done').id]
+  assert.deepEqual((await call('GET', '/api/v1/projects/IMP/report-data')).body.statusChanges.map((x: any) => [x.issueId, x.fromId, x.toId]),
+    [[child.id, null, todo], [child.id, todo, done]])
   assert.equal((await call('POST', '/api/v1/import', state)).body.skippedProjects[0], 'IMP')   // re-import is a no-op
 })
 

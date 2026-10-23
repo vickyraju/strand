@@ -100,8 +100,14 @@ const plugin: FastifyPluginAsyncZod = async app => {
       }
       for (const c of (s.comments ?? []).filter((c: any) => maybe(c.issueId)))
         await ins('comments', { issue_id: id.get(c.issueId), author_id: me.id, body: c.body, created_at: ms(c.createdAt), edited_at: ms(c.editedAt) })
-      for (const a of (s.activity ?? []).filter((a: any) => maybe(a.issueId)))
-        await ins('activity', { issue_id: id.get(a.issueId), actor_id: a.actorId === 'automation' ? null : me.id, field: a.field ?? null, from_value: a.from ?? null, to_value: a.to ?? null, text: a.text, created_at: ms(a.createdAt) })
+      for (const a of (s.activity ?? []).filter((a: any) => maybe(a.issueId))) {
+        // the app calls a status change 'status' and uses its own status ids; the server stores 'statusId' with the new ids
+        const st = a.field === 'status'
+        await ins('activity', {
+          issue_id: id.get(a.issueId), actor_id: a.actorId === 'automation' ? null : me.id, field: st ? 'statusId' : a.field ?? null,
+          from_value: (st ? maybe(a.from) : a.from) ?? null, to_value: (st ? maybe(a.to) : a.to) ?? null, text: a.text, created_at: ms(a.createdAt),
+        })
+      }
 
       await importViews(d, s, me, id, done)
     })

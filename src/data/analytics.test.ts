@@ -60,9 +60,12 @@ test('reports from server data (items plus status changes) match reports from th
   const iso = (t: number) => new Date(t).toISOString()
   // What /projects/:key/report-data returns: item rows, and every status change (the server records no "created" entry)
   const rows = s.issues.map(i => ({ ...i, statusId: i.status, createdAt: iso(i.createdAt), updatedAt: iso(i.updatedAt) }))
-  const changes = s.activity.filter(a => a.field === 'status' && a.from)
+  // Edits made on the server record changes only; imported history also has each item's creation (no "from")
+  const edited = s.activity.filter(a => a.field === 'status' && a.from), imported = s.activity.filter(a => a.field === 'status')
+  for (const recorded of [edited, imported]) {
+  const changes = recorded
     .sort((a, b) => a.createdAt - b.createdAt)
-    .map(a => ({ issueId: a.issueId, fromId: a.from!, toId: a.to!, at: iso(a.createdAt) }))
+    .map(a => ({ issueId: a.issueId, fromId: a.from ?? null, toId: a.to!, at: iso(a.createdAt) }))
   assert.ok(changes.length > 50)
   const fromServer: State = { ...s, ...toReportData(rows, changes) }
   // compare the numbers and which items count; items themselves differ (server rows carry no watchers or work logs)
@@ -72,4 +75,5 @@ test('reports from server data (items plus status changes) match reports from th
   assert.deepEqual(createdVsResolved(fromServer, p, 30, now), createdVsResolved(s, p, 30, now))
   for (const sp of s.sprints.filter(x => x.projectId === p.id && x.startedAt))
     assert.deepEqual(ids(burndown(fromServer, p, sp, now)), ids(burndown(s, p, sp, now)))
+  }
 })

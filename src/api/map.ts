@@ -148,13 +148,17 @@ export interface StatusChange { issueId: string; fromId: string | null; toId: st
 
 /** Server rows → the issues and status history the report maths read. Each item gets a first entry for the
  *  status it was created in (the first change's "from", or its status now if it never moved), as the local store records it. */
+/** The status an item was created in: where its first recorded change started from. A first record without a "from" is
+ *  the creation itself (imported history has one), so its "to" is the starting status. No changes: it never moved. */
+const initialStatus = (first: StatusChange | undefined, now: string) => (first ? first.fromId ?? first.toId : now)
+
 export function toReportData(rows: Row[], changes: StatusChange[]): { issues: Issue[]; activity: Activity[] } {
   const issues = rows.map(mapIssue)
   const first = new Map<string, StatusChange>()
   for (const c of changes) if (!first.has(c.issueId)) first.set(c.issueId, c)
   const activity: Activity[] = issues.map(i => ({
     id: `created-${i.id}`, issueId: i.id, actorId: i.reporterId, text: 'created the work item', field: 'status',
-    to: first.get(i.id)?.fromId ?? i.status, createdAt: i.createdAt,
+    to: initialStatus(first.get(i.id), i.status), createdAt: i.createdAt,
   }))
   for (const c of changes) activity.push({
     id: `${c.issueId}-${c.at}`, issueId: c.issueId, actorId: '', text: 'changed status', field: 'status',
