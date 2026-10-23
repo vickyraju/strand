@@ -4,7 +4,7 @@ import { db, tx, pick, type Db } from '../db.ts'
 import { HttpError, type Me } from '../auth.ts'
 import { canJoinWork, minFor, need, roleOf, visible, type ProjectRole } from '../access.ts'
 import { publish } from '../events.ts'
-import { runRules } from '../rules.ts'
+import { runRules, moveAllowed } from '../rules.ts'
 import { projectByKey } from './projects.ts'
 
 const uuid = z.string().uuid()
@@ -82,11 +82,7 @@ async function watchersOf(d: Db, issue: { id: string; assigneeId: string | null;
 }
 
 async function checkTransition(d: Db, projectId: string, from: string, to: string) {
-  const [{ n }] = await d.query<{ n: number }>('select count(*)::int as n from transitions where project_id = $1', [projectId]) as any
-  if (!n || from === to) return
-  const ok = await d.query(
-    'select 1 from transitions where project_id = $1 and to_id = $2 and (from_ids is null or $3 = any(from_ids))', [projectId, to, from])
-  if (!ok.length) throw new HttpError(409, 'That move is not allowed by the workflow')
+  if (!(await moveAllowed(d, projectId, from, to))) throw new HttpError(409, 'That move is not allowed by the workflow')
 }
 
 const keyP = z.object({ key: z.string().describe('Issue key (PAY-12) or id (uuid)') })
