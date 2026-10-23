@@ -4,6 +4,7 @@ import { db } from '../db.ts'
 import { HttpError, type Me } from '../auth.ts'
 import { visible, visibleAs } from '../access.ts'
 import { projectByKey } from './projects.ts'
+import { audit } from '../audit.ts'
 
 const uuid = z.string().uuid()
 const LIST = `
@@ -18,37 +19,93 @@ const viewFilters = z.object({
   resolution: z.enum(['open', 'done', 'all']).default('open'),
 }).passthrough()
 
+/** Search filters, shared by the result pages and the CSV export so an export is exactly what the search shows. */
+const searchFilters = {
+  q: z.string().default('').describe('Free text or an issue key'), project: uuid.optional(), assignee: z.string().optional().describe('User id, "me", or "none" for unassigned work'),
+  type: z.string().optional(), priority: z.string().optional(), label: z.string().optional(),
+  resolution: z.enum(['open', 'done', 'all']).default('open'),
+}
+type SearchFilters = { q: string; project?: string; assignee?: string; type?: string; priority?: string; label?: string; resolution: 'open' | 'done' | 'all' }
+
+/** The SQL conditions for a search, limited to projects I can see (the parameters go into `args`). */
+function searchWhere(me: Me, q: SearchFilters, args: unknown[]) {
+  args.push(me.workspaceId)
+  const where = [`i.workspace_id = $${args.length}`, 'i.deleted_at is null', visible(me, 'i.project_id', args)]
+  const add = (sql: string, v: unknown) => { args.push(v); where.push(sql.replace(/\?/g, `$${args.length}`)) }
+  const text = q.q.trim()
+  if (text) {
+    const key = /^([A-Za-z][A-Za-z0-9]*)-(\d+)$/.exec(text)
+    if (key) { args.push(key[1]!.toUpperCase(), Number(key[2])); where.push(`(p.key = $${args.length - 1} and i.number = $${args.length})`) }
+    else add(`(i.search @@ websearch_to_tsquery('simple', ?) or i.title ilike '%' || ? || '%')`, text.replace(/[%_\\]/g, '\\$&'))
+  }
+  if (q.project) add('i.project_id = ?', q.project)
+  if (q.assignee === 'none') where.push('i.assignee_id is null')
+  else if (q.assignee) add('i.assignee_id = ?', q.assignee === 'me' ? me.id : q.assignee)
+  if (q.type) add('i.type = ?', q.type)
+  if (q.priority) add('i.priority = ?', q.priority)
+  if (q.label) add('? = any(i.labels)', q.label)
+  if (q.resolution === 'open') where.push(`st.category <> 'done'`)
+  if (q.resolution === 'done') where.push(`st.category = 'done'`)
+  return where
+}
+
+/** One CSV cell. Text that a spreadsheet would run as a formula (=, +, -, @, tab, return) is prefixed with ' so it stays text. */
+export function csvCell(v: unknown): string {
+  let s = v == null ? '' : Array.isArray(v) ? v.join(', ') : String(v)
+  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`
+  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+}
+
+/** Most rows one export returns; a larger search is refused so nobody gets a silently cut-off file.
+ *  ponytail: built in memory; stream it, or write it to storage in a background job, if exports need to be larger. */
+export const EXPORT_MAX = 20_000
+
 const idP = z.object({ id: uuid })
 const pageQ = { cursor: z.string().optional().describe('`next` from the previous page') }
 
 const plugin: FastifyPluginAsyncZod = async app => {
   // Cross-project search / saved-view results. Keyset by (updated_at, id) desc.
+  // The same search as a spreadsheet: every matching item (up to EXPORT_MAX) with its main fields, readable names
+  // instead of ids. Only items the person can see; each export is written to the audit log.
+  app.get('/search/export.csv', { schema: {
+    tags: ['Search & work'], summary: `Download a search as CSV (same filters as /search; at most ${EXPORT_MAX} items, newest first)`,
+    querystring: z.object(searchFilters),
+  } }, async (req, reply) => {
+    const args: unknown[] = []
+    const where = searchWhere(req.me, req.query, args)
+    args.push(EXPORT_MAX + 1)
+    const rows = await db.query<any>(
+      `select p.key || '-' || i.number as key, p.key as project, i.type, i.title, st.name as status, i.priority,
+              a.name as assignee, r.name as reporter, i.labels, i.estimate, i.time_estimate, i.start_date, i.due_date,
+              sp.name as sprint, rl.name as release, par_p.key || '-' || par.number as parent, i.resolution,
+              i.resolved_at, i.created_at, i.updated_at, i.description
+         from issues i join projects p on p.id = i.project_id join statuses st on st.id = i.status_id
+         left join users a on a.id = i.assignee_id left join users r on r.id = i.reporter_id
+         left join sprints sp on sp.id = i.sprint_id left join releases rl on rl.id = i.release_id
+         left join issues par on par.id = i.parent_id left join projects par_p on par_p.id = par.project_id
+        where ${where.join(' and ')} order by i.updated_at desc, i.id desc limit $${args.length}`, args)
+    if (rows.length > EXPORT_MAX)
+      throw new HttpError(400, `More than ${EXPORT_MAX.toLocaleString('en')} items match. Narrow the search (a project, a type, a label) and export again.`)
+    const cols: [string, string][] = [
+      ['Key', 'key'], ['Project', 'project'], ['Type', 'type'], ['Title', 'title'], ['Status', 'status'], ['Priority', 'priority'],
+      ['Assignee', 'assignee'], ['Reporter', 'reporter'], ['Labels', 'labels'], ['Story points', 'estimate'], ['Time estimate (minutes)', 'timeEstimate'],
+      ['Start date', 'startDate'], ['Due date', 'dueDate'], ['Sprint', 'sprint'], ['Release', 'release'], ['Parent', 'parent'],
+      ['Resolution', 'resolution'], ['Resolved', 'resolvedAt'], ['Created', 'createdAt'], ['Updated', 'updatedAt'], ['Description', 'description'],
+    ]
+    const csv = [cols.map(c => c[0]).join(','), ...rows.map(r => cols.map(c => csvCell(r[c[1]])).join(','))].join('\r\n') + '\r\n'
+    await audit(db, req, { action: 'export.csv', type: 'search', name: req.query.q || null, after: { rows: rows.length, filters: req.query } })
+    const day = new Date().toISOString().slice(0, 10)
+    return reply.type('text/csv; charset=utf-8').header('content-disposition', `attachment; filename="strand-export-${day}.csv"`)
+      .send('\uFEFF' + csv)   // the byte-order mark tells spreadsheet apps the file is UTF-8
+  })
+
   app.get('/search', { schema: {
     tags: ['Search & work'], summary: 'Search issues across projects (text, key like PAY-12, or filters); newest first, keyset-paginated',
-    querystring: z.object({
-      q: z.string().default('').describe('Free text or an issue key'), project: uuid.optional(), assignee: z.string().optional().describe('User id, "me", or "none" for unassigned work'),
-      type: z.string().optional(), priority: z.string().optional(), label: z.string().optional(),
-      resolution: z.enum(['open', 'done', 'all']).default('open'), ...pageQ, limit: z.coerce.number().int().min(1).max(200).default(50),
-    }),
+    querystring: z.object({ ...searchFilters, ...pageQ, limit: z.coerce.number().int().min(1).max(200).default(50) }),
   } }, async req => {
     const q = req.query
-    const args: unknown[] = [req.me.workspaceId]
-    const where = ['i.workspace_id = $1', 'i.deleted_at is null', visible(req.me, 'i.project_id', args)]
-    const add = (sql: string, v: unknown) => { args.push(v); where.push(sql.replace(/\?/g, `$${args.length}`)) }
-    const text = q.q.trim()
-    if (text) {
-      const key = /^([A-Za-z][A-Za-z0-9]*)-(\d+)$/.exec(text)
-      if (key) { args.push(key[1]!.toUpperCase(), Number(key[2])); where.push(`(p.key = $${args.length - 1} and i.number = $${args.length})`) }
-      else add(`(i.search @@ websearch_to_tsquery('simple', ?) or i.title ilike '%' || ? || '%')`, text.replace(/[%_\\]/g, '\\$&'))
-    }
-    if (q.project) add('i.project_id = ?', q.project)
-    if (q.assignee === 'none') where.push('i.assignee_id is null')
-    else if (q.assignee) add('i.assignee_id = ?', q.assignee === 'me' ? req.me.id : q.assignee)
-    if (q.type) add('i.type = ?', q.type)
-    if (q.priority) add('i.priority = ?', q.priority)
-    if (q.label) add('? = any(i.labels)', q.label)
-    if (q.resolution === 'open') where.push(`st.category <> 'done'`)
-    if (q.resolution === 'done') where.push(`st.category = 'done'`)
+    const args: unknown[] = []
+    const where = searchWhere(req.me, q, args)
     if (q.cursor) {
       const [t, id] = Buffer.from(q.cursor, 'base64url').toString().split('|')
       args.push(t, id)

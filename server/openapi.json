@@ -14809,6 +14809,167 @@
         }
       }
     },
+    "/api/v1/search/export.csv": {
+      "get": {
+        "summary": "Download a search as CSV (same filters as /search; at most 20000 items, newest first)",
+        "tags": [
+          "Search & work"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "default": "",
+              "type": "string"
+            },
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "description": "Free text or an issue key"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "query",
+            "name": "project",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "assignee",
+            "required": false,
+            "description": "User id, \"me\", or \"none\" for unassigned work"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "type",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "priority",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "label",
+            "required": false
+          },
+          {
+            "schema": {
+              "default": "open",
+              "type": "string",
+              "enum": [
+                "open",
+                "done",
+                "all"
+              ]
+            },
+            "in": "query",
+            "name": "resolution",
+            "required": false
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/search": {
       "get": {
         "summary": "Search issues across projects (text, key like PAY-12, or filters); newest first, keyset-paginated",

@@ -34,6 +34,7 @@ export async function build() {
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
     // every custom header the web app sends must be listed, or the browser blocks the request (x-workflow-override: moving work off a deleted status)
     allowedHeaders: ['content-type', 'authorization', 'if-match', 'x-workflow-override'],
+    exposedHeaders: ['content-disposition', 'retry-after'],   // the export's file name; when to retry after 429
     maxAge: 600,
   })
 
