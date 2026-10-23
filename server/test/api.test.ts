@@ -221,6 +221,7 @@ test('CORS: only listed origins may call the API from a browser, and preflight n
   // a normal request from a listed origin carries the header too
   const r = await app.inject({ method: 'GET', url: '/api/v1/me', headers: { origin: 'https://strand-one.vercel.app', 'x-dev-user': 'owner@x.com' } })
   assert.equal(r.headers['access-control-allow-origin'], 'https://strand-one.vercel.app')
+  assert.match(String(r.headers['access-control-expose-headers']), /content-disposition/)   // so the browser can read an export's file name
 })
 
 test('create accepts a client id; reusing it conflicts instead of duplicating; patch can null fields', { skip }, async () => {
@@ -1389,4 +1390,33 @@ test('resolution: set when an item reaches Done (by any route), kept while done,
   assert.equal((await get(d.key)).resolution, null)
   // the change of resolution is in the item's history
   assert.ok((await pool.query(`select 1 from activity where issue_id = $1 and field = 'resolution'`, [a.id])).rows.length)
+})
+
+test('CSV export: the same items the search shows (only what you can see), readable names, safe cells, audited', { skip }, async () => {
+  const { csvCell } = await import('../src/routes/misc.ts')
+  assert.deepEqual(['plain', 'a,b', 'say "hi"', 'two\nlines', '=SUM(A1)', '+1', '-2', '@x', null, ['a', 'b']].map(csvCell),
+    ['plain', '"a,b"', '"say ""hi"""', '"two\nlines"', "'=SUM(A1)", "'+1", "'-2", "'@x", '', '"a, b"'])
+  await call('POST', '/api/v1/projects', { name: 'Exported', key: 'EXP', template: 'kanban' })
+  await call('POST', '/api/v1/projects', { name: 'Hidden', key: 'HID', template: 'kanban' })
+  await join('EXP', 'exp.member@x.com')
+  const me = (await call('GET', '/api/v1/me', undefined, 'exp.member@x.com')).body
+  await call('POST', '/api/v1/projects/EXP/issues', { title: 'Plain row', assigneeId: me.id, labels: ['red', 'blue'] })
+  await call('POST', '/api/v1/projects/EXP/issues', { title: '=HYPERLINK("http://evil")', description: 'line one\nline, two' })
+  await call('POST', '/api/v1/projects/HID/issues', { title: 'Not for exp.member' })
+
+  const r = await app.inject({ method: 'GET', url: '/api/v1/search/export.csv?resolution=all', headers: { 'x-dev-user': 'exp.member@x.com' } })
+  assert.equal(r.statusCode, 200)
+  assert.match(String(r.headers['content-type']), /text\/csv/)
+  assert.match(String(r.headers['content-disposition']), /attachment; filename="strand-export-\d{4}-\d{2}-\d{2}\.csv"/)
+  const body = r.body.replace(/^﻿/, '')
+  assert.ok(body.startsWith('Key,Project,Type,Title,Status,Priority,Assignee,'))
+  assert.ok(body.includes(`,Plain row,To do,none,${me.name},`))
+  assert.ok(body.includes('"red, blue"'))
+  assert.ok(body.includes(`"'=HYPERLINK(""http://evil"")"`))         // stays text in a spreadsheet
+  assert.ok(body.includes('"line one\nline, two"'))
+  assert.ok(!body.includes('Not for exp.member'))                     // nothing from a project you cannot see
+  const searched = (await call('GET', '/api/v1/search?resolution=all&limit=200', undefined, 'exp.member@x.com')).body.items.length
+  assert.equal(body.trim().split('\r\n').length - 1, searched)          // one row per search result
+  const log = (await call('GET', '/api/v1/audit?action=export.csv')).body.items[0]
+  assert.deepEqual([log.actor, log.after.rows], ['exp.member@x.com', searched])
 })

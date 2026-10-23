@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Search as SearchIcon, X, ChevronDown, Bookmark, MoreHorizontal, Pencil, Trash2, Users, Lock, Save } from 'lucide-react'
+import { Search as SearchIcon, X, ChevronDown, Bookmark, MoreHorizontal, Pencil, Trash2, Users, Lock, Save, Download } from 'lucide-react'
 import { useStore, projectOf, uid, type Issue, type IssueType, type Priority, type ViewFilters, type ViewResolution } from '../data/store'
 import { applyFilters, filtersActive, EMPTY_FILTERS } from '../data/views'
 import { useApp } from '../appContext'
@@ -9,7 +9,7 @@ import { Picker, Menu, Modal, Toggle, TYPE_META, PRIORITY_META, typeOptions, pri
 import { ProjectIcon } from './ProjectView'
 import { api, apiEnabled } from '../api/client'
 import type { Row } from '../api/map'
-import { useSearch, searchProjects, searchLabels } from '../api/work'
+import { useSearch, searchProjects, searchLabels, exportSearchCsv } from '../api/work'
 import { useUserSearch } from '../api/users'
 import { useRemoteList } from '../api/remoteList'
 import { useEnsureProjects, projectKeyOf } from '../api/useEnsureProjects'
@@ -22,6 +22,7 @@ export default function SearchView({ query, viewId }: { query: string; viewId?: 
   const [groupBy, setGroupBy] = useState<TableGroup>('none')
   const [naming, setNaming] = useState<'new' | 'rename' | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [exporting, setExporting] = useState(false)
 
   // Switching views (sidebar, back button) loads that view's filters
   useEffect(() => { setF(view?.filters ?? { ...EMPTY_FILTERS, q: query }) }, [viewId]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -82,6 +83,13 @@ export default function SearchView({ query, viewId }: { query: string; viewId?: 
           </>
         ) : <h1 className="page-title">Search</h1>}
         <div style={{ flex: 1 }} />
+        {apiEnabled && results.length > 0 && (
+          <button className="btn btn-secondary" disabled={exporting} onClick={() => {
+            setExporting(true)
+            exportSearchCsv(f).then(() => toast('Exported to CSV'), e => toast(e instanceof Error ? e.message : 'Export failed', { tone: 'warn' }))
+              .finally(() => setExporting(false))
+          }}><Download size={15} />{exporting ? 'Exporting…' : 'Export CSV'}</button>
+        )}
         {view && dirty && canEdit && (
           <>
             <button className="btn btn-ghost" onClick={() => setF(view.filters)}>Discard changes</button>
