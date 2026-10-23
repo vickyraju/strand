@@ -17,6 +17,7 @@ import misc from './routes/misc.ts'
 import files from './routes/files.ts'
 import imports from './routes/import.ts'
 import auditLog from './routes/auditLog.ts'
+import admin from './routes/admin.ts'
 import scim from './routes/scim.ts'
 import development from './routes/development.ts'
 import tokens from './routes/tokens.ts'
@@ -113,6 +114,7 @@ export async function build() {
     await api.register(tokens)
     await api.register(imports)
     await api.register(auditLog)
+    await api.register(admin)
   }
   await app.register(resources, { prefix: '/api/v1' })
   // ponytail: the unversioned /api is kept as a hidden alias so clients built before /api/v1 keep working;

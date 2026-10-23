@@ -61,7 +61,7 @@ export function mapProject(p: Row): Project {
 export function mapWorkspace(me: Row, users: Row[], projects: Row[], starredIds: string[], extras: { views?: Row[]; notifications?: Row[] } = {}): State {
   return {
     version: 4, workspaceName: 'Strand',
-    ownerId: me.id,
+    ownerId: me.id, isAdmin: !!me.admin,
     users: users.map(mapUser),
     projects: projects.map(mapProject),
     sprints: projects.flatMap(p => (p.sprints ?? []).map(mapSprint)),

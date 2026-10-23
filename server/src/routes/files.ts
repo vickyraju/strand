@@ -1,23 +1,17 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
 import { randomUUID } from 'node:crypto'
-import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3'
+import { PutObjectCommand, GetObjectCommand, DeleteObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { db, pool } from '../db.ts'
 import { HttpError, type Me } from '../auth.ts'
 import { minFor, need, roleOf, type ProjectRole } from '../access.ts'
 import { issueByKey } from './issues.ts'
+import { s3, filesBucket } from '../storage.ts'
 
 // Files go browser → S3 directly via presigned URLs; the API never proxies bytes.
-// Credentials come from the pod's IAM role (IRSA); the bucket's default encryption (SSE-KMS) applies to every object.
-// S3_ENDPOINT points at another S3-compatible store (tests, local development); leave it unset on AWS.
 const MAX_BYTES = 25 * 1024 * 1024
-const bucket = () => process.env.S3_BUCKET ?? ''
-let client: S3Client | undefined
-const s3 = () => (client ??= new S3Client({
-  region: process.env.AWS_REGION,   // AWS_REGION is set by EKS; the SDK reads it when this is undefined
-  ...(process.env.S3_ENDPOINT ? { endpoint: process.env.S3_ENDPOINT, forcePathStyle: true } : {}),
-}))
+const bucket = filesBucket
 const needBucket = () => { if (!bucket()) throw new HttpError(503, 'File storage is not configured (S3_BUCKET)') }
 
 /** An upload that is never confirmed is removed after this long. */

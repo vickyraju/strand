@@ -12,13 +12,20 @@ Object.assign(process.env, { AUTH_DEV: '1', SCIM_TOKEN: 'scim-secret', NODE_ENV:
 
 let app: Awaited<ReturnType<typeof import('../src/app.ts').build>>
 
-// A stand-in for S3 (path-style, no signature checks): objects live in memory; deletes can be made to fail.
-const objects = new Map<string, number>()   // key → size
+// A stand-in for S3 (path-style, no signature checks): objects live in memory as "bucket/key"; deletes can be made to fail.
+const objects = new Map<string, Buffer>()
 let failDeletes = false
 const s3Server = createServer((req, res) => {
-  const key = decodeURIComponent((req.url ?? '').split('?')[0]!.replace(/^\/files\//, ''))
-  if (req.method === 'PUT') { let n = 0; req.on('data', c => { n += c.length }); req.on('end', () => { objects.set(key, n); res.writeHead(200, { etag: '"x"' }).end() }); return }
-  if (req.method === 'HEAD') { const n = objects.get(key); if (n == null) res.writeHead(404).end(); else res.writeHead(200, { 'content-length': String(n), etag: '"x"' }).end(); return }
+  const key = decodeURIComponent((req.url ?? '').split('?')[0]!.replace(/^\//, ''))
+  const copy = req.headers['x-amz-copy-source']
+  if (req.method === 'PUT' && copy) {
+    const src = objects.get(decodeURIComponent(String(copy)).replace(/^\//, ''))
+    if (!src) { res.writeHead(404).end('<Error><Code>NoSuchKey</Code></Error>'); return }
+    objects.set(key, src); res.writeHead(200).end('<CopyObjectResult><ETag>"x"</ETag></CopyObjectResult>'); return
+  }
+  if (req.method === 'PUT') { const parts: Buffer[] = []; req.on('data', c => parts.push(c)); req.on('end', () => { objects.set(key, Buffer.concat(parts)); res.writeHead(200, { etag: '"x"' }).end() }); return }
+  if (req.method === 'GET') { const o = objects.get(key); if (!o) res.writeHead(404).end('<Error><Code>NoSuchKey</Code></Error>'); else res.writeHead(200, { 'content-length': String(o.length) }).end(o); return }
+  if (req.method === 'HEAD') { const o = objects.get(key); if (!o) res.writeHead(404).end(); else res.writeHead(200, { 'content-length': String(o.length), etag: '"x"' }).end(); return }
   if (req.method === 'DELETE') { if (failDeletes) { res.writeHead(500).end('<Error><Code>InternalError</Code></Error>'); return } objects.delete(key); res.writeHead(204).end(); return }
   res.writeHead(405).end()
 })
@@ -1155,7 +1162,8 @@ test('attachments: shown only once the file has arrived; removed files leave sto
   const t = (await call('POST', `/api/v1/issues/${j.key}/attachments`, { name: 'a.txt', size: 3, type: 'text/plain' })).body
   await fetch(t.uploadUrl, { method: 'PUT', body: 'abc' })
   await call('POST', `/api/v1/attachments/${t.id}/complete`)
-  assert.equal((await call('DELETE', '/api/v1/projects/FIL')).status, 204)
+  assert.equal((await call('DELETE', '/api/v1/projects/FIL')).status, 202)
+  await (await import('../src/jobs.ts')).runJobs()
   await sweepFiles()
   assert.equal([...objects.keys()].filter(k => k.includes(j.id)).length, 0)
   // only the uploader confirms, and outsiders cannot see attachments at all
@@ -1210,9 +1218,10 @@ test('audit log: who changed people, settings, workflow and deletions is recorde
   await assert.rejects(pool.query(`update audit_log set actor = 'someone else'`), /can only be added to/)
   await assert.rejects(pool.query('delete from audit_log'), /can only be added to/)
   await call('DELETE', '/api/v1/projects/AUD')
+  await (await import('../src/jobs.ts')).runJobs()
   const all = (await call('GET', '/api/v1/audit?action=project.deleted')).body.items
   assert.equal(all[0].projectKey, 'AUD')
-  assert.equal(all[0].before.items, 1)
+  assert.equal(all[0].after.items, 1)
 })
 
 test('jobs: run once each, retry with growing waits, give up after the limit, survive a crashed worker, never run twice at once', { skip }, async () => {
@@ -1257,4 +1266,72 @@ test('jobs: run once each, retry with growing waits, give up after the limit, su
   await Promise.all(Array.from({ length: 12 }, () => runJobs(100)))
   assert.equal(runs.size, 40)
   assert.deepEqual([...runs.values()].filter(c => c !== 1), [])                 // none ran twice
+})
+
+test('project backups: deleting backs up everything first, restore brings it all back; admins choose whether and where', { skip }, async () => {
+  const { runJobs } = await import('../src/jobs.ts')
+  const p = (await call('POST', '/api/v1/projects', { name: 'Backed up', key: 'BAK', template: 'scrum' })).body
+  await join('BAK', 'bak.member@x.com')
+  const member = (await call('GET', '/api/v1/me', undefined, 'bak.member@x.com')).body.id
+  await call('POST', '/api/v1/projects/BAK/fields', { name: 'Team', kind: 'select', options: ['Core'], position: 0 })
+  const field = (await call('GET', '/api/v1/projects/BAK')).body.fields[0].id
+  const epic = (await call('POST', '/api/v1/projects/BAK/issues', { title: 'Epic', type: 'epic' })).body
+  const child = (await call('POST', '/api/v1/projects/BAK/issues', { title: 'Child', parentId: epic.id, assigneeId: member, custom: { [field]: 'Core' } })).body
+  await call('PATCH', `/api/v1/issues/${child.key}`, { statusId: p.statuses[1].id })
+  await call('POST', `/api/v1/issues/${child.key}/comments`, { body: 'keep this' })
+  await call('POST', `/api/v1/issues/${child.key}/worklogs`, { minutes: 30, date: '2026-10-01' })
+  await call('POST', `/api/v1/issues/${child.key}/links`, { type: 'blocks', targetKey: epic.key })
+  const t = (await call('POST', `/api/v1/issues/${child.key}/attachments`, { name: 'spec.txt', size: 5, type: 'text/plain' })).body
+  await fetch(t.uploadUrl, { method: 'PUT', body: 'hello' })
+  await call('POST', `/api/v1/attachments/${t.id}/complete`)
+
+  // only a workspace admin deletes; the project vanishes at once, for everyone, while the backup runs
+  assert.equal((await call('DELETE', '/api/v1/projects/BAK', undefined, 'bak.member@x.com')).status, 403)
+  const del = await call('DELETE', '/api/v1/projects/BAK')
+  assert.equal(del.status, 202)
+  assert.equal((await call('GET', '/api/v1/projects/BAK')).status, 404)
+  assert.equal((await call('GET', `/api/v1/issues/${child.key}`, undefined, 'bak.member@x.com')).status, 404)
+  assert.ok(!(await call('GET', '/api/v1/projects')).body.some((x: any) => x.key === 'BAK'))
+  await runJobs()
+  assert.equal((await call('GET', `/api/v1/jobs/${del.body.jobId}`)).body.status, 'done')
+  assert.equal((await pool.query(`select count(*)::int as n from projects where key = 'BAK'`)).rows[0].n, 0)
+
+  // the backup: listed, downloadable, and holds every part of the project
+  const b = (await call('GET', '/api/v1/admin/project-backups')).body.find((x: any) => x.projectKey === 'BAK')
+  assert.deepEqual([b.items, b.files, b.restoredAt], [2, 1, null])
+  const doc = JSON.parse(objects.get(`files/${b.objectKey}`)!.toString())
+  assert.deepEqual(Object.fromEntries(['issues', 'comments', 'worklogs', 'issue_links', 'attachments', 'field_defs', 'project_members'].map(k => [k, doc.tables[k].length])),
+    { issues: 2, comments: 1, worklogs: 1, issue_links: 1, attachments: 1, field_defs: 1, project_members: 2 })
+  assert.ok(doc.tables.activity.some((a: any) => a.field === 'statusId'))
+  assert.equal(objects.get(`files/${b.objectKey.replace('project.json', `files/${t.id}`)}`)!.toString(), 'hello')
+  assert.equal((await call('GET', `/api/v1/admin/project-backups/${b.id}/url`)).status, 200)
+  assert.equal((await call('GET', '/api/v1/admin/project-backups', undefined, 'bak.member@x.com')).status, 403)
+
+  // the original file is removed from storage like any deleted attachment; the backup copy stays
+  await (await import('../src/routes/files.ts')).sweepFiles()
+
+  // restore: same keys, history, people, files
+  const r = await call('POST', `/api/v1/admin/project-backups/${b.id}/restore`)
+  assert.equal(r.status, 202)
+  await runJobs()
+  assert.equal((await call('GET', `/api/v1/jobs/${r.body.jobId}`)).body.status, 'done')
+  const back = (await call('GET', `/api/v1/issues/${child.key}?expand=comments,activity,worklogs,links,attachments`, undefined, 'bak.member@x.com')).body
+  assert.deepEqual([back.title, back.parentId, back.assigneeId, back.statusId, back.custom[field]], ['Child', epic.id, member, p.statuses[1].id, 'Core'])
+  assert.deepEqual([back.comments.length, back.worklogs.length, back.links.length, back.attachments.length], [1, 1, 1, 1])
+  assert.ok(back.activity.some((a: any) => a.field === 'statusId'))
+  assert.equal((await call('POST', `/api/v1/attachments/${t.id}/complete`)).status, 200)    // the file is back where it was
+  assert.equal((await call('POST', `/api/v1/admin/project-backups/${b.id}/restore`)).status, 409)
+  assert.ok((await call('GET', '/api/v1/audit?action=project.')).body.items.some((x: any) => x.action === 'project.restored_from_backup'))
+
+  // settings: off means deleting removes the project without a backup; on with nowhere to put it is refused
+  assert.equal((await call('PUT', '/api/v1/admin/settings/project-backups', { enabled: false }, 'bak.member@x.com')).status, 403)
+  assert.equal((await call('PUT', '/api/v1/admin/settings/project-backups', { enabled: false })).body.enabled, false)
+  assert.equal((await call('DELETE', '/api/v1/projects/BAK')).status, 202)
+  await runJobs()
+  assert.equal((await call('GET', '/api/v1/admin/project-backups')).body.filter((x: any) => x.projectKey === 'BAK').length, 1)
+  await call('PUT', '/api/v1/admin/settings/project-backups', { enabled: true })
+  const saved = process.env.S3_BUCKET; process.env.S3_BUCKET = ''
+  await call('POST', '/api/v1/projects', { name: 'Nowhere', key: 'NOWH', template: 'kanban' })
+  assert.equal((await call('DELETE', '/api/v1/projects/NOWH')).status, 409)
+  process.env.S3_BUCKET = saved
 })

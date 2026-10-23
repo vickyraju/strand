@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useState } from 'react'
 import { Plus, Star, FolderPlus, Columns2, List, ListChecks, Settings, Gauge, BarChart3, GanttChart, CalendarDays, Rocket, Check, GitBranch, Info, Zap, Users } from 'lucide-react'
 import { useStore, userOf, isDone, timeAgo, PROJECT_COLORS, type Project, type ProjectPatch } from '../data/store'
 import { useApp } from '../appContext'
-import { canAdmin } from '../data/access'
+import { canAdmin, isGlobalAdmin } from '../data/access'
 import { navigate, href, type ProjectTab } from '../router'
 import { api, apiEnabled } from '../api/client'
 import { useProjectEvents } from '../api/presence'
@@ -378,11 +378,13 @@ function ProjectSettings({ project }: { project: Project }) {
         </div>
       </section>
 
-      <section className="panel panel-danger">
+      {isGlobalAdmin(state) && <section className="panel panel-danger">
         <h2 className="panel-title">Delete project</h2>
-        <p className="muted">Permanently deletes {project.name} with its {plural(count, 'work item')}, sprints and comments. This can’t be undone.</p>
+        <p className="muted">{apiEnabled
+          ? <>Deletes {project.name} with its {plural(count, 'work item')}, sprints, comments and files. If backups are on (Administration), a full copy is saved first and an admin can restore it.</>
+          : <>Permanently deletes {project.name} with its {plural(count, 'work item')}, sprints and comments. This can’t be undone.</>}</p>
         <button className="btn btn-danger" style={{ marginTop: 10 }} onClick={() => setDeleting(true)}>Delete project</button>
-      </section>
+      </section>}
 
       {deleting && (
         <Modal title={`Delete ${project.name}?`} onClose={() => setDeleting(false)}
@@ -392,7 +394,9 @@ function ProjectSettings({ project }: { project: Project }) {
               dispatch({ type: 'deleteProject', id: project.id }); toast(`Deleted ${project.name}`, { undo: 'deleteProject' }); goTo('projects')
             }}>Delete project</button>
           </>}>
-          <p className="callout callout-danger"><Info size={15} />This deletes {plural(count, 'work item')} and can’t be undone.</p>
+          <p className="callout callout-danger"><Info size={15} />{apiEnabled
+            ? <>This deletes {plural(count, 'work item')} for everyone. A backup is taken first when backups are on.</>
+            : <>This deletes {plural(count, 'work item')} and can’t be undone.</>}</p>
           <label className="label" htmlFor="del-key" style={{ marginTop: 12 }}>Type <b className="mono">{project.key}</b> to confirm</label>
           <input id="del-key" className="input" value={confirm} onChange={e => setConfirm(e.target.value.toUpperCase())} autoFocus />
         </Modal>

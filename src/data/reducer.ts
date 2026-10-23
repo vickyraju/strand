@@ -249,6 +249,8 @@ export interface State {
   version:       4
   workspaceName: string
   ownerId:       string | null
+  /** Workspace owner or admin: administers every project (from the server; unset for a workspace kept in this browser) */
+  isAdmin?:      boolean
   users:         User[]
   projects:      Project[]
   issues:        Issue[]

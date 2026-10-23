@@ -6,6 +6,8 @@ import { HttpError, requireAdmin, type Me } from '../auth.ts'
 import { minFor, need, roleOf, visible, type ProjectRole } from '../access.ts'
 import { subscribe } from '../events.ts'
 import { audit, changes } from '../audit.ts'
+import { enqueue, kickJobs } from '../jobs.ts'
+import { backupBucket, backupSettings } from '../backups.ts'
 
 const uuid = z.string().uuid()
 const color = z.string().regex(/^#[0-9a-fA-F]{6}$/)
@@ -205,16 +207,25 @@ const plugin: FastifyPluginAsyncZod = async app => {
     return projectDetail(db, req.me.workspaceId, p.key, p.role)
   })
 
-  app.delete('/projects/:key', { schema: { tags: T.projects, summary: 'Delete a project (admin only)', params: keyP } }, async (req, reply) => {
+  // Deleting a project backs it up first (when the workspace has backups on), in the background. Meanwhile the project is
+  // "being deleted": hidden from everyone and closed to changes.
+  app.delete('/projects/:key', { schema: { tags: T.projects, summary: 'Delete a project (global admins). Backs it up first when backups are on; answers 202 with the job to follow', params: keyP,
+    response: { 202: z.object({ jobId: z.string().uuid().describe('Follow it at GET /jobs/{id}') }) } } }, async (req, reply) => {
     requireAdmin(req)
     const p = await projectByKey(db, req, req.params.key)
-    await tx(async d => {
-      const [{ name, items }] = await d.query<{ name: string; items: number }>(
-        'select p.name, (select count(*)::int from issues where project_id = p.id) as items from projects p where p.id = $1', [p.id]) as any
-      await audit(d, req, { action: 'project.deleted', type: 'project', id: p.id, name: p.key, project: p, before: { name, items } })
-      await d.query('delete from projects where id = $1', [p.id])
+    const jobId = await tx(async d => {
+      const settings = await backupSettings(d, req.me.workspaceId)
+      if (settings.enabled && !backupBucket(settings))
+        throw new HttpError(409, 'Project backups are on, but no storage is set for them. Choose a bucket, or turn backups off, in Administration.')
+      const [marked] = await d.query('update projects set deleting_at = now() where id = $1 and deleting_at is null returning id', [p.id])
+      if (!marked) throw new HttpError(404, 'Project not found')
+      await audit(d, req, { action: 'project.delete_requested', type: 'project', id: p.id, name: p.key, project: p, after: { backup: settings.enabled } })
+      return enqueue(d, 'project.delete', { projectId: p.id, actorId: req.me.id, actorEmail: req.me.email, ip: req.ip },
+        { workspaceId: req.me.workspaceId, createdBy: req.me.id, dedupeKey: `project.delete:${p.id}`, maxAttempts: 10 })
     })
-    reply.code(204).send()
+    kickJobs(app.log)
+    reply.code(202)
+    return { jobId }
   })
 
   app.put('/projects/:key/star', { schema: { tags: T.projects, summary: 'Star a project', params: keyP } }, async (req, reply) => {
