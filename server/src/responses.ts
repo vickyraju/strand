@@ -51,6 +51,10 @@ const issueFields = {
   createdAt: ts, updatedAt: ts,
 }
 export const IssueRow = z.object(issueFields)
+const BackupSettings = z.object({
+  enabled: z.boolean().describe('Deleting a project backs it up first'), bucket: nullable(z.string()), prefix: z.string(),
+  effectiveBucket: nullable(z.string()).describe('Where backups actually go (empty: nowhere configured, so deleting a project is refused)'),
+})
 export const Comment = z.object({ id, issueId: id, authorId: nullable(id), body: z.string(), createdAt: ts, editedAt: nullable(ts) })
 export const Worklog = z.object({ id, issueId: id, userId: nullable(id), minutes: z.number(), date: day, note: z.string(), createdAt: ts })
 export const Activity = z.object({ id, issueId: id, actorId: nullable(id), field: nullable(z.string()), fromValue: nullable(z.string()), toValue: nullable(z.string()), text: z.string(), createdAt: ts })
@@ -161,6 +165,17 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'PATCH /views/:id': SavedView,
   'POST /issues/:key/attachments': AttachmentTicket,
   'GET /attachments/:id/url': z.object({ url: z.string() }),
+  'GET /admin/settings/project-backups': BackupSettings,
+  'PUT /admin/settings/project-backups': BackupSettings,
+  'GET /admin/project-backups': z.array(z.object({
+    id, projectId: id, projectKey: z.string(), projectName: z.string(), bucket: z.string(), objectKey: z.string(),
+    items: z.number(), files: z.number(), bytes: z.number(), createdAt: ts, createdBy: nullable(id), restoredAt: nullable(ts),
+  })),
+  'GET /admin/project-backups/:id/url': z.object({ url: z.string() }),
+  'GET /jobs/:id': z.object({
+    id, kind: z.string(), status: z.enum(['queued', 'running', 'done', 'failed']), attempts: z.number(), maxAttempts: z.number(),
+    lastError: nullable(z.string()), result: z.unknown(), createdBy: nullable(id), createdAt: ts, finishedAt: nullable(ts),
+  }),
   'GET /audit': z.object({
     items: z.array(z.object({
       id, at: ts, actorId: nullable(id), actor: z.string().describe("Who acted: their email at the time, or 'SCIM'"), action: z.string(),

@@ -55,6 +55,12 @@ export async function runJobs(max = 20, log?: FastifyBaseLogger) {
   return ran
 }
 
+/** Starts due jobs now rather than at the next poll (after queueing work someone is waiting for). Off when polling is off. */
+export function kickJobs(log?: FastifyBaseLogger) {
+  if (!(Number(process.env.JOBS_POLL_MS ?? 5000) > 0)) return
+  setImmediate(() => { runJobs(20, log).catch(e => log?.error(e)) })
+}
+
 /** Polls for due jobs every JOBS_POLL_MS (default 5 s; 0 = off, e.g. in tests that call runJobs themselves). */
 export function startJobWorker(log: FastifyBaseLogger) {
   const every = Number(process.env.JOBS_POLL_MS ?? 5000)

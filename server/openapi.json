@@ -4157,7 +4157,7 @@
         }
       },
       "delete": {
-        "summary": "Delete a project (admin only)",
+        "summary": "Delete a project (global admins). Backs it up first when backups are on; answers 202 with the job to follow",
         "tags": [
           "Projects"
         ],
@@ -4173,6 +4173,28 @@
           }
         ],
         "responses": {
+          "202": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "jobId": {
+                      "type": "string",
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "description": "Follow it at GET /jobs/{id}"
+                    }
+                  },
+                  "required": [
+                    "jobId"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
           "400": {
             "description": "Invalid input; `errors` maps each bad field to a message",
             "content": {
@@ -18523,6 +18545,789 @@
                   "required": [
                     "items",
                     "next"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/settings/project-backups": {
+      "get": {
+        "summary": "Whether deleting a project backs it up first, and where (global admins)",
+        "tags": [
+          "Admin"
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean",
+                      "description": "Deleting a project backs it up first"
+                    },
+                    "bucket": {
+                      "nullable": true,
+                      "type": "string"
+                    },
+                    "prefix": {
+                      "type": "string"
+                    },
+                    "effectiveBucket": {
+                      "nullable": true,
+                      "description": "Where backups actually go (empty: nowhere configured, so deleting a project is refused)",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "enabled",
+                    "bucket",
+                    "prefix",
+                    "effectiveBucket"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Turn project backups on or off and choose where they go (global admins)",
+        "tags": [
+          "Admin"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "bucket": {
+                    "description": "Empty: BACKUP_BUCKET, else the attachments bucket",
+                    "nullable": true,
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$"
+                  },
+                  "prefix": {
+                    "type": "string",
+                    "maxLength": 200,
+                    "pattern": "^[A-Za-z0-9!_.*'()/-]*$"
+                  }
+                },
+                "required": [
+                  "enabled"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean",
+                      "description": "Deleting a project backs it up first"
+                    },
+                    "bucket": {
+                      "nullable": true,
+                      "type": "string"
+                    },
+                    "prefix": {
+                      "type": "string"
+                    },
+                    "effectiveBucket": {
+                      "nullable": true,
+                      "description": "Where backups actually go (empty: nowhere configured, so deleting a project is refused)",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "enabled",
+                    "bucket",
+                    "prefix",
+                    "effectiveBucket"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/project-backups": {
+      "get": {
+        "summary": "Backups of deleted projects, newest first (global admins)",
+        "tags": [
+          "Admin"
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "description": "uuid"
+                      },
+                      "projectId": {
+                        "type": "string",
+                        "description": "uuid"
+                      },
+                      "projectKey": {
+                        "type": "string"
+                      },
+                      "projectName": {
+                        "type": "string"
+                      },
+                      "bucket": {
+                        "type": "string"
+                      },
+                      "objectKey": {
+                        "type": "string"
+                      },
+                      "items": {
+                        "type": "number"
+                      },
+                      "files": {
+                        "type": "number"
+                      },
+                      "bytes": {
+                        "type": "number"
+                      },
+                      "createdAt": {
+                        "type": "string",
+                        "description": "ISO 8601 timestamp"
+                      },
+                      "createdBy": {
+                        "nullable": true,
+                        "type": "string",
+                        "description": "uuid"
+                      },
+                      "restoredAt": {
+                        "nullable": true,
+                        "type": "string",
+                        "description": "ISO 8601 timestamp"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "projectId",
+                      "projectKey",
+                      "projectName",
+                      "bucket",
+                      "objectKey",
+                      "items",
+                      "files",
+                      "bytes",
+                      "createdAt",
+                      "createdBy",
+                      "restoredAt"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/project-backups/{id}/url": {
+      "get": {
+        "summary": "Download link for a backup document (5 min, global admins)",
+        "tags": [
+          "Admin"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "url": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "url"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/project-backups/{id}/restore": {
+      "post": {
+        "summary": "Restore a deleted project from its backup (runs in the background; global admins)",
+        "tags": [
+          "Admin"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "jobId": {
+                      "type": "string",
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "description": "Follow it at GET /jobs/{id}"
+                    }
+                  },
+                  "required": [
+                    "jobId"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/jobs/{id}": {
+      "get": {
+        "summary": "Progress of a background job you started",
+        "tags": [
+          "Admin"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "queued",
+                        "running",
+                        "done",
+                        "failed"
+                      ]
+                    },
+                    "attempts": {
+                      "type": "number"
+                    },
+                    "maxAttempts": {
+                      "type": "number"
+                    },
+                    "lastError": {
+                      "nullable": true,
+                      "type": "string"
+                    },
+                    "result": {},
+                    "createdBy": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "description": "ISO 8601 timestamp"
+                    },
+                    "finishedAt": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "ISO 8601 timestamp"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "kind",
+                    "status",
+                    "attempts",
+                    "maxAttempts",
+                    "lastError",
+                    "result",
+                    "createdBy",
+                    "createdAt",
+                    "finishedAt"
                   ],
                   "additionalProperties": false
                 }
