@@ -2,8 +2,7 @@
 // "Your work" (assigned / recently worked on) and the inbox. Without an API these return the empty,
 // already-loaded shape, so the screens keep working off the local store.
 import { useEffect, useRef, useState } from 'react'
-import { api, apiEnabled, ApiError, API_URL, buildRequest, withPrefix } from './client'
-import { accessToken } from './auth.ts'
+import { api, apiEnabled, ApiError, API_URL, buildRequest, getLogin, withPrefix } from './client'
 import { mapSearchRow, type Row } from './map'
 import type { Issue, ViewFilters } from '../data/reducer'
 
@@ -34,7 +33,7 @@ function searchParams(f: ViewFilters, limit: number, cursor?: string | null): UR
 /** Downloads the search as a CSV file (every match, up to the server's limit), named by the server. */
 export async function exportSearchCsv(f: ViewFilters) {
   const q = searchParams(f, 1); q.delete('limit')
-  const res = await fetch(...buildRequest(API_URL!, await accessToken(), 'GET', withPrefix(`/api/search/export.csv?${q}`)))
+  const res = await fetch(...buildRequest(API_URL!, getLogin(), 'GET', withPrefix(`/api/search/export.csv?${q}`)))
   if (!res.ok) throw new ApiError(res.status, (await res.json().catch(() => null))?.error ?? `Export failed (${res.status})`)
   const name = /filename="([^"]+)"/.exec(res.headers.get('content-disposition') ?? '')?.[1] ?? 'strand-export.csv'
   const url = URL.createObjectURL(await res.blob())
