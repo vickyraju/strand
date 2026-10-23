@@ -315,7 +315,7 @@ export type Action =
   /** The server's copy of a sprint (point snapshots, member list). */
   | { type: 'syncSprint'; sprint: Sprint }
   /** The parts of one issue that come with the single-issue call: comments, history, time logs, outgoing links, watchers. */
-  | { type: 'loadIssueDetail'; issueId: string; comments: Comment[]; activity: Activity[]; worklogs: Worklog[]; links: IssueLink[]; watcherIds: string[] }
+  | { type: 'loadIssueDetail'; issueId: string; comments: Comment[]; activity: Activity[]; worklogs: Worklog[]; links: IssueLink[]; watcherIds: string[]; attachments?: Attachment[] }
   /** The server's copy of one issue (key, rank, rule effects). Keeps the local-only watchers, links, work logs and attachments. */
   | { type: 'syncIssue'; issue: Issue }
   /** Who has an issue open for editing right now (live `issue.editing` events). Not undoable. */
@@ -729,7 +729,7 @@ export function reducer(state: State, action: Action, now = Date.now()): State {
         comments: [...state.comments.filter(c => c.issueId !== action.issueId), ...action.comments],
         activity: [...state.activity.filter(a => a.issueId !== action.issueId), ...action.activity],
         issues: state.issues.map(i => i.id === action.issueId
-          ? { ...i, links: action.links, watcherIds: action.watcherIds, worklogs: action.worklogs } : i),
+          ? { ...i, links: action.links, watcherIds: action.watcherIds, worklogs: action.worklogs, ...(action.attachments ? { attachments: action.attachments } : {}) } : i),
       }
     case 'syncIssue': {
       const ex = state.issues.find(i => i.id === action.issue.id)
@@ -742,8 +742,15 @@ export function reducer(state: State, action: Action, now = Date.now()): State {
       return { ...state, projects: state.projects.some(p => p.id === action.project.id)
         ? state.projects.map(p => (p.id === action.project.id ? action.project : p))
         : [...state.projects, action.project] }
-    case 'loadIssues':
-      return { ...state, issues: [...state.issues.filter(i => i.projectId !== action.projectId), ...action.issues] }
+    case 'loadIssues': {
+      // list rows carry no links, watchers, work logs or attachments: keep the ones an item's detail already loaded
+      const had = new Map(state.issues.filter(i => i.projectId === action.projectId).map(i => [i.id, i]))
+      const issues = action.issues.map(i => {
+        const ex = had.get(i.id)
+        return ex ? { ...i, watcherIds: ex.watcherIds, links: ex.links, attachments: ex.attachments, worklogs: ex.worklogs } : i
+      })
+      return { ...state, issues: [...state.issues.filter(i => i.projectId !== action.projectId), ...issues] }
+    }
     case 'setEditors': {
       const editors = action.editors
       const editors0 = state.editors[action.issueId] ?? []

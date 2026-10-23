@@ -2,7 +2,7 @@
 // (epoch-millisecond numbers, optional fields). Pure: no React, no fetch, so it is unit-tested.
 import {
   DEFAULT_BOARD_PREFS, type Project, type Sprint, type State, type User,
-  type Notification, type SavedView, type Activity, type Comment, type IssueLink, type Worklog, type Issue, type Status, type Transition, type Rule, type FieldDef, type Release, type ItemTemplate,
+  type Notification, type SavedView, type Activity, type Attachment, type Comment, type IssueLink, type Worklog, type Issue, type Status, type Transition, type Rule, type FieldDef, type Release, type ItemTemplate,
 } from '../data/reducer.ts'
 
 export type Row = Record<string, any>
@@ -138,6 +138,9 @@ export function mapIssueDetail(d: Row) {
     worklogs: (d.worklogs ?? []).map(mapWorklog),
     links: (d.links ?? []).filter((l: Row) => l.dir === 'out').map((l: Row): IssueLink => ({ type: l.type, issueId: l.issueId })),
     watcherIds: (d.watcherIds ?? []) as string[],
+    attachments: (d.attachments ?? []).map((a: Row): Attachment => ({
+      id: a.id, name: a.name, size: a.size, type: a.type, addedBy: a.addedBy ?? '', addedAt: ms(a.addedAt) ?? Date.now(),
+    })),
   }
 }
 

@@ -276,7 +276,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     load('comments', 'select * from comments where issue_id = $1 order by created_at, id limit 200')
     load('activity', 'select * from activity where issue_id = $1 order by created_at desc, id desc limit 200')
     load('worklogs', 'select * from worklogs where issue_id = $1 order by date desc, created_at desc limit 200')
-    load('attachments', 'select id, name, size, type, added_by, added_at from attachments where issue_id = $1 order by added_at')
+    load('attachments', 'select id, name, size, type, added_by, added_at from attachments where issue_id = $1 and uploaded_at is not null order by added_at')
     load('children', `${ISSUE} where i.parent_id = $1 and i.deleted_at is null order by i.rank limit 500`)
     await Promise.all(jobs)
     return out

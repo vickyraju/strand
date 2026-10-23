@@ -1,6 +1,7 @@
 import { test, before, after } from 'node:test'
 import assert from 'node:assert/strict'
 import { readdirSync, readFileSync } from 'node:fs'
+import { createServer } from 'node:http'
 import pg from 'pg'
 import { createHash, createHmac } from 'node:crypto'
 
@@ -10,6 +11,17 @@ const skip = !url && 'DATABASE_URL not set'
 Object.assign(process.env, { AUTH_DEV: '1', SCIM_TOKEN: 'scim-secret', NODE_ENV: 'test', DUE_SCAN_INTERVAL_MS: '0', GITHUB_WEBHOOK_SECRET: 'whsec-test', CORS_ORIGINS: 'https://strand-one.vercel.app/, http://localhost:5173' })
 
 let app: Awaited<ReturnType<typeof import('../src/app.ts').build>>
+
+// A stand-in for S3 (path-style, no signature checks): objects live in memory; deletes can be made to fail.
+const objects = new Map<string, number>()   // key → size
+let failDeletes = false
+const s3Server = createServer((req, res) => {
+  const key = decodeURIComponent((req.url ?? '').split('?')[0]!.replace(/^\/files\//, ''))
+  if (req.method === 'PUT') { let n = 0; req.on('data', c => { n += c.length }); req.on('end', () => { objects.set(key, n); res.writeHead(200, { etag: '"x"' }).end() }); return }
+  if (req.method === 'HEAD') { const n = objects.get(key); if (n == null) res.writeHead(404).end(); else res.writeHead(200, { 'content-length': String(n), etag: '"x"' }).end(); return }
+  if (req.method === 'DELETE') { if (failDeletes) { res.writeHead(500).end('<Error><Code>InternalError</Code></Error>'); return } objects.delete(key); res.writeHead(204).end(); return }
+  res.writeHead(405).end()
+})
 let pool: pg.Pool
 
 const call = async (method: string, path: string, body?: unknown, who = 'owner@x.com', headers: Record<string, string> = {}) => {
@@ -27,13 +39,18 @@ const join = async (key: string, email: string, role: 'admin' | 'member' | 'view
 
 before(async () => {
   if (skip) return
+  await new Promise<void>(r => s3Server.listen(0, '127.0.0.1', r))
+  Object.assign(process.env, {
+    S3_BUCKET: 'files', S3_ENDPOINT: `http://127.0.0.1:${(s3Server.address() as { port: number }).port}`, AWS_REGION: 'us-east-1',
+    AWS_ACCESS_KEY_ID: 'test', AWS_SECRET_ACCESS_KEY: 'test', FILE_SWEEP_MS: '0',
+  })
   pool = new pg.Pool({ connectionString: url })
   await pool.query('drop schema public cascade; create schema public')
   const dir = new URL('../../supabase/migrations/', import.meta.url)
   for (const f of readdirSync(dir).sort()) await pool.query(readFileSync(new URL(f, dir), 'utf8'))
   app = await (await import('../src/app.ts')).build()
 })
-after(async () => { if (skip) return; await app.close(); await pool.end() })
+after(async () => { if (skip) return; await app.close(); await pool.end(); s3Server.close() })
 
 test('project → issue lifecycle with workflow, versions and undo', { skip }, async () => {
   const p = await call('POST', '/api/v1/projects', { name: 'Payments', key: 'PAY', template: 'kanban' })
@@ -1096,4 +1113,51 @@ test('custom fields: values must fit the field (number, option, date, text); del
   // deleting a field clears it from every item
   assert.equal((await call('DELETE', `/api/v1/projects/CUS/fields/${note}`)).status, 204)
   assert.equal(note in (await call('GET', `/api/v1/issues/${i.body.key}`)).body.custom, false)
+})
+
+test('attachments: shown only once the file has arrived; removed files leave storage, with retries, also when the item or project goes', { skip }, async () => {
+  const { sweepFiles } = await import('../src/routes/files.ts')
+  await call('POST', '/api/v1/projects', { name: 'Files', key: 'FIL', template: 'kanban' })
+  const i = (await call('POST', '/api/v1/projects/FIL/issues', { title: 'with files' })).body
+  const upload = async (name: string, bytes: number, send = bytes) => {
+    const t = (await call('POST', `/api/v1/issues/${i.key}/attachments`, { name, size: bytes, type: 'text/plain' })).body
+    if (send) await fetch(t.uploadUrl, { method: 'PUT', body: 'x'.repeat(send), headers: { 'content-type': 'text/plain' } })
+    return t.id as string
+  }
+  const listed = async () => (await call('GET', `/api/v1/issues/${i.key}?expand=attachments`)).body.attachments.map((a: any) => a.name)
+  const done = await upload('done.txt', 10)
+  assert.equal((await call('POST', `/api/v1/attachments/${done}/complete`)).status, 200)
+  const never = await upload('never.txt', 10, 0)                 // the browser never sent the bytes
+  assert.equal((await call('POST', `/api/v1/attachments/${never}/complete`)).status, 409)
+  const short = await upload('short.txt', 10, 4)                 // fewer bytes than registered
+  assert.equal((await call('POST', `/api/v1/attachments/${short}/complete`)).status, 409)
+  assert.deepEqual(await listed(), ['done.txt'])                 // only confirmed files show
+  assert.equal((await call('GET', `/api/v1/attachments/${never}/url`)).status, 404)
+  assert.equal((await call('GET', `/api/v1/attachments/${done}/url`)).status, 200)
+
+  // a day later the unconfirmed ones are gone, files and rows
+  await sweepFiles(Date.now() + 25 * 60 * 60_000)
+  assert.equal((await pool.query('select count(*)::int as n from attachments where issue_id = $1', [i.id])).rows[0].n, 1)
+  assert.equal([...objects.keys()].filter(k => k.includes(i.id)).length, 1)
+
+  // removing: the row goes at once; if storage fails, the file stays queued and goes on a later sweep
+  failDeletes = true
+  assert.equal((await call('DELETE', `/api/v1/attachments/${done}`)).status, 204)
+  assert.deepEqual(await listed(), [])
+  assert.equal((await sweepFiles()).failed, 1)
+  assert.equal([...objects.keys()].filter(k => k.includes(i.id)).length, 1)
+  failDeletes = false
+  assert.equal((await sweepFiles()).deleted, 1)
+  assert.equal([...objects.keys()].filter(k => k.includes(i.id)).length, 0)
+
+  // deleting the whole project takes its files out of storage too
+  const j = (await call('POST', '/api/v1/projects/FIL/issues', { title: 'more files' })).body
+  const t = (await call('POST', `/api/v1/issues/${j.key}/attachments`, { name: 'a.txt', size: 3, type: 'text/plain' })).body
+  await fetch(t.uploadUrl, { method: 'PUT', body: 'abc' })
+  await call('POST', `/api/v1/attachments/${t.id}/complete`)
+  assert.equal((await call('DELETE', '/api/v1/projects/FIL')).status, 204)
+  await sweepFiles()
+  assert.equal([...objects.keys()].filter(k => k.includes(j.id)).length, 0)
+  // only the uploader confirms, and outsiders cannot see attachments at all
+  assert.equal((await call('GET', `/api/v1/attachments/${t.id}/url`, undefined, 'files.outsider@x.com')).status, 404)
 })
