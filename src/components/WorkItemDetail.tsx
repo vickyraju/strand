@@ -11,6 +11,7 @@ import {
 } from '../data/store'
 import { useApp } from '../appContext'
 import { canEdit } from '../data/access'
+import { RESOLUTIONS } from '../data/reducer'
 import { href, navigate } from '../router'
 import {
   Picker, Menu, TypeIcon, PriorityIcon, Avatar, Modal, TYPE_META, PRIORITY_META, StatusLozenge,
@@ -375,6 +376,12 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
               <Picker value={issue.priority} options={priorityOptions} onChange={priority => set({ priority })} className="field-btn" title="Priority"
                 trigger={<><PriorityIcon priority={issue.priority} />{PRIORITY_META[issue.priority].label}</>} />
             </Field>
+            {issue.resolution && (
+              <Field label="Resolution">
+                <Picker value={issue.resolution} options={RESOLUTIONS.map(r => ({ value: r, label: r }))} onChange={resolution => set({ resolution })}
+                  className="field-btn" title="Resolution" trigger={<>{issue.resolution}{issue.resolvedAt && <span className="muted sm">&nbsp;· {timeAgo(issue.resolvedAt)}</span>}</>} />
+              </Field>
+            )}
             <Field label="Type">
               <Picker value={issue.type} options={typeOptions(!issue.parentId && children.every(c => c.type !== 'epic'))} onChange={type => set({ type })} className="field-btn" title="Type"
                 trigger={<><TypeIcon type={issue.type} size={14} />{TYPE_META[issue.type].label}</>} />

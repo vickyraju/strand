@@ -9754,6 +9754,22 @@
                             "type": "number",
                             "description": "Send as If-Match to reject stale edits"
                           },
+                          "resolution": {
+                            "nullable": true,
+                            "description": "Set while the item is in a Done status",
+                            "type": "string",
+                            "enum": [
+                              "Done",
+                              "Won't do",
+                              "Duplicate",
+                              "Cannot reproduce"
+                            ]
+                          },
+                          "resolvedAt": {
+                            "nullable": true,
+                            "description": "When the item last reached a Done status",
+                            "type": "string"
+                          },
                           "createdAt": {
                             "type": "string",
                             "description": "ISO 8601 timestamp"
@@ -9786,6 +9802,8 @@
                           "custom",
                           "rank",
                           "version",
+                          "resolution",
+                          "resolvedAt",
                           "createdAt",
                           "updatedAt"
                         ],
@@ -10158,6 +10176,22 @@
                             "type": "number",
                             "description": "Send as If-Match to reject stale edits"
                           },
+                          "resolution": {
+                            "nullable": true,
+                            "description": "Set while the item is in a Done status",
+                            "type": "string",
+                            "enum": [
+                              "Done",
+                              "Won't do",
+                              "Duplicate",
+                              "Cannot reproduce"
+                            ]
+                          },
+                          "resolvedAt": {
+                            "nullable": true,
+                            "description": "When the item last reached a Done status",
+                            "type": "string"
+                          },
                           "createdAt": {
                             "type": "string",
                             "description": "ISO 8601 timestamp"
@@ -10190,6 +10224,8 @@
                           "custom",
                           "rank",
                           "version",
+                          "resolution",
+                          "resolvedAt",
                           "createdAt",
                           "updatedAt"
                         ],
@@ -10407,6 +10443,17 @@
                   "rank": {
                     "type": "number"
                   },
+                  "resolution": {
+                    "nullable": true,
+                    "description": "How a finished item ended. Only for items in a Done status; reaching Done sets \"Done\" unless you say otherwise (null: the default)",
+                    "type": "string",
+                    "enum": [
+                      "Done",
+                      "Won't do",
+                      "Duplicate",
+                      "Cannot reproduce"
+                    ]
+                  },
                   "id": {
                     "description": "Client-chosen id: lets the app keep its local id, and makes a retried create a conflict instead of a duplicate",
                     "type": "string",
@@ -10553,6 +10600,22 @@
                       "type": "number",
                       "description": "Send as If-Match to reject stale edits"
                     },
+                    "resolution": {
+                      "nullable": true,
+                      "description": "Set while the item is in a Done status",
+                      "type": "string",
+                      "enum": [
+                        "Done",
+                        "Won't do",
+                        "Duplicate",
+                        "Cannot reproduce"
+                      ]
+                    },
+                    "resolvedAt": {
+                      "nullable": true,
+                      "description": "When the item last reached a Done status",
+                      "type": "string"
+                    },
                     "createdAt": {
                       "type": "string",
                       "description": "ISO 8601 timestamp"
@@ -10585,6 +10648,8 @@
                     "custom",
                     "rank",
                     "version",
+                    "resolution",
+                    "resolvedAt",
                     "createdAt",
                     "updatedAt"
                   ],
@@ -10824,6 +10889,22 @@
                     "version": {
                       "type": "number",
                       "description": "Send as If-Match to reject stale edits"
+                    },
+                    "resolution": {
+                      "nullable": true,
+                      "description": "Set while the item is in a Done status",
+                      "type": "string",
+                      "enum": [
+                        "Done",
+                        "Won't do",
+                        "Duplicate",
+                        "Cannot reproduce"
+                      ]
+                    },
+                    "resolvedAt": {
+                      "nullable": true,
+                      "description": "When the item last reached a Done status",
+                      "type": "string"
                     },
                     "createdAt": {
                       "type": "string",
@@ -11175,6 +11256,22 @@
                             "type": "number",
                             "description": "Send as If-Match to reject stale edits"
                           },
+                          "resolution": {
+                            "nullable": true,
+                            "description": "Set while the item is in a Done status",
+                            "type": "string",
+                            "enum": [
+                              "Done",
+                              "Won't do",
+                              "Duplicate",
+                              "Cannot reproduce"
+                            ]
+                          },
+                          "resolvedAt": {
+                            "nullable": true,
+                            "description": "When the item last reached a Done status",
+                            "type": "string"
+                          },
                           "createdAt": {
                             "type": "string",
                             "description": "ISO 8601 timestamp"
@@ -11207,6 +11304,8 @@
                           "custom",
                           "rank",
                           "version",
+                          "resolution",
+                          "resolvedAt",
                           "createdAt",
                           "updatedAt"
                         ],
@@ -11237,6 +11336,8 @@
                     "custom",
                     "rank",
                     "version",
+                    "resolution",
+                    "resolvedAt",
                     "createdAt",
                     "updatedAt"
                   ],
@@ -11441,6 +11542,17 @@
                   },
                   "rank": {
                     "type": "number"
+                  },
+                  "resolution": {
+                    "nullable": true,
+                    "description": "How a finished item ended. Only for items in a Done status; reaching Done sets \"Done\" unless you say otherwise (null: the default)",
+                    "type": "string",
+                    "enum": [
+                      "Done",
+                      "Won't do",
+                      "Duplicate",
+                      "Cannot reproduce"
+                    ]
                   }
                 }
               }
@@ -11597,6 +11709,22 @@
                       "type": "number",
                       "description": "Send as If-Match to reject stale edits"
                     },
+                    "resolution": {
+                      "nullable": true,
+                      "description": "Set while the item is in a Done status",
+                      "type": "string",
+                      "enum": [
+                        "Done",
+                        "Won't do",
+                        "Duplicate",
+                        "Cannot reproduce"
+                      ]
+                    },
+                    "resolvedAt": {
+                      "nullable": true,
+                      "description": "When the item last reached a Done status",
+                      "type": "string"
+                    },
                     "createdAt": {
                       "type": "string",
                       "description": "ISO 8601 timestamp"
@@ -11629,6 +11757,8 @@
                     "custom",
                     "rank",
                     "version",
+                    "resolution",
+                    "resolvedAt",
                     "createdAt",
                     "updatedAt"
                   ],
@@ -12502,6 +12632,17 @@
                       },
                       "rank": {
                         "type": "number"
+                      },
+                      "resolution": {
+                        "nullable": true,
+                        "description": "How a finished item ended. Only for items in a Done status; reaching Done sets \"Done\" unless you say otherwise (null: the default)",
+                        "type": "string",
+                        "enum": [
+                          "Done",
+                          "Won't do",
+                          "Duplicate",
+                          "Cannot reproduce"
+                        ]
                       }
                     }
                   }
@@ -12643,6 +12784,22 @@
                             "type": "number",
                             "description": "Send as If-Match to reject stale edits"
                           },
+                          "resolution": {
+                            "nullable": true,
+                            "description": "Set while the item is in a Done status",
+                            "type": "string",
+                            "enum": [
+                              "Done",
+                              "Won't do",
+                              "Duplicate",
+                              "Cannot reproduce"
+                            ]
+                          },
+                          "resolvedAt": {
+                            "nullable": true,
+                            "description": "When the item last reached a Done status",
+                            "type": "string"
+                          },
                           "createdAt": {
                             "type": "string",
                             "description": "ISO 8601 timestamp"
@@ -12675,6 +12832,8 @@
                           "custom",
                           "rank",
                           "version",
+                          "resolution",
+                          "resolvedAt",
                           "createdAt",
                           "updatedAt"
                         ],
@@ -13287,6 +13446,22 @@
                       "type": "number",
                       "description": "Send as If-Match to reject stale edits"
                     },
+                    "resolution": {
+                      "nullable": true,
+                      "description": "Set while the item is in a Done status",
+                      "type": "string",
+                      "enum": [
+                        "Done",
+                        "Won't do",
+                        "Duplicate",
+                        "Cannot reproduce"
+                      ]
+                    },
+                    "resolvedAt": {
+                      "nullable": true,
+                      "description": "When the item last reached a Done status",
+                      "type": "string"
+                    },
                     "createdAt": {
                       "type": "string",
                       "description": "ISO 8601 timestamp"
@@ -13319,6 +13494,8 @@
                     "custom",
                     "rank",
                     "version",
+                    "resolution",
+                    "resolvedAt",
                     "createdAt",
                     "updatedAt"
                   ],

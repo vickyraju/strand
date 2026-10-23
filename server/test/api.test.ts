@@ -1353,3 +1353,40 @@ test('project backups: deleting backs up everything first, restore brings it all
   assert.equal((await call('DELETE', '/api/v1/projects/NOWH')).status, 409)
   process.env.S3_BUCKET = saved
 })
+
+test('resolution: set when an item reaches Done (by any route), kept while done, cleared when reopened', { skip }, async () => {
+  const p = (await call('POST', '/api/v1/projects', { name: 'Resolved', key: 'RES', template: 'kanban' })).body
+  const [todo, doing, done] = [p.statuses[0], p.statuses[1], p.statuses.find((s: any) => s.category === 'done')]
+  const get = async (key: string) => (await call('GET', `/api/v1/issues/${key}`)).body
+  const a = (await call('POST', '/api/v1/projects/RES/issues', { title: 'a' })).body
+  assert.deepEqual([a.resolution, a.resolvedAt], [null, null])
+  assert.equal((await call('PATCH', `/api/v1/issues/${a.key}`, { resolution: "Won't do" })).status, 400)   // not finished yet
+
+  const fin = (await call('PATCH', `/api/v1/issues/${a.key}`, { statusId: done.id })).body
+  assert.equal(fin.resolution, 'Done'); assert.ok(fin.resolvedAt)
+  const changed = (await call('PATCH', `/api/v1/issues/${a.key}`, { resolution: "Won't do" })).body
+  assert.deepEqual([changed.resolution, changed.resolvedAt], ["Won't do", fin.resolvedAt])           // the date stays
+  assert.equal((await call('PATCH', `/api/v1/issues/${a.key}`, { resolution: 'Fixed?' })).status, 400)
+  const reopened = (await call('PATCH', `/api/v1/issues/${a.key}`, { statusId: todo.id })).body
+  assert.deepEqual([reopened.resolution, reopened.resolvedAt], [null, null])
+  // finishing with a resolution in one edit
+  assert.equal((await call('PATCH', `/api/v1/issues/${a.key}`, { statusId: done.id, resolution: 'Duplicate' })).body.resolution, 'Duplicate')
+
+  // bulk edits and automation go through the same rule
+  const b = (await call('POST', '/api/v1/projects/RES/issues', { title: 'b' })).body
+  await call('POST', '/api/v1/issues/bulk/edit', { issues: [b.key], patch: { statusId: done.id } })
+  assert.equal((await get(b.key)).resolution, 'Done')
+  await call('POST', '/api/v1/projects/RES/rules', { name: 'Close on start', trigger: { kind: 'status', to: doing.id }, actions: [{ kind: 'status', value: done.id }] })
+  const c = (await call('POST', '/api/v1/projects/RES/issues', { title: 'c' })).body
+  await call('PATCH', `/api/v1/issues/${c.key}`, { statusId: doing.id })
+  assert.deepEqual([(await get(c.key)).statusId, (await get(c.key)).resolution], [done.id, 'Done'])
+
+  // turning a status into a Done one resolves what is in it (and back)
+  const d = (await call('POST', '/api/v1/projects/RES/issues', { title: 'd', statusId: todo.id })).body
+  await call('PATCH', `/api/v1/projects/RES/statuses/${todo.id}`, { category: 'done' })
+  assert.equal((await get(d.key)).resolution, 'Done')
+  await call('PATCH', `/api/v1/projects/RES/statuses/${todo.id}`, { category: 'todo' })
+  assert.equal((await get(d.key)).resolution, null)
+  // the change of resolution is in the item's history
+  assert.ok((await pool.query(`select 1 from activity where issue_id = $1 and field = 'resolution'`, [a.id])).rows.length)
+})

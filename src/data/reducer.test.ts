@@ -301,3 +301,15 @@ test('reloading a project keeps what each item’s detail had loaded (links, wat
   assert.equal(s.issues[0]!.title, 'Renamed elsewhere')
   assert.deepEqual([s.issues[0]!.watcherIds, s.issues[0]!.links.length, s.issues[0]!.attachments], [[sam], 1, [att]])
 })
+
+test('resolution follows the status: Done when finished (or the one chosen), kept while done, cleared on reopening', () => {
+  let { s } = workspace()
+  const todo = s.projects[0]!.statuses[0], done = s.projects[0]!.statuses.find(x => x.category === 'done')
+  s = run([{ type: 'updateIssues', ids: ['i1'], patch: { status: done!.id } }], s)
+  const first = s.issues[0]!
+  assert.equal(first.resolution, 'Done'); assert.ok(first.resolvedAt)
+  s = run([{ type: 'updateIssues', ids: ['i1'], patch: { resolution: "Won't do" } }], s)
+  assert.deepEqual([s.issues[0]!.resolution, s.issues[0]!.resolvedAt], ["Won't do", first.resolvedAt])
+  s = run([{ type: 'updateIssues', ids: ['i1'], patch: { status: todo!.id } }], s)
+  assert.deepEqual(['resolution' in s.issues[0]!, 'resolvedAt' in s.issues[0]!], [false, false])
+})

@@ -18,7 +18,7 @@ type Call = <T = any>(method: string, path: string, body?: unknown, headers?: Re
 /** Issue fields the server owns a copy of. Watchers, links, work logs and attachments sync separately. */
 const SCALARS = [
   'type', 'title', 'description', 'status', 'priority', 'assigneeId', 'labels', 'estimate', 'timeEstimate',
-  'dueDate', 'startDate', 'sprintId', 'releaseId', 'parentId', 'custom', 'rank',
+  'dueDate', 'startDate', 'sprintId', 'releaseId', 'parentId', 'custom', 'rank', 'resolution',
 ] as const
 type Scalar = typeof SCALARS[number]
 const wire = (f: Scalar) => (f === 'status' ? 'statusId' : f)

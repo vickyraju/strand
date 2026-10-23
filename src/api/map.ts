@@ -83,6 +83,7 @@ export const mapIssue = (i: Row): Issue => ({
   ...(i.dueDate ? { dueDate: i.dueDate } : {}), ...(i.startDate ? { startDate: i.startDate } : {}),
   ...(i.sprintId ? { sprintId: i.sprintId } : {}), ...(i.releaseId ? { releaseId: i.releaseId } : {}),
   ...(i.parentId ? { parentId: i.parentId } : {}),
+  ...(i.resolution ? { resolution: i.resolution, resolvedAt: ms(i.resolvedAt) } : {}),
   watcherIds: [], links: [], attachments: [], worklogs: [],
   custom: i.custom ?? {}, rank: i.rank ?? 0, createdAt: ms(i.createdAt) ?? Date.now(), updatedAt: ms(i.updatedAt) ?? Date.now(),
 })
