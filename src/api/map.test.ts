@@ -5,7 +5,7 @@ import { DEFAULT_BOARD_PREFS } from '../data/reducer.ts'
 
 const apiProject = {
   id: 'p1', key: 'PAY', name: 'Payments', description: null, color: '#112233', template: 'scrum', leadId: null,
-  nextNumber: 4, boardPrefs: {}, layout: {}, sample: false, createdAt: '2026-10-01T10:00:00.000Z',
+  nextNumber: 4, boardPrefs: {}, layout: {}, createdAt: '2026-10-01T10:00:00.000Z',
   statuses: [
     { id: 's1', name: 'To do', color: '#000000', category: 'todo', wipLimit: null, position: 0 },
     { id: 's2', name: 'Done', description: 'Work is finished', color: '#00aa00', category: 'done', wipLimit: 3, position: 1 },
@@ -55,7 +55,6 @@ test('a sprint keeps its snapshots and drops what is null', () => {
 test('the workspace makes the signed-in user the owner and collects every sprint', () => {
   const s = mapWorkspace({ id: 'u1' }, [{ id: 'u1', name: 'Vicky', initials: 'V', color: '#fff', title: null }], [apiProject], ['p1'])
   assert.equal(s.ownerId, 'u1')
-  assert.equal(s.actingAsId, null)
   assert.deepEqual(s.users[0], { id: 'u1', name: 'Vicky', initials: 'V', color: '#fff' })
   assert.equal(s.sprints.length, 1)
   assert.deepEqual(s.starred, ['p1'])

@@ -4,7 +4,6 @@ import { lastWeek } from '../data/analytics'
 import { useApp } from '../appContext'
 import { Donut, HBars } from './charts'
 import { Avatar, Empty, TypeIcon, TYPE_META, PRIORITIES, PRIORITY_META, PriorityIcon, plural } from './ui'
-import { LoadSampleButton } from './ProjectView'
 
 export default function SummaryView({ project }: { project: Project }) {
   const { state } = useStore()
@@ -16,7 +15,7 @@ export default function SummaryView({ project }: { project: Project }) {
     return (
       <Empty icon={<Gauge size={22} strokeWidth={1.5} />} title="Nothing to summarize yet"
         body="Once your team creates and moves work items, this page shows progress, workload and recent activity."
-        action={<><button className="btn btn-primary" onClick={() => createIssue({ projectId: project.id })}>Create work item</button><LoadSampleButton /></>} />
+        action={<><button className="btn btn-primary" onClick={() => createIssue({ projectId: project.id })}>Create work item</button></>} />
     )
   }
 

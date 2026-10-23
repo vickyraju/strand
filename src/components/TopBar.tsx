@@ -1,4 +1,4 @@
-import { ChevronRight, Plus, Bell, HelpCircle, Settings, UserRoundCog, Check, Keyboard, Moon, Sun, LogOut, Menu as MenuIcon } from 'lucide-react'
+import { ChevronRight, Plus, Bell, HelpCircle, Settings, Keyboard, Moon, Sun, LogOut, Menu as MenuIcon } from 'lucide-react'
 import { useThemePref, setThemePref } from '../theme'
 import { useStore, signOut } from '../data/store'
 import { apiEnabled } from '../api/client'
@@ -10,7 +10,7 @@ export interface Crumb { label: string; onClick?: () => void }
 export default function TopBar({ crumbs, onCreateProject, onShortcuts, onMenu }: {
   crumbs: Crumb[]; onCreateProject: () => void; onShortcuts: () => void; onMenu?: () => void
 }) {
-  const { state, dispatch } = useStore()
+  const { state } = useStore()
   const { createIssue, goTo } = useApp()
   const hasProjects = state.projects.length > 0
   useThemePref()
@@ -49,14 +49,6 @@ export default function TopBar({ crumbs, onCreateProject, onShortcuts, onMenu }:
           className="avatar-btn"
           trigger={<Avatar user={state.me} size={28} />}
           items={[
-            // "Act as" is a local-only view switch, so with an API the menu shows just you
-            ...(apiEnabled ? state.users.filter(u => u.id === state.ownerId) : state.users).map((u, i) => ({
-              label: u.id === state.ownerId ? `${u.name} (you)` : `Act as ${u.name}`,
-              icon: state.me?.id === u.id ? <Check size={14} color="var(--brand)" /> : <Avatar user={u} size={18} />,
-              onClick: () => dispatch({ type: 'actAs', userId: u.id }),
-              divider: i === 0 ? false : i === 1,
-            })),
-            { label: 'Manage people', icon: <UserRoundCog size={14} />, onClick: () => goTo('settings'), divider: true },
             { label: 'Settings', icon: <Settings size={14} />, onClick: () => goTo('settings') },
             { label: dark ? 'Light mode' : 'Dark mode', icon: dark ? <Sun size={14} /> : <Moon size={14} />, onClick: () => setThemePref(dark ? 'light' : 'dark') },
             { label: 'Keyboard shortcuts', icon: <Keyboard size={14} />, onClick: onShortcuts, hint: '?' },

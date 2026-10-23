@@ -75,7 +75,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo(() => {
     const owner = state.users.find(u => u.id === state.ownerId) ?? null
-    const me = state.users.find(u => u.id === state.actingAsId) ?? owner
+    const me = owner
     return { state: { ...state, me, owner }, dispatch, undoType: canUndo(store) ? store.undo!.type : null }
   }, [store]) // eslint-disable-line react-hooks/exhaustive-deps
 

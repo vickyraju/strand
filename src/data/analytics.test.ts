@@ -1,12 +1,12 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { reducer, EMPTY, type State } from './reducer.ts'
-import { sampleWorkspace } from './sample.ts'
+import { withSample } from './testdata.ts'
 import { burndown, cumulativeFlow, cycleTimes, velocity, createdVsResolved, statusAt, statusHistory } from './analytics.ts'
 
 function sample(): State {
   const s0 = reducer(EMPTY, { type: 'setOwner', name: 'Alex Morgan' })
-  return reducer(s0, { type: 'merge', data: sampleWorkspace(s0.users[0]) })
+  return withSample(s0)
 }
 const pay = (s: State) => s.projects.find(p => p.key === 'PAY')!
 
