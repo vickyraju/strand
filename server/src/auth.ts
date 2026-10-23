@@ -16,7 +16,9 @@ declare module 'fastify' { interface FastifyRequest { me: Me } }
 
 export class HttpError extends Error {
   status: number
-  constructor(status: number, message: string) { super(message); this.status = status }
+  /** Per-field messages, for input the schema accepted but the rules refuse */
+  errors?: Record<string, string>
+  constructor(status: number, message: string, errors?: Record<string, string>) { super(message); this.status = status; if (errors) this.errors = errors }
 }
 
 const tenant = process.env.ENTRA_TENANT_ID

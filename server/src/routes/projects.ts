@@ -257,8 +257,12 @@ const plugin: FastifyPluginAsyncZod = async app => {
     app.delete(`/projects/:key/${kind}/:id`, { schema: { tags: T.config, summary: `Remove a ${what}`, params: keyIdP } }, async (req, reply) => {
       const p = await projectByKey(db, req, req.params.key)
       await requireProjectAdmin(req, p)
-      const r = await db.query(`delete from ${cfg.table} where id = $1 and project_id = $2 returning id`, [req.params.id, p.id])
-      if (!r.length) throw new HttpError(404, 'Not found')
+      await tx(async d => {
+        const r = await d.query(`delete from ${cfg.table} where id = $1 and project_id = $2 returning id`, [req.params.id, p.id])
+        if (!r.length) throw new HttpError(404, 'Not found')
+        // a deleted custom field takes its values with it, so no item keeps a value for a field that no longer exists
+        if (kind === 'fields') await d.query('update issues set custom = custom - $2 where project_id = $1 and custom ? $2', [p.id, req.params.id])
+      })
       reply.code(204).send()
     })
   }
