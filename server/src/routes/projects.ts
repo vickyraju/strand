@@ -5,6 +5,7 @@ import { db, tx, pick, type Db } from '../db.ts'
 import { HttpError, requireAdmin, type Me } from '../auth.ts'
 import { minFor, need, roleOf, visible, type ProjectRole } from '../access.ts'
 import { subscribe } from '../events.ts'
+import { audit, changes } from '../audit.ts'
 
 const uuid = z.string().uuid()
 const color = z.string().regex(/^#[0-9a-fA-F]{6}$/)
@@ -150,13 +151,19 @@ const plugin: FastifyPluginAsyncZod = async app => {
   app.post('/projects/:key/archive', { schema: { tags: T.projects, summary: 'Archive a project: hidden from lists, data kept, can be restored', params: keyP } }, async req => {
     const p = await projectByKey(db, req, req.params.key)
     await requireProjectAdmin(req, p)
-    await db.query('update projects set archived_at = coalesce(archived_at, now()) where id = $1', [p.id])
+    await tx(async d => {
+      const [r] = await d.query('update projects set archived_at = now() where id = $1 and archived_at is null returning id', [p.id])
+      if (r) await audit(d, req, { action: 'project.archived', type: 'project', id: p.id, name: p.key, project: p })
+    })
     return projectDetail(db, req.me.workspaceId, p.key, p.role)
   })
   app.post('/projects/:key/restore', { schema: { tags: T.projects, summary: 'Restore an archived project', params: keyP } }, async req => {
     const p = await projectByKey(db, req, req.params.key)
     await requireProjectAdmin(req, p)
-    await db.query('update projects set archived_at = null where id = $1', [p.id])
+    await tx(async d => {
+      const [r] = await d.query('update projects set archived_at = null where id = $1 and archived_at is not null returning id', [p.id])
+      if (r) await audit(d, req, { action: 'project.restored', type: 'project', id: p.id, name: p.key, project: p })
+    })
     return projectDetail(db, req.me.workspaceId, p.key, p.role)
   })
 
@@ -174,6 +181,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
       const st = DEFAULT_STATUSES[b.template]
       for (const [i, [name, c, cat]] of st.entries())
         await d.query('insert into statuses (project_id, name, color, category, position) values ($1, $2, $3, $4, $5)', [p!.id, name, c, cat, i])
+      await audit(d, req, { action: 'project.created', type: 'project', id: p!.id, name: b.key, project: { id: p!.id, key: b.key }, after: { name: b.name, template: b.template } })
       return projectDetail(d, req.me.workspaceId, b.key, 'admin')
     })
   })
@@ -187,15 +195,25 @@ const plugin: FastifyPluginAsyncZod = async app => {
     const p = await projectByKey(db, req, req.params.key)
     await requireProjectAdmin(req, p)
     const w = pick(req.body, ['name', 'description', 'color', 'leadId', 'boardPrefs', 'layout'], ['boardPrefs', 'layout'])
-    if (w.keys.length) await db.query(
-      `update projects set ${w.cols.map((c, i) => `${c} = $${i + 2}`).join(', ')} where id = $1`, [p.id, ...w.vals])
+    if (w.keys.length) await tx(async d => {
+      const [before] = await d.query<Record<string, unknown>>('select name, description, color, lead_id from projects where id = $1 for update', [p.id])
+      await d.query(`update projects set ${w.cols.map((c, i) => `${c} = $${i + 2}`).join(', ')} where id = $1`, [p.id, ...w.vals])
+      // board preferences and diagram layout are presentation, not settings: not audited
+      const c = changes(before!, Object.fromEntries(['name', 'description', 'color', 'leadId'].filter(k => k in req.body).map(k => [k, (req.body as any)[k]])))
+      if (c.changed) await audit(d, req, { action: 'project.updated', type: 'project', id: p.id, name: p.key, project: p, before: c.before, after: c.after })
+    })
     return projectDetail(db, req.me.workspaceId, p.key, p.role)
   })
 
   app.delete('/projects/:key', { schema: { tags: T.projects, summary: 'Delete a project (admin only)', params: keyP } }, async (req, reply) => {
     requireAdmin(req)
     const p = await projectByKey(db, req, req.params.key)
-    await db.query('delete from projects where id = $1', [p.id])
+    await tx(async d => {
+      const [{ name, items }] = await d.query<{ name: string; items: number }>(
+        'select p.name, (select count(*)::int from issues where project_id = p.id) as items from projects p where p.id = $1', [p.id]) as any
+      await audit(d, req, { action: 'project.deleted', type: 'project', id: p.id, name: p.key, project: p, before: { name, items } })
+      await d.query('delete from projects where id = $1', [p.id])
+    })
     reply.code(204).send()
   })
 
@@ -237,9 +255,12 @@ const plugin: FastifyPluginAsyncZod = async app => {
       const cid = typeof body.id === 'string' ? ['id'] : []
       const cols = ['project_id', ...extra, ...cid, ...w.cols]
       const vals = [p.id, ...(cfg.ws ? [req.me.workspaceId] : []), ...(cid.length ? [body.id] : []), ...w.vals]
-      const [row] = await db.query(
-        `insert into ${cfg.table} (${cols.join(', ')}) values (${vals.map((_, i) => `$${i + 1}`).join(', ')}) returning *`, vals)
-      return row
+      return tx(async d => {
+        const [row] = await d.query(
+          `insert into ${cfg.table} (${cols.join(', ')}) values (${vals.map((_, i) => `$${i + 1}`).join(', ')}) returning *`, vals)
+        await audit(d, req, { action: `project.${what.replace(' ', '_')}.created`, type: what, id: row.id, name: row.name ?? null, project: p, after: body })
+        return row
+      })
     })
 
     app.patch(`/projects/:key/${kind}/:id`, { schema: { tags: T.config, summary: `Update a ${what}`, params: keyIdP, body: childPatch[kind] } }, async req => {
@@ -247,19 +268,25 @@ const plugin: FastifyPluginAsyncZod = async app => {
       await requireProjectAdmin(req, p)
       const w = pick(req.body as Record<string, unknown>, [...cfg.cols], json)
       if (!w.keys.length) throw new HttpError(400, 'Nothing to update')
-      const [row] = await db.query(
-        `update ${cfg.table} set ${w.cols.map((c, i) => `${c} = $${i + 3}`).join(', ')} where id = $1 and project_id = $2 returning *`,
-        [req.params.id, p.id, ...w.vals])
-      if (!row) throw new HttpError(404, 'Not found')
-      return row
+      return tx(async d => {
+        const [before] = await d.query(`select * from ${cfg.table} where id = $1 and project_id = $2 for update`, [req.params.id, p.id])
+        if (!before) throw new HttpError(404, 'Not found')
+        const [row] = await d.query(
+          `update ${cfg.table} set ${w.cols.map((c, i) => `${c} = $${i + 3}`).join(', ')} where id = $1 and project_id = $2 returning *`,
+          [req.params.id, p.id, ...w.vals])
+        const c = changes(before, req.body as Record<string, unknown>)
+        if (c.changed) await audit(d, req, { action: `project.${what.replace(' ', '_')}.updated`, type: what, id: row.id, name: row.name ?? null, project: p, before: c.before, after: c.after })
+        return row
+      })
     })
 
     app.delete(`/projects/:key/${kind}/:id`, { schema: { tags: T.config, summary: `Remove a ${what}`, params: keyIdP } }, async (req, reply) => {
       const p = await projectByKey(db, req, req.params.key)
       await requireProjectAdmin(req, p)
       await tx(async d => {
-        const r = await d.query(`delete from ${cfg.table} where id = $1 and project_id = $2 returning id`, [req.params.id, p.id])
-        if (!r.length) throw new HttpError(404, 'Not found')
+        const [gone] = await d.query(`delete from ${cfg.table} where id = $1 and project_id = $2 returning *`, [req.params.id, p.id])
+        if (!gone) throw new HttpError(404, 'Not found')
+        await audit(d, req, { action: `project.${what.replace(' ', '_')}.deleted`, type: what, id: gone.id, name: gone.name ?? null, project: p, before: gone })
         // a deleted custom field takes its values with it, so no item keeps a value for a field that no longer exists
         if (kind === 'fields') await d.query('update issues set custom = custom - $2 where project_id = $1 and custom ? $2', [p.id, req.params.id])
       })
@@ -282,6 +309,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
         `update issues set release_id = $3, version = version + 1, updated_at = now()
           where release_id = $1 and project_id = $2 and deleted_at is null
             and status_id in (select id from statuses where project_id = $2 and category <> 'done')`, [req.params.id, p.id, moveTo])
+      await audit(d, req, { action: 'project.release.released', type: 'release', id: r.id, name: r.name, project: p, after: { moveTo } })
       return r
     })
   })

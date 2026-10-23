@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { randomBytes } from 'node:crypto'
 import { db, tx } from '../db.ts'
 import { HttpError, PAT_PREFIX, hashToken, requireSignIn } from '../auth.ts'
+import { audit } from '../audit.ts'
 
 // Personal access tokens (modelled on Atlassian's): created from your profile, shown once, sent as
 // `Authorization: Bearer <token>`, act with your permissions, expire (1 to 365 days) and can be revoked at any time.
@@ -37,6 +38,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
         `insert into personal_access_tokens (user_id, name, token_hash, hint, expires_at)
          values ($1, $2, $3, $4, now() + make_interval(days => $5)) returning ${COLUMNS}`,
         [req.me.id, name, hashToken(token), token.slice(-4), expiresInDays])
+      await audit(d, req, { action: 'token.created', type: 'token', id: row.id, name, after: { expiresInDays } })
       return { ...row, token }
     })
   })
@@ -46,8 +48,11 @@ const plugin: FastifyPluginAsyncZod = async app => {
     params: z.object({ id: z.string().uuid() }),
   } }, async (req, reply) => {
     requireSignIn(req)
-    const gone = await db.query('delete from personal_access_tokens where id = $1 and user_id = $2 returning id', [req.params.id, req.me.id])
-    if (!gone.length) throw new HttpError(404, 'Token not found')
+    await tx(async d => {
+      const [gone] = await d.query('delete from personal_access_tokens where id = $1 and user_id = $2 returning id, name', [req.params.id, req.me.id])
+      if (!gone) throw new HttpError(404, 'Token not found')
+      await audit(d, req, { action: 'token.revoked', type: 'token', id: gone.id, name: gone.name })
+    })
     reply.code(204).send()
   })
 }
