@@ -114,7 +114,7 @@ function AddPeople({ project, existing, onClose, onAdded }: { project: Project; 
         {choices.map(u => <li key={u.id}><button className="picker-item" onClick={() => setPicked([...picked, u])}><Avatar user={u} size={20} />{u.name}</button></li>)}
         {!choices.length && <li className="picker-empty">No one else to add.</li>}
       </ul>
-      <label className="label" htmlFor="pp-role">Role</label>
+      <span className="label">Role</span>
       <RoleSelect value={role} onChange={setRole} label="Role" />
       <p className="muted sm" style={{ marginTop: 6 }}>{ROLES.find(r => r.id === role)!.can}</p>
     </Modal>

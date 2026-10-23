@@ -13,5 +13,6 @@ export const ROLES: { id: ProjectRole; label: string; can: string }[] = [
 const base = (key: string) => `/api/projects/${encodeURIComponent(key)}/members`
 export const listMembers = (key: string) => api<ProjectMember[]>('GET', base(key))
 export const addMembers = (key: string, userIds: string[], role: ProjectRole) => api<ProjectMember[]>('POST', base(key), { userIds, role })
-export const setMemberRole = (key: string, userId: string, role: ProjectRole) => api<ProjectMember[]>('PATCH', `${base(key)}/${userId}`, { role })
+export const setMemberRole = (key: string, userId: string, role: ProjectRole) =>
+  api<ProjectMember>('PATCH', `${base(key)}/${userId}`, { role }).then(() => listMembers(key))   // the reply is just the one person; show the whole list
 export const removeMember = (key: string, userId: string) => api<void>('DELETE', `${base(key)}/${userId}`)
