@@ -1073,3 +1073,27 @@ test('ranking: dropping item after item into the same spot never runs out of roo
   for (let i = 1; i < final.length; i++) assert.ok(final[i]!.rank > final[i - 1]!.rank, 'ranks strictly increase')
   assert.ok(last.id)
 })
+
+test('custom fields: values must fit the field (number, option, date, text); deleting a field removes its values', { skip }, async () => {
+  await call('POST', '/api/v1/projects', { name: 'Custom', key: 'CUS', template: 'kanban' })
+  const add = async (name: string, kind: string, options: string[] | null = null) =>
+    (await call('POST', '/api/v1/projects/CUS/fields', { name, kind, options, position: 0 })).body.id as string
+  const [team, points, due, note] = [await add('Team', 'select', ['Core', 'Web']), await add('Points', 'number'), await add('Due', 'date'), await add('Note', 'text')]
+  const i = (await call('POST', '/api/v1/projects/CUS/issues', { title: 'fits', custom: { [team]: 'Core', [points]: 3, [due]: '2026-12-01', [note]: 'ok' } }))
+  assert.equal(i.status, 201)
+  const bad = async (custom: object) => (await call('PATCH', `/api/v1/issues/${i.body.key}`, { custom: { ...i.body.custom, ...custom } }))
+  for (const custom of [{ [team]: 'Mobile' }, { [points]: 'three' }, { [due]: '1 Dec' }, { [due]: '2026-13-45' }, { [note]: 'x'.repeat(5001) }, { '00000000-0000-4000-8000-000000000000': 'x' }]) {
+    const r = await bad(custom)
+    assert.equal(r.status, 400, JSON.stringify(custom).slice(0, 60))
+    assert.equal(r.body.code, 'invalid_input')
+    assert.ok(Object.keys(r.body.errors)[0]!.startsWith('custom.'))
+  }
+  assert.equal((await call('POST', '/api/v1/projects/CUS/issues', { title: 'no', custom: { [team]: 'Nope' } })).status, 400)
+  assert.equal((await bad({ [team]: 'Web' })).status, 200)
+  // an option renamed later does not block edits to other fields
+  await call('PATCH', `/api/v1/projects/CUS/fields/${team}`, { options: ['Platform', 'Web'] })
+  assert.equal((await call('PATCH', `/api/v1/issues/${i.body.key}`, { title: 'still editable' })).status, 200)
+  // deleting a field clears it from every item
+  assert.equal((await call('DELETE', `/api/v1/projects/CUS/fields/${note}`)).status, 204)
+  assert.equal(note in (await call('GET', `/api/v1/issues/${i.body.key}`)).body.custom, false)
+})
