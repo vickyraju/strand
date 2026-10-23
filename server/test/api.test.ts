@@ -1053,3 +1053,35 @@ test('project members: last admin is protected, self-leave works, removal clears
   const left = await pool.query(`select (select count(*)::int from issue_views where user_id = $1) as v, (select count(*)::int from stars where user_id = $1) as s`, [bid])
   assert.deepEqual(left.rows[0], { v: 0, s: 0 })
 })
+
+test('automation follows the workflow and project membership like a person would, and says when it skips', { skip }, async () => {
+  const p = (await call('POST', '/api/v1/projects', { name: 'Automate', key: 'AUT', template: 'kanban' })).body
+  const [todo, doing, done] = [p.statuses[0], p.statuses[1], p.statuses.find((s: any) => s.category === 'done')]
+  await call('POST', '/api/v1/projects/AUT/transitions', { name: 'Start', fromIds: [todo.id], toId: doing.id })
+  await join('AUT', 'au.member@x.com')
+  const member = (await call('GET', '/api/v1/me', undefined, 'au.member@x.com')).body.id
+  const outsider = (await call('GET', '/api/v1/me', undefined, 'au.outsider@x.com')).body.id
+  await call('POST', '/api/v1/projects/AUT/rules', { name: 'On create', trigger: { kind: 'created' }, actions: [
+    { kind: 'status', value: done.id },          // To do -> Done is not a transition: skipped
+    { kind: 'assign', to: outsider },            // not in the project: skipped
+    { kind: 'assign', to: member },
+    { kind: 'priority', value: 'high' },
+  ] })
+  const i = (await call('POST', '/api/v1/projects/AUT/issues', { title: 'guarded' })).body
+  const now = (await call('GET', `/api/v1/issues/${i.key}`)).body
+  assert.equal(now.statusId, todo.id)
+  assert.equal(now.assigneeId, member)
+  assert.equal(now.priority, 'high')
+  const log = (await pool.query('select field, from_value, to_value, text from activity where issue_id = $1 order by created_at, id', [i.id])).rows
+  assert.ok(log.some(r => r.text === 'Automation skipped a status change the workflow does not allow'))
+  assert.ok(log.some(r => r.text === 'Automation skipped an assignment: that person is not in this project'))
+  assert.ok(log.some(r => r.field === 'assigneeId' && r.to_value === member))     // real history, so reports and audits see it
+  assert.ok(log.some(r => r.field === 'priority' && r.to_value === 'high'))
+  // an allowed move still happens
+  await call('POST', '/api/v1/projects/AUT/rules', { name: 'Start on assign', trigger: { kind: 'assigned' }, actions: [{ kind: 'status', value: doing.id }] })
+  const j = (await call('POST', '/api/v1/projects/AUT/issues', { title: 'moves' })).body
+  const owner = (await call('GET', '/api/v1/me')).body.id
+  await call('PATCH', `/api/v1/issues/${j.key}`, { assigneeId: owner })   // the create rule already gave it to the member; a new assignee fires "assigned"
+  assert.equal((await call('GET', `/api/v1/issues/${j.key}`)).body.statusId, doing.id)
+  assert.ok((await pool.query(`select 1 from activity where issue_id = $1 and field = 'statusId' and to_value = $2`, [j.id, doing.id])).rows.length)
+})
