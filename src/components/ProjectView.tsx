@@ -5,6 +5,7 @@ import { useApp } from '../appContext'
 import { canAdmin } from '../data/access'
 import { navigate, href, type ProjectTab } from '../router'
 import { api, apiEnabled } from '../api/client'
+import { useProjectEvents } from '../api/presence'
 import BoardView from './BoardView'
 import BacklogView from './BacklogView'
 import IssueTable, { type TableGroup } from './IssueTable'
@@ -192,6 +193,7 @@ export function ProjectsView({ onCreate }: { onCreate: () => void }) {
 // ── Single project ─────────────────────────────────────────
 
 export function ProjectView({ project, tab, sub }: { project: Project; tab: ProjectTab; sub?: string }) {
+  useProjectEvents(project.id, project.key, apiEnabled, true)   // other people's changes appear here as they happen
   const { state } = useStore()
   const { openProject } = useApp()
   const tabs: { id: ProjectTab; Icon: typeof List }[] = [

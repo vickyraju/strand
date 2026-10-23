@@ -9,6 +9,8 @@
 import { useEffect, useRef } from 'react'
 import { api, apiEnabled, buildRequest, getLogin, API_URL } from './client'
 import { useStore } from '../data/store'
+import { loadProjectIssues } from './load'
+import { issueSync } from './sync'
 import type { Editor, Issue } from '../data/reducer'
 
 // —— The project event stream (one shared fetch-based SSE reader per project) ——
@@ -20,7 +22,7 @@ const streams = new Map<string, Stream>()
 
 /** Read the stream until aborted, reconnecting with a growing pause (1 s … 30 s) after any failure. */
 async function run(key: string, s: Stream) {
-  let wait = 1000
+  let wait = 1000, connected = false
   while (!s.abort.signal.aborted) {
     try {
       const [url, init] = buildRequest(API_URL!, getLogin(), 'GET', `/api/projects/${encodeURIComponent(key)}/events`, undefined, { accept: 'text/event-stream' })
@@ -28,6 +30,9 @@ async function run(key: string, s: Stream) {
       if (res.status === 403 || res.status === 404) return   // no access (any more): retrying cannot help
       if (!res.ok || !res.body) throw new Error(String(res.status))
       wait = 1000
+      // after a drop, events may have been missed: tell the handlers to catch up
+      if (connected) s.handlers.forEach(h => h({ type: 'stream.resumed' }))
+      connected = true
       const reader = res.body.pipeThrough(new TextDecoderStream()).getReader()
       let buf = ''
       for (;;) {
@@ -62,21 +67,38 @@ function subscribe(projectId: string, key: string, handler: (e: StreamEvent) => 
   }
 }
 
-/** Dispatches `setEditors` for any event that carries an editors list. */
-export function useProjectEvents(projectId: string | undefined, projectKey: string | undefined, enabled: boolean) {
+/** Events after which the project's items on screen may be out of date. */
+const CHANGED = new Set(['issue.created', 'issue.updated', 'issue.deleted', 'issues.reranked', 'stream.resumed'])
+
+/** Dispatches `setEditors` for any event that carries an editors list. With `reloadOnChange` (the open project page),
+ *  also reloads the project's items shortly after anyone changes them, so everyone sees the same board. Several changes in a burst cause one reload.
+ *  ponytail: reloads the whole project (up to the load cap); fetch only the changed item when projects get large. */
+export function useProjectEvents(projectId: string | undefined, projectKey: string | undefined, enabled: boolean, reloadOnChange = false) {
   const { state, dispatch } = useStore()
   const stateRef = useRef(state)
   stateRef.current = state
 
   useEffect(() => {
     if (!apiEnabled || !projectId || !projectKey || !enabled) return
-    return subscribe(projectId, projectKey, data => {
+    let timer: number | undefined
+    const reload = () => {
+      window.clearTimeout(timer)
+      timer = window.setTimeout(() => {
+        loadProjectIssues(projectKey).then(loaded => {
+          issueSync.load(projectId, loaded)     // the server's copy becomes the base, so it is not sent back
+          dispatch({ type: 'loadIssues', projectId, issues: loaded.map(({ version, ...i }: any) => i) })
+        }, () => { /* offline: the next event or reconnect tries again */ })
+      }, 800)
+    }
+    const unsubscribe = subscribe(projectId, projectKey, data => {
+      if (reloadOnChange && CHANGED.has(data.type)) reload()
       if (!data.editors || !data.key) return
       // resolve the key ("PAY-12") to the local issue id; skip keys we don't have loaded
       const issue = stateRef.current.issues.find(i => i.key === data.key)
       if (issue) dispatch({ type: 'setEditors', issueId: issue.id, editors: data.editors })
     })
-  }, [projectId, projectKey, enabled, dispatch])
+    return () => { window.clearTimeout(timer); unsubscribe() }
+  }, [projectId, projectKey, enabled, reloadOnChange, dispatch])
 }
 
 
