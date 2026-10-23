@@ -1,7 +1,7 @@
 // Server-backed people search for the pickers. The workspace does not hold a global user list
 // (`/users` is capped at the first 1000), so the assignee/lead pickers query `/users/search` as the
 // user types instead of filtering a local array. Without an API the pickers keep working off the store.
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api, apiEnabled } from './client'
 import { mapUser, type Row } from './map'
 import type { User } from '../data/reducer'
@@ -65,4 +65,16 @@ export function useUserSearch(project?: string) {
   }
 
   return { users: results, userById, search, loadMore, hasMore: !!next, busy, failed }
+}
+/** Everyone who can work in a project (its people, its groups' people, workspace admins), for @mention suggestions.
+ *  Without an API, the local people. ponytail: the first 200 by name; search on the server as you type if projects get bigger. */
+export function useProjectPeople(projectId: string | undefined, local: User[]): User[] {
+  const [people, setPeople] = useState<{ id: string; users: User[] } | null>(null)
+  useEffect(() => {
+    if (!apiEnabled || !projectId) return
+    let live = true
+    searchUsers('', 200, null, projectId).then(p => { if (live) setPeople({ id: projectId, users: p.items }) }, () => {})
+    return () => { live = false }
+  }, [projectId])
+  return apiEnabled && people && people.id === projectId ? people.users : local
 }

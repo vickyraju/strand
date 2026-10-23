@@ -18,6 +18,7 @@ import {
   priorityOptions, typeOptions, plural, formatDate,
 } from './ui'
 import { UserPicker } from './UserPicker'
+import { useProjectPeople } from '../api/users'
 import { Markdown, MentionTextarea } from './markdown'
 import { transitionLabel } from './BoardCard'
 import IssueRow from './IssueRow'
@@ -45,6 +46,7 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
   const issue = state.issues.find(i => i.id === issueId)
   const project = projectOf(state, issue?.projectId)
   const readOnly = !canEdit(project)
+  const mentionable = useProjectPeople(issue?.projectId, state.users)   // only people who can see the item can be mentioned
 
   const [title, setTitle]         = useState(issue?.title ?? '')
   const [desc, setDesc]           = useState(issue?.description ?? '')
@@ -204,7 +206,7 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
             <h2 className="section-title">Description</h2>
             {editingDesc ? (
               <>
-                <MentionTextarea className="input desc-input" value={desc} onChange={setDesc} users={state.users} autoFocus
+                <MentionTextarea className="input desc-input" value={desc} onChange={setDesc} users={mentionable} autoFocus
                   placeholder="Describe the work. Markdown: **bold**, *italic*, `code`, - lists, [links](https://…), @mentions"
                   onSubmit={() => { set({ description: desc }); setEditing(false) }} aria-label="Description" />
                 <div className="row-actions">
@@ -287,7 +289,7 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
             <div className="compose-comment">
               <Avatar user={state.me} size={30} />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <MentionTextarea className="input comment-input" value={comment} onChange={setComment} users={state.users}
+                <MentionTextarea className="input comment-input" value={comment} onChange={setComment} users={mentionable}
                   placeholder="Add a comment… Type @ to mention someone" aria-label="Add a comment" onSubmit={postComment} />
                 {comment.trim() && (
                   <div className="row-actions">
@@ -324,7 +326,7 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
                       </div>
                       {editing ? (
                         <>
-                          <MentionTextarea className="input comment-input" value={editComment.body} users={state.users} autoFocus aria-label="Edit comment"
+                          <MentionTextarea className="input comment-input" value={editComment.body} users={mentionable} autoFocus aria-label="Edit comment"
                             onChange={body => setEditComment({ id: t.id, body })}
                             onSubmit={() => { dispatch({ type: 'editComment', id: t.id, body: editComment.body }); setEditComment(null) }} />
                           <div className="row-actions">
