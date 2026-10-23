@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import {
-  LayoutGrid, Inbox, Search, Settings, PanelLeftClose, PanelLeftOpen, SearchCode, FolderKanban,
+  LayoutGrid, Inbox, Search, Settings, ShieldCheck, PanelLeftClose, PanelLeftOpen, SearchCode, FolderKanban,
   ChevronRight, ChevronDown, Bookmark, Columns2, ListChecks, List, BarChart3, Gauge, Hash, GanttChart, CalendarDays, Rocket, Star,
 } from 'lucide-react'
 import { useStore } from '../data/store'
+import { isGlobalAdmin } from '../data/access'
+import { apiEnabled } from '../api/client'
 import { useApp } from '../appContext'
 import { href, navigate, type Route, type ProjectTab } from '../router'
 import { ProjectIcon } from './ProjectView'
@@ -159,6 +161,7 @@ export default function NavRail({ collapsed, onCollapseToggle, onCmdK, route, dr
       </div>
 
       <div className="nav-foot">
+        {apiEnabled && isGlobalAdmin(state) && item(route.name === 'admin', 'Administration', ShieldCheck, () => goTo('admin'))}
         {item(route.name === 'settings', 'Settings', Settings, () => goTo('settings'))}
       </div>
     </nav>

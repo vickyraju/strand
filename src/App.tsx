@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, lazy, Suspense } from 'react'
 import { canEdit } from './data/access'
 import { X, CheckCircle2, AlertTriangle, SearchX } from 'lucide-react'
 import NavRail from './components/NavRail'
@@ -8,6 +8,7 @@ import SearchView from './components/SearchView'
 import YourWork from './components/YourWork'
 import InboxView from './components/InboxView'
 import SettingsView from './components/SettingsView'
+const AdminView = lazy(() => import('./components/AdminView'))   // only admins open it
 import WorkItemDetail from './components/WorkItemDetail'
 import Welcome from './components/Welcome'
 import CreateProjectModal from './components/CreateProjectModal'
@@ -191,7 +192,7 @@ function Shell() {
       fullIssue ? [`${fullIssue.key} ${fullIssue.title}`]
       : project ? [project.name]
       : route.name === 'inbox' ? ['Inbox'] : route.name === 'search' ? ['Search'] : route.name === 'projects' ? ['Projects']
-      : route.name === 'settings' ? ['Settings'] : route.name === 'home' ? ['Your work'] : []
+      : route.name === 'settings' ? ['Settings'] : route.name === 'admin' ? ['Administration'] : route.name === 'home' ? ['Your work'] : []
     document.title = [...parts, state.workspaceName || 'Forge'].join(' · ')
   }, [route, fullIssue, project, state.workspaceName])
 
@@ -222,7 +223,7 @@ function Shell() {
       { label: state.projects.find(p => p.id === fullIssue.projectId)?.name ?? '', onClick: () => actions.openProject(fullIssue.projectId) },
       { label: fullIssue.key },
     ]
-    : [{ label: { home: 'Your work', inbox: 'Inbox', search: 'Search', projects: 'Projects', settings: 'Settings' }[route.name as 'home'] ?? '' }]
+    : [{ label: { home: 'Your work', inbox: 'Inbox', search: 'Search', projects: 'Projects', settings: 'Settings', admin: 'Administration' }[route.name as 'home'] ?? '' }]
 
   return (
     <AppContext.Provider value={actions}>
@@ -247,6 +248,7 @@ function Shell() {
             {route.name === 'search'   && <SearchView query={route.q} viewId={route.view} />}
             {route.name === 'projects' && <ProjectsView onCreate={() => setCreateProjectOpen(true)} />}
             {route.name === 'settings' && <SettingsView />}
+            {route.name === 'admin' && <Suspense fallback={<div className="loading" role="status">Loading…</div>}><AdminView section={route.section} /></Suspense>}
             {route.name === 'project'  && (project
               ? issuesLoad.status === 'loading' ? <div className="loading" role="status">Loading work items…</div>
               : issuesLoad.status === 'error' ? (

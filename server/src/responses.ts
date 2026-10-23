@@ -170,6 +170,10 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'GET /attachments/:id/url': z.object({ url: z.string() }),
   'GET /admin/settings/project-backups': BackupSettings,
   'PUT /admin/settings/project-backups': BackupSettings,
+  'GET /admin/users': z.array(z.object({
+    id, name: z.string(), email: z.string(), initials: z.string(), color: z.string(), title: nullable(z.string()), active: z.boolean(),
+    role: z.enum(['owner', 'admin', 'member']), createdAt: ts, projects: z.number().describe('Projects they are a member of'),
+  })),
   'GET /admin/project-backups': z.array(z.object({
     id, projectId: id, projectKey: z.string(), projectName: z.string(), bucket: z.string(), objectKey: z.string(),
     items: z.number(), files: z.number(), bytes: z.number(), createdAt: ts, createdBy: nullable(id), restoredAt: nullable(ts),
