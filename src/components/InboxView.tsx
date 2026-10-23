@@ -158,7 +158,7 @@ export default function InboxView() {
               <p className="muted sm">
                 {state.users.length > 1
                   ? 'You’ll be notified when someone assigns you, mentions you, or updates work you watch.'
-                  : 'Notifications come from teammates. Add people in Settings, then use “Act as” in your avatar menu to work as them.'}
+                  : 'Notifications come from teammates: when they assign you work, mention you or comment on something you follow.'}
               </p>
               {state.users.length <= 1 && <button className="btn btn-secondary btn-sm" onClick={() => goTo('settings')}>Add people</button>}
             </div>

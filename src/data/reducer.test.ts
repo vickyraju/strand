@@ -1,7 +1,10 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { reducer, migrate, EMPTY, isDone, type Action, type State, type Issue } from './reducer.ts'
-import { sampleWorkspace } from './sample.ts'
+import { withSample } from './testdata.ts'
+
+/** Do the next actions as someone else (the reducer attributes actions to the signed-in person) */
+const asUser = (s: State, userId: string): State => ({ ...s, ownerId: userId })
 
 const run = (actions: Action[], start: State = EMPTY) => actions.reduce((s, a) => reducer(s, a), start)
 
@@ -41,10 +44,7 @@ test('notifications go to the people involved, never to the actor', () => {
   const assigned = run([{ type: 'updateIssues', ids: ['i1'], patch: { assigneeId: sam } }], s)
   assert.deepEqual(assigned.notifications.map(n => [n.userId, n.kind]), [[sam, 'assigned']])
   // Sam (acting) mentions the owner: owner gets one "mentioned", not also "commented"
-  const mentioned = run([
-    { type: 'actAs', userId: sam },
-    { type: 'addComment', issueId: 'i1', body: 'Can you look, @Alex Morgan?' },
-  ], assigned)
+  const mentioned = run([{ type: 'addComment', issueId: 'i1', body: 'Can you look, @Alex Morgan?' }], asUser(assigned, sam))
   const forOwner = mentioned.notifications.filter(n => n.userId === owner)
   assert.deepEqual(forOwner.map(n => n.kind), ['mentioned'])
 })
@@ -97,10 +97,10 @@ test('v1 saves migrate to v2', () => {
   assert.deepEqual(s.issues[0].watcherIds, ['u'])
 })
 
-test('sample workspace loads, is consistent, and can be removed', () => {
+test('the sample workspace used by the tests is consistent', () => {
   const s0 = run([{ type: 'setOwner', name: 'Alex Morgan' }])
   const owner = s0.users[0]
-  const s = run([{ type: 'merge', data: sampleWorkspace(owner) }], s0)
+  const s = withSample(s0)
   assert.equal(s.projects.length, 3)
   assert.ok(s.issues.length >= 50)
   // Every status referenced exists, every parent exists, keys are unique
@@ -113,8 +113,6 @@ test('sample workspace loads, is consistent, and can be removed', () => {
   // Closed sprints have velocity numbers
   for (const sp of s.sprints.filter(x => x.state === 'closed')) assert.ok(sp.completed! > 0 && sp.committed! >= sp.completed!)
   assert.ok(s.notifications.some(n => n.userId === owner.id && !n.read))
-  const cleaned = run([{ type: 'removeSample' }], s)
-  assert.deepEqual([cleaned.projects.length, cleaned.issues.length, cleaned.users.length], [0, 0, 1])
 })
 
 test('moving an item re-ranks only that item', () => {
@@ -165,11 +163,8 @@ test('a rule on creation runs for new items', () => {
 
 test('time logs add up and only the author can delete theirs', () => {
   let { s, sam } = workspace()
-  s = run([
-    { type: 'logWork', issueId: 'i1', minutes: 90, date: '2026-10-01', note: 'setup' },
-    { type: 'actAs', userId: sam },
-    { type: 'logWork', issueId: 'i1', minutes: 30, date: '2026-10-02', note: '' },
-  ], s)
+  s = run([{ type: 'logWork', issueId: 'i1', minutes: 90, date: '2026-10-01', note: 'setup' }], s)
+  s = run([{ type: 'logWork', issueId: 'i1', minutes: 30, date: '2026-10-02', note: '' }], asUser(s, sam))   // from here on Sam is the one acting
   assert.equal(s.issues[0].worklogs.reduce((n, w) => n + w.minutes, 0), 120)
   const ownerLog = s.issues[0].worklogs[0].id
   s = run([{ type: 'deleteWorklog', issueId: 'i1', worklogId: ownerLog }], s) // Sam can't delete the owner's log

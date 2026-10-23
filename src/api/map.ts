@@ -54,7 +54,6 @@ export function mapProject(p: Row): Project {
     releases: (p.releases ?? []).map(mapRelease),
     templates: (p.templates ?? []).map(mapTemplate),
     ...(p.role ? { role: p.role } : {}),
-    ...(p.sample ? { sample: true } : {}),
   }
 }
 
@@ -62,12 +61,12 @@ export function mapProject(p: Row): Project {
 export function mapWorkspace(me: Row, users: Row[], projects: Row[], starredIds: string[], extras: { views?: Row[]; notifications?: Row[] } = {}): State {
   return {
     version: 4, workspaceName: 'Strand',
-    ownerId: me.id, actingAsId: null,
+    ownerId: me.id,
     users: users.map(mapUser),
     projects: projects.map(mapProject),
     sprints: projects.flatMap(p => (p.sprints ?? []).map(mapSprint)),
     issues: [], comments: [], activity: [], notifications: (extras.notifications ?? []).map(mapNotification),
-    starred: starredIds, viewed: [], sampleIds: [],
+    starred: starredIds, viewed: [],
     views: (extras.views ?? []).map(mapView), editors: {},
   }
 }

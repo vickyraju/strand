@@ -218,8 +218,6 @@ function Shell() {
     ]
     : [{ label: { home: 'Your work', inbox: 'Inbox', search: 'Search', projects: 'Projects', settings: 'Settings' }[route.name as 'home'] ?? '' }]
 
-  const acting = state.actingAsId ? state.me : null
-
   return (
     <AppContext.Provider value={actions}>
       <div className="shell">
@@ -234,11 +232,6 @@ function Shell() {
         />
 
         <main className="main">
-          {acting && (
-            <div className="acting-banner" role="status">
-              You are acting as <b>{acting.name}</b>. Everything you do is attributed to them.
-            </div>
-          )}
           <TopBar crumbs={crumbs} onCreateProject={() => setCreateProjectOpen(true)} onShortcuts={() => setShortcutsOpen(true)} onMenu={phone ? () => setDrawerOpen(true) : undefined} />
 
           <div className="content">

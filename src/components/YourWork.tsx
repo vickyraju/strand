@@ -3,7 +3,7 @@ import { FolderPlus, Plus, Clock, Eye, UserCheck, Star, Columns2, CalendarClock,
 import { useStore, projectOf, isDone, blockersOf, type Issue, type Project } from '../data/store'
 import { useApp, useNavList } from '../appContext'
 import IssueRow from './IssueRow'
-import { ProjectIcon, StarButton, LoadSampleButton } from './ProjectView'
+import { ProjectIcon, StarButton } from './ProjectView'
 import { Empty } from './ui'
 import { apiEnabled } from '../api/client'
 import { useMyWork, useMyRecent, useMyViewed, useRecentProjects, useWorkSummary } from '../api/work'
@@ -92,7 +92,7 @@ export default function YourWork({ onCreateProject }: { onCreateProject: () => v
           icon={<FolderPlus size={22} strokeWidth={1.5} />}
           title="Let’s set up your first project"
           body={apiEnabled ? 'Projects hold your team’s work items, board, backlog and reports. Create one now.' : 'Projects hold your team’s work items, board, backlog and reports. Create one now, or load a sample workspace to explore everything Forge can do.'}
-          action={<><button className="btn btn-primary" onClick={onCreateProject}><Plus size={15} />Create project</button><LoadSampleButton /></>}
+          action={<><button className="btn btn-primary" onClick={onCreateProject}><Plus size={15} />Create project</button></>}
         />
       </div>
     )

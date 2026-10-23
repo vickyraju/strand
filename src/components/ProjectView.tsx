@@ -1,10 +1,9 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
-import { Plus, Star, FolderPlus, Columns2, List, ListChecks, Settings, Gauge, BarChart3, GanttChart, CalendarDays, Rocket, Check, GitBranch, Info, Sparkles, Zap, Users } from 'lucide-react'
+import { Plus, Star, FolderPlus, Columns2, List, ListChecks, Settings, Gauge, BarChart3, GanttChart, CalendarDays, Rocket, Check, GitBranch, Info, Zap, Users } from 'lucide-react'
 import { useStore, userOf, isDone, timeAgo, PROJECT_COLORS, type Project, type ProjectPatch } from '../data/store'
 import { useApp } from '../appContext'
 import { navigate, href, type ProjectTab } from '../router'
 import { api, apiEnabled } from '../api/client'
-import { sampleWorkspace } from '../data/sample'
 import BoardView from './BoardView'
 import BacklogView from './BacklogView'
 import IssueTable, { type TableGroup } from './IssueTable'
@@ -49,16 +48,6 @@ export function StarButton({ projectId }: { projectId: string }) {
   )
 }
 
-export function LoadSampleButton({ className = 'btn btn-secondary' }: { className?: string }) {
-  const { state, dispatch } = useStore()
-  // The sample workspace is built in the browser only. With an API the data lives on the server, so loading it would show items that vanish on reload.
-  if (apiEnabled || state.sampleIds.length > 0 || !state.owner) return null
-  return (
-    <button className={className} onClick={() => dispatch({ type: 'merge', data: sampleWorkspace(state.owner!) })}>
-      <Sparkles size={14} />Load a sample workspace
-    </button>
-  )
-}
 
 // ── All projects ───────────────────────────────────────────
 
@@ -152,7 +141,7 @@ export function ProjectsView({ onCreate }: { onCreate: () => void }) {
           icon={<FolderPlus size={22} strokeWidth={1.5} />}
           title="Create your first project"
           body={apiEnabled ? 'Projects hold your team’s work items, board, backlog and reports. Start with one.' : 'Projects hold your team’s work items, board, backlog and reports. Start with one, or explore a sample workspace first.'}
-          action={<><button className="btn btn-primary" onClick={onCreate}><Plus size={15} />Create project</button><LoadSampleButton /></>}
+          action={<><button className="btn btn-primary" onClick={onCreate}><Plus size={15} />Create project</button></>}
         />
       ) : (
         <div className="card-table">

@@ -62,7 +62,6 @@ export interface Project {
   templates:   ItemTemplate[]
   /** What I may do here (from the server; unset for a local workspace, where everyone has full access) */
   role?:       'admin' | 'member' | 'viewer'
-  sample?:     boolean
 }
 
 /** Automation: "When <trigger> then <actions>". */
@@ -250,7 +249,6 @@ export interface State {
   version:       4
   workspaceName: string
   ownerId:       string | null
-  actingAsId:    string | null
   users:         User[]
   projects:      Project[]
   issues:        Issue[]
@@ -260,7 +258,6 @@ export interface State {
   notifications: Notification[]
   starred:       string[]
   viewed:        string[]
-  sampleIds:     string[]
   views:         SavedView[]
   /** Live edit presence, by issue id: who has this issue open right now. */
   editors:       Record<string, Editor[]>
@@ -277,7 +274,6 @@ export type Action =
   | { type: 'addUser'; name: string; title?: string }
   | { type: 'updateUser'; id: string; name?: string; title?: string }
   | { type: 'removeUser'; id: string }
-  | { type: 'actAs'; userId: string | null }
   | { type: 'setWorkspaceName'; name: string }
   | { type: 'createProject'; project: Pick<Project, 'id' | 'name' | 'key' | 'color' | 'template'> }
   | { type: 'updateProject'; id: string; patch: ProjectPatch }
@@ -326,8 +322,6 @@ export type Action =
   | { type: 'setEditors'; issueId: string; editors: Editor[] }
   /** A project the server created or changed. Replaces the local one with the same id, or adds it. */
   | { type: 'upsertProject'; project: Project }
-  | { type: 'merge'; data: Partial<State> }
-  | { type: 'removeSample' }
   | { type: 'replace'; state: State }
   | { type: 'reset' }
 
@@ -351,9 +345,9 @@ export const DEFAULT_FIELDS: Record<CardField, boolean> = {
 export const DEFAULT_BOARD_PREFS: BoardPrefs = { groupBy: 'none', fields: DEFAULT_FIELDS, collapsedLanes: [], collapsedCols: [] }
 
 export const EMPTY: State = {
-  version: 4, workspaceName: 'Forge', ownerId: null, actingAsId: null,
+  version: 4, workspaceName: 'Forge', ownerId: null,
   users: [], projects: [], issues: [], sprints: [], comments: [], activity: [], notifications: [],
-  starred: [], viewed: [], sampleIds: [], views: [], editors: {},
+  starred: [], viewed: [], views: [], editors: {},
 }
 
 // ── Helpers ────────────────────────────────────────────────
@@ -402,7 +396,7 @@ export function mentionedUsers(body: string, users: User[]) {
   return users.filter(u => body.includes(`@${u.name}`))
 }
 
-export const actorId = (s: State) => s.actingAsId ?? s.ownerId ?? ''
+export const actorId = (s: State) => s.ownerId ?? ''
 
 // ── Reducer ────────────────────────────────────────────────
 
@@ -444,7 +438,6 @@ export function reducer(state: State, action: Action, now = Date.now()): State {
       return {
         ...state,
         users:         state.users.filter(u => u.id !== action.id),
-        actingAsId:    state.actingAsId === action.id ? null : state.actingAsId,
         projects:      state.projects.map(p => p.leadId === action.id ? { ...p, leadId: fallbackLead } : p),
         issues:        state.issues.map(i => ({
           ...i,
@@ -454,8 +447,6 @@ export function reducer(state: State, action: Action, now = Date.now()): State {
         notifications: state.notifications.filter(n => n.userId !== action.id),
       }
     }
-    case 'actAs':
-      return { ...state, actingAsId: action.userId === state.ownerId ? null : action.userId }
     case 'setWorkspaceName':
       return action.name.trim() ? { ...state, workspaceName: action.name.trim() } : state
 
@@ -758,50 +749,6 @@ export function reducer(state: State, action: Action, now = Date.now()): State {
       const editors0 = state.editors[action.issueId] ?? []
       if (JSON.stringify(editors) === JSON.stringify(editors0)) return state
       return { ...state, editors: { ...state.editors, [action.issueId]: editors } }
-    }
-    case 'merge': {
-      const d = action.data
-      const ids = [
-        ...(d.users ?? []), ...(d.projects ?? []), ...(d.issues ?? []), ...(d.sprints ?? []),
-        ...(d.comments ?? []), ...(d.activity ?? []), ...(d.notifications ?? []),
-      ].map(x => x.id)
-      return {
-        ...state,
-        users:         [...state.users, ...(d.users ?? [])],
-        projects:      [...state.projects, ...(d.projects ?? [])],
-        issues:        [...state.issues, ...(d.issues ?? [])],
-        sprints:       [...state.sprints, ...(d.sprints ?? [])],
-        comments:      [...state.comments, ...(d.comments ?? [])],
-        activity:      [...state.activity, ...(d.activity ?? [])],
-        notifications: [...state.notifications, ...(d.notifications ?? [])],
-        starred:       [...state.starred, ...(d.starred ?? [])],
-        sampleIds:     [...state.sampleIds, ...ids],
-      }
-    }
-    case 'removeSample': {
-      const ids = new Set(state.sampleIds)
-      const keep = <T extends { id: string }>(xs: T[]) => xs.filter(x => !ids.has(x.id))
-      const users = keep(state.users)
-      const userIds = new Set(users.map(u => u.id))
-      const issues = keep(state.issues).map(i => ({
-        ...i,
-        assigneeId: i.assigneeId && userIds.has(i.assigneeId) ? i.assigneeId : undefined,
-        watcherIds: i.watcherIds.filter(w => userIds.has(w)),
-      }))
-      return {
-        ...state,
-        users, issues,
-        actingAsId:    state.actingAsId && userIds.has(state.actingAsId) ? state.actingAsId : null,
-        projects:      keep(state.projects),
-        sprints:       keep(state.sprints),
-        comments:      keep(state.comments),
-        activity:      keep(state.activity),
-        notifications: keep(state.notifications).filter(n => userIds.has(n.userId)),
-        starred:       state.starred.filter(id => !ids.has(id)),
-        viewed:        state.viewed.filter(id => !ids.has(id)),
-        sampleIds:     [],
-        editors:       {},
-      }
     }
     case 'replace':
       return action.state

@@ -1,5 +1,5 @@
 // A realistic sample workspace: a team, three projects, sprint history and backdated activity so every
-// screen (board, backlog, inbox, reports) has believable data. Loaded only on request, removable from Settings.
+// screen (board, backlog, inbox, reports) has believable data. Test fixture only: the app itself ships no demo data.
 import {
   uid, makeUser, anyToAny, DEFAULT_BOARD_PREFS,
   type State, type User, type Project, type Issue, type Sprint, type Comment, type Activity, type Notification,
@@ -405,4 +405,15 @@ export function sampleWorkspace(owner: User, now = Date.now()): Partial<State> {
   }
 
   return { users, projects, issues, sprints, comments, activity, notifications, starred: [projects[0].id] }
+}
+
+/** The sample workspace added to a state (test fixture: the app no longer ships demo data). */
+export function withSample(s: State): State {
+  const d = sampleWorkspace(s.users[0])
+  return {
+    ...s,
+    users: [...s.users, ...(d.users ?? [])], projects: [...s.projects, ...(d.projects ?? [])], issues: [...s.issues, ...(d.issues ?? [])],
+    sprints: [...s.sprints, ...(d.sprints ?? [])], comments: [...s.comments, ...(d.comments ?? [])], activity: [...s.activity, ...(d.activity ?? [])],
+    notifications: [...s.notifications, ...(d.notifications ?? [])], starred: [...s.starred, ...(d.starred ?? [])],
+  }
 }

@@ -295,7 +295,6 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; line-height:
 .shell { display: flex; height: 100vh; overflow: hidden }
 .main { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--surface) }
 .content { flex: 1; min-height: 0; display: flex; flex-direction: column; position: relative; overflow: hidden }
-.acting-banner { padding: 6px 16px; background: #FEF3C7; color: #78350F; font-size: 13px; text-align: center; border-bottom: 1px solid #FDE68A }
 
 /* Sidebar */
 .nav-rail {
@@ -1175,8 +1174,7 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; line-height:
 [data-theme='dark'] .col-hdr.over-limit { background: #3A1E1E }
 [data-theme='dark'] .callout-danger { background: var(--danger-soft); color: #FFB4B4; border-color: #5A2A2A }
 [data-theme='dark'] .callout-warn { background: var(--warn-soft); color: #F5D08A; border-color: #5A4520 }
-[data-theme='dark'] .acting-banner { background: #3A2E16; color: #F5D08A; border-color: #5A4520 }
-[data-theme='dark'] .panel-danger { border-color: #5A2A2A }
+[data-theme='dark'] [data-theme='dark'] .panel-danger { border-color: #5A2A2A }
 [data-theme='dark'] .due.overdue { border-color: #5A2A2A }
 [data-theme='dark'] .pt-todo { background: #3A4145; color: var(--text-1) }
 [data-theme='dark'] .pt-progress { background: #1E3156; color: #9DBEFF }
