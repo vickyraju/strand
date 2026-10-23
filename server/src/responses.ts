@@ -54,6 +54,7 @@ export const IssueRow = z.object(issueFields)
 const BackupSettings = z.object({
   enabled: z.boolean().describe('Deleting a project backs it up first'), bucket: nullable(z.string()), prefix: z.string(),
   effectiveBucket: nullable(z.string()).describe('Where backups actually go (empty: nowhere configured, so deleting a project is refused)'),
+  allowedBuckets: z.array(z.string()).describe('Buckets the operators allow a workspace to choose (BACKUP_BUCKETS)'),
 })
 export const Comment = z.object({ id, issueId: id, authorId: nullable(id), body: z.string(), createdAt: ts, editedAt: nullable(ts) })
 export const Worklog = z.object({ id, issueId: id, userId: nullable(id), minutes: z.number(), date: day, note: z.string(), createdAt: ts })

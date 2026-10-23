@@ -18668,13 +18668,21 @@
                       "nullable": true,
                       "description": "Where backups actually go (empty: nowhere configured, so deleting a project is refused)",
                       "type": "string"
+                    },
+                    "allowedBuckets": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "Buckets the operators allow a workspace to choose (BACKUP_BUCKETS)"
                     }
                   },
                   "required": [
                     "enabled",
                     "bucket",
                     "prefix",
-                    "effectiveBucket"
+                    "effectiveBucket",
+                    "allowedBuckets"
                   ],
                   "additionalProperties": false
                 }
@@ -18781,13 +18789,21 @@
                       "nullable": true,
                       "description": "Where backups actually go (empty: nowhere configured, so deleting a project is refused)",
                       "type": "string"
+                    },
+                    "allowedBuckets": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "Buckets the operators allow a workspace to choose (BACKUP_BUCKETS)"
                     }
                   },
                   "required": [
                     "enabled",
                     "bucket",
                     "prefix",
-                    "effectiveBucket"
+                    "effectiveBucket",
+                    "allowedBuckets"
                   ],
                   "additionalProperties": false
                 }

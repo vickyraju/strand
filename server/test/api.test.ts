@@ -1310,10 +1310,28 @@ test('project backups: deleting backs up everything first, restore brings it all
   // the original file is removed from storage like any deleted attachment; the backup copy stays
   await (await import('../src/routes/files.ts')).sweepFiles()
 
-  // restore: same keys, history, people, files
+  // a changed backup document is refused, whoever changed it
+  const docKey = `files/${b.objectKey}`, original = objects.get(docKey)!
+  const evil = JSON.parse(original.toString()); evil.tables.projects[0].workspace_id = '00000000-0000-4000-8000-000000000000'
+  objects.set(docKey, Buffer.from(JSON.stringify(evil)))
   const r = await call('POST', `/api/v1/admin/project-backups/${b.id}/restore`)
   assert.equal(r.status, 202)
   await runJobs()
+  const tampered = (await call('GET', `/api/v1/jobs/${r.body.jobId}`)).body
+  assert.equal(tampered.status, 'queued'); assert.match(tampered.lastError, /changed since it was written/)
+  assert.equal((await call('GET', '/api/v1/projects/BAK')).status, 404)
+  // put the real document back: the retry restores it
+  objects.set(docKey, original)
+  await pool.query('update jobs set run_at = now() where id = $1', [r.body.jobId])
+  await runJobs()
+  // a workspace admin cannot send backups to a bucket the operators did not allow
+  assert.equal((await call('PUT', '/api/v1/admin/settings/project-backups', { enabled: true, bucket: 'someone-elses-bucket' })).status, 400)
+  process.env.BACKUP_BUCKETS = 'files,team-backups'
+  assert.equal((await call('PUT', '/api/v1/admin/settings/project-backups', { enabled: true, bucket: 'team-backups' })).body.effectiveBucket, 'team-backups')
+  await call('PUT', '/api/v1/admin/settings/project-backups', { enabled: true })
+  delete process.env.BACKUP_BUCKETS
+
+  // restore: same keys, history, people, files
   assert.equal((await call('GET', `/api/v1/jobs/${r.body.jobId}`)).body.status, 'done')
   const back = (await call('GET', `/api/v1/issues/${child.key}?expand=comments,activity,worklogs,links,attachments`, undefined, 'bak.member@x.com')).body
   assert.deepEqual([back.title, back.parentId, back.assigneeId, back.statusId, back.custom[field]], ['Child', epic.id, member, p.statuses[1].id, 'Core'])
