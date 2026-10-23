@@ -11,7 +11,7 @@ const url = process.env.DATABASE_URL
 const skip = !url && 'DATABASE_URL not set'
 const TENANT = '11111111-1111-4111-8111-111111111111', CLIENT = '22222222-2222-4222-8222-222222222222'
 Object.assign(process.env, {
-  SCIM_TOKEN: 'scim-secret', NODE_ENV: 'test', GITHUB_WEBHOOK_SECRET: 'whsec-test', DOCS_ENABLED: '1', DUE_SCAN_INTERVAL_MS: '0',
+  SCIM_TOKEN: 'scim-secret', NODE_ENV: 'test', RATE_LIMIT_PER_MIN: '1000000', GITHUB_WEBHOOK_SECRET: 'whsec-test', DOCS_ENABLED: '1', DUE_SCAN_INTERVAL_MS: '0',
   CORS_ORIGINS: 'https://app.example.com/, https://admin.example.com', ENTRA_TENANT_ID: TENANT, ENTRA_CLIENT_ID: CLIENT,
 })
 
