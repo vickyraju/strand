@@ -161,6 +161,7 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'PATCH /views/:id': SavedView,
   'POST /issues/:key/attachments': AttachmentTicket,
   'GET /attachments/:id/url': z.object({ url: z.string() }),
+  'POST /attachments/:id/complete': z.object({ id, name: z.string(), size: z.number(), type: z.string(), addedBy: nullable(id), addedAt: ts }),
   'POST /import': ImportReport,
   ...Object.fromEntries(Object.entries(kindRow).flatMap(([kind, row]) => [
     [`POST /projects/:key/${kind}`, row], [`PATCH /projects/:key/${kind}/:id`, row],

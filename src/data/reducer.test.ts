@@ -291,3 +291,13 @@ test('loadProject adds a project with its sprints, then replaces both without to
   assert.equal(s2.projects.length, 3); assert.equal(s2.projects[2]!.name, 'C renamed')
   assert.deepEqual(s2.sprints.map(s => s.id).sort(), ['a1', 'b1', 'c2'])
 })
+
+test('reloading a project keeps what each item’s detail had loaded (links, watchers, time logs, attachments)', () => {
+  let { s, sam } = workspace()
+  const att = { id: 'a1', name: 'spec.pdf', size: 10, type: 'application/pdf', addedBy: sam, addedAt: 1 }
+  s = run([{ type: 'loadIssueDetail', issueId: 'i1', comments: [], activity: [], worklogs: [], links: [{ type: 'relates', issueId: 'x' }], watcherIds: [sam], attachments: [att] }], s)
+  const fromList = { ...s.issues[0]!, title: 'Renamed elsewhere', watcherIds: [], links: [], attachments: [], worklogs: [] }
+  s = run([{ type: 'loadIssues', projectId: 'p1', issues: [fromList] }], s)
+  assert.equal(s.issues[0]!.title, 'Renamed elsewhere')
+  assert.deepEqual([s.issues[0]!.watcherIds, s.issues[0]!.links.length, s.issues[0]!.attachments], [[sam], 1, [att]])
+})
