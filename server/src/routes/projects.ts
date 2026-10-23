@@ -2,7 +2,8 @@ import type { FastifyRequest } from 'fastify'
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
 import { db, tx, pick, type Db } from '../db.ts'
-import { HttpError, isAdmin, requireAdmin, requireWrite } from '../auth.ts'
+import { HttpError, requireAdmin, type Me } from '../auth.ts'
+import { minFor, need, roleOf, visible, type ProjectRole } from '../access.ts'
 import { subscribe } from '../events.ts'
 
 const uuid = z.string().uuid()
@@ -16,19 +17,20 @@ const DEFAULT_STATUSES = {
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-/** Project key (PAY) or id (uuid), scoped to the workspace. */
-export async function projectByKey(d: Db, ws: string, ref: string) {
+/** Project key (PAY) or id (uuid). A project I cannot see is "not found" (its existence is not revealed). `min` is the role the
+ *  request needs; by default reading needs any role and changing things needs member. Returns my role in it. */
+export async function projectByKey(d: Db, req: { me: Me; method: string }, ref: string, min?: ProjectRole) {
   const byId = UUID.test(ref)
   const [p] = await d.query<{ id: string; leadId: string | null; key: string }>(
-    `select id, lead_id, key from projects where workspace_id = $1 and ${byId ? 'id = $2' : 'key = $2'}`, [ws, byId ? ref : ref.toUpperCase()])
-  if (!p) throw new HttpError(404, 'Project not found')
-  return p
+    `select id, lead_id, key from projects where workspace_id = $1 and ${byId ? 'id = $2' : 'key = $2'}`, [req.me.workspaceId, byId ? ref : ref.toUpperCase()])
+  const role = p ? await roleOf(d, req.me, p.id) : null
+  if (!p || !role) throw new HttpError(404, 'Project not found')
+  need(role, min ?? minFor(req.method))
+  return { ...p, role }
 }
 
-/** Project settings (workflow, fields, rules…) may be changed by workspace admins or the project lead. */
-async function requireProjectAdmin(req: FastifyRequest, p: { leadId: string | null }) {
-  if (!isAdmin(req.me.role) && p.leadId !== req.me.id) throw new HttpError(403, 'Project admin only')
-}
+/** Project settings (workflow, fields, rules, people…) are for project admins. */
+async function requireProjectAdmin(_req: FastifyRequest, p: { role: ProjectRole }) { need(p.role, 'admin') }
 
 // Child collections of a project. `json` columns are stored as jsonb.
 const CHILD = {
@@ -95,10 +97,15 @@ const plugin: FastifyPluginAsyncZod = async app => {
     `select u.id, u.name, u.initials, u.color, u.title, u.email, m.role from users u
      join memberships m on m.user_id = u.id and m.workspace_id = $1 where u.active order by lower(u.name), u.id limit 1000`, [req.me.workspaceId]))
 
-  app.get('/users/search', { schema: { tags: T.me, summary: 'Find users by name or e-mail, in name order (keyset-paginated)', querystring: searchQ } }, async req => {
+  app.get('/users/search', { schema: { tags: T.me, summary: 'Find users by name or e-mail, in name order (keyset-paginated). With `project`, only people who can work in that project', querystring: searchQ.extend({ project: z.string().optional().describe('Project key or id: only its members (and workspace admins)') }) } }, async req => {
     const { query, limit } = req.query, cur = readCursor(req.query.cursor)
     const args: unknown[] = [req.me.workspaceId]
     const where = ['u.active']
+    if (req.query.project) {
+      const p = await projectByKey(db, req, req.query.project, 'viewer')
+      args.push(p.id)
+      where.push(`(m.role in ('owner', 'admin') or exists (select 1 from project_members pm where pm.project_id = $${args.length} and pm.user_id = u.id))`)
+    }
     if (query) { args.push(like(query)); where.push(`(u.name ilike $${args.length} or u.email ilike $${args.length})`) }
     if (cur) { args.push(cur[0].toLowerCase(), cur[1]); where.push(`(lower(u.name), u.id) > ($${args.length - 1}, $${args.length}::uuid)`) }
     args.push(limit + 1)
@@ -114,9 +121,13 @@ const plugin: FastifyPluginAsyncZod = async app => {
             (select count(*) from issues i join statuses st on st.id = i.status_id
               where i.project_id = p.id and i.deleted_at is null and st.category <> 'done') as open_count`
   // First 1000 only: use /projects/search for more. Archived projects are hidden unless asked for.
-  app.get('/projects', { schema: { tags: T.projects, summary: 'List active projects with star flag and open-issue count (first 1000 by name; use /projects/search for more)' } }, async req => db.query(
-    `select ${PROJECT_ROW} from projects p left join stars s on s.project_id = p.id and s.user_id = $2
-      where p.workspace_id = $1 and p.archived_at is null order by lower(p.name), p.id limit 1000`, [req.me.workspaceId, req.me.id]))
+  app.get('/projects', { schema: { tags: T.projects, summary: 'List the active projects I can see, with star flag and open-issue count (first 1000 by name; use /projects/search for more)' } }, async req => {
+    const args: unknown[] = [req.me.workspaceId, req.me.id]
+    const see = visible(req.me, 'p.id', args)
+    return db.query(
+      `select ${PROJECT_ROW} from projects p left join stars s on s.project_id = p.id and s.user_id = $2
+        where p.workspace_id = $1 and p.archived_at is null and ${see} order by lower(p.name), p.id limit 1000`, args)
+  })
 
   app.get('/projects/search', { schema: {
     tags: T.projects, summary: 'Find projects by name or key, in name order (keyset-paginated)',
@@ -124,7 +135,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
   } }, async req => {
     const { query, limit } = req.query, cur = readCursor(req.query.cursor)
     const args: unknown[] = [req.me.workspaceId, req.me.id]
-    const where = ['p.workspace_id = $1', req.query.archived === '1' ? 'p.archived_at is not null' : 'p.archived_at is null']
+    const where = ['p.workspace_id = $1', req.query.archived === '1' ? 'p.archived_at is not null' : 'p.archived_at is null', visible(req.me, 'p.id', args)]
     if (query) { args.push(like(query)); where.push(`(p.name ilike $${args.length} or p.key ilike $${args.length})`) }
     if (req.query.starred === '1') where.push('s.user_id is not null')
     if (cur) { args.push(cur[0].toLowerCase(), cur[1]); where.push(`(lower(p.name), p.id) > ($${args.length - 1}, $${args.length}::uuid)`) }
@@ -137,69 +148,71 @@ const plugin: FastifyPluginAsyncZod = async app => {
   })
 
   app.post('/projects/:key/archive', { schema: { tags: T.projects, summary: 'Archive a project: hidden from lists, data kept, can be restored', params: keyP } }, async req => {
-    requireWrite(req)
-    const p = await projectByKey(db, req.me.workspaceId, req.params.key)
+    const p = await projectByKey(db, req, req.params.key)
     await requireProjectAdmin(req, p)
     await db.query('update projects set archived_at = coalesce(archived_at, now()) where id = $1', [p.id])
-    return projectDetail(db, req.me.workspaceId, p.key)
+    return projectDetail(db, req.me.workspaceId, p.key, p.role)
   })
   app.post('/projects/:key/restore', { schema: { tags: T.projects, summary: 'Restore an archived project', params: keyP } }, async req => {
-    requireWrite(req)
-    const p = await projectByKey(db, req.me.workspaceId, req.params.key)
+    const p = await projectByKey(db, req, req.params.key)
     await requireProjectAdmin(req, p)
     await db.query('update projects set archived_at = null where id = $1', [p.id])
-    return projectDetail(db, req.me.workspaceId, p.key)
+    return projectDetail(db, req.me.workspaceId, p.key, p.role)
   })
 
   const createProject = projectBody.required({ name: true }).extend({ key: z.string().regex(/^[A-Z][A-Z0-9]{1,9}$/), template: z.enum(['kanban', 'scrum']) })
   app.post('/projects', { schema: { tags: T.projects, summary: 'Create a project with default statuses', body: createProject } }, async req => {
-    requireWrite(req)
     const b = req.body
     return tx(async d => {
       const [p] = await d.query<{ id: string }>(
         `insert into projects (workspace_id, key, name, description, color, template, lead_id)
          values ($1, $2, $3, $4, coalesce($5, '#6366f1'), $6, $7) returning id`,
         [req.me.workspaceId, b.key, b.name, b.description ?? '', b.color ?? null, b.template, b.leadId ?? req.me.id])
+      // The creator administers the project from the start (and so does the lead, if that is someone else)
+      for (const u of new Set([req.me.id, b.leadId ?? req.me.id]))
+        await d.query(`insert into project_members (project_id, user_id, role, added_by) values ($1, $2, 'admin', $3) on conflict do nothing`, [p!.id, u, req.me.id])
       const st = DEFAULT_STATUSES[b.template]
       for (const [i, [name, c, cat]] of st.entries())
         await d.query('insert into statuses (project_id, name, color, category, position) values ($1, $2, $3, $4, $5)', [p!.id, name, c, cat, i])
-      return projectDetail(d, req.me.workspaceId, b.key)
+      return projectDetail(d, req.me.workspaceId, b.key, 'admin')
     })
   })
 
-  app.get('/projects/:key', { schema: { tags: T.projects, summary: 'Project with workflow, fields, releases, templates, rules and sprints', params: keyP } }, async req => projectDetail(db, req.me.workspaceId, req.params.key))
+  app.get('/projects/:key', { schema: { tags: T.projects, summary: 'Project with workflow, fields, releases, templates, rules and sprints, and my role in it', params: keyP } }, async req => {
+    const p = await projectByKey(db, req, req.params.key)
+    return projectDetail(db, req.me.workspaceId, p.key, p.role)
+  })
 
   app.patch('/projects/:key', { schema: { tags: T.projects, summary: 'Update project details', params: keyP, body: projectBody } }, async req => {
-    requireWrite(req)
-    const p = await projectByKey(db, req.me.workspaceId, req.params.key)
+    const p = await projectByKey(db, req, req.params.key)
     await requireProjectAdmin(req, p)
     const w = pick(req.body, ['name', 'description', 'color', 'leadId', 'boardPrefs', 'layout'], ['boardPrefs', 'layout'])
     if (w.keys.length) await db.query(
       `update projects set ${w.cols.map((c, i) => `${c} = $${i + 2}`).join(', ')} where id = $1`, [p.id, ...w.vals])
-    return projectDetail(db, req.me.workspaceId, req.params.key)
+    return projectDetail(db, req.me.workspaceId, p.key, p.role)
   })
 
   app.delete('/projects/:key', { schema: { tags: T.projects, summary: 'Delete a project (admin only)', params: keyP } }, async (req, reply) => {
     requireAdmin(req)
-    const p = await projectByKey(db, req.me.workspaceId, req.params.key)
+    const p = await projectByKey(db, req, req.params.key)
     await db.query('delete from projects where id = $1', [p.id])
     reply.code(204).send()
   })
 
   app.put('/projects/:key/star', { schema: { tags: T.projects, summary: 'Star a project', params: keyP } }, async (req, reply) => {
-    const p = await projectByKey(db, req.me.workspaceId, req.params.key)
+    const p = await projectByKey(db, req, req.params.key, 'viewer')
     await db.query('insert into stars (user_id, project_id) values ($1, $2) on conflict do nothing', [req.me.id, p.id])
     reply.code(204).send()
   })
   app.delete('/projects/:key/star', { schema: { tags: T.projects, summary: 'Unstar a project', params: keyP } }, async (req, reply) => {
-    const p = await projectByKey(db, req.me.workspaceId, req.params.key)
+    const p = await projectByKey(db, req, req.params.key, 'viewer')
     await db.query('delete from stars where user_id = $1 and project_id = $2', [req.me.id, p.id])
     reply.code(204).send()
   })
 
   // Realtime stream of changes in a project (Server-Sent Events)
   app.get('/projects/:key/events', { schema: { tags: T.projects, summary: 'Live change stream (Server-Sent Events)', params: keyP } }, async (req, reply) => {
-    const p = await projectByKey(db, req.me.workspaceId, req.params.key)
+    const p = await projectByKey(db, req, req.params.key)
     reply.hijack()
     subscribe(p.id, reply)
   })
@@ -211,8 +224,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
 
     const what = kind === 'fields' ? 'custom field' : kind.replace(/s$/, '')
     app.post(`/projects/:key/${kind}`, { schema: { tags: T.config, summary: `Add a ${what}`, params: keyP, body: childCreate[kind] } }, async req => {
-      requireWrite(req)
-      const p = await projectByKey(db, req.me.workspaceId, req.params.key)
+      const p = await projectByKey(db, req, req.params.key)
       await requireProjectAdmin(req, p)
       const body = req.body as Record<string, unknown>
       const w = pick(body, [...cfg.cols], json)
@@ -231,8 +243,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     })
 
     app.patch(`/projects/:key/${kind}/:id`, { schema: { tags: T.config, summary: `Update a ${what}`, params: keyIdP, body: childPatch[kind] } }, async req => {
-      requireWrite(req)
-      const p = await projectByKey(db, req.me.workspaceId, req.params.key)
+      const p = await projectByKey(db, req, req.params.key)
       await requireProjectAdmin(req, p)
       const w = pick(req.body as Record<string, unknown>, [...cfg.cols], json)
       if (!w.keys.length) throw new HttpError(400, 'Nothing to update')
@@ -244,8 +255,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     })
 
     app.delete(`/projects/:key/${kind}/:id`, { schema: { tags: T.config, summary: `Remove a ${what}`, params: keyIdP } }, async (req, reply) => {
-      requireWrite(req)
-      const p = await projectByKey(db, req.me.workspaceId, req.params.key)
+      const p = await projectByKey(db, req, req.params.key)
       await requireProjectAdmin(req, p)
       const r = await db.query(`delete from ${cfg.table} where id = $1 and project_id = $2 returning id`, [req.params.id, p.id])
       if (!r.length) throw new HttpError(404, 'Not found')
@@ -258,9 +268,8 @@ const plugin: FastifyPluginAsyncZod = async app => {
     tags: T.config, summary: 'Mark a release shipped; unfinished work moves to another release', params: keyIdP,
     body: z.object({ moveTo: uuid.nullable().default(null).describe('Release that receives unfinished work') }).default({ moveTo: null }),
   } }, async req => {
-    requireWrite(req)
     const { moveTo } = req.body
-    const p = await projectByKey(db, req.me.workspaceId, req.params.key)
+    const p = await projectByKey(db, req, req.params.key)
     await requireProjectAdmin(req, p)
     return tx(async d => {
       const [r] = await d.query(`update releases set released = true, released_at = now() where id = $1 and project_id = $2 returning *`, [req.params.id, p.id])
@@ -278,8 +287,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
   const sprintCreate = sprintBody.required({ name: true }).extend({ id: uuid.optional().describe('Client-chosen id') })
 
   app.post('/projects/:key/sprints', { schema: { tags: T.sprints, summary: 'Create a sprint', params: keyP, body: sprintCreate } }, async req => {
-    requireWrite(req)
-    const p = await projectByKey(db, req.me.workspaceId, req.params.key)
+    const p = await projectByKey(db, req, req.params.key)
     const b = req.body
     const [s] = await db.query(
       'insert into sprints (id, workspace_id, project_id, name, goal, ends_at) values (coalesce($6::uuid, uuid_v7()), $1, $2, $3, $4, $5) returning *',
@@ -288,8 +296,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
   })
 
   app.patch('/projects/:key/sprints/:id', { schema: { tags: T.sprints, summary: 'Update a sprint', params: keyIdP, body: sprintBody } }, async req => {
-    requireWrite(req)
-    const p = await projectByKey(db, req.me.workspaceId, req.params.key)
+    const p = await projectByKey(db, req, req.params.key)
     const w = pick(req.body, ['name', 'goal', 'endsAt'])
     if (!w.keys.length) throw new HttpError(400, 'Nothing to update')
     const [s] = await db.query(
@@ -300,8 +307,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
   })
 
   app.delete('/projects/:key/sprints/:id', { schema: { tags: T.sprints, summary: 'Delete a planned sprint', params: keyIdP } }, async (req, reply) => {
-    requireWrite(req)
-    const p = await projectByKey(db, req.me.workspaceId, req.params.key)
+    const p = await projectByKey(db, req, req.params.key)
     await db.query(`delete from sprints where id = $1 and project_id = $2 and state = 'planned'`, [req.params.id, p.id])
     reply.code(204).send()
   })
@@ -309,9 +315,8 @@ const plugin: FastifyPluginAsyncZod = async app => {
   app.post('/projects/:key/sprints/:id/start', { schema: {
     tags: T.sprints, summary: 'Start a sprint (snapshots committed points)', params: keyIdP, body: z.object({ endsAt: z.string().datetime() }),
   } }, async req => {
-    requireWrite(req)
     const { endsAt } = req.body
-    const p = await projectByKey(db, req.me.workspaceId, req.params.key)
+    const p = await projectByKey(db, req, req.params.key)
     return tx(async d => {
       const [s] = await d.query(
         `update sprints set state = 'active', started_at = now(), ends_at = $3,
@@ -326,9 +331,8 @@ const plugin: FastifyPluginAsyncZod = async app => {
     tags: T.sprints, summary: 'Complete a sprint; unfinished work moves to another sprint or the backlog', params: keyIdP,
     body: z.object({ moveTo: uuid.nullable().default(null).describe('Sprint that receives unfinished work (null = backlog)') }).default({ moveTo: null }),
   } }, async req => {
-    requireWrite(req)
     const { moveTo } = req.body
-    const p = await projectByKey(db, req.me.workspaceId, req.params.key)
+    const p = await projectByKey(db, req, req.params.key)
     return tx(async d => {
       const [s] = await d.query(
         `update sprints set state = 'closed', completed_at = now(),
@@ -347,16 +351,16 @@ const plugin: FastifyPluginAsyncZod = async app => {
 }
 
 /** Everything the project screens need in one call (workflow, fields, releases, templates, rules, sprints). */
-export async function projectDetail(d: Db, ws: string, key: string) {
-  const p = await projectByKey(d, ws, key)
-  const [project] = await d.query('select * from projects where id = $1', [p.id])
+export async function projectDetail(d: Db, ws: string, key: string, role: ProjectRole) {
+  const [project] = await d.query<any>('select * from projects where workspace_id = $1 and key = $2', [ws, key.toUpperCase()])
+  const p = { id: project.id as string }
   const by = (table: string, order: string) => d.query(`select * from ${table} where project_id = $1 order by ${order}`, [p.id])
   // Sequential: `d` may be a single transaction connection, which can't run queries in parallel
   const statuses = await by('statuses', 'position'), transitions = await by('transitions', 'id')
   const fields = await by('field_defs', 'position'), templates = await by('item_templates', 'name')
   const rules = await by('rules', 'id'), releases = await by('releases', 'release_date nulls last, id')
   const sprints = await by('sprints', 'created_at')
-  return { ...project, statuses, transitions, fields, templates, rules, releases, sprints }
+  return { ...project, role, statuses, transitions, fields, templates, rules, releases, sprints }
 }
 
 export default plugin

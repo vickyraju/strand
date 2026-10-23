@@ -1,7 +1,8 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
 import { db, tx, pick, type Db } from '../db.ts'
-import { HttpError, isAdmin, requireWrite, type Me } from '../auth.ts'
+import { HttpError, type Me } from '../auth.ts'
+import { canJoinWork, minFor, need, roleOf, visible, type ProjectRole } from '../access.ts'
 import { publish } from '../events.ts'
 import { runRules } from '../rules.ts'
 import { projectByKey } from './projects.ts'
@@ -29,22 +30,31 @@ const FIELDS = Object.keys(patchBody.shape)
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-/** "PAY-12" or the issue's uuid → issue row scoped to the caller's workspace, or 404 (Jira calls this issueIdOrKey). */
-async function issueByKey(d: Db, ws: string, ref: string, includeDeleted = false) {
+/** "PAY-12" or the issue's uuid → the issue, or 404 when it does not exist or I cannot see its project (Jira calls this issueIdOrKey).
+ *  `min` is the project role the request needs: by default reading needs any role and changing things needs member. */
+export async function issueByKey(d: Db, req: { me: Me; method: string }, ref: string, includeDeleted = false, min?: ProjectRole) {
   const live = includeDeleted ? '' : 'and i.deleted_at is null'
   const byId = UUID.test(ref)
   const m = byId ? null : /^([A-Za-z][A-Za-z0-9]*)-(\d+)$/.exec(ref)
   if (!byId && !m) throw new HttpError(404, 'Issue not found')
+  const ws = req.me.workspaceId
   const [i] = byId
     ? await d.query<any>(`${ISSUE} where i.workspace_id = $1 and i.id = $2 ${live}`, [ws, ref])
     : await d.query<any>(`${ISSUE} where i.workspace_id = $1 and p.key = $2 and i.number = $3 ${live}`, [ws, m![1]!.toUpperCase(), Number(m![2])])
-  if (!i) throw new HttpError(404, 'Issue not found')
+  const role = i ? await roleOf(d, req.me, i.projectId) : null
+  if (!i || !role) throw new HttpError(404, 'Issue not found')
+  need(role, min ?? minFor(req.method))
   return i
 }
 
+/** Tell someone about an issue, unless it is me or they cannot see the project (a person removed from a project hears nothing more from it). */
 const note = (d: Db, to: string, me: Me, issueId: string, kind: string, text: string) =>
   to === me.id ? null : d.query(
-    'insert into notifications (user_id, actor_id, issue_id, kind, text) values ($1, $2, $3, $4, $5)', [to, me.id, issueId, kind, text])
+    `insert into notifications (user_id, actor_id, issue_id, kind, text)
+     select $1, $2, i.id, $4, $5 from issues i
+      where i.id = $3 and (exists (select 1 from project_members pm where pm.project_id = i.project_id and pm.user_id = $1)
+                        or exists (select 1 from memberships m where m.user_id = $1 and m.workspace_id = i.workspace_id and m.role in ('owner', 'admin')))`,
+    [to, me.id, issueId, kind, text])
 
 /** True when `@name` appears in the text as a whole name (`@Ann` does not match inside `@Anna`). */
 const mentions = (text: string, name: string) => {
@@ -55,12 +65,14 @@ const mentions = (text: string, name: string) => {
   return false
 }
 
-/** Workspace members written as `@Full Name` in a text, except the author. Inactive accounts are skipped. */
-export async function mentionedIn(d: Db, workspaceId: string, text: string, authorId: string): Promise<string[]> {
+/** People written as `@Full Name` in a text, except the author: only those who can see the project (its members and workspace admins). */
+export async function mentionedIn(d: Db, projectId: string, text: string, authorId: string): Promise<string[]> {
   if (!text.includes('@')) return []
   const candidates = await d.query<{ id: string; name: string }>(
-    `select u.id, u.name from users u join memberships m on m.user_id = u.id
-      where m.workspace_id = $1 and u.active and u.id <> $3 and position('@' || u.name in $2) > 0`, [workspaceId, text, authorId])
+    `select u.id, u.name from users u
+      where u.active and u.id <> $3 and position('@' || u.name in $2) > 0
+        and (exists (select 1 from project_members pm where pm.project_id = $1 and pm.user_id = u.id)
+          or exists (select 1 from memberships m join projects p on p.workspace_id = m.workspace_id where p.id = $1 and m.user_id = u.id and m.role in ('owner', 'admin')))`, [projectId, text, authorId])
   return candidates.filter(c => mentions(text, c.name)).map(c => c.id)
 }
 
@@ -102,7 +114,9 @@ async function editorsOf(d: Db, issueId: string) {
 async function applyPatch(d: Db, me: Me, cur: any, patch: z.infer<typeof patchBody>, o: { ifMatch: number | null; override: boolean }) {
   if (o.ifMatch !== null && o.ifMatch !== cur.version) throw new HttpError(409, `Edited elsewhere (current version ${cur.version})`)
   const [lead] = await d.query<{ leadId: string | null }>('select lead_id from projects where id = $1', [cur.projectId])
-  const override = o.override && (isAdmin(me.role) || lead?.leadId === me.id)
+  const override = o.override && (await roleOf(d, me, cur.projectId)) === 'admin'
+  if (patch.assigneeId && patch.assigneeId !== cur.assigneeId && !(await canJoinWork(d, cur.projectId, patch.assigneeId)))
+    throw new HttpError(400, 'The assignee must be a member of this project')
   if (patch.statusId && !override) await checkTransition(d, cur.projectId, cur.statusId, patch.statusId)
   if (patch.parentId === cur.id) throw new HttpError(400, 'An item cannot be its own parent')
 
@@ -136,7 +150,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
   // Board/list page of a project, in backlog order. Keyset-paginated: pass `next` back as `cursor`.
   app.get('/projects/:key/issues', { schema: { tags: TAG, summary: 'List a project\'s issues in backlog order (keyset-paginated)', params: projKeyP, querystring: listQuery } }, async req => {
     const q = req.query
-    const p = await projectByKey(db, req.me.workspaceId, req.params.key)
+    const p = await projectByKey(db, req, req.params.key)
     const args: unknown[] = [p.id]
     const where = ['i.project_id = $1', 'i.deleted_at is null']
     const add = (sql: string, v: unknown) => { args.push(v); where.push(sql.replace('?', `$${args.length}`)) }
@@ -165,11 +179,11 @@ const plugin: FastifyPluginAsyncZod = async app => {
     id: uuid.optional().describe('Client-chosen id: lets the app keep its local id, and makes a retried create a conflict instead of a duplicate'),
   })
   app.post('/projects/:key/issues', { schema: { tags: TAG, summary: 'Create an issue (key and rank are assigned by the server)', params: projKeyP, body: createBody } }, async req => {
-    requireWrite(req)
     const b = req.body
-    const p = await projectByKey(db, req.me.workspaceId, req.params.key)
+    const p = await projectByKey(db, req, req.params.key)
     return tx(async d => {
       const [pr] = await d.query<{ leadId: string | null }>('select lead_id from projects where id = $1', [p.id])
+      if (b.assigneeId && !(await canJoinWork(d, p.id, b.assigneeId))) throw new HttpError(400, 'The assignee must be a member of this project')
       let statusId = b.statusId
       if (!statusId) {
         const [s] = await d.query<{ id: string }>('select id from statuses where project_id = $1 order by position limit 1', [p.id])
@@ -198,7 +212,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     tags: TAG, summary: 'Issue, with its related records. `expand` picks which; omit it for all (comments and history have their own paginated endpoints).',
     params: keyP, querystring: z.object({ expand: z.string().optional().describe(`Comma-separated: ${EXPAND.join(', ')}`) }),
   } }, async req => {
-    const i = await issueByKey(db, req.me.workspaceId, req.params.key)
+    const i = await issueByKey(db, req, req.params.key)
     const want = new Set(req.query.expand ? req.query.expand.split(',').map(x => x.trim()).filter(Boolean) : EXPAND)
     for (const w of want) if (!(EXPAND as readonly string[]).includes(w)) throw new HttpError(400, `Unknown expand value: ${w}`)
     const out: Record<string, unknown> = { ...i }
@@ -225,7 +239,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
   const cursorOf = (ts: string, id: string) => Buffer.from(`${ts}|${id}`).toString('base64url')
   const readCursor = (c?: string) => { if (!c) return null; const [t, id] = Buffer.from(c, 'base64url').toString().split('|'); if (!t || !id || !UUID.test(id) || isNaN(Date.parse(t))) throw new HttpError(400, 'Invalid cursor'); return [t, id] as const }
   app.get('/issues/:key/comments', { schema: { tags: ['Comments & work logs'], summary: 'Comments on an issue, oldest first (keyset-paginated)', params: keyP, querystring: page } }, async req => {
-    const i = await issueByKey(db, req.me.workspaceId, req.params.key)
+    const i = await issueByKey(db, req, req.params.key)
     const cur = readCursor(req.query.cursor)
     const rows = await db.query<any>(
       `select *, to_char(created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as cursor_ts from comments where issue_id = $1 ${cur ? 'and (created_at, id) > ($3::timestamptz, $4::uuid)' : ''} order by created_at, id limit $2`,
@@ -234,7 +248,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     return { items, next: more ? cursorOf(items.at(-1).cursorTs, items.at(-1).id) : null }
   })
   app.get('/issues/:key/activity', { schema: { tags: TAG, summary: 'Change history of an issue, newest first (keyset-paginated)', params: keyP, querystring: page } }, async req => {
-    const i = await issueByKey(db, req.me.workspaceId, req.params.key)
+    const i = await issueByKey(db, req, req.params.key)
     const cur = readCursor(req.query.cursor)
     const rows = await db.query<any>(
       `select *, to_char(created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as cursor_ts from activity where issue_id = $1 ${cur ? 'and (created_at, id) < ($3::timestamptz, $4::uuid)' : ''} order by created_at desc, id desc limit $2`,
@@ -250,37 +264,33 @@ const plugin: FastifyPluginAsyncZod = async app => {
       'x-workflow-override': z.string().optional().describe('Send 1 to skip the workflow check. Honored only for workspace admins and the project lead (used when moving work off a status that is being deleted).'),
     }),
   } }, async req => {
-    requireWrite(req)
     const ifMatch = req.headers['if-match'] ? Number(String(req.headers['if-match']).replace(/"/g, '')) : null
-    return tx(async d => applyPatch(d, req.me, await issueByKey(d, req.me.workspaceId, req.params.key), req.body, { ifMatch, override: req.headers['x-workflow-override'] === '1' }))
+    return tx(async d => applyPatch(d, req.me, await issueByKey(d, req, req.params.key), req.body, { ifMatch, override: req.headers['x-workflow-override'] === '1' }))
   })
 
   // ── Bulk (up to 200 issues, all or nothing: nothing changes if any issue is missing or refuses the change) ──
   const refs = z.array(z.string()).min(1).max(200).describe('Issue keys (PAY-12) or ids')
   const bulkResult = (n: number) => ({ count: n })
   app.post('/issues/bulk/edit', { schema: { tags: ['Issues: bulk'], summary: 'Apply the same field changes to many issues (workflow rules apply to each)', body: z.object({ issues: refs, patch: patchBody }) } }, async req => {
-    requireWrite(req)
     return tx(async d => {
       const out: any[] = []
-      for (const ref of [...new Set(req.body.issues)]) out.push(await applyPatch(d, req.me, await issueByKey(d, req.me.workspaceId, ref), req.body.patch, { ifMatch: null, override: false }))
+      for (const ref of [...new Set(req.body.issues)]) out.push(await applyPatch(d, req.me, await issueByKey(d, req, ref), req.body.patch, { ifMatch: null, override: false }))
       return { count: out.length, issues: out }
     })
   })
   app.post('/issues/bulk/delete', { schema: { tags: ['Issues: bulk'], summary: 'Soft-delete many issues (restorable)', body: z.object({ issues: refs }) } }, async req => {
-    requireWrite(req)
     return tx(async d => {
       const rows = []
-      for (const ref of [...new Set(req.body.issues)]) rows.push(await issueByKey(d, req.me.workspaceId, ref))
+      for (const ref of [...new Set(req.body.issues)]) rows.push(await issueByKey(d, req, ref))
       await d.query('update issues set deleted_at = now(), version = version + 1 where id = any($1::uuid[])', [rows.map(r => r.id)])
       for (const pid of new Set(rows.map(r => r.projectId))) await publish(d, pid, { type: 'issue.deleted' })
       return bulkResult(rows.length)
     })
   })
   app.post('/issues/bulk/restore', { schema: { tags: ['Issues: bulk'], summary: 'Restore many soft-deleted issues (Undo)', body: z.object({ issues: refs }) } }, async req => {
-    requireWrite(req)
     return tx(async d => {
       const rows = []
-      for (const ref of [...new Set(req.body.issues)]) rows.push(await issueByKey(d, req.me.workspaceId, ref, true))
+      for (const ref of [...new Set(req.body.issues)]) rows.push(await issueByKey(d, req, ref, true))
       await d.query('update issues set deleted_at = null, version = version + 1 where id = any($1::uuid[])', [rows.map(r => r.id)])
       for (const pid of new Set(rows.map(r => r.projectId))) await publish(d, pid, { type: 'issue.created' })
       return bulkResult(rows.length)
@@ -289,9 +299,8 @@ const plugin: FastifyPluginAsyncZod = async app => {
 
   // Soft delete + restore back the client's Undo
   app.delete('/issues/:key', { schema: { tags: TAG, summary: 'Soft-delete an issue (restorable)', params: keyP } }, async (req, reply) => {
-    requireWrite(req)
     await tx(async d => {
-      const i = await issueByKey(d, req.me.workspaceId, req.params.key)
+      const i = await issueByKey(d, req, req.params.key)
       await d.query('update issues set deleted_at = now(), version = version + 1 where id = $1', [i.id])
       await publish(d, i.projectId, { type: 'issue.deleted', id: i.id, key: i.key })
     })
@@ -299,7 +308,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
   })
   // Opening a work item records it for "Your work → Viewed". Anyone who can see the item may record that they did (read-only users too).
   app.post('/issues/:key/view', { schema: { tags: TAG, summary: 'Record that I opened this work item (Your work → Viewed keeps my newest 50)', params: keyP } }, async (req, reply) => {
-    const i = await issueByKey(db, req.me.workspaceId, req.params.key)
+    const i = await issueByKey(db, req, req.params.key, false, 'viewer')
     await tx(async d => {
       await d.query('insert into issue_views (user_id, issue_id) values ($1, $2) on conflict (user_id, issue_id) do update set viewed_at = now()', [req.me.id, i.id])
       await d.query('delete from issue_views where user_id = $1 and issue_id in (select issue_id from issue_views where user_id = $1 order by viewed_at desc offset 50)', [req.me.id])
@@ -308,9 +317,8 @@ const plugin: FastifyPluginAsyncZod = async app => {
   })
 
   app.post('/issues/:key/restore', { schema: { tags: TAG, summary: 'Restore a soft-deleted issue (Undo)', params: keyP } }, async req => {
-    requireWrite(req)
     return tx(async d => {
-      const i = await issueByKey(d, req.me.workspaceId, req.params.key, true)
+      const i = await issueByKey(d, req, req.params.key, true)
       await d.query('update issues set deleted_at = null, version = version + 1 where id = $1', [i.id])
       await publish(d, i.projectId, { type: 'issue.created', id: i.id })
       return (await d.query<any>(`${ISSUE} where i.id = $1`, [i.id]))[0]
@@ -320,9 +328,8 @@ const plugin: FastifyPluginAsyncZod = async app => {
   // ── Links & watchers ──
   const linkBody = z.object({ type: z.enum(['blocks', 'relates']), targetKey: z.string() })
   app.post('/issues/:key/links', { schema: { tags: ['Links & watchers'], summary: 'Link two issues (blocks / relates)', params: keyP, body: linkBody } }, async (req, reply) => {
-    requireWrite(req)
     const b = req.body
-    const [a, t] = await Promise.all([issueByKey(db, req.me.workspaceId, req.params.key), issueByKey(db, req.me.workspaceId, b.targetKey)])
+    const [a, t] = await Promise.all([issueByKey(db, req, req.params.key), issueByKey(db, req, b.targetKey, false, 'viewer')])
     if (a.id === t.id) throw new HttpError(400, 'Cannot link an item to itself')
     await db.query('insert into issue_links (issue_id, target_id, type) values ($1, $2, $3) on conflict do nothing', [a.id, t.id, b.type])
     reply.code(204).send()
@@ -331,19 +338,18 @@ const plugin: FastifyPluginAsyncZod = async app => {
     tags: ['Links & watchers'], summary: 'Remove a link', params: keyP,
     querystring: z.object({ type: z.enum(['blocks', 'relates']), target: z.string().describe('Key of the linked issue') }),
   } }, async (req, reply) => {
-    requireWrite(req)
     const q = { type: req.query.type, targetKey: req.query.target }
-    const [a, t] = await Promise.all([issueByKey(db, req.me.workspaceId, req.params.key), issueByKey(db, req.me.workspaceId, q.targetKey)])
+    const [a, t] = await Promise.all([issueByKey(db, req, req.params.key), issueByKey(db, req, q.targetKey, false, 'viewer')])
     await db.query('delete from issue_links where issue_id = $1 and target_id = $2 and type = $3', [a.id, t.id, q.type])
     reply.code(204).send()
   })
   app.put('/issues/:key/watch', { schema: { tags: ['Links & watchers'], summary: 'Watch an issue', params: keyP } }, async (req, reply) => {
-    const i = await issueByKey(db, req.me.workspaceId, req.params.key)
+    const i = await issueByKey(db, req, req.params.key, false, 'viewer')
     await db.query('insert into issue_watchers (issue_id, user_id) values ($1, $2) on conflict do nothing', [i.id, req.me.id])
     reply.code(204).send()
   })
   app.delete('/issues/:key/watch', { schema: { tags: ['Links & watchers'], summary: 'Stop watching an issue', params: keyP } }, async (req, reply) => {
-    const i = await issueByKey(db, req.me.workspaceId, req.params.key)
+    const i = await issueByKey(db, req, req.params.key, false, 'viewer')
     await db.query('delete from issue_watchers where issue_id = $1 and user_id = $2', [i.id, req.me.id])
     reply.code(204).send()
   })
@@ -353,8 +359,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     tags: TAG, summary: 'Heartbeat: I am editing this issue. Broadcasts `issue.editing` to the project stream; prunes stale rows.',
     params: keyP,
   } }, async (req, reply) => {
-    requireWrite(req)
-    const i = await issueByKey(db, req.me.workspaceId, req.params.key)
+    const i = await issueByKey(db, req, req.params.key)
     await db.query(
       `insert into issue_editors (issue_id, user_id) values ($1, $2)
          on conflict (issue_id, user_id) do update set last_heartbeat = now()`, [i.id, req.me.id])
@@ -363,7 +368,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     reply.code(204).send()
   })
   app.delete('/issues/:key/presence', { schema: { tags: TAG, summary: 'I stopped editing this issue (panel closed).', params: keyP } }, async (req, reply) => {
-    const i = await issueByKey(db, req.me.workspaceId, req.params.key)
+    const i = await issueByKey(db, req, req.params.key, false, 'viewer')
     await db.query('delete from issue_editors where issue_id = $1 and user_id = $2', [i.id, req.me.id])
     await publish(db, i.projectId, { type: 'issue.editing', key: i.key, editors: await editorsOf(db, i.id) })
     reply.code(204).send()
@@ -373,13 +378,12 @@ const plugin: FastifyPluginAsyncZod = async app => {
   const body = z.object({ body: z.string().min(1).max(20000) })
   const commentCreate = body.extend({ id: uuid.optional().describe('Client-chosen id') })
   app.post('/issues/:key/comments', { schema: { tags: ['Comments & work logs'], summary: 'Add a comment (notifies watchers)', params: keyP, body: commentCreate } }, async req => {
-    requireWrite(req)
     const b = req.body
     return tx(async d => {
-      const i = await issueByKey(d, req.me.workspaceId, req.params.key)
+      const i = await issueByKey(d, req, req.params.key, false, 'viewer')                // read-only people can comment, as in Jira
       const [c] = await d.query('insert into comments (id, issue_id, author_id, body) values (coalesce($4::uuid, uuid_v7()), $1, $2, $3) returning *', [i.id, req.me.id, b.body, b.id ?? null])
       // A mention tells that person; everyone already watching hears "commented" (not both); the commenter and the mentioned start watching
-      const mentioned = await mentionedIn(d, req.me.workspaceId, b.body, req.me.id)
+      const mentioned = await mentionedIn(d, i.projectId, b.body, req.me.id)
       for (const u of mentioned) await note(d, u, req.me, i.id, 'mentioned', 'mentioned you in a comment')
       for (const u of (await watchersOf(d, i)).filter(w => !mentioned.includes(w))) await note(d, u, req.me, i.id, 'commented', 'commented on a work item')
       for (const u of [req.me.id, ...mentioned]) await d.query('insert into issue_watchers (issue_id, user_id) values ($1, $2) on conflict do nothing', [i.id, u])
@@ -388,16 +392,18 @@ const plugin: FastifyPluginAsyncZod = async app => {
     })
   })
   app.patch('/comments/:id', { schema: { tags: ['Comments & work logs'], summary: 'Edit your own comment', params: idP, body } }, async req => {
-    requireWrite(req)
+    const args: unknown[] = [req.params.id, req.me.id, req.body.body]
+    const see = visible(req.me, 'i.project_id', args)
     const [c] = await db.query(
-      `update comments set body = $3, edited_at = now() where id = $1 and author_id = $2 returning *`,
-      [req.params.id, req.me.id, req.body.body])
+      `update comments set body = $3, edited_at = now() where id = $1 and author_id = $2
+         and exists (select 1 from issues i where i.id = comments.issue_id and ${see}) returning *`, args)
     if (!c) throw new HttpError(404, 'Not found, or not yours')
     return c
   })
   app.delete('/comments/:id', { schema: { tags: ['Comments & work logs'], summary: 'Delete your own comment', params: idP } }, async (req, reply) => {
-    requireWrite(req)
-    const r = await db.query('delete from comments where id = $1 and author_id = $2 returning id', [req.params.id, req.me.id])
+    const args: unknown[] = [req.params.id, req.me.id]
+    const see = visible(req.me, 'i.project_id', args)
+    const r = await db.query(`delete from comments where id = $1 and author_id = $2 and exists (select 1 from issues i where i.id = comments.issue_id and ${see}) returning id`, args)
     if (!r.length) throw new HttpError(404, 'Not found, or not yours')
     reply.code(204).send()
   })
@@ -407,16 +413,16 @@ const plugin: FastifyPluginAsyncZod = async app => {
     tags: ['Comments & work logs'], summary: 'Log time on an issue', params: keyP,
     body: z.object({ id: uuid.optional().describe('Client-chosen id'), minutes: z.number().int().positive(), date, note: z.string().default('') }),
   } }, async req => {
-    requireWrite(req)
     const b = req.body
-    const i = await issueByKey(db, req.me.workspaceId, req.params.key)
+    const i = await issueByKey(db, req, req.params.key)
     const [w] = await db.query('insert into worklogs (id, issue_id, user_id, minutes, date, note) values (coalesce($6::uuid, uuid_v7()), $1, $2, $3, $4, $5) returning *',
       [i.id, req.me.id, b.minutes, b.date, b.note, b.id ?? null])
     return w
   })
   app.delete('/worklogs/:id', { schema: { tags: ['Comments & work logs'], summary: 'Delete your own work log', params: idP } }, async (req, reply) => {
-    requireWrite(req)
-    const r = await db.query('delete from worklogs where id = $1 and user_id = $2 returning id', [req.params.id, req.me.id])
+    const args: unknown[] = [req.params.id, req.me.id]
+    const see = visible(req.me, 'i.project_id', args)
+    const r = await db.query(`delete from worklogs where id = $1 and user_id = $2 and exists (select 1 from issues i where i.id = worklogs.issue_id and ${see}) returning id`, args)
     if (!r.length) throw new HttpError(404, 'Not found, or not yours')
     reply.code(204).send()
   })

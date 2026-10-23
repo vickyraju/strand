@@ -4,9 +4,9 @@ import type { FastifyRequest } from 'fastify'
 import { createHash } from 'node:crypto'
 import { db, tx } from './db.ts'
 
-export type Role = 'owner' | 'admin' | 'member' | 'viewer'
+export type Role = 'owner' | 'admin' | 'member'
 /** `via` is how this request signed in: an Entra session (the web app) or a personal access token (scripts). */
-export interface Me { id: string; email: string; name: string; workspaceId: string; role: Role; via: 'entra' | 'pat' }
+export interface Me { id: string; email: string; name: string; workspaceId: string; role: Role; /** Workspace owner or admin: sees and administers every project. */ admin: boolean; via: 'entra' | 'pat' }
 
 // Personal access tokens look like jbp_<43 url-safe characters>. The prefix lets secret scanners recognise a leaked one.
 export const PAT_PREFIX = 'jbp_'
@@ -115,7 +115,7 @@ export async function authenticate(req: FastifyRequest) {
          else memberships.role end
        returning role`,
       [ws!.id, u!.id, want, who.admin])
-    return { id: u!.id, email: who.email, name: who.name, workspaceId: ws!.id, role: m!.role, via: 'entra' as const }
+    return { id: u!.id, email: who.email, name: who.name, workspaceId: ws!.id, role: m!.role, admin: m!.role !== 'member', via: 'entra' as const }
   })
 }
 
@@ -135,15 +135,11 @@ async function authenticateToken(token: string): Promise<Me> {
   if (!t.active) throw new HttpError(403, 'Account is deactivated')
   // "last used" is written at most once a minute per token, so a busy script does not turn every call into a write
   await db.query(`update personal_access_tokens set last_used_at = now() where id = $1 and (last_used_at is null or last_used_at < now() - interval '1 minute')`, [t.id])
-  return { id: t.userId, email: t.email, name: t.name, workspaceId: t.workspaceId, role: t.role, via: 'pat' }
+  return { id: t.userId, email: t.email, name: t.name, workspaceId: t.workspaceId, role: t.role, admin: t.role !== 'member', via: 'pat' }
 }
 
-export const canWrite = (r: Role) => r !== 'viewer'
 export const isAdmin = (r: Role) => r === 'owner' || r === 'admin'
 
-export function requireWrite(req: FastifyRequest) {
-  if (!canWrite(req.me.role)) throw new HttpError(403, 'Read-only access')
-}
 /** Managing tokens needs a real sign-in: a token (possibly leaked) must not be able to mint more of itself. */
 export function requireSignIn(req: FastifyRequest) {
   if (req.me.via !== 'entra') throw new HttpError(403, 'Sign in with your account to manage access tokens')

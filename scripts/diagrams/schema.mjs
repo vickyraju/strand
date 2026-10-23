@@ -71,7 +71,9 @@ export function parseSchema() {
       c.ref = ref; c.onDelete = onDelete ?? null
     }
     for (const m of sql.matchAll(/^drop table (\w+)\s*;/gim)) {
-      if (!tables.delete(m[1])) throw new Error(`${f}: drop of unknown table ${m[1]}`)
+      if (!tables.has(m[1])) throw new Error(`${f}: drop of unknown table ${m[1]}`)
+      if (tables.get(m[1]).file === f) continue   // dropped and created again in this file: the new one stands
+      tables.delete(m[1])
       for (const t of tables.values()) if (t.columns.some(c => c.ref === m[1])) throw new Error(`${t.name} still references the dropped table ${m[1]}`)
     }
     const all = [...sql.matchAll(/^alter table \w+\s+add (?:column|foreign key)/gim)].length

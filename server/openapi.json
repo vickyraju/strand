@@ -459,9 +459,11 @@
                       "enum": [
                         "owner",
                         "admin",
-                        "member",
-                        "viewer"
+                        "member"
                       ]
+                    },
+                    "admin": {
+                      "type": "boolean"
                     }
                   },
                   "required": [
@@ -469,7 +471,8 @@
                     "email",
                     "name",
                     "workspaceId",
-                    "role"
+                    "role",
+                    "admin"
                   ],
                   "additionalProperties": false
                 }
@@ -621,7 +624,7 @@
     },
     "/api/v1/users/search": {
       "get": {
-        "summary": "Find users by name or e-mail, in name order (keyset-paginated)",
+        "summary": "Find users by name or e-mail, in name order (keyset-paginated). With `project`, only people who can work in that project",
         "tags": [
           "Account"
         ],
@@ -655,6 +658,15 @@
             "in": "query",
             "name": "limit",
             "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "project",
+            "required": false,
+            "description": "Project key or id: only its members (and workspace admins)"
           }
         ],
         "responses": {
@@ -807,7 +819,7 @@
     },
     "/api/v1/projects": {
       "get": {
-        "summary": "List active projects with star flag and open-issue count (first 1000 by name; use /projects/search for more)",
+        "summary": "List the active projects I can see, with star flag and open-issue count (first 1000 by name; use /projects/search for more)",
         "tags": [
           "Projects"
         ],
@@ -1048,6 +1060,15 @@
                     "createdAt": {
                       "type": "string",
                       "description": "ISO 8601 timestamp"
+                    },
+                    "role": {
+                      "type": "string",
+                      "enum": [
+                        "admin",
+                        "member",
+                        "viewer"
+                      ],
+                      "description": "My role in this project"
                     },
                     "statuses": {
                       "type": "array",
@@ -1442,6 +1463,7 @@
                     "layout",
                     "sample",
                     "createdAt",
+                    "role",
                     "statuses",
                     "transitions",
                     "fields",
@@ -1858,6 +1880,15 @@
                       "type": "string",
                       "description": "ISO 8601 timestamp"
                     },
+                    "role": {
+                      "type": "string",
+                      "enum": [
+                        "admin",
+                        "member",
+                        "viewer"
+                      ],
+                      "description": "My role in this project"
+                    },
                     "statuses": {
                       "type": "array",
                       "items": {
@@ -2251,6 +2282,7 @@
                     "layout",
                     "sample",
                     "createdAt",
+                    "role",
                     "statuses",
                     "transitions",
                     "fields",
@@ -2429,6 +2461,15 @@
                       "type": "string",
                       "description": "ISO 8601 timestamp"
                     },
+                    "role": {
+                      "type": "string",
+                      "enum": [
+                        "admin",
+                        "member",
+                        "viewer"
+                      ],
+                      "description": "My role in this project"
+                    },
                     "statuses": {
                       "type": "array",
                       "items": {
@@ -2822,6 +2863,7 @@
                     "layout",
                     "sample",
                     "createdAt",
+                    "role",
                     "statuses",
                     "transitions",
                     "fields",
@@ -2922,7 +2964,7 @@
     },
     "/api/v1/projects/{key}": {
       "get": {
-        "summary": "Project with workflow, fields, releases, templates, rules and sprints",
+        "summary": "Project with workflow, fields, releases, templates, rules and sprints, and my role in it",
         "tags": [
           "Projects"
         ],
@@ -2999,6 +3041,15 @@
                     "createdAt": {
                       "type": "string",
                       "description": "ISO 8601 timestamp"
+                    },
+                    "role": {
+                      "type": "string",
+                      "enum": [
+                        "admin",
+                        "member",
+                        "viewer"
+                      ],
+                      "description": "My role in this project"
                     },
                     "statuses": {
                       "type": "array",
@@ -3393,6 +3444,7 @@
                     "layout",
                     "sample",
                     "createdAt",
+                    "role",
                     "statuses",
                     "transitions",
                     "fields",
@@ -3607,6 +3659,15 @@
                       "type": "string",
                       "description": "ISO 8601 timestamp"
                     },
+                    "role": {
+                      "type": "string",
+                      "enum": [
+                        "admin",
+                        "member",
+                        "viewer"
+                      ],
+                      "description": "My role in this project"
+                    },
                     "statuses": {
                       "type": "array",
                       "items": {
@@ -4000,6 +4061,7 @@
                     "layout",
                     "sample",
                     "createdAt",
+                    "role",
                     "statuses",
                     "transitions",
                     "fields",
@@ -8786,6 +8848,662 @@
               }
             }
           },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{key}/members": {
+      "get": {
+        "summary": "People in the project and their roles (workspace admins, who can see every project, are not listed)",
+        "tags": [
+          "Project people"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "description": "Project key (PAY) or id (uuid)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "userId": {
+                        "type": "string",
+                        "description": "uuid"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "email": {
+                        "type": "string"
+                      },
+                      "initials": {
+                        "type": "string"
+                      },
+                      "color": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "nullable": true,
+                        "type": "string"
+                      },
+                      "role": {
+                        "type": "string",
+                        "enum": [
+                          "admin",
+                          "member",
+                          "viewer"
+                        ]
+                      },
+                      "addedAt": {
+                        "type": "string",
+                        "description": "ISO 8601 timestamp"
+                      }
+                    },
+                    "required": [
+                      "userId",
+                      "name",
+                      "email",
+                      "initials",
+                      "color",
+                      "title",
+                      "role",
+                      "addedAt"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Add people to the project with a role (project admins only). Someone already in the project keeps their current role",
+        "tags": [
+          "Project people"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "userIds": {
+                    "minItems": 1,
+                    "maxItems": 100,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                    }
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "admin",
+                      "member",
+                      "viewer"
+                    ]
+                  }
+                },
+                "required": [
+                  "userIds",
+                  "role"
+                ]
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "description": "Project key (PAY) or id (uuid)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "userId": {
+                        "type": "string",
+                        "description": "uuid"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "email": {
+                        "type": "string"
+                      },
+                      "initials": {
+                        "type": "string"
+                      },
+                      "color": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "nullable": true,
+                        "type": "string"
+                      },
+                      "role": {
+                        "type": "string",
+                        "enum": [
+                          "admin",
+                          "member",
+                          "viewer"
+                        ]
+                      },
+                      "addedAt": {
+                        "type": "string",
+                        "description": "ISO 8601 timestamp"
+                      }
+                    },
+                    "required": [
+                      "userId",
+                      "name",
+                      "email",
+                      "initials",
+                      "color",
+                      "title",
+                      "role",
+                      "addedAt"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{key}/members/{userId}": {
+      "patch": {
+        "summary": "Change someone's role (project admins only)",
+        "tags": [
+          "Project people"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "admin",
+                      "member",
+                      "viewer"
+                    ]
+                  }
+                },
+                "required": [
+                  "role"
+                ]
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "description": "Project key (PAY) or id (uuid)"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "path",
+            "name": "userId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "userId": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "email": {
+                      "type": "string"
+                    },
+                    "initials": {
+                      "type": "string"
+                    },
+                    "color": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "nullable": true,
+                      "type": "string"
+                    },
+                    "role": {
+                      "type": "string",
+                      "enum": [
+                        "admin",
+                        "member",
+                        "viewer"
+                      ]
+                    },
+                    "addedAt": {
+                      "type": "string",
+                      "description": "ISO 8601 timestamp"
+                    }
+                  },
+                  "required": [
+                    "userId",
+                    "name",
+                    "email",
+                    "initials",
+                    "color",
+                    "title",
+                    "role",
+                    "addedAt"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Remove someone from the project (project admins), or leave it yourself",
+        "tags": [
+          "Project people"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "description": "Project key (PAY) or id (uuid)"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "path",
+            "name": "userId",
+            "required": true
+          }
+        ],
+        "responses": {
           "400": {
             "description": "Invalid input; `errors` maps each bad field to a message",
             "content": {
@@ -13878,7 +14596,7 @@
     },
     "/api/v1/labels": {
       "get": {
-        "summary": "Labels used in the workspace, alphabetical (up to 50; type part of a name to narrow)",
+        "summary": "Labels used in projects I can see, alphabetical (up to 50; type part of a name to narrow)",
         "tags": [
           "Search & work"
         ],

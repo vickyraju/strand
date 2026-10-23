@@ -17,6 +17,14 @@ const call = async (method: string, path: string, body?: unknown, who = 'owner@x
   return { status: r.statusCode, body: r.body ? JSON.parse(r.body) : null }
 }
 
+/** Make `email` a member of project `key` (creating the person if they have never signed in). Global admins need no membership. */
+const join = async (key: string, email: string, role: 'admin' | 'member' | 'viewer' = 'member') => {
+  await call('GET', '/api/v1/me', undefined, email)
+  await pool.query(
+    `insert into project_members (project_id, user_id, role) select p.id, u.id, $3 from projects p, users u where p.key = $1 and u.email = $2
+       on conflict (project_id, user_id) do update set role = $3`, [key, email, role])
+}
+
 before(async () => {
   if (skip) return
   pool = new pg.Pool({ connectionString: url })
@@ -66,6 +74,7 @@ test('automation rule, notifications and search', { skip }, async () => {
   })
   const i = (await call('POST', '/api/v1/projects/PAY/issues', { title: 'Refund webhook flaky' })).body
   const me = (await call('GET', '/api/v1/me')).body
+  await join('PAY', 'dev2@x.com')
   const other = (await call('GET', '/api/v1/me', undefined, 'dev2@x.com')).body
   await call('PATCH', `/api/v1/issues/${i.key}`, { assigneeId: other.id })     // notifies dev2
   const moved = (await call('PATCH', `/api/v1/issues/${i.key}`, { statusId: doing.id })).body
@@ -89,15 +98,6 @@ test('automation rule, notifications and search', { skip }, async () => {
   assert.deepEqual((await call('GET', '/api/v1/me/recent', undefined, 'dev2@x.com')).body.map((x: any) => x.key), [])
   const recent = (await call('GET', '/api/v1/me/recent')).body.map((x: any) => x.key)
   assert.equal(recent[0], i.key)   // newest first: the just-created issue is the owner's latest touch
-})
-
-test('roles: viewers read, members write, only admins delete projects', { skip }, async () => {
-  await call('GET', '/api/v1/me', undefined, 'viewer@x.com')
-  await pool.query(`update memberships set role = 'viewer' where user_id = (select id from users where email = 'viewer@x.com')`)
-  assert.equal((await call('GET', '/api/v1/projects', undefined, 'viewer@x.com')).status, 200)
-  assert.equal((await call('POST', '/api/v1/projects/PAY/issues', { title: 'nope' }, 'viewer@x.com')).status, 403)
-  assert.equal((await call('DELETE', '/api/v1/projects/PAY', undefined, 'dev2@x.com')).status, 403)
-  assert.equal((await call('POST', '/api/v1/projects', { name: 'Bad', key: 'bad', template: 'kanban' })).status, 400)
 })
 
 test('sprints: one active at a time, completion snapshots and carries over unfinished work', { skip }, async () => {
@@ -223,11 +223,13 @@ test('workflow override: refused for plain members, honored for the project lead
   const [todo, doing, done] = p.statuses
   await call('POST', '/api/v1/projects/OVR/transitions', { name: 'Start', fromIds: [todo.id], toId: doing.id }, 'lead@x.com')
   await call('POST', '/api/v1/projects/OVR/issues', { title: 'stuck', statusId: doing.id }, 'lead@x.com')
+  await join('OVR', 'someone@x.com', 'member'); await join('OVR', 'second.admin@x.com', 'admin')
   const move = (who: string, headers: Record<string, string>) => call('PATCH', '/api/v1/issues/OVR-1', { statusId: done.id }, who, headers)
   assert.equal((await move('lead@x.com', {})).status, 409)                                  // no transition doing -> done
   assert.equal((await move('someone@x.com', { 'x-workflow-override': '1' })).status, 409)   // a plain member cannot override
-  assert.equal((await move('lead@x.com', { 'x-workflow-override': '1' })).status, 200)      // the lead can
+  assert.equal((await move('second.admin@x.com', { 'x-workflow-override': '1' })).status, 200)   // any project admin can, not only the lead
   assert.equal((await call('GET', '/api/v1/issues/OVR-1')).body.statusId, done.id)
+  await call('PATCH', '/api/v1/issues/OVR-1', { statusId: doing.id }, 'owner@x.com', { 'x-workflow-override': '1' })   // and so can a workspace admin
 })
 
 test('views and work logs accept client ids; notifications can be read and archived', { skip }, async () => {
@@ -307,6 +309,7 @@ test('every documented response body is produced by the real handler and matches
   assert.equal(d.children.length, 1); assert.equal(d.comments[0].editedAt !== null, true)
   await ok('PATCH', '/issues/SCH-1', { title: 'One!' }); await ok('DELETE', '/issues/SCH-2'); await ok('POST', '/issues/SCH-2/restore')
   await ok('GET', '/search?q=One'); await ok('GET', '/search?q=SCH-1'); await ok('GET', '/me/work')
+  await join('SCH', 'someone@x.com')
   await ok('PATCH', '/issues/SCH-1', { assigneeId: (await call('GET', '/api/v1/me', undefined, 'someone@x.com')).body.id })   // makes a notification for someone
   const note = (await ok('GET', '/notifications', undefined, 'someone@x.com'))[0]
   assert.ok(note.issueKey)
@@ -477,8 +480,7 @@ test('bulk edit, delete and restore: one call, all or nothing, workflow still en
   // limits and permissions
   assert.equal((await call('POST', '/api/v1/issues/bulk/delete', { issues: [] })).status, 400)
   assert.equal((await call('POST', '/api/v1/issues/bulk/delete', { issues: Array.from({ length: 201 }, (_, n) => `BLK-${n + 1}`) })).status, 400)
-  await call('GET', '/api/v1/me', undefined, 'bulk-viewer@x.com')
-  await pool.query(`update memberships set role = 'viewer' where user_id = (select id from users where email = 'bulk-viewer@x.com')`)
+  await join('BLK', 'bulk-viewer@x.com', 'viewer')
   assert.equal((await call('POST', '/api/v1/issues/bulk/delete', { issues: ['BLK-3'] }, 'bulk-viewer@x.com')).status, 403)
 })
 
@@ -501,7 +503,8 @@ test('project and user search are paginated and filtered; archive hides a projec
   assert.equal((await call('GET', '/api/v1/projects/SRB')).body.key, 'SRB')                            // still readable
   assert.equal((await call('POST', '/api/v1/projects/SRB/restore')).body.archivedAt, null)
   assert.ok((await call('GET', '/api/v1/projects')).body.some((p: any) => p.key === 'SRB'))
-  assert.equal((await call('POST', '/api/v1/projects/SRB/archive', undefined, 'plain-member@x.com')).status, 403)
+  await join('SRB', 'plain-member@x.com', 'member')
+  assert.equal((await call('POST', '/api/v1/projects/SRB/archive', undefined, 'plain-member@x.com')).status, 403)   // members cannot archive; project admins can
 
   for (const u of ['ann.search@x.com', 'bob.search@x.com', 'carl@x.com']) await call('GET', '/api/v1/me', undefined, u)
   const users = (await call('GET', '/api/v1/users/search?query=search&limit=1')).body
@@ -540,6 +543,7 @@ test('search can ask for unassigned work (assignee=none), and "me" and ids still
 test('edit presence: heartbeat, who is editing, explicit leave, pruning of stale rows, read-only users refused', { skip }, async () => {
   await call('POST', '/api/v1/projects', { name: 'Presence', key: 'PRS', template: 'kanban' })
   await call('POST', '/api/v1/projects/PRS/issues', { title: 'shared' })
+  for (const who of ['ann.presence', 'ben.presence', 'cat.presence']) await join('PRS', `${who}@x.com`)
   assert.equal((await call('POST', '/api/v1/issues/PRS-1/presence', undefined, 'ann.presence@x.com')).status, 204)
   assert.equal((await call('POST', '/api/v1/issues/PRS-1/presence', undefined, 'ann.presence@x.com')).status, 204)       // a second beat is an update, not a second row
   assert.equal((await call('POST', '/api/v1/issues/PRS-1/presence', undefined, 'ben.presence@x.com')).status, 204)
@@ -552,8 +556,7 @@ test('edit presence: heartbeat, who is editing, explicit leave, pruning of stale
   await call('POST', '/api/v1/issues/PRS-1/presence', undefined, 'cat.presence@x.com')
   assert.deepEqual(await rows(), ['cat.presence@x.com'])
   // viewers can look but are not "editing"
-  await call('GET', '/api/v1/me', undefined, 'view.presence@x.com')
-  await pool.query(`update memberships set role = 'viewer' where user_id = (select id from users where email = 'view.presence@x.com')`)
+  await join('PRS', 'view.presence@x.com', 'viewer')
   assert.equal((await call('POST', '/api/v1/issues/PRS-1/presence', undefined, 'view.presence@x.com')).status, 403)
   assert.equal((await call('POST', '/api/v1/issues/NOPE-1/presence', undefined, 'ann.presence@x.com')).status, 404)
 })
@@ -562,6 +565,7 @@ test('live stream over real HTTP: carries CORS headers for allowed origins only,
   const addr = await app.listen({ port: 0, host: '127.0.0.1' })
   await call('POST', '/api/v1/projects', { name: 'Stream', key: 'STR', template: 'kanban' })
   await call('POST', '/api/v1/projects/STR/issues', { title: 'live' })
+  await join('STR', 'dan.stream@x.com')
   const url = `${addr}/api/v1/projects/STR/events`
   const origin = 'https://strand-one.vercel.app'
   const ac = new AbortController()
@@ -685,9 +689,10 @@ test('tokens: a deactivated owner\'s tokens stop working, and a viewer\'s token 
   assert.equal((await viaToken(quit.token, 'GET', '/api/v1/me')).status, 403)
 
   const viewer = (await mint('tok.ida@x.com')).body
-  await pool.query(`update memberships set role = 'viewer' where user_id = (select id from users where email = 'tok.ida@x.com')`)
-  assert.equal((await viaToken(viewer.token, 'GET', '/api/v1/projects')).status, 200)
-  assert.equal((await viaToken(viewer.token, 'POST', '/api/v1/projects', { name: 'Nope', key: 'NOP', template: 'kanban' })).status, 403)
+  await call('POST', '/api/v1/projects', { name: 'Tok', key: 'TKV', template: 'kanban' })
+  await join('TKV', 'tok.ida@x.com', 'viewer')
+  assert.equal((await viaToken(viewer.token, 'GET', '/api/v1/projects/TKV')).status, 200)
+  assert.equal((await viaToken(viewer.token, 'POST', '/api/v1/projects/TKV/issues', { title: 'Nope' })).status, 403)
 })
 
 test('tokens: names and lifetimes are validated (1 to 365 days, 1 to 40 characters)', { skip }, async () => {
@@ -727,8 +732,8 @@ const inbox = async (who: string, query = '') => (await call('GET', `/api/v1/not
 
 test('mentions: @Full Name notifies that person (not twice), watchers hear "commented", and mentioned people start watching', { skip }, async () => {
   const [ann, bob, cy] = ['mention.ann', 'mention.bob', 'mention.cy']
-  for (const n of [ann, bob, cy]) await call('GET', '/api/v1/me', undefined, `${n}@x.com`)
   await call('POST', '/api/v1/projects', { name: 'Mentions', key: 'MEN', template: 'kanban' })
+  for (const n of [ann, bob, cy]) await join('MEN', `${n}@x.com`)
   const issue = (await call('POST', '/api/v1/projects/MEN/issues', { title: 'talk', assigneeId: (await call('GET', '/api/v1/me', undefined, `${cy}@x.com`)).body.id })).body
   const c1 = await call('POST', '/api/v1/issues/MEN-1/comments', { body: `Thanks @${bob}, can you look?` }, `${ann}@x.com`)
   assert.equal(c1.status, 201)
@@ -758,6 +763,8 @@ test('mentions: whole names only, odd characters are safe, self-mentions and dea
   await call('GET', '/api/v1/me', undefined, author)
   await call('POST', '/api/v1/projects', { name: 'Edge', key: 'EDG', template: 'kanban' })
   await call('POST', '/api/v1/projects/EDG/issues', { title: 'edge' })
+  await join('EDG', author)
+  await pool.query(`insert into project_members (project_id, user_id, role) select (select id from projects where key = 'EDG'), unnest($1::uuid[]), 'member'`, [[ann, anna, odd, gone]])
   const kinds = async (email: string) => (await inbox(email)).filter(n => n.issueKey === 'EDG-1').map(n => n.kind)
   await call('POST', '/api/v1/issues/EDG-1/comments', { body: 'Hello @Mention Anna and @J. O\'Neil (QA) and @Mention Gone' }, author)
   assert.deepEqual(await kinds('edge.anna@x.com'), ['mentioned'])
@@ -774,6 +781,7 @@ test('due soon: open items assigned to me that are due tomorrow or sooner (3 day
   const who = 'due.dan@x.com'
   const me = (await call('GET', '/api/v1/me', undefined, who)).body
   await call('POST', '/api/v1/projects', { name: 'Due dates', key: 'DUE', template: 'kanban' })
+  await join('DUE', who)
   const day = (n: number) => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10)
   const mk = async (title: string, dueDate: string | undefined, extra: object = {}) =>
     (await call('POST', '/api/v1/projects/DUE/issues', { title, assigneeId: me.id, ...(dueDate ? { dueDate } : {}), ...extra })).body
@@ -796,6 +804,7 @@ test('your work summary counts open assigned items past the first page: due soon
   const who = 'yw.sam@x.com'
   const me = (await call('GET', '/api/v1/me', undefined, who)).body
   const p = (await call('POST', '/api/v1/projects', { name: 'Your work', key: 'YWK', template: 'kanban' })).body
+  await join('YWK', who)
   const done = p.statuses.find((s: any) => s.category === 'done').id
   const day = (n: number) => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10)
   const mk = async (title: string, extra: object = {}) => (await call('POST', '/api/v1/projects/YWK/issues', { title, assigneeId: me.id, ...extra })).body
@@ -818,6 +827,7 @@ test('recent projects: the 4 most recently active, with my open items, done item
   for (const [i, key] of ['RPA', 'RPB', 'RPC', 'RPD', 'RPE'].entries()) {
     const p = (await call('POST', '/api/v1/projects', { name: `Recent ${key}`, key, template: 'kanban' })).body
     const done = p.statuses.find((s: any) => s.category === 'done').id
+    await join(key, who)
     await call('POST', `/api/v1/projects/${key}/issues`, { title: 'mine', assigneeId: me.id })
     await call('POST', `/api/v1/projects/${key}/issues`, { title: 'done one', statusId: done })
     await call('POST', `/api/v1/projects/${key}/issues`, { title: 'an epic', type: 'epic' })
@@ -829,6 +839,7 @@ test('recent projects: the 4 most recently active, with my open items, done item
   assert.equal(rows.length, 4)
   assert.deepEqual(rows.map((r: any) => r.key).slice(0, 4), ['RPE', 'RPD', 'RPC', 'RPB'])                               // newest activity first; the oldest project is cut
   assert.deepEqual([rows[0].myOpen, rows[0].done, rows[0].total], [1, 1, 2])                                           // the epic is not counted
+  await join('RPE', 'yw.other@x.com')
   const other = (await call('GET', '/api/v1/me/projects/recent', undefined, 'yw.other@x.com')).body.find((r: any) => r.key === 'RPE')
   assert.deepEqual([other.myOpen, other.done, other.total], [0, 1, 2])                                                 // "my" open items are mine, not everyone's
 })
@@ -837,6 +848,7 @@ test('viewed: opening an item records it, newest first, once each, 50 at most, p
   const who = 'yw.vic@x.com'
   await call('GET', '/api/v1/me', undefined, who)
   await call('POST', '/api/v1/projects', { name: 'Viewed', key: 'VWD', template: 'kanban' })
+  await join('VWD', who)
   for (let n = 1; n <= 52; n++) await call('POST', '/api/v1/projects/VWD/issues', { title: `item ${n}` })
   const view = (n: number, as = who) => call('POST', `/api/v1/issues/VWD-${n}/view`, undefined, as)
   assert.equal((await view(1)).status, 204)
@@ -858,6 +870,7 @@ test('labels: every label used in the workspace is listed, from any way an item 
   const who = 'lab.lee@x.com'
   const labels = async (q = '') => (await call('GET', `/api/v1/labels${q}`, undefined, who)).body as string[]
   await call('POST', '/api/v1/projects', { name: 'Labelled', key: 'LAB', template: 'kanban' })
+  await join('LAB', who)
   await call('POST', '/api/v1/projects/LAB/issues', { title: 'one', labels: ['Backend', 'urgent-fix'] }, who)       // on create
   await call('POST', '/api/v1/projects/LAB/issues', { title: 'two' })
   await call('PATCH', '/api/v1/issues/LAB-2', { labels: ['frontend'] })                                              // by edit
@@ -878,4 +891,78 @@ test('dashboards are gone: no endpoints, no table, and an old export that still 
   assert.equal((await pool.query(`select to_regclass('public.dashboards') as t`)).rows[0].t, null)
   const spec = JSON.parse((await app.inject({ method: 'GET', url: '/docs/json' })).body)
   assert.ok(!Object.keys(spec.paths).some(p => p.includes('dashboard')))
+})
+
+test('project access: outsiders see nothing, viewers read, members work, project admins manage, global admins see all', { skip }, async () => {
+  const [admin, member, viewer, outsider] = ['pa.admin@x.com', 'pa.member@x.com', 'pa.viewer@x.com', 'pa.outsider@x.com']
+  await call('POST', '/api/v1/projects', { name: 'Access', key: 'ACC', template: 'kanban' })
+  await call('POST', '/api/v1/projects/ACC/issues', { title: 'first', labels: ['acc-only'] })
+  await join('ACC', admin, 'admin'); await join('ACC', member); await join('ACC', viewer, 'viewer'); await call('GET', '/api/v1/me', undefined, outsider)
+  const s = async (who: string, m: string, path: string, body?: unknown) => (await call(m, `/api/v1${path}`, body, who)).status
+  const oid = (await call('GET', '/api/v1/me', undefined, outsider)).body.id as string
+
+  // outsider: the project does not exist for them, anywhere
+  for (const path of ['/projects/ACC', '/issues/ACC-1', '/projects/ACC/members']) assert.equal(await s(outsider, 'GET', path), 404)
+  assert.equal(await s(outsider, 'POST', '/issues/ACC-1/comments', { body: 'hi' }), 404)
+  assert.ok(!(await call('GET', '/api/v1/projects', undefined, outsider)).body.items?.some?.((p: any) => p.key === 'ACC') && !JSON.stringify((await call('GET', '/api/v1/projects', undefined, outsider)).body).includes('"ACC"'))
+  assert.ok(!JSON.stringify((await call('GET', '/api/v1/labels?q=acc', undefined, outsider)).body).includes('acc-only'))
+  assert.ok(JSON.stringify((await call('GET', '/api/v1/labels?q=acc', undefined, member)).body).includes('acc-only'))
+  assert.equal(await s(outsider, 'POST', '/issues', undefined), 404)   // no such route: nothing leaks either way
+
+  // viewer: reads, comments, watches; cannot change work or settings
+  assert.equal(await s(viewer, 'GET', '/issues/ACC-1'), 200)
+  assert.equal((await call('GET', '/api/v1/projects/ACC', undefined, viewer)).body.role, 'viewer')
+  assert.equal(await s(viewer, 'POST', '/issues/ACC-1/comments', { body: 'looks good' }), 201)
+  assert.equal(await s(viewer, 'POST', '/projects/ACC/issues', { title: 'no' }), 403)
+  assert.equal(await s(viewer, 'PATCH', '/issues/ACC-1', { title: 'no' }), 403)
+
+  // member: works on issues; no settings, people or archive
+  assert.equal(await s(member, 'POST', '/projects/ACC/issues', { title: 'by member' }), 201)
+  assert.equal(await s(member, 'PATCH', '/issues/ACC-1', { title: 'renamed' }), 200)
+  assert.equal(await s(member, 'POST', '/projects/ACC/archive'), 403)
+  assert.equal(await s(member, 'POST', '/projects/ACC/members', { userIds: [oid], role: 'member' }), 403)
+  assert.equal(await s(member, 'GET', '/projects/ACC/members'), 200)
+
+  // the assignee must be able to see the project
+  assert.equal(await s(member, 'PATCH', '/issues/ACC-1', { assigneeId: oid }), 400)
+
+  // project admin: adds people, changes roles; the outsider can then see the project
+  assert.equal(await s(admin, 'POST', '/projects/ACC/members', { userIds: [oid], role: 'viewer' }), 200)
+  assert.equal(await s(outsider, 'GET', '/issues/ACC-1'), 200)
+  assert.equal(await s(admin, 'PATCH', `/projects/ACC/members/${oid}`, { role: 'member' }), 200)
+  assert.equal(await s(outsider, 'PATCH', '/issues/ACC-1', { assigneeId: oid }), 200)
+
+  // global admin (workspace owner) administers every project without being listed
+  assert.equal((await call('GET', '/api/v1/projects/ACC')).body.role, 'admin')
+  await pool.query(`delete from project_members where project_id = (select id from projects where key = 'ACC') and user_id = (select id from users where email = 'owner@x.com')`)
+  assert.equal((await call('GET', '/api/v1/projects/ACC')).body.role, 'admin')
+})
+
+test('project members: last admin is protected, self-leave works, removal clears stars and views, only workspace people can be added', { skip }, async () => {
+  await call('POST', '/api/v1/projects', { name: 'People', key: 'PPL', template: 'kanban' })
+  await call('POST', '/api/v1/projects/PPL/issues', { title: 'one' })
+  const [a, b, c] = ['pm.a@x.com', 'pm.b@x.com', 'pm.c@x.com']
+  await join('PPL', a, 'admin'); await join('PPL', b); await call('GET', '/api/v1/me', undefined, c)
+  const s = async (who: string, m: string, path: string, body?: unknown) => (await call(m, `/api/v1${path}`, body, who)).status
+  const id = async (e: string) => (await call('GET', '/api/v1/me', undefined, e)).body.id as string
+  const [aid, bid, cid] = [await id(a), await id(b), await id(c)]
+  const m = (r: string) => `/projects/PPL/members/${r === a ? aid : bid}`
+
+  await pool.query(`delete from project_members where project_id = (select id from projects where key = 'PPL') and user_id = (select id from users where email = 'owner@x.com')`)
+  assert.equal(await s(a, 'PATCH', m(a), { role: 'member' }), 409)
+  assert.equal(await s(a, 'DELETE', m(a)), 409)
+  assert.equal(await s(b, 'DELETE', m(a)), 403)
+
+  // bulk add: existing members keep their role
+  assert.equal(await s(a, 'POST', '/projects/PPL/members', { userIds: [bid, cid], role: 'viewer' }), 200)
+  const roles = Object.fromEntries((await call('GET', '/api/v1/projects/PPL/members', undefined, a)).body.map((x: any) => [x.email, x.role]))
+  assert.deepEqual([roles[b], roles[c]], ['member', 'viewer'])
+  assert.equal(await s(a, 'POST', '/projects/PPL/members', { userIds: ['00000000-0000-4000-8000-000000000000'], role: 'member' }), 400)
+
+  // leaving removes your stars and views for the project
+  await s(b, 'PUT', '/projects/PPL/star'); await s(b, 'POST', '/issues/PPL-1/view')
+  assert.equal(await s(b, 'DELETE', m(b)), 204)
+  assert.equal(await s(b, 'GET', '/projects/PPL'), 404)
+  const left = await pool.query(`select (select count(*)::int from issue_views where user_id = $1) as v, (select count(*)::int from stars where user_id = $1) as s`, [bid])
+  assert.deepEqual(left.rows[0], { v: 0, s: 0 })
 })

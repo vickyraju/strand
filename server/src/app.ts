@@ -9,6 +9,7 @@ import { startListener, stopListener } from './events.ts'
 import { errorSchema, toErrorBody } from './errors.ts'
 import { CREATED, RESPONSES } from './responses.ts'
 import projects from './routes/projects.ts'
+import members from './routes/members.ts'
 import issues from './routes/issues.ts'
 import misc from './routes/misc.ts'
 import files from './routes/files.ts'
@@ -94,6 +95,7 @@ export async function build() {
   const resources: FastifyPluginAsync = async api => {
     api.addHook('preHandler', authenticate)
     await api.register(projects)
+    await api.register(members)
     await api.register(issues)
     await api.register(misc)
     await api.register(files)
