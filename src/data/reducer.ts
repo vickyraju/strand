@@ -42,6 +42,9 @@ export interface BoardPrefs {
   collapsedCols:  string[]
 }
 
+export const RESOLUTIONS = ['Done', "Won't do", 'Duplicate', 'Cannot reproduce'] as const
+export type Resolution = typeof RESOLUTIONS[number]
+
 export interface Project {
   id:          string
   key:         string
@@ -182,6 +185,9 @@ export interface Issue {
   /** Values for the project's custom fields, by field id. */
   custom:      Record<string, string | number>
   releaseId?:  string
+  /** How a finished item ended, and when it last reached Done (kept in step with the status). */
+  resolution?: Resolution
+  resolvedAt?: number
   /** Original time estimate in minutes. */
   timeEstimate?: number
   worklogs:    Worklog[]
@@ -405,7 +411,14 @@ export const actorId = (s: State) => s.ownerId ?? ''
 const FIELD_LABEL: Partial<Record<keyof IssuePatch, string>> = {
   title: 'title', description: 'description', status: 'status', priority: 'priority', assigneeId: 'assignee',
   type: 'type', labels: 'labels', estimate: 'estimate', dueDate: 'due date', sprintId: 'sprint', parentId: 'parent',
-  releaseId: 'release', timeEstimate: 'time estimate', custom: 'fields', startDate: 'start date',
+  releaseId: 'release', timeEstimate: 'time estimate', custom: 'fields', startDate: 'start date', resolution: 'resolution',
+}
+
+/** Keeps resolution in step with the status, as the server does: reaching Done resolves (as Done unless chosen), leaving clears. */
+export function withResolution(project: Project, prev: Issue, next: Issue, now: number): Issue {
+  const doneNow = categoryOf(project, next.status) === 'done', doneBefore = categoryOf(project, prev.status) === 'done'
+  if (!doneNow) { const { resolution: _r, resolvedAt: _a, ...rest } = next; return rest }
+  return { ...next, resolution: next.resolution ?? 'Done', resolvedAt: doneBefore ? prev.resolvedAt ?? now : now }
 }
 
 export function reducer(state: State, action: Action, now = Date.now()): State {
@@ -878,7 +891,7 @@ function updateOne(
 
   return {
     ...state,
-    issues:        state.issues.map(i => i.id === id ? { ...i, ...patch, watcherIds: watchers, updatedAt: now } : i),
+    issues:        state.issues.map(i => i.id === id ? withResolution(project, prev, { ...i, ...patch, watcherIds: watchers, updatedAt: now }, now) : i),
     activity:      [...state.activity, ...activity],
     notifications: [...state.notifications, ...notes],
   }

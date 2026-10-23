@@ -12,12 +12,13 @@ const uuid = z.string().uuid()
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
 const type = z.enum(['epic', 'story', 'task', 'bug'])
 const priority = z.enum(['urgent', 'high', 'medium', 'low', 'none'])
+export const RESOLUTIONS = ['Done', "Won't do", 'Duplicate', 'Cannot reproduce'] as const
 
 const ISSUE = `
   select i.id, p.key || '-' || i.number as key, i.project_id, i.number, i.type, i.title, i.description,
          i.status_id, i.priority, i.assignee_id, i.reporter_id, i.labels, i.estimate, i.time_estimate,
          i.due_date, i.start_date, i.sprint_id, i.release_id, i.parent_id, i.custom, i.rank, i.version,
-         i.created_at, i.updated_at
+         i.resolution, i.resolved_at, i.created_at, i.updated_at
     from issues i join projects p on p.id = i.project_id`
 
 const patchBody = z.object({
@@ -26,6 +27,7 @@ const patchBody = z.object({
   timeEstimate: z.number().int().nonnegative().nullable(), dueDate: date.nullable(), startDate: date.nullable(),
   sprintId: uuid.nullable(), releaseId: uuid.nullable(), parentId: uuid.nullable(),
   custom: z.record(z.string(), z.union([z.string(), z.number()])), rank: z.number(),
+  resolution: z.enum(RESOLUTIONS).nullable().describe('How a finished item ended. Only for items in a Done status; reaching Done sets "Done" unless you say otherwise (null: the default)'),
 }).partial()
 const FIELDS = Object.keys(patchBody.shape)
 
@@ -157,6 +159,10 @@ async function applyPatch(d: Db, me: Me, cur: any, patch: z.infer<typeof patchBo
       before: { statusId: cur.statusId }, after: { statusId: patch.statusId } })
   if (patch.parentId === cur.id) throw new HttpError(400, 'An item cannot be its own parent')
   if (patch.custom) await checkCustom(d, cur.projectId, patch.custom, cur.custom)
+  if (patch.resolution) {
+    const [st] = await d.query<{ category: string }>('select category from statuses where id = $1', [patch.statusId ?? cur.statusId])
+    if (st?.category !== 'done') throw new HttpError(400, 'Only a finished item has a resolution', { resolution: 'Move the item to a Done status first' })
+  }
 
   const changed = Object.keys(patch).filter(k => k !== 'rank' && JSON.stringify((patch as any)[k]) !== JSON.stringify(cur[k]))
   const w = pick(patch, FIELDS, ['custom'])
