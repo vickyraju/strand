@@ -1,8 +1,10 @@
-import { useState } from 'react'
+import { createContext, useContext, useState } from 'react'
 import { TrendingDown, BarChart3, Layers, ArrowLeftRight, Timer, Users } from 'lucide-react'
-import { useStore, userOf, isDone, CATEGORY_COLOR, type Project } from '../data/store'
+import { userOf, isDone, CATEGORY_COLOR, type Project } from '../data/store'
 import { burndown, velocity, cumulativeFlow, createdVsResolved, cycleTimes, dayLabel } from '../data/analytics'
 import { useApp } from '../appContext'
+import { useReportState } from '../api/reports'
+import type { State } from '../data/reducer'
 import { LineChart, ColumnChart, Legend, Scatter, HBars } from './charts'
 import { Avatar, Empty, Picker, TYPE_META, plural } from './ui'
 
@@ -17,8 +19,13 @@ const REPORTS: { id: ReportId; name: string; desc: string; Icon: typeof Layers; 
   { id: 'workload', name: 'Workload',        desc: 'Open items and points per person.',                 Icon: Users },
 ]
 
+/** The state the reports read: complete items and history for the project (see useReportState). */
+const ReportState = createContext<State | null>(null)
+const useReport = () => ({ state: useContext(ReportState)! })
+
 export default function ReportsView({ project, report }: { project: Project; report?: string }) {
   const { openProject } = useApp()
+  const data = useReportState(project)
   const available = REPORTS.filter(r => !r.scrum || project.template === 'scrum')
   const current = available.find(r => r.id === report) ?? available[0]
 
@@ -39,12 +46,16 @@ export default function ReportsView({ project, report }: { project: Project; rep
       <section className="report">
         <h2 className="report-title">{current.name}</h2>
         <p className="muted">{current.desc}</p>
+        {data.error ? <p className="hint error" role="alert">{data.error}</p>
+          : !data.state ? <p className="muted" role="status">Loading the project's history…</p>
+          : <ReportState.Provider value={data.state}>
         {current.id === 'burndown' && <Burndown project={project} />}
         {current.id === 'velocity' && <Velocity project={project} />}
         {current.id === 'cfd'      && <Flow project={project} />}
         {current.id === 'created'  && <CreatedResolved project={project} />}
         {current.id === 'cycle'    && <Cycle project={project} />}
         {current.id === 'workload' && <Workload project={project} />}
+          </ReportState.Provider>}
       </section>
     </div>
   )
@@ -57,7 +68,7 @@ function NoData({ text }: { text: string }) {
 }
 
 function Burndown({ project }: { project: Project }) {
-  const { state } = useStore()
+  const { state } = useReport()
   const sprints = state.sprints.filter(s => s.projectId === project.id && s.startedAt)
     .sort((a, b) => (b.startedAt ?? 0) - (a.startedAt ?? 0))
   const [id, setId] = useState(sprints[0]?.id)
@@ -94,7 +105,7 @@ function Burndown({ project }: { project: Project }) {
 }
 
 function Velocity({ project }: { project: Project }) {
-  const { state } = useStore()
+  const { state } = useReport()
   const v = velocity(state, project)
   if (v.labels.length === 0) return <NoData text="Complete a sprint to see velocity. It compares what the team committed to with what it finished." />
   return (
@@ -112,7 +123,7 @@ function Velocity({ project }: { project: Project }) {
 }
 
 function Flow({ project }: { project: Project }) {
-  const { state } = useStore()
+  const { state } = useReport()
   const [span, setSpan] = useState(30)
   const data = cumulativeFlow(state, project, span)
   const series = [
@@ -132,7 +143,7 @@ function Flow({ project }: { project: Project }) {
 }
 
 function CreatedResolved({ project }: { project: Project }) {
-  const { state } = useStore()
+  const { state } = useReport()
   const [span, setSpan] = useState(30)
   const d = createdVsResolved(state, project, span)
   const created = d.created.reduce((a, b) => a + b, 0)
@@ -156,7 +167,7 @@ function CreatedResolved({ project }: { project: Project }) {
 }
 
 function Cycle({ project }: { project: Project }) {
-  const { state } = useStore()
+  const { state } = useReport()
   const { points, median, p85 } = cycleTimes(state, project)
   if (points.length < 2) return <NoData text="Cycle time appears once items have moved from in progress to done." />
   return (
@@ -175,7 +186,7 @@ function Cycle({ project }: { project: Project }) {
 }
 
 function Workload({ project }: { project: Project }) {
-  const { state } = useStore()
+  const { state } = useReport()
   const open = state.issues.filter(i => i.projectId === project.id && i.type !== 'epic' && !isDone(project, i))
   if (open.length === 0) return <NoData text="There is no open work in this project." />
   const rows = [...new Set(open.map(i => i.assigneeId ?? ''))].map(id => {

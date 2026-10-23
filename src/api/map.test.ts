@@ -81,7 +81,7 @@ test('issue detail maps comments, history (null actor = automation), time logs, 
   const d = mapIssueDetail({
     comments: [{ id: 'c1', issueId: 'i1', authorId: 'u1', body: 'hi', createdAt: '2026-10-01T00:00:00.000Z', editedAt: null }, { id: 'c2', issueId: 'i1', authorId: null, body: 'auto', createdAt: '2026-10-02T00:00:00.000Z', editedAt: '2026-10-03T00:00:00.000Z' }],
     activity: [{ id: 'a1', issueId: 'i1', actorId: null, field: null, fromValue: null, toValue: null, text: 'Automation rule ran', createdAt: '2026-10-01T00:00:00.000Z' },
-               { id: 'a2', issueId: 'i1', actorId: 'u1', field: 'status', fromValue: 's1', toValue: 's2', text: 'Changed status', createdAt: '2026-10-01T00:00:00.000Z' }],
+               { id: 'a2', issueId: 'i1', actorId: 'u1', field: 'statusId', fromValue: 's1', toValue: 's2', text: 'Changed status', createdAt: '2026-10-01T00:00:00.000Z' }],
     worklogs: [{ id: 'w1', userId: 'u1', minutes: 90, date: '2026-10-01', note: null, createdAt: '2026-10-01T09:00:00.000Z' }],
     links: [{ type: 'blocks', dir: 'out', issueId: 'i2', key: 'PAY-2' }, { type: 'blocks', dir: 'in', issueId: 'i3', key: 'PAY-3' }],
     watcherIds: ['u1'],

@@ -66,6 +66,10 @@ export const CommentPage = z.object({ items: z.array(Comment), next: nullable(z.
 export const ActivityPage = z.object({ items: z.array(Activity), next: nullable(z.string()) })
 export const BulkEditResult = z.object({ count: z.number(), issues: z.array(IssueRow) })
 export const BulkCount = z.object({ count: z.number() })
+export const ReportData = z.object({
+  issues: z.array(IssueRow),
+  statusChanges: z.array(z.object({ issueId: id, fromId: nullable(id), toId: id, at: ts })).describe('Every status change, oldest first'),
+})
 export const IssuePage = z.object({ items: z.array(IssueRow), next: nullable(z.string()).describe('Pass back as `cursor` for the next page; null on the last page') })
 
 const searchRow = z.object({
@@ -125,6 +129,7 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'GET /projects/:key': ProjectDetail,
   'PATCH /projects/:key': ProjectDetail,
   'GET /projects/:key/issues': IssuePage,
+  'GET /projects/:key/report-data': ReportData,
   'POST /projects/:key/issues': IssueRow,
   'GET /projects/:key/summary': Summary,
   'POST /projects/:key/sprints': Sprint,

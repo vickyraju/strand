@@ -1085,3 +1085,22 @@ test('automation follows the workflow and project membership like a person would
   assert.equal((await call('GET', `/api/v1/issues/${j.key}`)).body.statusId, doing.id)
   assert.ok((await pool.query(`select 1 from activity where issue_id = $1 and field = 'statusId' and to_value = $2`, [j.id, doing.id])).rows.length)
 })
+
+test('report data: every live item and every status change in order, for people who can see the project', { skip }, async () => {
+  const p = (await call('POST', '/api/v1/projects', { name: 'Reports', key: 'REP', template: 'kanban' })).body
+  const [a, b, c] = p.statuses
+  const i = (await call('POST', '/api/v1/projects/REP/issues', { title: 'moves twice' })).body
+  await call('POST', '/api/v1/projects/REP/issues', { title: 'never moves' })
+  const gone = (await call('POST', '/api/v1/projects/REP/issues', { title: 'deleted' })).body
+  await call('PATCH', `/api/v1/issues/${i.key}`, { statusId: b.id })
+  await call('PATCH', `/api/v1/issues/${i.key}`, { statusId: c.id })
+  await call('PATCH', `/api/v1/issues/${gone.key}`, { statusId: b.id })
+  await call('DELETE', `/api/v1/issues/${gone.key}`)
+  const r = await call('GET', '/api/v1/projects/REP/report-data')
+  assert.equal(r.status, 200)
+  assert.deepEqual(r.body.issues.map((x: any) => x.title).sort(), ['moves twice', 'never moves'])
+  assert.deepEqual(r.body.statusChanges.map((x: any) => [x.issueId, x.fromId, x.toId]), [[i.id, a.id, b.id], [i.id, b.id, c.id]])
+  await join('REP', 'rep.viewer@x.com', 'viewer')
+  assert.equal((await call('GET', '/api/v1/projects/REP/report-data', undefined, 'rep.viewer@x.com')).status, 200)
+  assert.equal((await call('GET', '/api/v1/projects/REP/report-data', undefined, 'rep.outsider@x.com')).status, 404)
+})
