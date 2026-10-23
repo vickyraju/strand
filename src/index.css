@@ -1306,3 +1306,8 @@ h2.empty-title, h2.section-title, h2.side-title { margin: 0 }
 .role-help { display: grid; gap: 10px; margin: 0 }
 .role-help dd { margin: 2px 0 0 }
 .plain-fieldset { border: 0; padding: 0; margin: 0; min-width: 0; display: contents }
+.admin-body { padding: 16px 24px 32px; max-width: 1100px }
+.admin-body > section > .panel:first-child { margin-top: 0 }
+.admin-person { display: inline-flex; align-items: center; gap: 8px }
+.admin-person .muted { margin-left: 4px }
+.admin-change { max-width: 340px; overflow: hidden; text-overflow: ellipsis }

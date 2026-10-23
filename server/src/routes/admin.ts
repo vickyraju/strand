@@ -13,6 +13,17 @@ const idP = z.object({ id: z.string().uuid() })
 const TAG = ['Admin']
 
 const plugin: FastifyPluginAsyncZod = async app => {
+  // ── People in the workspace (global admins). Accounts and admin rights come from Entra (sign-in and SCIM), so this is a view, not an editor ──
+  app.get('/admin/users', { schema: { tags: TAG, summary: 'Everyone in the workspace, with role, status and how many projects they are in (global admins)' } }, async req => {
+    requireAdmin(req)
+    return db.query(
+      `select u.id, u.name, u.email, u.initials, u.color, u.title, u.active, m.role, u.created_at,
+              (select count(*)::int from project_members pm join projects p on p.id = pm.project_id
+                where pm.user_id = u.id and p.workspace_id = $1 and p.deleting_at is null) as projects
+         from memberships m join users u on u.id = m.user_id
+        where m.workspace_id = $1 order by u.active desc, lower(u.name), u.id limit 5000`, [req.me.workspaceId])
+  })
+
   // ── Backups taken when a project is deleted (a workspace setting, for global admins) ──
   app.get('/admin/settings/project-backups', { schema: { tags: TAG, summary: 'Whether deleting a project backs it up first, and where (global admins)' } }, async req => {
     requireAdmin(req)

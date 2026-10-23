@@ -14,3 +14,10 @@ test('project url round-trips as /project/KEY/tab', () => {
 test('legacy /p/ still parses', () => {
   assert.equal(parse('/p/PAY/list', '').route.name, 'project')
 })
+
+test('administration urls: /admin and its sections; unknown sections are not found', () => {
+  assert.deepEqual(parse('/admin', '').route, { name: 'admin', section: undefined })
+  assert.deepEqual(parse('/admin/audit', '').route, { name: 'admin', section: 'audit' })
+  assert.equal(href({ name: 'admin', section: 'backups' }), '/admin/backups')
+  assert.equal(parse('/admin/nope', '').route.name, 'not-found')
+})

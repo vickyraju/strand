@@ -1476,3 +1476,17 @@ test('CSV export: the same items the search shows (only what you can see), reada
   const log = (await call('GET', '/api/v1/audit?action=export.csv')).body.items[0]
   assert.deepEqual([log.actor, log.after.rows], ['exp.member@x.com', searched])
 })
+
+test('administration: workspace admins list everyone with role, status and project count; others cannot', { skip }, async () => {
+  await call('POST', '/api/v1/projects', { name: 'Admin view', key: 'ADV', template: 'kanban' })
+  await join('ADV', 'adv.member@x.com')
+  await call('GET', '/api/v1/me', undefined, 'adv.gone@x.com')
+  await pool.query(`update users set active = false where email = 'adv.gone@x.com'`)
+  const r = await call('GET', '/api/v1/admin/users')
+  assert.equal(r.status, 200)
+  const by = Object.fromEntries(r.body.map((u: any) => [u.email, u]))
+  assert.deepEqual([by['adv.member@x.com'].role, by['adv.member@x.com'].active, by['adv.member@x.com'].projects], ['member', true, 1])
+  assert.equal(by['adv.gone@x.com'].active, false)
+  assert.equal(by['owner@x.com'].role, 'owner')
+  assert.equal((await call('GET', '/api/v1/admin/users', undefined, 'adv.member@x.com')).status, 403)
+})
