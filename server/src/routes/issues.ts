@@ -106,6 +106,21 @@ async function editorsOf(d: Db, issueId: string) {
   return rows
 }
 
+/** Ranks are fractions: a move takes the midpoint of its neighbours, so a busy spot halves its gap on every move.
+ *  Long before the numbers run out of precision (about 40 halvings), the project's ranks are spread out again:
+ *  same order, 1024 apart. Renumbering does not change versions, so nobody's edit conflicts because of it.
+ *  Returns whether it renumbered, so clients holding the old numbers can be told to reload them. */
+async function keepRanksApart(d: Db, projectId: string, issueId: string, rank: number) {
+  const [{ n }] = await d.query<{ n: number }>(
+    'select count(*)::int as n from issues where project_id = $1 and id <> $2 and abs(rank - $3) < 1e-6', [projectId, issueId, rank]) as any
+  if (!n) return false
+  await d.query(
+    `update issues i set rank = r.n * 1024
+       from (select id, row_number() over (order by rank, id) as n from issues where project_id = $1) r
+      where i.id = r.id`, [projectId])
+  return true
+}
+
 /** One issue edit: version check, workflow check, history, notifications, automation, live event. Shared by the single and bulk edits. */
 async function applyPatch(d: Db, me: Me, cur: any, patch: z.infer<typeof patchBody>, o: { ifMatch: number | null; override: boolean }) {
   if (o.ifMatch !== null && o.ifMatch !== cur.version) throw new HttpError(409, `Edited elsewhere (current version ${cur.version})`)
@@ -138,6 +153,7 @@ async function applyPatch(d: Db, me: Me, cur: any, patch: z.infer<typeof patchBo
     for (const u of await watchersOf(d, cur)) await note(d, u, me, cur.id, 'status', 'changed the status')
     await runRules(d, ctx, { kind: 'status', to: patch.statusId! })
   }
+  if (patch.rank !== undefined && await keepRanksApart(d, cur.projectId, cur.id, patch.rank)) await publish(d, cur.projectId, { type: 'issues.reranked' })
   await publish(d, cur.projectId, { type: 'issue.updated', id: cur.id, key: cur.key, editors: await editorsOf(d, cur.id) })
   return (await d.query<any>(`${ISSUE} where i.id = $1`, [cur.id]))[0]
 }

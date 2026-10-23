@@ -1104,3 +1104,23 @@ test('report data: every live item and every status change in order, for people 
   assert.equal((await call('GET', '/api/v1/projects/REP/report-data', undefined, 'rep.viewer@x.com')).status, 200)
   assert.equal((await call('GET', '/api/v1/projects/REP/report-data', undefined, 'rep.outsider@x.com')).status, 404)
 })
+
+test('ranking: dropping item after item into the same spot never runs out of room; the order stays exactly as placed', { skip }, async () => {
+  await call('POST', '/api/v1/projects', { name: 'Ranks', key: 'RNK', template: 'kanban' })
+  const first = (await call('POST', '/api/v1/projects/RNK/issues', { title: 'first' })).body
+  const last = (await call('POST', '/api/v1/projects/RNK/issues', { title: 'last' })).body
+  const list = async () => (await call('GET', '/api/v1/projects/RNK/issues?limit=200')).body.items as { id: string; title: string; rank: number }[]
+  const placed: string[] = []
+  for (let k = 1; k <= 60; k++) {     // without rebalancing, the midpoint collides with a neighbour after about 40 of these
+    const item = (await call('POST', '/api/v1/projects/RNK/issues', { title: `n${k}` })).body
+    const now = (await list()).filter(x => x.id !== item.id)
+    const at = now.findIndex(x => x.id === first.id)
+    const rank = (now[at]!.rank + now[at + 1]!.rank) / 2           // exactly what the app does: midpoint of the neighbours
+    assert.equal((await call('PATCH', `/api/v1/issues/${item.key}`, { rank })).status, 200)
+    placed.unshift(`n${k}`)
+  }
+  const final = await list()
+  assert.deepEqual(final.map(x => x.title), ['first', ...placed, 'last'])
+  for (let i = 1; i < final.length; i++) assert.ok(final[i]!.rank > final[i - 1]!.rank, 'ranks strictly increase')
+  assert.ok(last.id)
+})
