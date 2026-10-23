@@ -107,7 +107,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     if (req.query.project) {
       const p = await projectByKey(db, req, req.query.project, 'viewer')
       args.push(p.id)
-      where.push(`(m.role in ('owner', 'admin') or exists (select 1 from project_members pm where pm.project_id = $${args.length} and pm.user_id = u.id))`)
+      where.push(`(m.role in ('owner', 'admin') or exists (select 1 from project_access pa where pa.project_id = $${args.length} and pa.user_id = u.id))`)
     }
     if (query) { args.push(like(query)); where.push(`(u.name ilike $${args.length} or u.email ilike $${args.length})`) }
     if (cur) { args.push(cur[0].toLowerCase(), cur[1]); where.push(`(lower(u.name), u.id) > ($${args.length - 1}, $${args.length}::uuid)`) }

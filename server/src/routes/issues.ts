@@ -55,7 +55,7 @@ const note = (d: Db, to: string, me: Me, issueId: string, kind: string, text: st
   to === me.id ? null : d.query(
     `insert into notifications (user_id, actor_id, issue_id, kind, text)
      select $1, $2, i.id, $4, $5 from issues i
-      where i.id = $3 and (exists (select 1 from project_members pm where pm.project_id = i.project_id and pm.user_id = $1)
+      where i.id = $3 and (exists (select 1 from project_access pm where pm.project_id = i.project_id and pm.user_id = $1)
                         or exists (select 1 from memberships m where m.user_id = $1 and m.workspace_id = i.workspace_id and m.role in ('owner', 'admin')))`,
     [to, me.id, issueId, kind, text])
 
@@ -74,7 +74,7 @@ export async function mentionedIn(d: Db, projectId: string, text: string, author
   const candidates = await d.query<{ id: string; name: string }>(
     `select u.id, u.name from users u
       where u.active and u.id <> $3 and position('@' || u.name in $2) > 0
-        and (exists (select 1 from project_members pm where pm.project_id = $1 and pm.user_id = u.id)
+        and (exists (select 1 from project_access pm where pm.project_id = $1 and pm.user_id = u.id)
           or exists (select 1 from memberships m join projects p on p.workspace_id = m.workspace_id where p.id = $1 and m.user_id = u.id and m.role in ('owner', 'admin')))`, [projectId, text, authorId])
   return candidates.filter(c => mentions(text, c.name)).map(c => c.id)
 }

@@ -18,7 +18,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     requireAdmin(req)
     return db.query(
       `select u.id, u.name, u.email, u.initials, u.color, u.title, u.active, m.role, u.created_at,
-              (select count(*)::int from project_members pm join projects p on p.id = pm.project_id
+              (select count(*)::int from project_access pm join projects p on p.id = pm.project_id
                 where pm.user_id = u.id and p.workspace_id = $1 and p.deleting_at is null) as projects
          from memberships m join users u on u.id = m.user_id
         where m.workspace_id = $1 order by u.active desc, lower(u.name), u.id limit 5000`, [req.me.workspaceId])
