@@ -1304,3 +1304,6 @@ h2.empty-title, h2.section-title, h2.side-title { margin: 0 }
   .wf-tools { padding: 6px 12px 8px }
   .wf-bar .wf-title { display: none }
 }
+
+.role-help { display: grid; gap: 10px; margin: 0 }
+.role-help dd { margin: 2px 0 0 }

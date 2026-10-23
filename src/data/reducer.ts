@@ -60,6 +60,8 @@ export interface Project {
   fields:      FieldDef[]
   releases:    Release[]
   templates:   ItemTemplate[]
+  /** What I may do here (from the server; unset for a local workspace, where everyone has full access) */
+  role?:       'admin' | 'member' | 'viewer'
   sample?:     boolean
 }
 
