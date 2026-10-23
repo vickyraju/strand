@@ -16,3 +16,14 @@ export const addMembers = (key: string, userIds: string[], role: ProjectRole) =>
 export const setMemberRole = (key: string, userId: string, role: ProjectRole) =>
   api<ProjectMember>('PATCH', `${base(key)}/${userId}`, { role }).then(() => listMembers(key))   // the reply is just the one person; show the whole list
 export const removeMember = (key: string, userId: string) => api<void>('DELETE', `${base(key)}/${userId}`)
+
+// Groups from the organisation's directory: a role given to a group reaches everyone in it.
+export interface ProjectGroup { groupId: string; name: string; role: ProjectRole; addedAt: string; members: number }
+export interface GroupHit { id: string; name: string; members: number }
+
+const groupsOf = (key: string) => `/api/projects/${encodeURIComponent(key)}/groups`
+export const listGroups = (key: string) => api<ProjectGroup[]>('GET', groupsOf(key))
+export const searchGroups = (query: string) => api<GroupHit[]>('GET', `/api/groups/search?query=${encodeURIComponent(query)}`)
+export const addGroup = (key: string, groupId: string, role: ProjectRole) => api<ProjectGroup[]>('POST', groupsOf(key), { groupId, role })
+export const setGroupRole = (key: string, groupId: string, role: ProjectRole) => api<ProjectGroup[]>('PATCH', `${groupsOf(key)}/${groupId}`, { role })
+export const removeGroup = (key: string, groupId: string) => api<void>('DELETE', `${groupsOf(key)}/${groupId}`)

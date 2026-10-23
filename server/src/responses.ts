@@ -53,6 +53,9 @@ const issueFields = {
   createdAt: ts, updatedAt: ts,
 }
 export const IssueRow = z.object(issueFields)
+const GroupGrant = z.object({
+  groupId: id, name: z.string(), role: z.enum(['admin', 'member', 'viewer']), addedAt: ts, members: z.number().describe('Active people in the group'),
+})
 const BackupSettings = z.object({
   enabled: z.boolean().describe('Deleting a project backs it up first'), bucket: nullable(z.string()), prefix: z.string(),
   effectiveBucket: nullable(z.string()).describe('Where backups actually go (empty: nowhere configured, so deleting a project is refused)'),
@@ -170,6 +173,10 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'GET /attachments/:id/url': z.object({ url: z.string() }),
   'GET /admin/settings/project-backups': BackupSettings,
   'PUT /admin/settings/project-backups': BackupSettings,
+  'GET /projects/:key/groups': z.array(GroupGrant),
+  'POST /projects/:key/groups': z.array(GroupGrant),
+  'PATCH /projects/:key/groups/:groupId': z.array(GroupGrant),
+  'GET /groups/search': z.array(z.object({ id, name: z.string(), members: z.number() })),
   'GET /admin/users': z.array(z.object({
     id, name: z.string(), email: z.string(), initials: z.string(), color: z.string(), title: nullable(z.string()), active: z.boolean(),
     role: z.enum(['owner', 'admin', 'member']), createdAt: ts, projects: z.number().describe('Projects they are a member of'),

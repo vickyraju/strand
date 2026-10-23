@@ -1434,3 +1434,50 @@ test('administration: workspace admins list everyone with role, status and proje
   assert.equal(by['owner@x.com'].role, 'owner')
   assert.equal((await call('GET', '/api/v1/admin/users', undefined, 'adv.member@x.com')).status, 403)
 })
+
+test('groups: SCIM provisions teams; a project role given to a group reaches everyone in it, and goes when they leave', { skip }, async () => {
+  const scim = (method: string, path: string, body?: unknown) =>
+    app.inject({ method: method as any, url: `/scim/v2${path}`, payload: body as any, headers: { authorization: 'Bearer scim-secret', 'content-type': 'application/scim+json' } })
+  await call('GET', '/api/v1/me')   // the workspace owner signs in first (the first person on an empty system becomes its owner)
+  const id = async (who: string) => (await call('GET', '/api/v1/me', undefined, `${who}@x.com`)).body.id as string
+  const [ann, ben, cat] = [await id('grp.ann'), await id('grp.ben'), await id('grp.cat')]
+  const made = await scim('POST', '/Groups', { displayName: 'Payments team', externalId: 'entra-group-1', members: [{ value: ann }, { value: ben }] })
+  assert.equal(made.statusCode, 201)
+  const g = JSON.parse(made.body)
+  assert.deepEqual(g.members.map((m: any) => m.value).sort(), [ann, ben].sort())
+  assert.equal(JSON.parse((await scim('GET', '/Groups?filter=displayName eq "Payments team"')).body).totalResults, 1)
+
+  await call('POST', '/api/v1/projects', { name: 'Grouped', key: 'GRP', template: 'kanban' })
+  await call('POST', '/api/v1/projects/GRP/issues', { title: 'team work' })
+  assert.equal((await call('GET', '/api/v1/issues/GRP-1', undefined, 'grp.ann@x.com')).status, 404)
+  assert.equal((await call('GET', '/api/v1/groups/search?query=payments')).body[0].members, 2)
+  assert.equal((await call('POST', '/api/v1/projects/GRP/groups', { groupId: g.id, role: 'member' })).status, 200)
+
+  // everyone in the group can now work in the project; the person outside cannot
+  assert.equal((await call('PATCH', '/api/v1/issues/GRP-1', { title: 'edited by ann' }, 'grp.ann@x.com')).status, 200)
+  assert.equal((await call('GET', '/api/v1/issues/GRP-1', undefined, 'grp.cat@x.com')).status, 404)
+  assert.ok((await call('GET', '/api/v1/projects', undefined, 'grp.ben@x.com')).body.some((p: any) => p.key === 'GRP'))
+  assert.equal((await call('PATCH', '/api/v1/issues/GRP-1', { assigneeId: ben })).status, 200)          // assignable through the group
+  // a person's own role and their group's: the higher one counts
+  await join('GRP', 'grp.ann@x.com', 'viewer')
+  assert.equal((await call('GET', '/api/v1/projects/GRP', undefined, 'grp.ann@x.com')).body.role, 'member')
+
+  // Entra adds cat and removes ben
+  assert.equal((await scim('PATCH', `/Groups/${g.id}`, { Operations: [{ op: 'Add', path: 'members', value: [{ value: cat }] }, { op: 'Remove', path: `members[value eq "${ben}"]` }] })).statusCode, 204)   // Entra's remove has no value
+  assert.equal((await call('GET', '/api/v1/issues/GRP-1', undefined, 'grp.cat@x.com')).status, 200)
+  assert.equal((await call('GET', '/api/v1/issues/GRP-1', undefined, 'grp.ben@x.com')).status, 404)
+
+  // a group can be the only admin route, and the last one cannot be removed
+  await call('PATCH', `/api/v1/projects/GRP/groups/${g.id}`, { role: 'admin' })
+  await pool.query(`delete from project_members where project_id = (select id from projects where key = 'GRP') and role = 'admin'`)
+  assert.equal((await call('DELETE', `/api/v1/projects/GRP/groups/${g.id}`)).status, 409)
+  assert.equal((await call('PATCH', `/api/v1/projects/GRP/groups/${g.id}`, { role: 'viewer' })).status, 409)
+  assert.equal((await call('POST', '/api/v1/projects/GRP/groups', { groupId: g.id, role: 'admin' }, 'grp.cat@x.com')).status, 200)   // cat is an admin through the group
+  // the changes are audited; deleting the group in Entra takes everyone's access away
+  const actions = (await call('GET', '/api/v1/audit?action=project.group')).body.items.map((x: any) => x.action)
+  assert.ok(actions.includes('project.group.added') && actions.includes('project.group.role_changed'))
+  await join('GRP', 'grp.keeper@x.com', 'admin')
+  assert.equal((await scim('DELETE', `/Groups/${g.id}`)).statusCode, 204)
+  assert.equal((await call('GET', '/api/v1/issues/GRP-1', undefined, 'grp.cat@x.com')).status, 404)
+  assert.equal((await call('GET', '/api/v1/projects/GRP', undefined, 'grp.ann@x.com')).body.role, 'viewer')    // her own role remains
+})

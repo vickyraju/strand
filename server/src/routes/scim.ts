@@ -5,7 +5,7 @@ import { db } from '../db.ts'
 import { HttpError } from '../auth.ts'
 import { audit, changes } from '../audit.ts'
 
-// SCIM 2.0 Users for Microsoft Entra provisioning. Authenticated by one shared bearer token (SCIM_TOKEN).
+// SCIM 2.0 Users and Groups for Microsoft Entra provisioning. Authenticated by one shared bearer token (SCIM_TOKEN).
 // Deprovisioning is a soft `active=false`: history stays attributed, and login is refused.
 const SCHEMA = 'urn:ietf:params:scim:schemas:core:2.0:User'
 const token = process.env.SCIM_TOKEN ?? ''
@@ -39,6 +39,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     if (!token || got.length !== want.length || !timingSafeEqual(got, want)) throw new HttpError(401, 'Invalid SCIM token')
   })
   app.addContentTypeParser('application/scim+json', { parseAs: 'string' }, (_r, body, done) => {
+    if (!String(body).trim()) return done(null, undefined)   // a DELETE may carry the content type but no body
     try { done(null, JSON.parse(body as string)) } catch (e: any) { done(e) }
   })
   app.addHook('onSend', async (_req, reply) => { reply.header('content-type', 'application/scim+json') })
@@ -105,7 +106,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
   // Entra mostly sends {op:'Replace', path:'active', value:'False'}; also handle the no-path object form.
   app.patch('/Users/:id', { schema: {
     tags: TAG, summary: 'Patch a user (Entra deactivates with active=false)', security: sec, params: idP,
-    body: z.object({ Operations: z.array(z.object({ op: z.string(), path: z.string().optional(), value: z.unknown() })) }),
+    body: z.object({ Operations: z.array(z.object({ op: z.string(), path: z.string().optional(), value: z.unknown().optional() })) }),
   } }, async req => {
     const { Operations } = req.body
     const set: Record<string, unknown> = {}
@@ -135,6 +136,86 @@ const plugin: FastifyPluginAsyncZod = async app => {
     const before = await userBefore(req.params.id)
     const [u] = await db.query<any>('update users set active = false where id = $1 returning *', [req.params.id])
     if (u) await logUser(req.ip, before, u)
+    reply.code(204).send()
+  })
+
+  // ── Groups (teams from the directory). Projects give roles to groups; membership here decides who has them ──
+  const GROUP = 'urn:ietf:params:scim:schemas:core:2.0:Group'
+  const groupOut = async (g: any, withMembers = true) => ({
+    schemas: [GROUP], id: g.id, externalId: g.externalId ?? undefined, displayName: g.displayName, meta: { resourceType: 'Group' },
+    ...(withMembers ? { members: (await db.query<{ id: string; email: string }>(
+      'select u.id, u.email from group_members gm join users u on u.id = gm.user_id where gm.group_id = $1 order by u.email', [g.id])).map(m => ({ value: m.id, display: m.email })) } : {}),
+  })
+  const known = async (ids: string[]) => (await db.query<{ id: string }>('select id from users where id = any($1::uuid[])', [ids.filter(x => /^[0-9a-f-]{36}$/i.test(x))])).map(r => r.id)
+  const logGroup = (ip: string, action: string, g: { id: string; displayName: string }, after?: unknown) =>
+    audit(db, { system: 'SCIM', ip }, { action, type: 'group', id: g.id, name: g.displayName, workspaceId: null, after })
+  const groupBody = z.object({ displayName: z.string().min(1).max(256), externalId: z.string().optional(), members: z.array(z.object({ value: z.string() })).optional() }).passthrough()
+
+  app.get('/Groups', { schema: {
+    tags: TAG, summary: 'List groups; supports filter=displayName eq "x"', security: sec,
+    querystring: z.object({ filter: z.string().optional(), startIndex: z.string().optional(), count: z.string().optional(), excludedAttributes: z.string().optional() }),
+  } }, async req => {
+    const start = Math.max(1, Number(req.query.startIndex ?? 1))
+    const count = Math.min(200, Math.max(0, Number(req.query.count ?? 100)))
+    const f = /^displayName eq "([^"]+)"$/i.exec(req.query.filter ?? '')
+    const rows = await db.query<any>(
+      `select *, count(*) over ()::int as total from groups where ($1::text is null or display_name = $1) order by created_at limit $2 offset $3`,
+      [f?.[1] ?? null, count, start - 1])
+    const members = !/members/i.test(req.query.excludedAttributes ?? '')
+    return { schemas: ['urn:ietf:params:scim:api:messages:2.0:ListResponse'], totalResults: rows[0]?.total ?? 0, startIndex: start, itemsPerPage: rows.length,
+      Resources: await Promise.all(rows.map(g => groupOut(g, members))) }
+  })
+
+  app.get('/Groups/:id', { schema: { tags: TAG, summary: 'Get a group with its members', security: sec, params: idP } }, async req => {
+    const [g] = await db.query<any>('select * from groups where id = $1', [req.params.id])
+    if (!g) throw new HttpError(404, 'Not found')
+    return groupOut(g)
+  })
+
+  app.post('/Groups', { schema: { tags: TAG, summary: 'Provision a group', security: sec, body: groupBody } }, async (req, reply) => {
+    const b = req.body
+    const [g] = await db.query<any>('insert into groups (display_name, external_id) values ($1, $2) returning *', [b.displayName, b.externalId ?? null])
+    const ids = await known((b.members ?? []).map(m => m.value))
+    for (const u of ids) await db.query('insert into group_members (group_id, user_id) values ($1, $2) on conflict do nothing', [g.id, u])
+    await logGroup(req.ip, 'group.provisioned', g, { members: ids.length })
+    reply.code(201)
+    return groupOut(g)
+  })
+
+  // Entra sends Add/Remove members (by value, or a path filter for one member) and Replace displayName; op names vary in case
+  app.patch('/Groups/:id', { schema: {
+    tags: TAG, summary: 'Change a group: add or remove members, rename', security: sec, params: idP,
+    body: z.object({ Operations: z.array(z.object({ op: z.string(), path: z.string().optional(), value: z.unknown().optional() })) }),
+  } }, async (req, reply) => {
+    const [g] = await db.query<any>('select * from groups where id = $1', [req.params.id])
+    if (!g) throw new HttpError(404, 'Not found')
+    let added = 0, removed = 0
+    for (const o of req.body.Operations) {
+      const op = o.op.toLowerCase(), path = o.path ?? ''
+      const values = (Array.isArray(o.value) ? o.value : []).map((v: any) => String(v?.value ?? ''))
+      const one = /^members\[value eq "([^"]+)"\]$/i.exec(path)?.[1]
+      if (op === 'add' && /^members$/i.test(path)) {
+        for (const u of await known(values)) { await db.query('insert into group_members (group_id, user_id) values ($1, $2) on conflict do nothing', [g.id, u]); added++ }
+      } else if (op === 'remove' && (one || /^members$/i.test(path))) {
+        const r = await db.query('delete from group_members where group_id = $1 and user_id = any($2::uuid[]) returning user_id', [g.id, await known(one ? [one] : values)]); removed += r.length
+      } else if (op === 'replace' && /^members$/i.test(path)) {
+        const ids = await known(values)
+        removed += (await db.query('delete from group_members where group_id = $1 and not (user_id = any($2::uuid[])) returning user_id', [g.id, ids])).length
+        for (const u of ids) await db.query('insert into group_members (group_id, user_id) values ($1, $2) on conflict do nothing', [g.id, u])
+      } else if (op === 'replace' && (/^displayName$/i.test(path) || (!path && (o.value as any)?.displayName))) {
+        const name = String(path ? o.value : (o.value as any).displayName)
+        await db.query('update groups set display_name = $2 where id = $1', [g.id, name]); g.displayName = name
+      } else if (op === 'replace' && /^externalId$/i.test(path)) {
+        await db.query('update groups set external_id = $2 where id = $1', [g.id, String(o.value)])
+      }
+    }
+    if (added || removed) await logGroup(req.ip, 'group.members_changed', g, { added, removed })
+    reply.code(204).send()
+  })
+
+  app.delete('/Groups/:id', { schema: { tags: TAG, summary: 'Delete a group: everyone loses the roles it gave them', security: sec, params: idP } }, async (req, reply) => {
+    const [g] = await db.query<any>('delete from groups where id = $1 returning *', [req.params.id])
+    if (g) await logGroup(req.ip, 'group.deleted', g)
     reply.code(204).send()
   })
 }
