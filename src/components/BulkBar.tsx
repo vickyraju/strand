@@ -40,7 +40,7 @@ export default function BulkBar({ ids, onClear }: { ids: string[]; onClear: () =
           <Picker value="" options={statusOptions(project)} onChange={s => apply({ status: s }, 'status')} className="btn btn-ghost btn-sm" title="Change status" trigger="Status" />
         )}
         <UserPicker value={undefined} onChange={a => apply({ assigneeId: a }, 'assignee')} className="btn btn-ghost btn-sm" title="Change assignee"
-          trigger="Assignee" allowUnassigned />
+          trigger="Assignee" allowUnassigned projectId={project?.id} />
         <Picker value={'' as Priority | ''} options={priorityOptions} onChange={p => apply({ priority: p as Priority }, 'priority')} className="btn btn-ghost btn-sm" title="Change priority" trigger="Priority" />
         {sprints.length > 0 && (
           <Picker value={null as string | undefined | null}
