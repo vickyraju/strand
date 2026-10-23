@@ -1311,3 +1311,4 @@ h2.empty-title, h2.section-title, h2.side-title { margin: 0 }
 .admin-person { display: inline-flex; align-items: center; gap: 8px }
 .admin-person .muted { margin-left: 4px }
 .admin-change { max-width: 340px; overflow: hidden; text-overflow: ellipsis }
+.admin-body .panel + .panel { margin-top: 16px }
