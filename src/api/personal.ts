@@ -16,9 +16,16 @@ const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 // Views of other people are visible (shared views) but read-only, so only my own are synced.
 export const viewSync = createCollectionSync<SavedView>({
   id: v => v.id,
-  changed: (a, b) => a.name !== b.name || a.shared !== b.shared || !same(a.filters, b.filters),
-  create: async v => { await api('POST', '/api/views', { id: v.id, name: v.name, shared: v.shared, filters: v.filters }) },
-  update: async (_a, v) => { await api('PATCH', `/api/views/${v.id}`, { name: v.name, shared: v.shared, filters: v.filters }) },
+  changed: (a, b) => a.name !== b.name || a.shared !== b.shared || !same(a.filters, b.filters) || !same(a.share ?? [], b.share ?? []),
+  create: async v => { await api('POST', '/api/views', { id: v.id, name: v.name, shared: v.shared, share: v.share ?? [], filters: v.filters }) },
+  update: async (a, v) => {
+    const patch: Record<string, unknown> = {}
+    if (a.name !== v.name) patch.name = v.name
+    if (!same(a.filters, v.filters)) patch.filters = v.filters
+    if (a.shared !== v.shared) patch.shared = v.shared
+    if (!same(a.share ?? [], v.share ?? [])) patch.share = v.share ?? []
+    await api('PATCH', `/api/views/${v.id}`, patch)
+  },
   remove: async v => { await api('DELETE', `/api/views/${v.id}`) },
   recover: () => personalDeps.reloadAll(),
   onError: m => personalDeps.onError(m),
@@ -37,7 +44,7 @@ export const notificationSync = createCollectionSync<Notification>({
 })
 
 export function loadPersonalBase(state: State, meId: string) {
-  viewSync.load(state.views.filter(v => v.ownerId === meId))
+  viewSync.load(state.views.filter(v => v.ownerId === meId || v.canEdit))
   loadNotificationBase(state.notifications)
 }
 function loadNotificationBase(list: Notification[]) {

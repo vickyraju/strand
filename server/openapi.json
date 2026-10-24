@@ -21556,7 +21556,7 @@
     },
     "/api/v1/views": {
       "get": {
-        "summary": "My saved views plus shared ones",
+        "summary": "Saved views I can see: mine, and those shared with me (the workspace, my projects, my groups, me)",
         "tags": [
           "Saved views"
         ],
@@ -21582,11 +21582,56 @@
                         "type": "string",
                         "description": "uuid"
                       },
+                      "ownerName": {
+                        "type": "string"
+                      },
+                      "ownerActive": {
+                        "type": "boolean",
+                        "description": "False: its owner left; an admin can give it to someone"
+                      },
                       "name": {
                         "type": "string"
                       },
                       "shared": {
-                        "type": "boolean"
+                        "type": "boolean",
+                        "description": "Everyone in the workspace can see it"
+                      },
+                      "share": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": [
+                                "project",
+                                "group",
+                                "user"
+                              ]
+                            },
+                            "id": {
+                              "type": "string",
+                              "description": "uuid"
+                            },
+                            "can": {
+                              "type": "string",
+                              "enum": [
+                                "view",
+                                "edit"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "id",
+                            "can"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "canEdit": {
+                        "type": "boolean",
+                        "description": "I can change its name and filters"
                       },
                       "filters": {
                         "type": "object",
@@ -21597,8 +21642,12 @@
                       "id",
                       "workspaceId",
                       "ownerId",
+                      "ownerName",
+                      "ownerActive",
                       "name",
                       "shared",
+                      "share",
+                      "canEdit",
                       "filters"
                     ],
                     "additionalProperties": false
@@ -21676,6 +21725,42 @@
                     "default": false,
                     "type": "boolean"
                   },
+                  "share": {
+                    "default": [],
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "project",
+                            "group",
+                            "user"
+                          ]
+                        },
+                        "id": {
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                        },
+                        "can": {
+                          "default": "view",
+                          "type": "string",
+                          "enum": [
+                            "view",
+                            "edit"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "id"
+                      ]
+                    },
+                    "description": "Who else can see it (view) or change it (edit): projects, groups, people"
+                  },
                   "filters": {
                     "type": "object",
                     "properties": {
@@ -21742,11 +21827,56 @@
                       "type": "string",
                       "description": "uuid"
                     },
+                    "ownerName": {
+                      "type": "string"
+                    },
+                    "ownerActive": {
+                      "type": "boolean",
+                      "description": "False: its owner left; an admin can give it to someone"
+                    },
                     "name": {
                       "type": "string"
                     },
                     "shared": {
-                      "type": "boolean"
+                      "type": "boolean",
+                      "description": "Everyone in the workspace can see it"
+                    },
+                    "share": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "project",
+                              "group",
+                              "user"
+                            ]
+                          },
+                          "id": {
+                            "type": "string",
+                            "description": "uuid"
+                          },
+                          "can": {
+                            "type": "string",
+                            "enum": [
+                              "view",
+                              "edit"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "id",
+                          "can"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "canEdit": {
+                      "type": "boolean",
+                      "description": "I can change its name and filters"
                     },
                     "filters": {
                       "type": "object",
@@ -21757,8 +21887,12 @@
                     "id",
                     "workspaceId",
                     "ownerId",
+                    "ownerName",
+                    "ownerActive",
                     "name",
                     "shared",
+                    "share",
+                    "canEdit",
                     "filters"
                   ],
                   "additionalProperties": false
@@ -21853,7 +21987,7 @@
     },
     "/api/v1/views/{id}": {
       "patch": {
-        "summary": "Edit my saved view",
+        "summary": "Change a view: its owner and people it is shared with to edit can change its name and filters; only the owner or a workspace admin changes who it is shared with, or its owner",
         "tags": [
           "Saved views"
         ],
@@ -21870,6 +22004,41 @@
                   },
                   "shared": {
                     "type": "boolean"
+                  },
+                  "share": {
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "project",
+                            "group",
+                            "user"
+                          ]
+                        },
+                        "id": {
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                        },
+                        "can": {
+                          "default": "view",
+                          "type": "string",
+                          "enum": [
+                            "view",
+                            "edit"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "id"
+                      ]
+                    },
+                    "description": "Who else can see it (view) or change it (edit): projects, groups, people"
                   },
                   "filters": {
                     "type": "object",
@@ -21907,6 +22076,12 @@
                       }
                     },
                     "additionalProperties": {}
+                  },
+                  "ownerId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "description": "Give it to someone else"
                   }
                 }
               }
@@ -21945,11 +22120,56 @@
                       "type": "string",
                       "description": "uuid"
                     },
+                    "ownerName": {
+                      "type": "string"
+                    },
+                    "ownerActive": {
+                      "type": "boolean",
+                      "description": "False: its owner left; an admin can give it to someone"
+                    },
                     "name": {
                       "type": "string"
                     },
                     "shared": {
-                      "type": "boolean"
+                      "type": "boolean",
+                      "description": "Everyone in the workspace can see it"
+                    },
+                    "share": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "project",
+                              "group",
+                              "user"
+                            ]
+                          },
+                          "id": {
+                            "type": "string",
+                            "description": "uuid"
+                          },
+                          "can": {
+                            "type": "string",
+                            "enum": [
+                              "view",
+                              "edit"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "id",
+                          "can"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "canEdit": {
+                      "type": "boolean",
+                      "description": "I can change its name and filters"
                     },
                     "filters": {
                       "type": "object",
@@ -21960,8 +22180,12 @@
                     "id",
                     "workspaceId",
                     "ownerId",
+                    "ownerName",
+                    "ownerActive",
                     "name",
                     "shared",
+                    "share",
+                    "canEdit",
                     "filters"
                   ],
                   "additionalProperties": false
@@ -22054,7 +22278,7 @@
         }
       },
       "delete": {
-        "summary": "Delete my saved view",
+        "summary": "Delete a view (its owner, or a workspace admin)",
         "tags": [
           "Saved views"
         ],
@@ -22107,6 +22331,152 @@
                       },
                       "description": "Validation messages by field (400 only)"
                     }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/views": {
+      "get": {
+        "summary": "Views shared with anyone, and views whose owner is deactivated (workspace admins)",
+        "tags": [
+          "Admin"
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "description": "uuid"
+                      },
+                      "workspaceId": {
+                        "type": "string",
+                        "description": "uuid"
+                      },
+                      "ownerId": {
+                        "type": "string",
+                        "description": "uuid"
+                      },
+                      "ownerName": {
+                        "type": "string"
+                      },
+                      "ownerActive": {
+                        "type": "boolean",
+                        "description": "False: its owner left; an admin can give it to someone"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "shared": {
+                        "type": "boolean",
+                        "description": "Everyone in the workspace can see it"
+                      },
+                      "share": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": [
+                                "project",
+                                "group",
+                                "user"
+                              ]
+                            },
+                            "id": {
+                              "type": "string",
+                              "description": "uuid"
+                            },
+                            "can": {
+                              "type": "string",
+                              "enum": [
+                                "view",
+                                "edit"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "id",
+                            "can"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "canEdit": {
+                        "type": "boolean",
+                        "description": "I can change its name and filters"
+                      },
+                      "filters": {
+                        "type": "object",
+                        "additionalProperties": {}
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "workspaceId",
+                      "ownerId",
+                      "ownerName",
+                      "ownerActive",
+                      "name",
+                      "shared",
+                      "share",
+                      "canEdit",
+                      "filters"
+                    ],
+                    "additionalProperties": false
                   }
                 }
               }

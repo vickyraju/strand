@@ -45,7 +45,7 @@ export default function NavRail({ collapsed, onCollapseToggle, onCmdK, route, dr
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set(currentKey ? [currentKey] : []))
   const unread = state.notifications.filter(n => n.userId === state.me?.id && !n.read && !n.archived).length
   const starred = state.projects.filter(p => state.starred.includes(p.id))
-  const views = state.views.filter(v => v.shared || v.ownerId === state.me?.id)
+  const views = state.views
   const recentIssues = state.viewed.slice(0, 5).map(id => state.issues.find(i => i.id === id)).filter(i => !!i)
 
   const toggle = (key: string) => setExpanded(prev => {

@@ -35,6 +35,8 @@ export function toErrorBody(err: any): { status: number; body: ErrorBody } {
   if (err.code === '23505') return { status: 409, body: { error: 'Already exists', code: 'conflict' } }
   if (err.code === '23503') return { status: 409, body: { error: 'Still referenced by other records', code: 'conflict' } }
   if (err.code === '23514' || err.code === '22P02') return { status: 400, body: { error: 'Invalid value', code: 'invalid_input' } }
+  // Every database connection was busy for longer than the pool waits (db.ts): the server is overloaded for a moment
+  if (/timeout exceeded when trying to connect/i.test(err.message ?? '')) return { status: 503, body: { error: 'The server is busy. Try again in a moment.', code: 'busy' } }
   // Framework errors with a 4xx status (bad JSON, body too large, wrong content type, rate limit…)
   if (err.statusCode && err.statusCode < 500) return { status: err.statusCode, body: { error: err.message, code: codeFor(err.statusCode) } }
   return { status: 500, body: { error: 'Internal error', code: 'internal' } }
