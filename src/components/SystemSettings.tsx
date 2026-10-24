@@ -63,6 +63,7 @@ export default function SystemSettings() {
       <SimpleSection setting={of('searchAndBulk')} save={v => save('searchAndBulk', v)} fields={[
         { key: 'exportMaxRows', label: 'Most work items in one CSV export', type: 'number', min: 100, max: 1_000_000 },
         { key: 'bulkMaxItems', label: 'Most work items in one bulk change', type: 'number', min: 1, max: 5000 },
+        { key: 'importMaxRows', label: 'Most rows in one CSV import', type: 'number', min: 10, max: 100_000 },
       ]} />
       <SimpleSection setting={of('dueReminders')} save={v => save('dueReminders', v)} fields={[
         { key: 'enabled', label: 'Send “due” notifications', type: 'toggle' },

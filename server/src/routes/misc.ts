@@ -7,6 +7,8 @@ import { projectByKey } from './projects.ts'
 import { audit } from '../audit.ts'
 import { getSetting } from '../settings.ts'
 import { jqlToSql, parseOr400 } from '../jqlSql.ts'
+import { csvCell } from '../shared/csv.ts'
+export { csvCell }
 
 const uuid = z.string().uuid()
 const LIST = `
@@ -58,12 +60,6 @@ async function searchWhere(me: Me, q: SearchFilters, args: unknown[]): Promise<{
   return { where, order: null }
 }
 
-/** One CSV cell. Text that a spreadsheet would run as a formula (=, +, -, @, tab, return) is prefixed with ' so it stays text. */
-export function csvCell(v: unknown): string {
-  let s = v == null ? '' : Array.isArray(v) ? v.join(', ') : String(v)
-  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`
-  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
-}
 
 
 const idP = z.object({ id: uuid })

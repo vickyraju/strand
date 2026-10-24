@@ -275,7 +275,7 @@ async function checkType(d: Db, projectId: string, type: string | undefined) {
 
 /** Create one issue (key, rank and start status from the project unless given), with its first history entry, the
  *  assignee's notification and "created" automation. Returns its id. Shared by create and clone. */
-async function insertIssue(d: Db, me: Me, projectId: string, b: Record<string, any>, created = 'Created this work item') {
+export async function insertIssue(d: Db, me: Me, projectId: string, b: Record<string, any>, created = 'Created this work item') {
   const [pr] = await d.query<{ leadId: string | null }>('select lead_id from projects where id = $1', [projectId])
   if (b.assigneeId && !(await canJoinWork(d, projectId, b.assigneeId))) throw new HttpError(400, 'The assignee must be a member of this project')
   if (b.custom) await checkCustom(d, projectId, b.custom)

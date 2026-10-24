@@ -53,13 +53,14 @@ export const SETTINGS = {
   },
   searchAndBulk: {
     label: 'Search, export and bulk changes',
-    description: 'How many work items one export or one bulk change can include.',
+    description: 'How many work items one export, one bulk change or one CSV import can include.',
     public: true,
     schema: z.object({
       exportMaxRows: z.number().int().min(100).max(1_000_000).describe('Most work items in one CSV export'),
       bulkMaxItems: z.number().int().min(1).max(5000).describe('Most work items in one bulk change'),
+      importMaxRows: z.number().int().min(10).max(100_000).describe('Most rows in one CSV import'),
     }),
-    default: { exportMaxRows: 20_000, bulkMaxItems: 200 },
+    default: { exportMaxRows: 20_000, bulkMaxItems: 200, importMaxRows: 10_000 },
   },
   dueReminders: {
     label: 'Due dates',

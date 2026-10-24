@@ -1523,6 +1523,52 @@ test('automation audit log: every run is recorded; a failing rule undoes only it
   assert.equal((await call('GET', '/api/v1/projects/AAL/automation/runs', undefined, 'aal.member@x.com')).status, 403)
 })
 
+test('CSV import: a dry run checks every row; the import runs as a job; running it again adds nothing twice', { skip, timeout: 60_000 }, async () => {
+  const p = (await call('POST', '/api/v1/projects', { name: 'From CSV', key: 'CSV', template: 'kanban' })).body
+  await join('CSV', 'imp.ann@x.com')
+  await call('POST', '/api/v1/projects/CSV/components', { name: 'API' })
+  const [{ id: team }] = (await pool.query(`insert into field_defs (project_id, name, kind, options) values ($1, 'Team', 'select', '{Core,Web}') returning id`, [p.id])).rows
+  const csv = [
+    'Summary,Issue Type,Status,Priority,Assignee,Labels,Story Points,Due Date,Component/s,Team',
+    'Login fails,Bug,In progress,Highest,imp.ann@x.com,"auth,ui",5,01/Oct/26,API,Core',
+    ',Task,To do,Low,,,,,,',
+    'Docs,Story,Somewhere,Trivial,nobody@x.com,,lots,not a date,Billing,Mobile',
+  ].join('\n')
+  const mapping = { title: 0, type: 1, status: 2, priority: 3, assignee: 4, labels: 5, estimate: 6, dueDate: 7, components: 8, [`custom.${team}`]: 9 }
+  const dry = await call('POST', '/api/v1/projects/CSV/import', { csv, mapping })
+  assert.equal(dry.status, 200)
+  assert.deepEqual([dry.body.rows, dry.body.ready, dry.body.skipped, dry.body.jobId], [3, 2, 1, null])
+  assert.deepEqual(dry.body.report[1], { row: 3, title: '', ok: false, errors: ['No title'], warnings: [] })
+  assert.deepEqual(dry.body.report[2].warnings.length, 6)                       // status, person, points, date, component, Team
+  assert.equal((await call('GET', '/api/v1/search?jql=project%20%3D%20CSV')).body.items.length, 0)   // nothing yet
+  // the import: a job; the items are as the file said (or empty where it said nothing usable)
+  const importId = '0192f0c0-0000-7000-8000-00000000c5f1'
+  const run = await call('POST', '/api/v1/projects/CSV/import', { csv, mapping, dryRun: false, importId })
+  assert.equal(run.status, 202); assert.ok(run.body.jobId)
+  const waitFor = async (jobId: string) => { await (await import('../src/jobs.ts')).runJobs(); return (await call('GET', `/api/v1/jobs/${jobId}`)).body }   // tests run jobs themselves
+  const job = await waitFor(run.body.jobId)
+  assert.equal(job.status, 'done', job.lastError)
+  assert.deepEqual(job.result, { created: 2, already: 0, skipped: 1, warnings: 6 })
+  const items = (await call('GET', `/api/v1/search?jql=${encodeURIComponent('project = CSV ORDER BY key')}`)).body.items
+  const login = (await call('GET', `/api/v1/issues/${items[0].key}`)).body
+  const ann = (await call('GET', '/api/v1/me', undefined, 'imp.ann@x.com')).body.id
+  assert.deepEqual([login.title, login.type, login.priority, login.assigneeId, login.labels, login.estimate, login.dueDate, login.componentIds.length, login.custom[team]],
+    ['Login fails', 'bug', 'urgent', ann, ['auth', 'ui'], 5, '2026-10-01', 1, 'Core'])
+  assert.equal(login.statusId, p.statuses.find((s: any) => s.name === 'In progress').id)
+  // again, with the same import id: nothing new
+  const again = await call('POST', '/api/v1/projects/CSV/import', { csv, mapping, dryRun: false, importId })
+  assert.deepEqual((await waitFor(again.body.jobId)).result, { created: 0, already: 2, skipped: 1, warnings: 6 })
+  assert.equal((await call('GET', '/api/v1/search?jql=project%20%3D%20CSV')).body.items.length, 2)
+  // limits and mistakes
+  assert.equal((await call('POST', '/api/v1/projects/CSV/import', { csv, mapping: { type: 1 } })).status, 400)
+  await call('PUT', '/api/v1/admin/settings/searchAndBulk', { exportMaxRows: 20000, bulkMaxItems: 200, importMaxRows: 10 })
+  const big = ['Title', ...Array.from({ length: 11 }, (_, n) => `row ${n}`)].join('\n')
+  assert.match((await call('POST', '/api/v1/projects/CSV/import', { csv: big, mapping: { title: 0 } })).body.error, /at most 10 rows/)
+  await call('PUT', '/api/v1/admin/settings/searchAndBulk', { exportMaxRows: 20000, bulkMaxItems: 200, importMaxRows: 10000 })
+  await join('CSV', 'imp.viewer@x.com', 'viewer')
+  assert.equal((await call('POST', '/api/v1/projects/CSV/import', { csv, mapping }, 'imp.viewer@x.com')).status, 403)
+})
+
 test('report data: every live item and every status change in order, for people who can see the project', { skip }, async () => {
   const p = (await call('POST', '/api/v1/projects', { name: 'Reports', key: 'REP', template: 'kanban' })).body
   const [a, b, c] = p.statuses
@@ -2082,6 +2128,7 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     'GET /admin/rate-limits/limited': ['gadmin', '/admin/rate-limits/limited'],
     'GET /settings/public': ['any', '/settings/public'],
     'GET /link-types': ['any', '/link-types'],
+    'POST /projects/{key}/import': ['write', `/projects/${K}/import`, { csv: 'Title\nx', mapping: { title: 0 } }],
     'GET /projects/{key}/automation/runs': ['padmin', `/projects/${K}/automation/runs`],
     'POST /projects/{key}/automation/dry-run': ['padmin', `/projects/${K}/automation/dry-run`, { issue: I, actions: [] }],
     'GET /admin/views': ['gadmin', '/admin/views'],
@@ -2221,10 +2268,10 @@ test('system settings: admins change policies at runtime (validated, audited); e
   await put('attachments', { enabled: true, maxSizeMb: 25 })
 
   // bulk size and export size
-  await put('searchAndBulk', { exportMaxRows: 100, bulkMaxItems: 2 })
+  await put('searchAndBulk', { exportMaxRows: 100, bulkMaxItems: 2, importMaxRows: 10000 })
   assert.equal((await call('POST', '/api/v1/issues/bulk/edit', { issues: ['SET-1', 'SET-2', 'SET-3'], patch: { priority: 'high' } })).status, 400)
   assert.equal((await call('POST', '/api/v1/issues/bulk/edit', { issues: ['SET-1', 'SET-2'], patch: { priority: 'high' } })).status, 200)
-  await put('searchAndBulk', { exportMaxRows: 20000, bulkMaxItems: 200 })
+  await put('searchAndBulk', { exportMaxRows: 20000, bulkMaxItems: 200, importMaxRows: 10000 })
 
   // access tokens: lifetime, number, and the switch (which also stops existing tokens)
   await put('accessTokens', { enabled: true, maxPerUser: 1, maxExpiryDays: 30, defaultExpiryDays: 7 })
