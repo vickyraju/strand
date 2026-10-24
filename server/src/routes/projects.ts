@@ -9,6 +9,7 @@ import { audit, changes } from '../audit.ts'
 import { enqueue, kickJobs } from '../jobs.ts'
 import { backupBucket, backupSettings } from '../backups.ts'
 import { rulesSchema } from '../transitions.ts'
+import { dryRun } from '../rules.ts'
 
 const uuid = z.string().uuid()
 const color = z.string().regex(/^#[0-9a-fA-F]{6}$/)
@@ -304,10 +305,10 @@ const plugin: FastifyPluginAsyncZod = async app => {
         const [n] = await db.query<{ next: number }>(`select coalesce(max(position), -1) + 1 as next from ${cfg.table} where project_id = $1`, [p.id])
         w.cols.push('position'); w.vals.push(n!.next)
       }
-      const extra = cfg.ws ? ['workspace_id'] : []
+      const extra = [...(cfg.ws ? ['workspace_id'] : []), ...(kind === 'rules' ? ['owner_id'] : [])]
       const cid = typeof body.id === 'string' ? ['id'] : []
       const cols = ['project_id', ...extra, ...cid, ...w.cols]
-      const vals = [p.id, ...(cfg.ws ? [req.me.workspaceId] : []), ...(cid.length ? [body.id] : []), ...w.vals]
+      const vals = [p.id, ...(cfg.ws ? [req.me.workspaceId] : []), ...(kind === 'rules' ? [req.me.id] : []), ...(cid.length ? [body.id] : []), ...w.vals]
       return tx(async d => {
         const [row] = await d.query(
           `insert into ${cfg.table} (${cols.join(', ')}) values (${vals.map((_, i) => `$${i + 1}`).join(', ')}) returning *`, vals)
@@ -449,6 +450,37 @@ const plugin: FastifyPluginAsyncZod = async app => {
         reply.code(201)
       }
       return { version: same ? last.version : (last?.version ?? 0) + 1, created: !same }
+    })
+  })
+
+  // ── Automation's audit log and dry run (project admins, as in Jira) ──
+  app.get('/projects/:key/automation/runs', { schema: {
+    tags: T.config, summary: 'Recent automation runs, newest first: what started each, the item, what each action did, and how it ended (90 days)',
+    params: keyP, querystring: z.object({ rule: uuid.optional(), result: z.enum(['success', 'some_skipped', 'no_change', 'failed']).optional(), limit: z.coerce.number().int().min(1).max(200).default(50) }),
+  } }, async req => {
+    const p = await projectByKey(db, req, req.params.key)
+    await requireProjectAdmin(req, p)
+    const args: unknown[] = [p.id]
+    const where = ['r.project_id = $1']
+    if (req.query.rule) { args.push(req.query.rule); where.push(`r.rule_id = $${args.length}`) }
+    if (req.query.result) { args.push(req.query.result); where.push(`r.result = $${args.length}`) }
+    args.push(req.query.limit)
+    return db.query(`select r.id, r.rule_id, ru.name as rule, r.issue_id, case when i.id is null then null else pr.key || '-' || i.number end as issue_key,
+                            r.trigger, r.result, r.steps, r.error, r.at
+                       from rule_runs r join rules ru on ru.id = r.rule_id left join issues i on i.id = r.issue_id left join projects pr on pr.id = i.project_id
+                      where ${where.join(' and ')} order by r.at desc, r.id desc limit $${args.length}`, args)
+  })
+  app.post('/projects/:key/automation/dry-run', { schema: {
+    tags: T.config, summary: 'What these actions would do to a work item, without doing it (project admins)', params: keyP,
+    body: z.object({ issue: z.string().describe('Key of a work item in this project'), actions: childPatch.rules.shape.actions.unwrap() }),
+  } }, async req => {
+    const p = await projectByKey(db, req, req.params.key)
+    await requireProjectAdmin(req, p)
+    return tx(async d => {
+      const [i] = await d.query<any>(`select i.id, i.reporter_id, pr.lead_id from issues i join projects pr on pr.id = i.project_id
+                                       where i.project_id = $1 and pr.key || '-' || i.number = upper($2) and i.deleted_at is null`, [p.id, req.body.issue])
+      if (!i) throw new HttpError(404, 'No such work item in this project', { issue: 'Not found here' })
+      return dryRun(d, { projectId: p.id, issueId: i.id, reporterId: i.reporterId, leadId: i.leadId }, { actions: req.body.actions })
     })
   })
 

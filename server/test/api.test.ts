@@ -1491,6 +1491,38 @@ test('JQL search: fields by name, custom fields, AND/OR/NOT, lists, empties, dat
   assert.deepEqual(await (async () => (await call('GET', `/api/v1/search?jql=${encodeURIComponent('project = JQL')}`, undefined, 'jql.out@x.com')).body.items)(), [])
 })
 
+test('automation audit log: every run is recorded; a failing rule undoes only itself and tells its owner; a dry run changes nothing', { skip }, async () => {
+  await call('POST', '/api/v1/projects', { name: 'Audited', key: 'AAL', template: 'kanban' })
+  await join('AAL', 'aal.admin@x.com', 'admin'); await join('AAL', 'aal.member@x.com')
+  const good = (await call('POST', '/api/v1/projects/AAL/rules', { name: 'Triage', trigger: { kind: 'created' }, actions: [{ kind: 'label', value: 'new' }, { kind: 'assign', to: '0192f0c0-0000-7000-8000-000000000000' }] }, 'aal.admin@x.com')).body
+  const bad = (await call('POST', '/api/v1/projects/AAL/rules', { name: 'Broken', trigger: { kind: 'created' }, actions: [{ kind: 'priority', value: 'bogus' }] }, 'aal.admin@x.com')).body
+  assert.equal(bad.ownerId, (await call('GET', '/api/v1/me', undefined, 'aal.admin@x.com')).body.id)
+  // the edit that triggers them saves; the broken rule's change is undone, the good one's stays
+  const i = await call('POST', '/api/v1/projects/AAL/issues', { title: 'Watched', priority: 'low' })
+  assert.equal(i.status, 201)
+  const now = (await call('GET', `/api/v1/issues/${i.body.key}`)).body
+  assert.deepEqual([now.labels, now.priority], [['new'], 'low'])
+  // the audit log: one run each, with what every action did
+  const runs = (await call('GET', '/api/v1/projects/AAL/automation/runs')).body
+  const triage = runs.find((r: any) => r.ruleId === good.id), broken = runs.find((r: any) => r.ruleId === bad.id)
+  assert.equal(triage.result, 'some_skipped')
+  assert.deepEqual(triage.steps.map((s: any) => [s.action, s.outcome]), [['label', 'done'], ['assign', 'skipped']])
+  assert.equal(triage.issueKey, i.body.key)
+  assert.equal(broken.result, 'failed'); assert.ok(broken.error)
+  assert.deepEqual((await call('GET', `/api/v1/projects/AAL/automation/runs?result=failed`)).body.map((r: any) => r.rule), ['Broken'])
+  // its owner hears about it; the rule counts the failure
+  const notes = (await call('GET', '/api/v1/notifications', undefined, 'aal.admin@x.com')).body
+  assert.ok(notes.some((n: any) => n.kind === 'automation' && /Broken.*failed/.test(n.text)))
+  assert.equal((await call('GET', '/api/v1/projects/AAL')).body.rules.find((r: any) => r.id === bad.id).failures, 1)
+  // dry run: says what would happen, changes nothing
+  const dry = await call('POST', '/api/v1/projects/AAL/automation/dry-run', { issue: i.body.key, actions: [{ kind: 'priority', value: 'high' }, { kind: 'label', value: 'new' }] })
+  assert.deepEqual(dry.body.steps.map((s: any) => [s.action, s.outcome]), [['priority', 'done'], ['label', 'unchanged']])
+  assert.equal((await call('GET', `/api/v1/issues/${i.body.key}`)).body.priority, 'low')
+  assert.ok((await call('POST', '/api/v1/projects/AAL/automation/dry-run', { issue: i.body.key, actions: [{ kind: 'priority', value: 'bogus' }] })).body.error)
+  // the log and the dry run are for project admins
+  assert.equal((await call('GET', '/api/v1/projects/AAL/automation/runs', undefined, 'aal.member@x.com')).status, 403)
+})
+
 test('report data: every live item and every status change in order, for people who can see the project', { skip }, async () => {
   const p = (await call('POST', '/api/v1/projects', { name: 'Reports', key: 'REP', template: 'kanban' })).body
   const [a, b, c] = p.statuses
@@ -2050,6 +2082,8 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     'GET /admin/rate-limits/limited': ['gadmin', '/admin/rate-limits/limited'],
     'GET /settings/public': ['any', '/settings/public'],
     'GET /link-types': ['any', '/link-types'],
+    'GET /projects/{key}/automation/runs': ['padmin', `/projects/${K}/automation/runs`],
+    'POST /projects/{key}/automation/dry-run': ['padmin', `/projects/${K}/automation/dry-run`, { issue: I, actions: [] }],
     'GET /admin/views': ['gadmin', '/admin/views'],
     'POST /projects/{key}/components': ['padmin', `/projects/${K}/components`, { name: 'Matrix part' }],
     'PATCH /projects/{key}/components/{id}': ['padmin', `/projects/${K}/components/${component}`, { description: 'x' }],

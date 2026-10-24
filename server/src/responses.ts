@@ -37,7 +37,8 @@ export const AvailableTransition = z.object({
 })
 export const Field = z.object({ id, projectId: id, name: z.string(), kind: z.enum(['text', 'number', 'select', 'date']), options: nullable(z.array(z.string())), position: z.number() })
 export const Template = z.object({ id, projectId: id, name: z.string(), type: z.string(), title: z.string(), description: z.string(), priority: z.string(), labels: z.array(z.string()), estimate: nullable(z.number()) })
-export const Rule = z.object({ id, projectId: id, name: z.string(), enabled: z.boolean(), trigger: z.record(z.string(), z.unknown()), actions: z.array(z.record(z.string(), z.unknown())), runs: z.number() })
+export const Rule = z.object({ id, projectId: id, name: z.string(), enabled: z.boolean(), trigger: z.record(z.string(), z.unknown()), actions: z.array(z.record(z.string(), z.unknown())), runs: z.number(), failures: z.number(), ownerId: nullable(id) })
+const Step = z.object({ action: z.string(), outcome: z.enum(['done', 'skipped', 'unchanged', 'failed']), note: z.string().optional() })
 export const Release = z.object({ id, workspaceId: id, projectId: id, name: z.string(), description: z.string(), startDate: nullable(day), releaseDate: nullable(day), released: z.boolean(), releasedAt: nullable(ts) })
 export const Sprint = z.object({
   id, workspaceId: id, projectId: id, name: z.string(), goal: z.string(), state: z.enum(['planned', 'active', 'closed']),
@@ -178,6 +179,9 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'PATCH /issues/:key': IssueRow,
   'POST /issues/:key/clone': IssueRow,
   'GET /link-types': z.array(LinkType),
+  'GET /projects/:key/automation/runs': z.array(z.object({ id, ruleId: id, rule: z.string(), issueId: nullable(id), issueKey: nullable(z.string()), trigger: z.record(z.string(), z.unknown()),
+    result: z.enum(['success', 'some_skipped', 'no_change', 'failed']), steps: z.array(Step), error: nullable(z.string()), at: ts })),
+  'POST /projects/:key/automation/dry-run': z.object({ steps: z.array(Step), error: nullable(z.string()) }),
   'GET /projects/:key/workflow/versions': z.array(z.object({ version: z.number(), note: z.string(), publishedAt: ts, publishedBy: nullable(z.string()), statuses: z.number(), transitions: z.number() })),
   'GET /projects/:key/workflow/versions/:version': z.object({ version: z.number(), note: z.string(), publishedAt: ts, publishedBy: nullable(z.string()),
     statuses: z.array(z.record(z.string(), z.unknown())), transitions: z.array(z.record(z.string(), z.unknown())), types: z.array(z.record(z.string(), z.unknown())) }),

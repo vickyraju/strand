@@ -296,6 +296,28 @@ test('JQL search: switching keeps the filters as JQL; a query on a custom field 
   assert.deepEqual(o.problems, [])
 })
 
+test('automation: a dry run shows what a rule would do; the audit log shows each run and a failure', { skip, timeout: 60_000 }, async () => {
+  await owner('POST', '/projects', { name: 'Robots', key: 'RBT', template: 'kanban' })
+  const item = (await owner('POST', '/projects/RBT/issues', { title: 'Try me', priority: 'low' })).body
+  await owner('POST', '/projects/RBT/rules', { name: 'Broken one', trigger: { kind: 'created' }, actions: [{ kind: 'priority', value: 'bogus' }] })
+  await owner('POST', '/projects/RBT/issues', { title: 'Triggers it' })
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url('/project/RBT/settings/automation'))
+  await o.click('button:has-text("Create rule")')
+  await o.fill('#rule-name', 'Label shipped')
+  await o.fill('.modal input[aria-label="Label"]', 'shipped')
+  await o.fill('.modal input[aria-label="Work item to try the rule on"]', item.key)
+  await o.click('.modal button:has-text("Dry run")')
+  await o.waitForSelector('.modal .dry-run >> text=label')
+  assert.match(await o.locator('.modal .dry-run').innerText(), /label: done/)
+  await o.click('.modal button:has-text("Cancel")')
+  assert.deepEqual((await owner('GET', `/issues/${item.key}`)).body.labels, [])                 // nothing changed
+  await o.click('.wf-bar button:has-text("Audit log")')
+  await o.waitForSelector('.modal td:has-text("Broken one")')
+  assert.match(await o.locator('.modal').innerText(), /failed/i)
+  assert.deepEqual(o.problems, [])
+})
+
 test('plan a sprint, start it and complete it: unfinished work goes back to the backlog', { skip, timeout: 90_000 }, async () => {
   const p = (await owner('POST', '/projects', { name: 'Sprinting', key: 'SPR', template: 'scrum' })).body
   const done = p.statuses.find(s => s.category === 'done')
