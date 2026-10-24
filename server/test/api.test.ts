@@ -1171,6 +1171,39 @@ test('link types: Jira’s four to start with; admins add, rename and remove the
   assert.deepEqual(log.sort(), ['link_type.created', 'link_type.deleted', 'link_type.deleted', 'link_type.updated'])
 })
 
+test('clone: a copy in the start status linked to the original, with its children, links and sprint when asked', { skip }, async () => {
+  const p = (await call('POST', '/api/v1/projects', { name: 'Clones', key: 'CLN', template: 'scrum' })).body
+  const [todo, doing] = p.statuses
+  const [{ id: f1 }] = (await pool.query(`insert into field_defs (project_id, name, kind) values ($1, 'Team', 'text') returning id`, [p.id])).rows
+  await join('CLN', 'cln.member@x.com')
+  const member = (await call('GET', '/api/v1/me', undefined, 'cln.member@x.com')).body.id
+  const sprint = (await call('POST', '/api/v1/projects/CLN/sprints', { name: 'S1' })).body
+  const src = (await call('POST', '/api/v1/projects/CLN/issues', { title: 'Original', type: 'story', priority: 'high', labels: ['ui'], estimate: 5, assigneeId: member, sprintId: sprint.id, custom: { [f1]: 'Core' } })).body
+  await call('PATCH', `/api/v1/issues/${src.key}`, { statusId: doing.id })
+  await call('POST', '/api/v1/projects/CLN/issues', { title: 'Child A', parentId: src.id })
+  const other = (await call('POST', '/api/v1/projects/CLN/issues', { title: 'Blocked by the original' })).body
+  await call('POST', `/api/v1/issues/${src.key}/links`, { type: 'blocks', targetKey: other.key })
+
+  // plain clone: fields copied, start status, no sprint, no children, linked "clones"
+  const a = await call('POST', `/api/v1/issues/${src.key}/clone`, {})
+  assert.equal(a.status, 201)
+  assert.deepEqual([a.body.title, a.body.type, a.body.priority, a.body.labels, a.body.estimate, a.body.assigneeId, a.body.statusId, a.body.sprintId, a.body.custom[f1]],
+    ['CLONE - Original', 'story', 'high', ['ui'], 5, member, todo.id, null, 'Core'])
+  const aLinks = (await call('GET', `/api/v1/issues/${a.body.key}?expand=links,children`)).body
+  assert.deepEqual(aLinks.links.map((l: any) => [l.type, l.dir, l.key]), [['clones', 'out', src.key]])
+  assert.deepEqual(aLinks.children, [])
+  // everything: children, links, sprint; another title and assignee
+  const b = await call('POST', `/api/v1/issues/${src.key}/clone`, { title: 'Second go', assigneeId: null, include: { children: true, links: true, sprint: true } })
+  assert.deepEqual([b.body.title, b.body.assigneeId, b.body.sprintId], ['Second go', null, sprint.id])
+  const bFull = (await call('GET', `/api/v1/issues/${b.body.key}?expand=links,children`)).body
+  assert.deepEqual(bFull.children.map((c: any) => c.title), ['Child A'])
+  assert.deepEqual(bFull.links.map((l: any) => [l.type, l.dir, l.key]).sort(), [['blocks', 'out', other.key], ['clones', 'out', src.key]])
+  // history says where it came from; viewers can't clone
+  assert.ok((await pool.query(`select 1 from activity where issue_id = $1 and text = $2`, [b.body.id, `Cloned from ${src.key}`])).rows.length)
+  await join('CLN', 'cln.viewer@x.com', 'viewer')
+  assert.equal((await call('POST', `/api/v1/issues/${src.key}/clone`, {}, 'cln.viewer@x.com')).status, 403)
+})
+
 test('report data: every live item and every status change in order, for people who can see the project', { skip }, async () => {
   const p = (await call('POST', '/api/v1/projects', { name: 'Reports', key: 'REP', template: 'kanban' })).body
   const [a, b, c] = p.statuses
@@ -1688,6 +1721,7 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     'DELETE /issues/{key}': ['write', `/issues/${I}`],
     'GET /issues/{key}/comments': ['read', `/issues/${I}/comments`], 'POST /issues/{key}/comments': ['viewer', `/issues/${I}/comments`, { body: 'x' }],
     'GET /issues/{key}/activity': ['read', `/issues/${I}/activity`],
+    'POST /issues/{key}/clone': ['write', `/issues/${I}/clone`, {}],
     'GET /issues/{key}/transitions': ['read', `/issues/${I}/transitions`],
     'POST /issues/{key}/transitions': ['write', `/issues/${I}/transitions`, { transitionId: transition }],
     'POST /issues/bulk/edit': ['write', '/issues/bulk/edit', { issues: [I], patch: { title: 'x' } }],

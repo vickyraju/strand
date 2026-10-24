@@ -238,6 +238,33 @@ async function applyPatch(d: Db, me: Me, cur: any, patch: z.infer<typeof patchBo
   return (await d.query<any>(`${ISSUE_ROW} where i.id = $1`, [cur.id]))[0]
 }
 
+/** Create one issue (key, rank and start status from the project unless given), with its first history entry, the
+ *  assignee's notification and "created" automation. Returns its id. Shared by create and clone. */
+async function insertIssue(d: Db, me: Me, projectId: string, b: Record<string, any>, created = 'Created this work item') {
+  const [pr] = await d.query<{ leadId: string | null }>('select lead_id from projects where id = $1', [projectId])
+  if (b.assigneeId && !(await canJoinWork(d, projectId, b.assigneeId))) throw new HttpError(400, 'The assignee must be a member of this project')
+  if (b.custom) await checkCustom(d, projectId, b.custom)
+  let statusId = b.statusId
+  if (!statusId) {
+    const [s] = await d.query<{ id: string }>('select id from statuses where project_id = $1 order by position limit 1', [projectId])
+    if (!s) throw new HttpError(409, 'Project has no statuses')
+    statusId = s.id
+  }
+  const [{ number }] = await d.query<{ number: number }>('select next_issue_number($1) as number', [projectId]) as any
+  const [{ rank }] = await d.query<{ rank: number }>(
+    'select coalesce(max(rank), 0) + 1000 as rank from issues where project_id = $1', [projectId]) as any
+  const w = pick({ ...b, statusId, rank: b.rank ?? rank }, FIELDS, ['custom'])
+  const cols = ['workspace_id', 'project_id', 'number', 'reporter_id', ...(b.id ? ['id'] : []), ...w.cols]
+  const vals = [me.workspaceId, projectId, number, me.id, ...(b.id ? [b.id] : []), ...w.vals]
+  const [row] = await d.query<{ id: string }>(
+    `insert into issues (${cols.join(', ')}) values (${vals.map((_, i) => `$${i + 1}`).join(', ')}) returning id`, vals)
+  await d.query(`insert into activity (issue_id, actor_id, text) values ($1, $2, $3)`, [row!.id, me.id, created])
+  if (b.assigneeId) await note(d, b.assigneeId, me, row!.id, 'assigned', 'assigned you a work item')
+  await runRules(d, { projectId, issueId: row!.id, reporterId: me.id, leadId: pr!.leadId }, { kind: 'created' })
+  await publish(d, projectId, { type: 'issue.created', id: row!.id })
+  return row!.id
+}
+
 const plugin: FastifyPluginAsyncZod = async app => {
   // Board/list page of a project, in backlog order. Keyset-paginated: pass `next` back as `cursor`.
   // Everything the project's reports are calculated from: every item (not just a page) and every status change.
@@ -285,32 +312,41 @@ const plugin: FastifyPluginAsyncZod = async app => {
     id: uuid.optional().describe('Client-chosen id: lets the app keep its local id, and makes a retried create a conflict instead of a duplicate'),
   })
   app.post('/projects/:key/issues', { schema: { tags: TAG, summary: 'Create an issue (key and rank are assigned by the server)', params: projKeyP, body: createBody } }, async req => {
-    const b = req.body
     const p = await projectByKey(db, req, req.params.key)
+    return tx(async d => (await d.query<any>(`${ISSUE_ROW} where i.id = $1`, [await insertIssue(d, req.me, p.id, req.body)]))[0])
+  })
+
+  // Clone (Jira's): a copy in the same project, starting at the start status, linked "clones" to the original
+  app.post('/issues/:key/clone', { schema: {
+    tags: TAG, summary: 'Clone an issue: a copy of its fields, in the start status, linked to it (clones / is cloned by). Optionally its child items, its links and its sprint',
+    params: keyP, body: z.object({
+      title: z.string().min(1).max(500).optional().describe('Default: "CLONE - " and the original title'),
+      assigneeId: uuid.nullable().optional().describe('Default: the original\'s assignee'),
+      include: z.object({ children: z.boolean().default(false), links: z.boolean().default(false), sprint: z.boolean().default(false) }).default({ children: false, links: false, sprint: false }),
+    }),
+  } }, async (req, reply) => {
     return tx(async d => {
-      const [pr] = await d.query<{ leadId: string | null }>('select lead_id from projects where id = $1', [p.id])
-      if (b.assigneeId && !(await canJoinWork(d, p.id, b.assigneeId))) throw new HttpError(400, 'The assignee must be a member of this project')
-      if (b.custom) await checkCustom(d, p.id, b.custom)
-      let statusId = b.statusId
-      if (!statusId) {
-        const [s] = await d.query<{ id: string }>('select id from statuses where project_id = $1 order by position limit 1', [p.id])
-        if (!s) throw new HttpError(409, 'Project has no statuses')
-        statusId = s.id
+      const src = await issueByKey(d, req, req.params.key)
+      const { include } = req.body
+      const copy = async (i: any, over: Record<string, unknown>) => insertIssue(d, req.me, i.projectId, {
+        type: i.type, title: i.title, description: i.description, priority: i.priority, labels: i.labels, estimate: i.estimate,
+        timeEstimate: i.timeEstimate, dueDate: i.dueDate, startDate: i.startDate, releaseId: i.releaseId, custom: i.custom,
+        assigneeId: i.assigneeId && (await canJoinWork(d, i.projectId, i.assigneeId)) ? i.assigneeId : null,
+        sprintId: include.sprint ? i.sprintId : null, ...over,
+      }, `Cloned from ${i.key}`)
+      const id = await copy(src, {
+        title: req.body.title ?? `CLONE - ${src.title}`.slice(0, 500), parentId: src.parentId,
+        ...(req.body.assigneeId !== undefined ? { assigneeId: req.body.assigneeId } : {}),
+      })
+      await d.query(`insert into issue_links (issue_id, target_id, type) values ($1, $2, 'clones')`, [id, src.id])
+      if (include.children)
+        for (const c of await d.query<any>(`${ISSUE_ROW} where i.parent_id = $1 and i.deleted_at is null order by i.rank`, [src.id])) await copy(c, { parentId: id })
+      if (include.links) {
+        await d.query(`insert into issue_links (issue_id, target_id, type) select $2, target_id, type from issue_links where issue_id = $1 and target_id <> $2 and type <> 'clones' on conflict do nothing`, [src.id, id])
+        await d.query(`insert into issue_links (issue_id, target_id, type) select issue_id, $2, type from issue_links where target_id = $1 and issue_id <> $2 and type <> 'clones' on conflict do nothing`, [src.id, id])
       }
-      const [{ number }] = await d.query<{ number: number }>('select next_issue_number($1) as number', [p.id]) as any
-      const [{ rank }] = await d.query<{ rank: number }>(
-        'select coalesce(max(rank), 0) + 1000 as rank from issues where project_id = $1', [p.id]) as any
-      const w = pick({ ...b, statusId, rank: b.rank ?? rank }, FIELDS, ['custom'])
-      const cols = ['workspace_id', 'project_id', 'number', 'reporter_id', ...(b.id ? ['id'] : []), ...w.cols]
-      const vals = [req.me.workspaceId, p.id, number, req.me.id, ...(b.id ? [b.id] : []), ...w.vals]
-      const [row] = await d.query<{ id: string }>(
-        `insert into issues (${cols.join(', ')}) values (${vals.map((_, i) => `$${i + 1}`).join(', ')}) returning id`, vals)
-      await d.query(`insert into activity (issue_id, actor_id, text) values ($1, $2, 'Created this work item')`, [row!.id, req.me.id])
-      if (b.assigneeId) await note(d, b.assigneeId, req.me, row!.id, 'assigned', 'assigned you a work item')
-      await runRules(d, { projectId: p.id, issueId: row!.id, reporterId: req.me.id, leadId: pr!.leadId }, { kind: 'created' })
-      await publish(d, p.id, { type: 'issue.created', id: row!.id })
-      const [issue] = await d.query<any>(`${ISSUE_ROW} where i.id = $1`, [row!.id])
-      return issue
+      reply.code(201)
+      return (await d.query<any>(`${ISSUE_ROW} where i.id = $1`, [id]))[0]
     })
   })
 

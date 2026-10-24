@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { usePresence } from '../api/presence'
 import { recordView } from '../api/work'
 import {
-  Maximize2, Minimize2, X, Link2, Trash2, Plus, Eye, EyeOff, ChevronUp, ChevronDown, MoreHorizontal, RefreshCw,
+  Maximize2, Minimize2, X, Link2, Trash2, Plus, Eye, EyeOff, ChevronUp, ChevronDown, MoreHorizontal, RefreshCw, CopyPlus,
   Ban, Unlink, Pencil, UserCheck, Copy, Paperclip, FileText,
 } from 'lucide-react'
 import {
@@ -21,6 +21,7 @@ import { UserPicker } from './UserPicker'
 import { useProjectPeople } from '../api/users'
 import { Markdown, MentionTextarea } from './markdown'
 import { transitionLabel } from './BoardCard'
+import CloneDialog from './CloneDialog'
 import IssueRow from './IssueRow'
 import Attachments from './Attachments'
 import { CustomFieldInput } from './CustomFields'
@@ -56,6 +57,7 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
   const [tab, setTab]             = useState<'comments' | 'history' | 'all'>('comments')
   const [editComment, setEditComment] = useState<{ id: string; body: string } | null>(null)
   const [linking, setLinking]     = useState(false)
+  const [cloning, setCloning]     = useState(false)
   const [confirmDel, setConfirmDel] = useState(false)
   const attachRef = useRef<HTMLInputElement>(null)
   const [templating, setTemplating] = useState(false)
@@ -164,6 +166,7 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
         <Menu title="More actions" trigger={<MoreHorizontal size={16} />} items={[
           ...(readOnly ? [] : loops.map(t => ({ label: t.name, icon: <RefreshCw size={14} />, onClick: () => runTransition(issue.id, t.id) }))),
           { label: 'Copy key', divider: !readOnly && loops.length > 0, icon: <Copy size={14} />, onClick: () => { navigator.clipboard?.writeText(issue.key); toast(`Copied ${issue.key}`) } },
+          ...(readOnly ? [] : [{ label: 'Clone', icon: <CopyPlus size={14} />, onClick: () => setCloning(true) }]),
           ...(readOnly ? [] : [{ label: 'Link work item', icon: <Link2 size={14} />, onClick: () => setLinking(true) }]),
           ...(readOnly ? [] : [{ label: 'Save as template', icon: <FileText size={14} />, onClick: () => setTemplating(true) }]),
           ...(!readOnly && issue.type !== 'epic' && !issue.parentId ? [{ label: 'Add sub-item', icon: <Plus size={14} />, onClick: () => createIssue({ projectId: project.id, parentId: issue.id, sprintId: issue.sprintId }) }] : []),
@@ -451,6 +454,7 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
       </div>
 
       {linking && <LinkDialog issue={issue} onClose={() => setLinking(false)} />}
+      {cloning && <CloneDialog issue={issue} onClose={() => setCloning(false)} />}
       {templating && (
         <TemplateDialog
           template={{ ...blankTemplate(), name: issue.title, type: issue.type, description: issue.description, priority: issue.priority, labels: issue.labels, estimate: issue.estimate }}
