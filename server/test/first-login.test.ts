@@ -23,7 +23,7 @@ before(async () => {
   scratch = new pg.Pool({ connectionString: target.href })
   const dir = new URL('../../supabase/migrations/', import.meta.url)
   for (const f of readdirSync(dir).filter(f => f.endsWith('.sql')).sort()) await scratch.query(readFileSync(new URL(f, dir), 'utf8'))
-  Object.assign(process.env, { DATABASE_URL: target.href, NODE_ENV: 'test', AUTH_DEV: '1' })
+  Object.assign(process.env, { DATABASE_URL: target.href, NODE_ENV: 'test', AUTH_DEV: '1', JOBS_POLL_MS: '0' })
   app = await (await import('../src/app.ts')).build()
 })
 after(async () => {
