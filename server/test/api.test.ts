@@ -1286,6 +1286,33 @@ test('workflow versions: publishing records the workflow; nothing new when uncha
   assert.equal((await call('GET', '/api/v1/projects/VER/workflow/versions/9')).status, 404)
 })
 
+test('time tracking: the remaining estimate counts down as work is logged, Jira’s four ways; admins manage everyone’s logs', { skip }, async () => {
+  await call('POST', '/api/v1/projects', { name: 'Timed', key: 'TIM', template: 'kanban' })
+  await join('TIM', 'tim.ann@x.com'); await join('TIM', 'tim.ben@x.com')
+  const i = (await call('POST', '/api/v1/projects/TIM/issues', { title: 'Estimated', timeEstimate: 600 })).body
+  assert.deepEqual([i.timeEstimate, i.timeRemaining], [600, 600])                 // the remaining estimate starts at the original
+  const rem = async () => (await call('GET', `/api/v1/issues/${i.key}`)).body.timeRemaining
+  const log = (body: object, who = 'tim.ann@x.com') => call('POST', `/api/v1/issues/${i.key}/worklogs`, { date: '2026-10-20', ...body }, who)
+  const a = (await log({ minutes: 120 })).body                                    // auto: 600 - 120
+  assert.equal(await rem(), 480)
+  await log({ minutes: 60, adjustEstimate: 'leave' }); assert.equal(await rem(), 480)
+  await log({ minutes: 30, adjustEstimate: 'new', newEstimate: 200 }); assert.equal(await rem(), 200)
+  await log({ minutes: 30, adjustEstimate: 'manual', reduceBy: 50 }); assert.equal(await rem(), 150)
+  assert.equal((await log({ minutes: 30, adjustEstimate: 'new' })).status, 400)
+  // changing a log moves the remaining estimate by the difference; removing it puts its time back
+  assert.equal((await call('PATCH', `/api/v1/worklogs/${a.id}`, { minutes: 150 }, 'tim.ann@x.com')).body.minutes, 150)
+  assert.equal(await rem(), 120)
+  // someone else's log: Ben (a member) can't touch Ann's; the owner (project admin) can, and it is audited
+  assert.equal((await call('PATCH', `/api/v1/worklogs/${a.id}`, { note: 'mine now' }, 'tim.ben@x.com')).status, 403)
+  assert.equal((await call('DELETE', `/api/v1/worklogs/${a.id}`, undefined, 'tim.ben@x.com')).status, 403)
+  assert.equal((await call('DELETE', `/api/v1/worklogs/${a.id}`)).status, 204)
+  assert.equal(await rem(), 270)
+  assert.ok((await call('GET', '/api/v1/audit?action=worklog')).body.items.some((e: any) => e.action === 'worklog.deleted'))
+  // the remaining estimate can be set by hand, and never goes below zero
+  assert.equal((await call('PATCH', `/api/v1/issues/${i.key}`, { timeRemaining: 20 })).body.timeRemaining, 20)
+  await log({ minutes: 90 }); assert.equal(await rem(), 0)
+})
+
 test('report data: every live item and every status change in order, for people who can see the project', { skip }, async () => {
   const p = (await call('POST', '/api/v1/projects', { name: 'Reports', key: 'REP', template: 'kanban' })).body
   const [a, b, c] = p.statuses
@@ -1816,6 +1843,7 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     'POST /issues/{key}/presence': ['write', `/issues/${I}/presence`], 'DELETE /issues/{key}/presence': ['viewer', `/issues/${I}/presence`],
     'PATCH /comments/{id}': ['own', `/comments/${comment}`, { body: 'x' }], 'DELETE /comments/{id}': ['own', `/comments/${comment}`],
     'POST /issues/{key}/worklogs': ['write', `/issues/${I}/worklogs`, { minutes: 5, date: '2026-10-01' }],
+    'PATCH /worklogs/{id}': ['own', `/worklogs/${worklog}`, { note: 'x' }],
     'DELETE /worklogs/{id}': ['own', `/worklogs/${worklog}`],
     'GET /search/export.csv': ['any', '/search/export.csv'], 'GET /search': ['any', '/search'], 'GET /labels': ['any', '/labels'],
     'GET /me/work': ['any', '/me/work'], 'GET /me/recent': ['any', '/me/recent'], 'GET /me/work/summary': ['any', '/me/work/summary'],

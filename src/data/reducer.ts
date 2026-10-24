@@ -1,5 +1,6 @@
 // Pure data layer: types, reducer, migration and selectors. No React here so it can be unit-tested with `node --test`.
 import { RULE_FIELDS, actionChanges, allows, problems, type Item, type RuleCtx, type TransitionRules } from './transitionRules.ts'
+import { adjustRemaining, type Adjust } from '../../server/src/shared/estimates.ts'
 
 // ── Types ──────────────────────────────────────────────────
 
@@ -224,6 +225,8 @@ export interface Issue {
   resolvedAt?: number
   /** Original time estimate in minutes. */
   timeEstimate?: number
+  /** Remaining estimate in minutes (Jira's): starts at the original estimate, counts down as work is logged. */
+  timeRemaining?: number
   worklogs:    Worklog[]
   /** Backlog order: lower is higher priority. Fractional so a move touches one item. */
   rank:        number
@@ -338,7 +341,8 @@ export type Action =
   | { type: 'moveIssue'; id: string; beforeId?: string; container?: string | null }
   | { type: 'addAttachment'; issueId: string; attachment: Attachment }
   | { type: 'removeAttachment'; issueId: string; attachmentId: string }
-  | { type: 'logWork'; issueId: string; minutes: number; date: string; note: string }
+  | { type: 'logWork'; issueId: string; minutes: number; date: string; note: string; adjust?: Adjust }
+  | { type: 'updateWorklog'; issueId: string; worklogId: string; minutes: number; date: string; note: string }
   | { type: 'deleteWorklog'; issueId: string; worklogId: string }
   | { type: 'releaseVersion'; projectId: string; releaseId: string; moveTo?: string }
   | { type: 'saveView'; view: SavedView }
@@ -587,6 +591,7 @@ export function reducer(state: State, action: Action, now = Date.now()): State {
         id: action.id, key: `${project.key}-${project.nextNumber}`, reporterId: actor,
         watcherIds: [...new Set([actor, action.issue.assigneeId].filter((x): x is string => !!x))],
         links: [], attachments: [], worklogs: [], custom: action.issue.custom ?? {}, createdAt: now, updatedAt: now,
+        ...(action.issue.timeEstimate != null ? { timeRemaining: action.issue.timeEstimate } : {}),
         rank: Math.max(0, ...state.issues.filter(i => i.projectId === project.id).map(i => i.rank)) + 1,
       }
       const next: State = {
@@ -731,12 +736,22 @@ export function reducer(state: State, action: Action, now = Date.now()): State {
       const h = Math.floor(w.minutes / 60), m = w.minutes % 60
       return {
         ...state,
-        issues:   state.issues.map(i => i.id === action.issueId ? { ...i, worklogs: [...i.worklogs, w], updatedAt: now } : i),
+        issues:   state.issues.map(i => i.id === action.issueId ? withRemaining({ ...i, worklogs: [...i.worklogs, w], updatedAt: now }, adjustRemaining(i.timeRemaining, w.minutes, action.adjust)) : i),
         activity: [...state.activity, log(action.issueId, `logged ${h ? `${h}h` : ''}${h && m ? ' ' : ''}${m ? `${m}m` : ''}`)],
       }
     }
-    case 'deleteWorklog':
-      return { ...state, issues: state.issues.map(i => i.id === action.issueId ? { ...i, worklogs: i.worklogs.filter(w => !(w.id === action.worklogId && w.userId === actor)) } : i) }
+    // Your own work logs; a project admin's, anyone's. The remaining estimate follows the change in time.
+    case 'updateWorklog': case 'deleteWorklog': {
+      const issue = state.issues.find(i => i.id === action.issueId)
+      const w = issue?.worklogs.find(x => x.id === action.worklogId)
+      const project = state.projects.find(p => p.id === issue?.projectId)
+      if (!issue || !w || (w.userId !== actor && project?.role !== undefined && project.role !== 'admin')) return state
+      const minutes = action.type === 'updateWorklog' ? Math.round(action.minutes) : 0
+      if (action.type === 'updateWorklog' && minutes <= 0) return state
+      const worklogs = action.type === 'deleteWorklog' ? issue.worklogs.filter(x => x.id !== w.id)
+        : issue.worklogs.map(x => (x.id === w.id ? { ...x, minutes, date: action.date, note: action.note.trim() } : x))
+      return { ...state, issues: state.issues.map(i => (i.id === issue.id ? withRemaining({ ...i, worklogs, updatedAt: now }, adjustRemaining(i.timeRemaining, minutes - w.minutes)) : i)) }
+    }
     case 'releaseVersion': {
       const project = state.projects.find(p => p.id === action.projectId)
       if (!project) return state
@@ -947,6 +962,9 @@ function dropIssues(state: State, ids: Set<string>): State {
   }
 }
 
+/** An item with its remaining estimate set (left out when there is none). */
+const withRemaining = (i: Issue, r: number | null): Issue => { const { timeRemaining: _r, ...rest } = i; return r === null ? rest : { ...rest, timeRemaining: r } }
+
 function updateOne(
   state: State, id: string, patch: IssuePatch,
   log: (issueId: string, text: string, field?: string, from?: string, to?: string) => Activity,
@@ -975,6 +993,8 @@ function updateOne(
     }
   }
   const loop = !!t && t.to === null
+  // a first original estimate starts the remaining one (Jira's time tracking)
+  if (patch.timeEstimate != null && patch.timeRemaining === undefined && prev.timeRemaining === undefined) patch = { ...patch, timeRemaining: patch.timeEstimate }
 
   const changed = (Object.keys(patch) as (keyof IssuePatch)[])
     .filter(k => JSON.stringify(prev[k]) !== JSON.stringify(patch[k]))

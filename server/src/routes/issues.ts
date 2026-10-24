@@ -9,6 +9,7 @@ import { getSetting } from '../settings.ts'
 import { runRules, moveAllowed } from '../rules.ts'
 import { available, ruleContext, transitionById, transitionTo, type TransitionRow } from '../transitions.ts'
 import { actionChanges, problems, type RuleCtx } from '../shared/transitionRules.ts'
+import { adjustRemaining, remainingWhenEstimated, type Adjust } from '../shared/estimates.ts'
 import { projectByKey } from './projects.ts'
 
 const uuid = z.string().uuid()
@@ -19,7 +20,7 @@ export const RESOLUTIONS = ['Done', "Won't do", 'Duplicate', 'Cannot reproduce']
 
 export const ISSUE_ROW = `
   select i.id, p.key || '-' || i.number as key, i.project_id, i.number, i.type, i.title, i.description,
-         i.status_id, i.priority, i.assignee_id, i.reporter_id, i.labels, i.estimate, i.time_estimate,
+         i.status_id, i.priority, i.assignee_id, i.reporter_id, i.labels, i.estimate, i.time_estimate, i.time_remaining,
          i.due_date, i.start_date, i.sprint_id, i.release_id, i.parent_id, i.custom, i.rank, i.version,
          i.resolution, i.resolved_at, i.created_at, i.updated_at
     from issues i join projects p on p.id = i.project_id`
@@ -27,7 +28,8 @@ export const ISSUE_ROW = `
 const patchBody = z.object({
   title: z.string().min(1).max(500), description: z.string(), type, priority, statusId: uuid,
   assigneeId: uuid.nullable(), labels: z.array(z.string().max(50)).max(50), estimate: z.number().nonnegative().nullable(),
-  timeEstimate: z.number().int().nonnegative().nullable(), dueDate: date.nullable(), startDate: date.nullable(),
+  timeEstimate: z.number().int().nonnegative().nullable(), timeRemaining: z.number().int().nonnegative().nullable().describe('Remaining estimate, minutes (starts at the original estimate)'),
+  dueDate: date.nullable(), startDate: date.nullable(),
   sprintId: uuid.nullable(), releaseId: uuid.nullable(), parentId: uuid.nullable(),
   custom: z.record(z.string(), z.union([z.string(), z.number()])), rank: z.number(),
   resolution: z.enum(RESOLUTIONS).nullable().describe('How a finished item ended. Only for items in a Done status; reaching Done sets "Done" unless you say otherwise (null: the default)'),
@@ -194,6 +196,8 @@ async function applyPatch(d: Db, me: Me, cur: any, patch: z.infer<typeof patchBo
     await audit(d, { me, ip: o.ip }, { action: 'issue.workflow_overridden', type: 'issue', id: cur.id, name: cur.key, project: { id: cur.projectId, key: cur.key.split('-')[0] },
       before: { statusId: cur.statusId }, after: { statusId: patch.statusId } })
   if (patch.parentId === cur.id) throw new HttpError(400, 'An item cannot be its own parent')
+  // a first original estimate starts the remaining one (Jira's time tracking)
+  if (patch.timeEstimate != null && patch.timeRemaining === undefined && cur.timeRemaining === null) patch = { ...patch, timeRemaining: patch.timeEstimate }
   if (patch.type !== undefined && patch.type !== cur.type) await checkType(d, cur.projectId, patch.type)
   if (patch.custom) await checkCustom(d, cur.projectId, patch.custom, cur.custom)
   if (patch.resolution) {
@@ -262,7 +266,8 @@ async function insertIssue(d: Db, me: Me, projectId: string, b: Record<string, a
   const [{ number }] = await d.query<{ number: number }>('select next_issue_number($1) as number', [projectId]) as any
   const [{ rank }] = await d.query<{ rank: number }>(
     'select coalesce(max(rank), 0) + 1000 as rank from issues where project_id = $1', [projectId]) as any
-  const w = pick({ ...b, statusId, rank: b.rank ?? rank }, FIELDS, ['custom'])
+  const timeRemaining = b.timeRemaining !== undefined ? b.timeRemaining : remainingWhenEstimated(null, b.timeEstimate)
+  const w = pick({ ...b, statusId, rank: b.rank ?? rank, ...(timeRemaining !== null ? { timeRemaining } : {}) }, FIELDS, ['custom'])
   const cols = ['workspace_id', 'project_id', 'number', 'reporter_id', ...(b.id ? ['id'] : []), ...w.cols]
   const vals = [me.workspaceId, projectId, number, me.id, ...(b.id ? [b.id] : []), ...w.vals]
   const [row] = await d.query<{ id: string }>(
@@ -600,22 +605,72 @@ const plugin: FastifyPluginAsyncZod = async app => {
     reply.code(204).send()
   })
 
-  // ── Work logs ──
+  // ── Work logs (Jira's: people log, change and remove their own; project admins can change and remove anyone's; each
+  // adjusts the remaining estimate as `adjustEstimate` says, automatically by default) ──
+  const adjust = {
+    adjustEstimate: z.enum(['auto', 'leave', 'new', 'manual']).default('auto').describe('auto: count the remaining estimate down (or back up); leave: don\'t touch it; new: set it to newEstimate; manual: change it by reduceBy'),
+    newEstimate: z.coerce.number().int().nonnegative().optional().describe('Minutes, with adjustEstimate=new'),
+    reduceBy: z.coerce.number().int().nonnegative().optional().describe('Minutes, with adjustEstimate=manual'),
+  }
+  const adjustOf = (q: { adjustEstimate: string; newEstimate?: number; reduceBy?: number }): Adjust => {
+    if (q.adjustEstimate === 'new') { if (q.newEstimate === undefined) throw new HttpError(400, 'Say the new remaining estimate', { newEstimate: 'Required' }); return { adjustEstimate: 'new', newEstimate: q.newEstimate } }
+    if (q.adjustEstimate === 'manual') { if (q.reduceBy === undefined) throw new HttpError(400, 'Say how much to change it by', { reduceBy: 'Required' }); return { adjustEstimate: 'manual', reduceBy: q.reduceBy } }
+    return { adjustEstimate: q.adjustEstimate as 'auto' | 'leave' }
+  }
+  /** Count the item's remaining estimate down by `delta` minutes (or up, when negative). */
+  const remaining = async (d: Db, issueId: string, delta: number, a: Adjust) => {
+    if (a.adjustEstimate === 'leave') return
+    const [i] = await d.query<{ timeRemaining: number | null }>('select time_remaining from issues where id = $1 for update', [issueId])
+    const next = adjustRemaining(i!.timeRemaining, delta, a)
+    if (next !== i!.timeRemaining) await d.query('update issues set time_remaining = $2, version = version + 1, updated_at = now() where id = $1', [issueId, next])
+  }
+  /** A work log I may change: my own, or anyone's in a project I administer. */
+  const worklogFor = async (d: Db, req: { me: Me; method: string }, id: string) => {
+    const args: unknown[] = [id]
+    const see = visible(req.me, 'i.project_id', args)
+    const [w] = await d.query<any>(`select w.*, i.project_id, p.key as project_key from worklogs w join issues i on i.id = w.issue_id join projects p on p.id = i.project_id
+                                     where w.id = $1 and ${see} for update of w`, args)
+    if (!w) throw new HttpError(404, 'Work log not found')
+    if (w.userId !== req.me.id && (await roleOf(d, req.me, w.projectId)) !== 'admin') throw new HttpError(403, 'Only project admins can change other people’s work logs')
+    return w
+  }
   app.post('/issues/:key/worklogs', { schema: {
-    tags: ['Comments & work logs'], summary: 'Log time on an issue', params: keyP,
-    body: z.object({ id: uuid.optional().describe('Client-chosen id'), minutes: z.number().int().positive(), date, note: z.string().default('') }),
+    tags: ['Comments & work logs'], summary: 'Log time on an issue (the remaining estimate counts down, unless adjustEstimate says otherwise)', params: keyP,
+    body: z.object({ id: uuid.optional().describe('Client-chosen id'), minutes: z.number().int().positive(), date, note: z.string().default(''), ...adjust }),
   } }, async req => {
     const b = req.body
-    const i = await issueByKey(db, req, req.params.key)
-    const [w] = await db.query('insert into worklogs (id, issue_id, user_id, minutes, date, note) values (coalesce($6::uuid, uuid_v7()), $1, $2, $3, $4, $5) returning *',
-      [i.id, req.me.id, b.minutes, b.date, b.note, b.id ?? null])
-    return w
+    return tx(async d => {
+      const i = await issueByKey(d, req, req.params.key)
+      const [w] = await d.query('insert into worklogs (id, issue_id, user_id, minutes, date, note) values (coalesce($6::uuid, uuid_v7()), $1, $2, $3, $4, $5) returning *',
+        [i.id, req.me.id, b.minutes, b.date, b.note, b.id ?? null])
+      await remaining(d, i.id, b.minutes, adjustOf(b))
+      await publish(d, i.projectId, { type: 'issue.updated', id: i.id, key: i.key })
+      return w
+    })
   })
-  app.delete('/worklogs/:id', { schema: { tags: ['Comments & work logs'], summary: 'Delete your own work log', params: idP } }, async (req, reply) => {
-    const args: unknown[] = [req.params.id, req.me.id]
-    const see = visible(req.me, 'i.project_id', args)
-    const r = await db.query(`delete from worklogs where id = $1 and user_id = $2 and exists (select 1 from issues i where i.id = worklogs.issue_id and ${see}) returning id`, args)
-    if (!r.length) throw new HttpError(404, 'Not found, or not yours')
+  app.patch('/worklogs/:id', { schema: {
+    tags: ['Comments & work logs'], summary: 'Change a work log: your own, or anyone\'s as a project admin (the remaining estimate follows the change in time)', params: idP,
+    body: z.object({ minutes: z.number().int().positive().optional(), date: date.optional(), note: z.string().optional(), ...adjust }),
+  } }, async req => {
+    const b = req.body
+    return tx(async d => {
+      const w = await worklogFor(d, req, req.params.id)
+      const [row] = await d.query(`update worklogs set minutes = $2, date = $3, note = $4 where id = $1 returning *`, [w.id, b.minutes ?? w.minutes, b.date ?? w.date, b.note ?? w.note])
+      if (b.minutes !== undefined && b.minutes !== w.minutes) await remaining(d, w.issueId, b.minutes - w.minutes, adjustOf(b))
+      if (w.userId !== req.me.id) await audit(d, req, { action: 'worklog.updated', type: 'worklog', id: w.id, project: { id: w.projectId, key: w.projectKey }, before: { minutes: w.minutes, date: w.date, note: w.note }, after: { minutes: row.minutes, date: row.date, note: row.note } })
+      return row
+    })
+  })
+  app.delete('/worklogs/:id', { schema: {
+    tags: ['Comments & work logs'], summary: 'Remove a work log: your own, or anyone\'s as a project admin (its time goes back on the remaining estimate)', params: idP,
+    querystring: z.object(adjust),
+  } }, async (req, reply) => {
+    await tx(async d => {
+      const w = await worklogFor(d, req, req.params.id)
+      await d.query('delete from worklogs where id = $1', [w.id])
+      await remaining(d, w.issueId, -w.minutes, adjustOf(req.query))
+      if (w.userId !== req.me.id) await audit(d, req, { action: 'worklog.deleted', type: 'worklog', id: w.id, project: { id: w.projectId, key: w.projectKey }, before: { minutes: w.minutes, date: w.date, note: w.note, by: w.userId } })
+    })
     reply.code(204).send()
   })
 }
