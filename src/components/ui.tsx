@@ -395,6 +395,26 @@ export const userOptions = (users: User[]): PickerOption<string | undefined>[] =
   ...users.map(u => ({ value: u.id as string | undefined, label: u.name, icon: <Avatar user={u} size={20} /> })),
 ]
 
+/** Picks several from a short list, as chips with an add menu. */
+export function MultiSelect({ label, all, value, onChange }: { label: string; all: { key: string; name: string }[]; value: string[]; onChange: (v: string[]) => void }) {
+  const rest = all.filter(a => !value.includes(a.key))
+  return (
+    <span className="rule-chips">
+      {value.map(k => (
+        <span key={k} className="chip-static">{all.find(a => a.key === k)?.name ?? 'Removed'}
+          <button className="chip-x" aria-label={`Remove ${all.find(a => a.key === k)?.name ?? 'item'}`} onClick={() => onChange(value.filter(x => x !== k))}>×</button>
+        </span>
+      ))}
+      {rest.length > 0 && (
+        <select className="input input-sm" aria-label={`Add to ${label.toLowerCase()}`} value="" onChange={e => e.target.value && onChange([...value, e.target.value])}>
+          <option value="">{value.length ? '+ Add' : 'Choose…'}</option>
+          {rest.map(a => <option key={a.key} value={a.key}>{a.name}</option>)}
+        </select>
+      )}
+    </span>
+  )
+}
+
 // ── Empty state ────────────────────────────────────────────
 
 export function Empty({ icon, title, body, action }: {

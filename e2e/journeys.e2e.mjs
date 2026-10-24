@@ -221,6 +221,27 @@ test('time tracking: logging work counts the remaining estimate down; it can be 
   assert.deepEqual(o.problems, [])
 })
 
+test('components: an admin adds one with a lead; new work in it goes to the lead; the item shows its components', { skip, timeout: 60_000 }, async () => {
+  await owner('POST', '/projects', { name: 'Parts', key: 'PTS', template: 'kanban' })
+  await owner('POST', '/projects/PTS/members', { userIds: [await idOf('maya@e2e.test')], role: 'member' })
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url('/project/PTS/settings'))
+  await o.click('section[aria-label="Components"] button:has-text("Add component")')
+  await o.fill('#cmp-name', 'Billing')
+  await o.selectOption('.modal select[aria-label="Component lead"]', { label: PEOPLE['maya@e2e.test'] })
+  await o.selectOption('#cmp-def', 'component_lead')
+  await o.click('.modal button:has-text("Save")')
+  await o.waitForSelector('section[aria-label="Components"] >> text=Billing')
+  await o.waitForTimeout(1000)                                             // the new component reaches the server
+  const billing = (await owner('GET', '/projects/PTS')).body.components.find(c => c.name === 'Billing')
+  assert.ok(billing, 'saved')
+  const item = (await owner('POST', '/projects/PTS/issues', { title: 'Invoice totals', componentIds: [billing.id] })).body
+  assert.equal(item.assigneeId, await idOf('maya@e2e.test'))
+  await o.goto(url(`/i/${item.key}`))
+  await o.waitForSelector('.detail .chip-static:has-text("Billing")')
+  assert.deepEqual(o.problems, [])
+})
+
 test('plan a sprint, start it and complete it: unfinished work goes back to the backlog', { skip, timeout: 90_000 }, async () => {
   const p = (await owner('POST', '/projects', { name: 'Sprinting', key: 'SPR', template: 'scrum' })).body
   const done = p.statuses.find(s => s.category === 'done')

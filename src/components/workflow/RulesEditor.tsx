@@ -7,6 +7,7 @@ import {
 } from '../../data/transitionRules'
 import { api, apiEnabled } from '../../api/client'
 import { UserSelect } from '../UserPicker'
+import { MultiSelect } from '../ui'
 
 // The Rules tab of a transition, in Jira's order: Restrict transition (who and when, in groups that must all or can any
 // be met), Validate details (checked when the move is made), Ask for input (the transition screen), Perform actions
@@ -233,26 +234,6 @@ function FieldSelect({ value, fields, onChange }: { value: string; fields: { key
     <select className="input input-sm" aria-label="Field" value={value} onChange={e => onChange(e.target.value)}>
       {fields.map(f => <option key={f.key} value={f.key}>{f.name}</option>)}
     </select>
-  )
-}
-
-/** Picks several from a short list, as chips with an add menu. */
-function MultiSelect({ label, all, value, onChange }: { label: string; all: { key: string; name: string }[]; value: string[]; onChange: (v: string[]) => void }) {
-  const rest = all.filter(a => !value.includes(a.key))
-  return (
-    <span className="rule-chips">
-      {value.map(k => (
-        <span key={k} className="chip-static">{all.find(a => a.key === k)?.name ?? 'Removed'}
-          <button className="chip-x" aria-label={`Remove ${all.find(a => a.key === k)?.name ?? 'item'}`} onClick={() => onChange(value.filter(x => x !== k))}>×</button>
-        </span>
-      ))}
-      {rest.length > 0 && (
-        <select className="input input-sm" aria-label={`Add to ${label.toLowerCase()}`} value="" onChange={e => e.target.value && onChange([...value, e.target.value])}>
-          <option value="">{value.length ? '+ Add' : 'Choose…'}</option>
-          {rest.map(a => <option key={a.key} value={a.key}>{a.name}</option>)}
-        </select>
-      )}
-    </span>
   )
 }
 

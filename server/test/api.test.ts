@@ -1369,6 +1369,37 @@ test('time tracking: the remaining estimate counts down as work is logged, Jiraâ
   await log({ minutes: 90 }); assert.equal(await rem(), 0)
 })
 
+test('components and affects versions: an item in several; new work goes to the component lead; removing one lets go of its items', { skip }, async () => {
+  const p = (await call('POST', '/api/v1/projects', { name: 'Parts', key: 'PRT', template: 'kanban' })).body
+  await join('PRT', 'prt.lea@x.com')
+  const lea = (await call('GET', '/api/v1/me', undefined, 'prt.lea@x.com')).body.id
+  const owner = (await call('GET', '/api/v1/me')).body.id
+  const outsider = (await call('GET', '/api/v1/me', undefined, 'prt.out@x.com')).body.id
+  const api = (await call('POST', '/api/v1/projects/PRT/components', { name: 'API', leadId: lea, defaultAssignee: 'component_lead' })).body
+  const web = (await call('POST', '/api/v1/projects/PRT/components', { name: 'Web', defaultAssignee: 'project_lead' })).body
+  const gone = (await call('POST', '/api/v1/projects/PRT/components', { name: 'Old', leadId: outsider, defaultAssignee: 'component_lead' })).body
+  assert.equal((await call('POST', '/api/v1/projects/PRT/components', { name: 'API' })).status, 409)   // names are unique in a project
+  assert.deepEqual((await call('GET', '/api/v1/projects/PRT')).body.components.map((c: any) => c.name), ['API', 'Old', 'Web'])
+  const r1 = (await call('POST', '/api/v1/projects/PRT/releases', { name: '1.0' })).body
+  const r2 = (await call('POST', '/api/v1/projects/PRT/releases', { name: '1.1' })).body
+  // default assignee: the component lead; then the project lead; an explicit choice (even nobody) wins; an outsider never
+  const a = (await call('POST', '/api/v1/projects/PRT/issues', { title: 'API bug', componentIds: [api.id, web.id], affectsReleaseIds: [r1.id, r2.id] })).body
+  assert.deepEqual([a.assigneeId, a.componentIds, a.affectsReleaseIds], [lea, [api.id, web.id], [r1.id, r2.id]])
+  assert.equal((await call('POST', '/api/v1/projects/PRT/issues', { title: 'Web bug', componentIds: [web.id] })).body.assigneeId, owner)
+  assert.equal((await call('POST', '/api/v1/projects/PRT/issues', { title: 'Mine', componentIds: [api.id], assigneeId: null })).body.assigneeId, null)
+  assert.equal((await call('POST', '/api/v1/projects/PRT/issues', { title: 'Old part', componentIds: [gone.id] })).body.assigneeId, null)
+  // another project's component or release is refused
+  const other = (await call('POST', '/api/v1/projects', { name: 'Other', key: 'OTH', template: 'kanban' })).body
+  const theirs = (await call('POST', '/api/v1/projects/OTH/components', { name: 'Theirs' })).body
+  assert.equal((await call('PATCH', `/api/v1/issues/${a.key}`, { componentIds: [theirs.id] })).status, 400)
+  assert.equal((await call('PATCH', `/api/v1/issues/${a.key}`, { affectsReleaseIds: [other.id] })).status, 400)
+  // removing a component or a release takes it off its items
+  await call('DELETE', `/api/v1/projects/PRT/components/${web.id}`)
+  await call('DELETE', `/api/v1/projects/PRT/releases/${r1.id}`)
+  const after = (await call('GET', `/api/v1/issues/${a.key}`)).body
+  assert.deepEqual([after.componentIds, after.affectsReleaseIds], [[api.id], [r2.id]])
+})
+
 test('report data: every live item and every status change in order, for people who can see the project', { skip }, async () => {
   const p = (await call('POST', '/api/v1/projects', { name: 'Reports', key: 'REP', template: 'kanban' })).body
   const [a, b, c] = p.statuses
@@ -1810,6 +1841,7 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
   const template = await make('templates', { name: 'Bug', type: 'bug', title: 'Bug:' })
   const rule = await make('rules', { name: 'Rule', trigger: { kind: 'created' }, actions: [] })
   const release = await make('releases', { name: '1.0' })
+  const component = await make('components', { name: 'Matrix component' })
   const sprint = await make('sprints', { name: 'Sprint' })
   for (const t of ['one', 'two', 'three']) await call('POST', '/api/v1/projects/MTX/issues', { title: t })
   await call('DELETE', '/api/v1/issues/MTX-2')                                         // a deleted item, to restore
@@ -1927,6 +1959,9 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     'GET /admin/rate-limits/limited': ['gadmin', '/admin/rate-limits/limited'],
     'GET /settings/public': ['any', '/settings/public'],
     'GET /link-types': ['any', '/link-types'],
+    'POST /projects/{key}/components': ['padmin', `/projects/${K}/components`, { name: 'Matrix part' }],
+    'PATCH /projects/{key}/components/{id}': ['padmin', `/projects/${K}/components/${component}`, { description: 'x' }],
+    'DELETE /projects/{key}/components/{id}': ['padmin', `/projects/${K}/components/${component}`],
     'GET /projects/{key}/workflow/versions': ['read', `/projects/${K}/workflow/versions`],
     'GET /projects/{key}/workflow/versions/{version}': ['read', `/projects/${K}/workflow/versions/1`],
     'POST /projects/{key}/workflow/versions': ['padmin', `/projects/${K}/workflow/versions`, { note: 'm' }],

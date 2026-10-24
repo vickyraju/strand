@@ -19,7 +19,7 @@ export const settingsDeps = {
 
 // ── Serializers: one place that says what the server stores for each kind ──
 
-export type Kind = 'statuses' | 'transitions' | 'fields' | 'templates' | 'rules' | 'releases'
+export type Kind = 'statuses' | 'transitions' | 'fields' | 'templates' | 'rules' | 'releases' | 'components'
 export interface Item { id: string; projectId: string; body: Record<string, unknown>; released?: boolean }
 
 export function itemsOf(projects: Project[], kind: Kind): Item[] {
@@ -31,6 +31,7 @@ export function itemsOf(projects: Project[], kind: Kind): Item[] {
       case 'fields':      return p.fields.map((f, position) => mk(f, { name: f.name, kind: f.kind, options: f.options ?? null, position }))
       case 'templates':   return p.templates.map(t => mk(t, { name: t.name, type: t.type, title: t.title, description: t.description, priority: t.priority, labels: t.labels, estimate: t.estimate ?? null }))
       case 'rules':       return p.rules.map(r => mk(r, { name: r.name, enabled: r.enabled, trigger: r.trigger, actions: r.actions }))
+      case 'components':  return (p.components ?? []).map(c => mk(c, { name: c.name, description: c.description, leadId: c.leadId ?? null, defaultAssignee: c.defaultAssignee }))
       case 'releases':    return p.releases.map(r => mk(r, { name: r.name, description: r.description, startDate: r.startDate ?? null, releaseDate: r.releaseDate ?? null }, r.released))
     }
   })
@@ -85,7 +86,7 @@ function kindSync(kind: Kind) {
 }
 
 // Order matters on first write: statuses before the transitions that point at them
-export const KINDS: Kind[] = ['statuses', 'fields', 'releases', 'templates', 'rules', 'transitions']
+export const KINDS: Kind[] = ['statuses', 'fields', 'releases', 'components', 'templates', 'rules', 'transitions']
 export const kindSyncs = Object.fromEntries(KINDS.map(k => [k, kindSync(k)])) as Record<Kind, ReturnType<typeof kindSync>>
 
 /** Load every kind from a freshly loaded project list, so the server's data is not sent back. */

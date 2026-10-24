@@ -5,6 +5,18 @@ import { adjustRemaining, type Adjust } from '../../server/src/shared/estimates.
 // ── Types ──────────────────────────────────────────────────
 
 export type Template  = 'kanban' | 'scrum'
+export interface Component { id: string; name: string; description: string; leadId?: string; defaultAssignee: 'none' | 'component_lead' | 'project_lead' }
+
+/** Jira's component default assignee: new work in a component, with nobody chosen, goes to its lead or the project's. */
+export function componentAssignee(p: Project, componentIds: string[] | undefined): string | undefined {
+  for (const id of componentIds ?? []) {
+    const c = p.components?.find(x => x.id === id)
+    const who = c?.defaultAssignee === 'component_lead' ? c.leadId : c?.defaultAssignee === 'project_lead' ? p.leadId : undefined
+    if (who) return who
+  }
+  return undefined
+}
+
 /** A work type's key: one of the built-in four, or one a project added ("t-…"). */
 export type IssueType = string
 export type BuiltinType = 'epic' | 'story' | 'task' | 'bug'
@@ -80,6 +92,8 @@ export interface Project {
   fields:      FieldDef[]
   releases:    Release[]
   templates:   ItemTemplate[]
+  /** Components (Jira's): parts of the project, each with a lead and a default assignee for new work in it */
+  components?: Component[]
   /** Work types (Jira's issue types); missing in a project saved before they were configurable: the built-in four */
   types?:      WorkType[]
   /** What I may do here (from the server; unset for a local workspace, where everyone has full access) */
@@ -227,6 +241,10 @@ export interface Issue {
   timeEstimate?: number
   /** Remaining estimate in minutes (Jira's): starts at the original estimate, counts down as work is logged. */
   timeRemaining?: number
+  /** Components of the project it belongs to (Jira's). */
+  componentIds?: string[]
+  /** Affects versions: releases where the problem was found (the fix version is `releaseId`). */
+  affectsReleaseIds?: string[]
   worklogs:    Worklog[]
   /** Backlog order: lower is higher priority. Fractional so a move touches one item. */
   rank:        number
@@ -313,10 +331,10 @@ export interface State {
 }
 
 export type ProjectPatch = Partial<Pick<Project,
-  'name' | 'description' | 'color' | 'leadId' | 'statuses' | 'transitions' | 'layout' | 'boardPrefs' | 'rules' | 'fields' | 'releases' | 'templates' | 'types'>>
+  'name' | 'description' | 'color' | 'leadId' | 'statuses' | 'transitions' | 'layout' | 'boardPrefs' | 'rules' | 'fields' | 'releases' | 'templates' | 'types' | 'components'>>
 export type IssuePatch = Partial<Omit<Issue, 'id' | 'key' | 'projectId' | 'reporterId' | 'createdAt' | 'watcherIds' | 'links' | 'attachments' | 'rank' | 'worklogs'>>
 export type NewIssue = Pick<Issue, 'projectId' | 'title'> & Partial<Pick<Issue,
-  'type' | 'description' | 'status' | 'priority' | 'assigneeId' | 'labels' | 'estimate' | 'dueDate' | 'startDate' | 'sprintId' | 'parentId' | 'custom' | 'releaseId' | 'timeEstimate'>>
+  'type' | 'description' | 'status' | 'priority' | 'assigneeId' | 'labels' | 'estimate' | 'dueDate' | 'startDate' | 'sprintId' | 'parentId' | 'custom' | 'releaseId' | 'timeEstimate' | 'componentIds' | 'affectsReleaseIds'>>
 
 export type Action =
   | { type: 'setOwner'; name: string; workspaceName?: string }
@@ -588,6 +606,7 @@ export function reducer(state: State, action: Action, now = Date.now()): State {
       const issue: Issue = {
         type: 'task', description: '', status: project.statuses[0].id, priority: 'none', labels: [],
         ...action.issue,
+        ...(!('assigneeId' in action.issue) && componentAssignee(project, action.issue.componentIds) ? { assigneeId: componentAssignee(project, action.issue.componentIds) } : {}),
         id: action.id, key: `${project.key}-${project.nextNumber}`, reporterId: actor,
         watcherIds: [...new Set([actor, action.issue.assigneeId].filter((x): x is string => !!x))],
         links: [], attachments: [], worklogs: [], custom: action.issue.custom ?? {}, createdAt: now, updatedAt: now,

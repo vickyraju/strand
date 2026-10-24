@@ -20,7 +20,7 @@ export const RESOLUTIONS = ['Done', "Won't do", 'Duplicate', 'Cannot reproduce']
 
 export const ISSUE_ROW = `
   select i.id, p.key || '-' || i.number as key, i.project_id, i.number, i.type, i.title, i.description,
-         i.status_id, i.priority, i.assignee_id, i.reporter_id, i.labels, i.estimate, i.time_estimate, i.time_remaining,
+         i.status_id, i.priority, i.assignee_id, i.reporter_id, i.labels, i.estimate, i.time_estimate, i.time_remaining, i.component_ids, i.affects_release_ids,
          i.due_date, i.start_date, i.sprint_id, i.release_id, i.parent_id, i.custom, i.rank, i.version,
          i.resolution, i.resolved_at, i.created_at, i.updated_at
     from issues i join projects p on p.id = i.project_id`
@@ -30,7 +30,8 @@ const patchBody = z.object({
   assigneeId: uuid.nullable(), labels: z.array(z.string().max(50)).max(50), estimate: z.number().nonnegative().nullable(),
   timeEstimate: z.number().int().nonnegative().nullable(), timeRemaining: z.number().int().nonnegative().nullable().describe('Remaining estimate, minutes (starts at the original estimate)'),
   dueDate: date.nullable(), startDate: date.nullable(),
-  sprintId: uuid.nullable(), releaseId: uuid.nullable(), parentId: uuid.nullable(),
+  sprintId: uuid.nullable(), releaseId: uuid.nullable().describe('Fix version'), parentId: uuid.nullable(),
+  componentIds: z.array(uuid).max(50).describe('Components of the project'), affectsReleaseIds: z.array(uuid).max(50).describe('Affects versions: releases of the project where it was found'),
   custom: z.record(z.string(), z.union([z.string(), z.number()])), rank: z.number(),
   resolution: z.enum(RESOLUTIONS).nullable().describe('How a finished item ended. Only for items in a Done status; reaching Done sets "Done" unless you say otherwise (null: the default)'),
 }).partial()
@@ -199,6 +200,7 @@ async function applyPatch(d: Db, me: Me, cur: any, patch: z.infer<typeof patchBo
   // a first original estimate starts the remaining one (Jira's time tracking)
   if (patch.timeEstimate != null && patch.timeRemaining === undefined && cur.timeRemaining === null) patch = { ...patch, timeRemaining: patch.timeEstimate }
   if (patch.type !== undefined && patch.type !== cur.type) await checkType(d, cur.projectId, patch.type)
+  await checkParts(d, cur.projectId, patch)
   if (patch.custom) await checkCustom(d, cur.projectId, patch.custom, cur.custom)
   if (patch.resolution) {
     const [st] = await d.query<{ category: string }>('select category from statuses where id = $1', [patch.statusId ?? cur.statusId])
@@ -243,6 +245,27 @@ async function applyPatch(d: Db, me: Me, cur: any, patch: z.infer<typeof patchBo
   return (await d.query<any>(`${ISSUE_ROW} where i.id = $1`, [cur.id]))[0]
 }
 
+/** Components and affects versions must be the project's own. */
+async function checkParts(d: Db, projectId: string, b: { componentIds?: string[]; affectsReleaseIds?: string[] }) {
+  for (const [ids, table, field, what] of [[b.componentIds, 'components', 'componentIds', 'component'], [b.affectsReleaseIds, 'releases', 'affectsReleaseIds', 'release']] as const) {
+    if (!ids?.length) continue
+    const [{ n }] = await d.query<{ n: number }>(`select count(*)::int as n from ${table} where project_id = $1 and id = any($2::uuid[])`, [projectId, [...new Set(ids)]]) as any
+    if (n !== new Set(ids).size) throw new HttpError(400, `Every ${what} must be one of this project's`, { [field]: `Unknown ${what}` })
+  }
+}
+
+/** Jira's component default assignee: new work in a component, with nobody chosen, goes to the component's lead or the
+ *  project's lead (the first component that says so). Only someone who can work in the project. */
+async function defaultAssignee(d: Db, projectId: string, componentIds: string[] | undefined) {
+  if (!componentIds?.length) return null
+  const rows = await d.query<{ who: string | null }>(
+    `select case c.default_assignee when 'component_lead' then c.lead_id when 'project_lead' then p.lead_id end as who
+       from components c join projects p on p.id = c.project_id
+      where c.project_id = $1 and c.id = any($2::uuid[]) and c.default_assignee <> 'none' order by array_position($2::uuid[], c.id)`, [projectId, componentIds])
+  for (const r of rows) if (r.who && (await canJoinWork(d, projectId, r.who))) return r.who
+  return null
+}
+
 /** Is this one of the project's work types? (400 otherwise) */
 async function checkType(d: Db, projectId: string, type: string | undefined) {
   if (type === undefined) return
@@ -257,6 +280,8 @@ async function insertIssue(d: Db, me: Me, projectId: string, b: Record<string, a
   if (b.assigneeId && !(await canJoinWork(d, projectId, b.assigneeId))) throw new HttpError(400, 'The assignee must be a member of this project')
   if (b.custom) await checkCustom(d, projectId, b.custom)
   await checkType(d, projectId, b.type)
+  await checkParts(d, projectId, b)
+  if (b.assigneeId === undefined && b.componentIds?.length) { const who = await defaultAssignee(d, projectId, b.componentIds); if (who) b = { ...b, assigneeId: who } }
   let statusId = b.statusId
   if (!statusId) {
     const [s] = await d.query<{ id: string }>('select id from statuses where project_id = $1 order by position limit 1', [projectId])

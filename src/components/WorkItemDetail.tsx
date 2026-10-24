@@ -14,7 +14,7 @@ import { canEdit } from '../data/access'
 import { RESOLUTIONS } from '../data/reducer'
 import { href, navigate } from '../router'
 import {
-  Picker, Menu, TypeIcon, PriorityIcon, Avatar, Modal, typeMeta, PRIORITY_META, StatusLozenge,
+  Picker, Menu, TypeIcon, PriorityIcon, Avatar, Modal, typeMeta, MultiSelect, PRIORITY_META, StatusLozenge,
   priorityOptions, typeOptions, plural, formatDate,
 } from './ui'
 import { UserPicker } from './UserPicker'
@@ -415,11 +415,21 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
               </Field>
             )}
             {project.releases.length > 0 && issue.type !== 'epic' && (
-              <Field label="Release">
-                <Picker value={issue.releaseId} className="field-btn" title="Release"
+              <Field label="Fix version">
+                <Picker value={issue.releaseId} className="field-btn" title="Fix version"
                   options={[{ value: undefined, label: 'None' }, ...project.releases.map(r => ({ value: r.id as string | undefined, label: r.name, hint: r.released ? 'Released' : r.releaseDate ? `Due ${formatDate(r.releaseDate)}` : undefined }))]}
                   onChange={releaseId => set({ releaseId })}
                   trigger={issue.releaseId ? <>{project.releases.find(r => r.id === issue.releaseId)?.name}</> : <span className="muted">None</span>} />
+              </Field>
+            )}
+            {(project.components?.length ?? 0) > 0 && (
+              <Field label="Components">
+                <MultiSelect label="Components" all={project.components!.map(c => ({ key: c.id, name: c.name }))} value={issue.componentIds ?? []} onChange={componentIds => set({ componentIds })} />
+              </Field>
+            )}
+            {project.releases.length > 0 && issue.type !== 'epic' && (
+              <Field label="Affects versions">
+                <MultiSelect label="Affects versions" all={project.releases.map(r => ({ key: r.id, name: r.name }))} value={issue.affectsReleaseIds ?? []} onChange={affectsReleaseIds => set({ affectsReleaseIds })} />
               </Field>
             )}
             <Field label="Labels">

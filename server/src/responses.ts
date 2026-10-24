@@ -30,6 +30,7 @@ export const LinkType = z.object({
   id: z.string(), name: z.string(), outward: z.string().describe('How a link reads from its source: "blocks"'), inward: z.string().describe('How it reads from its target: "is blocked by"'),
   builtin: z.boolean().describe('Built in (the app relies on it): can be renamed, not removed'), position: z.number(), uses: z.number().describe('Links of this type'),
 })
+export const Component = z.object({ id, projectId: id, name: z.string(), description: z.string(), leadId: nullable(id), defaultAssignee: z.enum(['none', 'component_lead', 'project_lead']) })
 export const AvailableTransition = z.object({
   id, name: z.string(), toId: nullable(id), screen: z.array(z.string()).describe('Fields to fill in (and "comment")'),
   problems: z.record(z.string(), z.string()).describe('What would stop the move if made now, by field'),
@@ -54,14 +55,14 @@ export const ProjectDetail = z.object({
   id, workspaceId: id, key: z.string(), name: z.string(), description: z.string(), color: z.string(), template: z.enum(['kanban', 'scrum']),
   leadId: nullable(id), archivedAt: nullable(ts), nextNumber: z.number(), boardPrefs: z.record(z.string(), z.unknown()), layout: z.record(z.string(), z.unknown()),
   sample: z.boolean(), createdAt: ts, role: z.enum(['admin', 'member', 'viewer']).describe('My role in this project'),
-  statuses: z.array(Status), transitions: z.array(Transition), types: z.array(WorkType), fields: z.array(Field), templates: z.array(Template),
+  statuses: z.array(Status), transitions: z.array(Transition), types: z.array(WorkType), components: z.array(Component), fields: z.array(Field), templates: z.array(Template),
   rules: z.array(Rule), releases: z.array(Release), sprints: z.array(Sprint),
 })
 
 const issueFields = {
   id, key: z.string().describe('e.g. PAY-12'), projectId: id, number: z.number(), type: z.string().describe('Work type key'),
   title: z.string(), description: z.string(), statusId: id, priority: z.enum(['urgent', 'high', 'medium', 'low', 'none']),
-  assigneeId: nullable(id), reporterId: nullable(id), labels: z.array(z.string()), estimate: nullable(z.number()), timeEstimate: nullable(z.number()), timeRemaining: nullable(z.number()),
+  assigneeId: nullable(id), reporterId: nullable(id), labels: z.array(z.string()), estimate: nullable(z.number()), timeEstimate: nullable(z.number()), timeRemaining: nullable(z.number()), componentIds: z.array(id), affectsReleaseIds: z.array(id),
   dueDate: nullable(day), startDate: nullable(day), sprintId: nullable(id), releaseId: nullable(id), parentId: nullable(id),
   custom: z.record(z.string(), z.union([z.string(), z.number()])), rank: z.number(), version: z.number().describe('Send as If-Match to reject stale edits'),
   resolution: nullable(z.enum(['Done', "Won't do", 'Duplicate', 'Cannot reproduce'])).describe('Set while the item is in a Done status'),
@@ -131,13 +132,13 @@ const DevEntity = z.object({
 export const Development = z.object({ pullRequests: z.array(DevEntity), branches: z.array(DevEntity), commits: z.array(DevEntity) })
 
 // ── Routes. Keys are "METHOD /path" without the /api[/v1] prefix. All answer 200 unless noted. ──
-const kindRow = { statuses: Status, transitions: Transition, fields: Field, templates: Template, rules: Rule, releases: Release } as const
+const kindRow = { statuses: Status, transitions: Transition, fields: Field, templates: Template, rules: Rule, releases: Release, components: Component } as const
 
 /** Routes that create something answer 201 Created (Jira and REST convention), not 200. */
 export const CREATED = new Set([
   'POST /projects', 'POST /projects/:key/issues', 'POST /issues/:key/comments', 'POST /issues/:key/worklogs', 'POST /projects/:key/sprints',
   'POST /views', 'POST /issues/:key/attachments', 'POST /me/tokens',
-  ...['statuses', 'transitions', 'fields', 'templates', 'rules', 'releases'].map(k => `POST /projects/:key/${k}`),
+  ...['statuses', 'transitions', 'fields', 'templates', 'rules', 'releases', 'components'].map(k => `POST /projects/:key/${k}`),
 ])
 
 export const RESPONSES: Record<string, z.ZodType> = {

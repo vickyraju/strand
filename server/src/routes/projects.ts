@@ -44,6 +44,7 @@ const CHILD = {
   templates:   { table: 'item_templates', cols: ['name', 'type', 'title', 'description', 'priority', 'labels', 'estimate'] },
   rules:       { table: 'rules',          cols: ['name', 'enabled', 'trigger', 'actions'], json: ['trigger', 'actions'] },
   releases:    { table: 'releases',       cols: ['name', 'description', 'startDate', 'releaseDate'], ws: true },
+  components:  { table: 'components',     cols: ['name', 'description', 'leadId', 'defaultAssignee'] },
 } as const
 type Kind = keyof typeof CHILD
 
@@ -65,10 +66,14 @@ const childPatch = {
     actions: z.array(z.object({ kind: z.enum(['assign', 'priority', 'label', 'status', 'comment']) }).passthrough()),
   }).partial(),
   releases: z.object({ name: z.string().min(1), description: z.string(), startDate: z.string().nullable(), releaseDate: z.string().nullable() }).partial(),
+  components: z.object({
+    name: z.string().trim().min(1).max(100), description: z.string().max(2000), leadId: uuid.nullable(),
+    defaultAssignee: z.enum(['none', 'component_lead', 'project_lead']).describe('Who new work in this component goes to when nobody is chosen'),
+  }).partial(),
 }
 const REQUIRED: Record<Kind, string[]> = {
   statuses: ['name', 'color', 'category'], transitions: ['name', 'toId'], fields: ['name', 'kind'],
-  templates: ['name', 'type', 'title'], rules: ['name', 'trigger', 'actions'], releases: ['name'],
+  templates: ['name', 'type', 'title'], rules: ['name', 'trigger', 'actions'], releases: ['name'], components: ['name'],
 }
 // Create = the same shape with the required keys enforced
 const childCreate = Object.fromEntries((Object.keys(childPatch) as Kind[]).map(k =>
@@ -341,6 +346,9 @@ const plugin: FastifyPluginAsyncZod = async app => {
         await audit(d, req, { action: `project.${what.replace(' ', '_')}.deleted`, type: what, id: gone.id, name: gone.name ?? null, project: p, before: gone })
         // a deleted custom field takes its values with it, so no item keeps a value for a field that no longer exists
         if (kind === 'fields') await d.query('update issues set custom = custom - $2 where project_id = $1 and custom ? $2', [p.id, req.params.id])
+        // …and a deleted component or release lets go of the items that named it
+        if (kind === 'components') await d.query('update issues set component_ids = array_remove(component_ids, $2::uuid) where project_id = $1 and $2::uuid = any(component_ids)', [p.id, req.params.id])
+        if (kind === 'releases') await d.query('update issues set affects_release_ids = array_remove(affects_release_ids, $2::uuid) where project_id = $1 and $2::uuid = any(affects_release_ids)', [p.id, req.params.id])
       })
       reply.code(204).send()
     })
@@ -540,9 +548,9 @@ export async function projectDetail(d: Db, ws: string, key: string, role: Projec
   // Sequential: `d` may be a single transaction connection, which can't run queries in parallel
   const statuses = await by('statuses', 'position'), transitions = await by('transitions', 'id'), types = await by('work_types', 'position, name')
   const fields = await by('field_defs', 'position'), templates = await by('item_templates', 'name')
-  const rules = await by('rules', 'id'), releases = await by('releases', 'release_date nulls last, id')
+  const rules = await by('rules', 'id'), releases = await by('releases', 'release_date nulls last, id'), components = await by('components', 'lower(name)')
   const sprints = await by('sprints', 'created_at')
-  return { ...project, role, statuses, transitions, types, fields, templates, rules, releases, sprints }
+  return { ...project, role, statuses, transitions, types, fields, templates, rules, releases, components, sprints }
 }
 
 export default plugin
