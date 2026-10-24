@@ -314,6 +314,8 @@ export type Action =
   | { type: 'createIssue'; id: string; issue: NewIssue }
   | { type: 'updateIssues'; ids: string[]; patch: IssuePatch }
   | { type: 'setLinkTypes'; linkTypes: LinkType[] }
+  /** Jira's Clone: a copy in the start status, linked "clones" to the original; optionally its children, links and sprint. */
+  | { type: 'cloneIssue'; id: string; sourceId: string; title: string; assigneeId?: string; include: { children: boolean; links: boolean; sprint: boolean } }
   /** Make one transition by its id, with the fields and comment its screen asked for (loops go this way). */
   | { type: 'runTransition'; issueId: string; transitionId: string; patch: IssuePatch; comment?: string }
   | { type: 'deleteIssues'; ids: string[] }
@@ -615,6 +617,25 @@ export function reducer(state: State, action: Action, now = Date.now()): State {
         if (after.status !== before.status) events.push({ kind: 'status', to: after.status })
         if (after.assigneeId && after.assigneeId !== before.assigneeId) events.push({ kind: 'assigned' })
         if (events.length) next = runRules(next, id, events, now)
+      }
+      return next
+    }
+    case 'cloneIssue': {
+      const src = state.issues.find(i => i.id === action.sourceId)
+      if (!src) return state
+      const fields = (i: Issue): NewIssue => ({
+        projectId: i.projectId, title: i.title, type: i.type, description: i.description, priority: i.priority, labels: i.labels,
+        estimate: i.estimate, timeEstimate: i.timeEstimate, dueDate: i.dueDate, startDate: i.startDate, releaseId: i.releaseId,
+        custom: i.custom, assigneeId: i.assigneeId, sprintId: action.include.sprint ? i.sprintId : undefined,
+      })
+      let next = reducer(state, { type: 'createIssue', id: action.id, issue: { ...fields(src), title: action.title, assigneeId: action.assigneeId, parentId: src.parentId } })
+      if (next === state) return state
+      next = reducer(next, { type: 'addLink', issueId: action.id, link: { type: 'clones', issueId: src.id } })
+      if (action.include.children)
+        for (const c of state.issues.filter(i => i.parentId === src.id)) next = reducer(next, { type: 'createIssue', id: uid(), issue: { ...fields(c), parentId: action.id } })
+      if (action.include.links) {
+        for (const l of src.links) if (l.type !== 'clones') next = reducer(next, { type: 'addLink', issueId: action.id, link: l })
+        for (const o of state.issues) for (const l of o.links) if (l.issueId === src.id && l.type !== 'clones' && o.id !== action.id) next = reducer(next, { type: 'addLink', issueId: o.id, link: { type: l.type, issueId: action.id } })
       }
       return next
     }

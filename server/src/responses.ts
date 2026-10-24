@@ -165,6 +165,7 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'GET /issues/:key': IssueDetail,
   'GET /issues/:key/development': Development,
   'PATCH /issues/:key': IssueRow,
+  'POST /issues/:key/clone': IssueRow,
   'GET /link-types': z.array(LinkType),
   'POST /admin/link-types': LinkType,
   'PATCH /admin/link-types/:id': LinkType,

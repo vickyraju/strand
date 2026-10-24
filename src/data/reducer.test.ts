@@ -341,3 +341,19 @@ test('transition rules: hidden from those they are not for, refused until their 
   assert.ok(t.activity.some(a => a.text === 'did “Log progress”'))
   assert.equal(loopsFrom(t.projects[0]!, doing, moveContext(asUser(t, owner), t.issues[0]!)).length, 1)
 })
+
+test('clone: a copy at the start status, linked "clones" to the original, with children and links when asked', () => {
+  const { s } = workspace()
+  const p = s.projects[0]!
+  let t = run([
+    { type: 'updateIssues', ids: ['i1'], patch: { status: p.statuses[1]!.id, priority: 'high', labels: ['ui'] } },
+    { type: 'createIssue', id: 'c1', issue: { projectId: 'p1', title: 'Child', parentId: 'i1' } },
+    { type: 'createIssue', id: 'o1', issue: { projectId: 'p1', title: 'Other' } },
+    { type: 'addLink', issueId: 'i1', link: { type: 'blocks', issueId: 'o1' } },
+  ], s)
+  t = run([{ type: 'cloneIssue', id: 'k1', sourceId: 'i1', title: 'CLONE - First', include: { children: true, links: true, sprint: false } }], t)
+  const k = t.issues.find(i => i.id === 'k1')!
+  assert.deepEqual([k.title, k.status, k.priority, k.labels], ['CLONE - First', p.statuses[0]!.id, 'high', ['ui']])
+  assert.deepEqual(k.links.map(l => [l.type, l.issueId]).sort(), [['blocks', 'o1'], ['clones', 'i1']])
+  assert.deepEqual(t.issues.filter(i => i.parentId === 'k1').map(i => i.title), ['Child'])
+})
