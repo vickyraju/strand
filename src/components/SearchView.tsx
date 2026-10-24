@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import ShareViewDialog from './ShareViewDialog'
+import JqlBox from './JqlBox'
+import { filtersToJql } from '../../server/src/shared/jql.ts'
 import { Search as SearchIcon, X, ChevronDown, Bookmark, MoreHorizontal, Pencil, Trash2, Users, Lock, Save, Download } from 'lucide-react'
 import { useStore, projectOf, uid, type Issue, type IssueType, type Priority, type ViewFilters, type ViewResolution } from '../data/store'
 import { applyFilters, filtersActive, EMPTY_FILTERS } from '../data/views'
@@ -115,6 +117,16 @@ export default function SearchView({ query, viewId }: { query: string; viewId?: 
         }} />}
       </div>
 
+      {apiEnabled && f.jql !== undefined ? (
+        <div className="search-bar">
+          <JqlBox value={f.jql} serverError={server.error} onRun={jql => set({ jql })} />
+          <div className="filters">
+            <button className="link" onClick={() => setF({ ...EMPTY_FILTERS })}>Switch to basic search</button>
+            <div style={{ flex: 1 }} />
+            <span className="muted">{server.status === 'loading' ? 'Searching…' : `${results.length}${server.next ? '+' : ''} result${results.length === 1 && !server.next ? '' : 's'}`}</span>
+          </div>
+        </div>
+      ) : (
       <div className="search-bar">
         <label className="search-hero">
           <SearchIcon size={17} />
@@ -148,10 +160,16 @@ export default function SearchView({ query, viewId }: { query: string; viewId?: 
             options={[{ value: 'open' as ViewResolution, label: 'Open' }, { value: 'done' as ViewResolution, label: 'Done' }, { value: 'all' as ViewResolution, label: 'Open and done' }]}
             onChange={resolution => set({ resolution })} trigger={<>{f.resolution === 'open' ? 'Open' : f.resolution === 'done' ? 'Done' : 'Open and done'}<ChevronDown size={13} /></>} />
           {filtersActive(f) && <button className="link" onClick={() => setF({ ...EMPTY_FILTERS })}>Clear filters</button>}
+          {apiEnabled && <button className="link" onClick={() => setF({ ...EMPTY_FILTERS, jql: filtersToJql({
+            projectKey: f.projectId ? (projectOf(state, f.projectId)?.key ?? projects.byId(f.projectId)?.key) : undefined,
+            assignee: f.assignee, assigneeName: f.assignee ? state.users.find(u => u.id === f.assignee)?.name : undefined,
+            type: f.type ? typeMeta(f.type, undefined, state.projects).label : undefined, priority: f.priority, label: f.label, resolution: f.resolution, q: f.q,
+          }) })}>Switch to JQL</button>}
           <div style={{ flex: 1 }} />
           <span className="muted">{apiEnabled && server.status === 'loading' ? 'Searching…' : `${results.length}${apiEnabled && server.next ? '+' : ''} result${results.length === 1 && !(apiEnabled && server.next) ? '' : 's'}`}</span>
         </div>
       </div>
+      )}
       <IssueTable id={view ? `view:${view.id}` : 'search'} issues={results} groupBy={groupBy} onGroupBy={setGroupBy} showProjectColumn
         emptyText={apiEnabled ? (server.status === 'loading' ? 'Searching…' : filtersActive(f) ? 'No work items match. Try fewer filters or a different search.' : 'There are no work items yet.') : state.issues.length ? 'No work items match. Try fewer filters or a different search.' : 'There are no work items yet.'} />
       {apiEnabled && server.next && (
@@ -159,7 +177,7 @@ export default function SearchView({ query, viewId }: { query: string; viewId?: 
           <button className="btn btn-ghost" onClick={server.loadMore}>Load more results</button>
         </div>
       )}
-      {apiEnabled && server.status === 'error' && (
+      {apiEnabled && server.status === 'error' && !server.error && (
         <div style={{ textAlign: 'center', padding: 16 }}>
           <button className="btn btn-ghost" onClick={server.retry}>Search failed — retry</button>
         </div>

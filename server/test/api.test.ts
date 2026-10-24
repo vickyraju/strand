@@ -1441,6 +1441,56 @@ test('saved views are shared as Jira filters are: with a project, a group or a p
   await pool.query('update users set active = true where id = $1', [ann])
 })
 
+test('JQL search: fields by name, custom fields, AND/OR/NOT, lists, empties, dates, functions, ORDER BY; mistakes are 400s', { skip }, async () => {
+  const p = (await call('POST', '/api/v1/projects', { name: 'Queried', key: 'JQL', template: 'kanban' })).body
+  const [todo, doing, done] = [p.statuses[0], p.statuses[1], p.statuses.find((s: any) => s.category === 'done')]
+  await join('JQL', 'jql.ann@x.com')
+  const ann = (await call('GET', '/api/v1/me', undefined, 'jql.ann@x.com')).body.id
+  const [{ id: team }] = (await pool.query(`insert into field_defs (project_id, name, kind) values ($1, 'Team', 'text') returning id`, [p.id])).rows
+  const [{ id: pts }] = (await pool.query(`insert into field_defs (project_id, name, kind) values ($1, 'Risk', 'number') returning id`, [p.id])).rows
+  const api = (await call('POST', '/api/v1/projects/JQL/components', { name: 'API' })).body
+  const mk = async (title: string, b: object) => (await call('POST', '/api/v1/projects/JQL/issues', { title, ...b })).body
+  const a = await mk('Login fails', { type: 'bug', priority: 'urgent', assigneeId: ann, labels: ['auth'], custom: { [team]: 'Core', [pts]: 8 }, componentIds: [api.id], dueDate: '2026-01-01' })
+  const b = await mk('Write docs', { type: 'task', priority: 'low', custom: { [team]: 'Docs', [pts]: 2 } })
+  const c = await mk('Fix payout', { type: 'bug', priority: 'high', assigneeId: ann, statusId: doing.id })
+  const d = await mk('Shipped thing', { type: 'story', priority: 'medium', statusId: done.id })
+  const keys = async (jql: string) => {
+    const r = await call('GET', `/api/v1/search?jql=${encodeURIComponent(jql)}&limit=50`)
+    assert.equal(r.status, 200, `${jql}: ${JSON.stringify(r.body)}`)
+    return r.body.items.map((i: any) => i.key).filter((k: string) => k.startsWith('JQL-'))
+  }
+  const sorted = async (jql: string) => (await keys(jql)).sort()
+  assert.deepEqual(await sorted('project = JQL'), [a.key, b.key, c.key, d.key].sort())             // JQL replaces the "open only" default
+  assert.deepEqual(await sorted('project = JQL AND type = Bug AND assignee = "jql.ann@x.com"'), [a.key, c.key].sort())
+  assert.deepEqual(await sorted('project = JQL AND (priority = urgent OR status = "In progress") AND NOT labels = auth'), [c.key])
+  assert.deepEqual(await sorted('project = JQL AND priority in (low, medium) AND statusCategory != Done'), [b.key])
+  assert.deepEqual(await sorted('project = JQL AND Team = core'), [a.key])                          // custom field by name, any case
+  assert.deepEqual(await sorted(`project = JQL AND cf[${pts}] > 5`), [a.key])
+  assert.deepEqual(await sorted('project = JQL AND Risk <= 2'), [b.key])
+  assert.deepEqual(await sorted('project = JQL AND assignee is empty AND statusCategory = "To Do"'), [b.key])
+  assert.deepEqual(await sorted('project = JQL AND component = API'), [a.key])
+  assert.deepEqual(await sorted('project = JQL AND duedate < now()'), [a.key])
+  assert.deepEqual(await sorted('project = JQL AND created > -1d AND summary ~ "fix"'), [c.key])
+  assert.deepEqual(await sorted('project = JQL AND assignee = currentUser()', ), [])
+  assert.deepEqual(await sorted('project = JQL AND assignee != "jql.ann@x.com"'), [])               // as in Jira: empty matches neither
+  // ORDER BY, and paging through it
+  assert.deepEqual(await keys('project = JQL ORDER BY priority DESC'), [a.key, c.key, d.key, b.key])
+  const p1 = await call('GET', `/api/v1/search?jql=${encodeURIComponent('project = JQL ORDER BY priority DESC')}&limit=3`)
+  const p2 = await call('GET', `/api/v1/search?jql=${encodeURIComponent('project = JQL ORDER BY priority DESC')}&limit=3&cursor=${p1.body.next}`)
+  assert.deepEqual([...p1.body.items, ...p2.body.items].map((i: any) => i.key), [a.key, c.key, d.key, b.key])
+  // the export follows the query and its order
+  const csv = (await app.inject({ method: 'GET', url: `/api/v1/search/export.csv?jql=${encodeURIComponent('project = JQL AND type = bug ORDER BY priority ASC')}`, headers: await bearer('owner@x.com') })).body
+  assert.ok(csv.indexOf('Fix payout') < csv.indexOf('Login fails') && csv.indexOf('Login fails') > 0)
+  // mistakes are explained
+  const bad = async (jql: string) => (await call('GET', `/api/v1/search?jql=${encodeURIComponent(jql)}`)).body.error as string
+  assert.match(await bad('status = '), /Expected a value \(at character 9\)/)
+  assert.match(await bad('Colour = red'), /no field called “colour”/)
+  assert.match(await bad('due < tomorrowish'), /isn’t a date/)
+  assert.match(await bad('summary = x'), /search summary with ~/)
+  // another person sees only their projects' items, whatever the query
+  assert.deepEqual(await (async () => (await call('GET', `/api/v1/search?jql=${encodeURIComponent('project = JQL')}`, undefined, 'jql.out@x.com')).body.items)(), [])
+})
+
 test('report data: every live item and every status change in order, for people who can see the project', { skip }, async () => {
   const p = (await call('POST', '/api/v1/projects', { name: 'Reports', key: 'REP', template: 'kanban' })).body
   const [a, b, c] = p.statuses

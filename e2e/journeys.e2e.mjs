@@ -269,6 +269,33 @@ test('saved views: shared with a project to edit, a member of it finds the view 
   assert.deepEqual([...o.problems, ...m.problems], [])
 })
 
+test('JQL search: switching keeps the filters as JQL; a query on a custom field finds its items; mistakes show where', { skip, timeout: 60_000 }, async () => {
+  const p = (await owner('POST', '/projects', { name: 'Query', key: 'QRY', template: 'kanban' })).body
+  const team = (await owner('POST', '/projects/QRY/fields', { name: 'Team', kind: 'text', options: null, position: 0 })).body
+  const core = (await owner('POST', '/projects/QRY/issues', { title: 'Core work', priority: 'high', custom: { [team.id]: 'Core' } })).body
+  await owner('POST', '/projects/QRY/issues', { title: 'Other work', priority: 'high', custom: { [team.id]: 'Web' } })
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url('/search?q='))
+  await o.click('.search-bar [title="Priority"]')
+  await o.click('.picker-menu .picker-item:has-text("High")')
+  await o.click('button:has-text("Switch to JQL")')
+  assert.equal(await o.inputValue('textarea[aria-label="JQL query"]'), 'priority = high AND statusCategory != Done')
+  await o.fill('textarea[aria-label="JQL query"]', 'project = QRY AND Team = core AND')
+  assert.match(await o.locator('.jql .hint.error').innerText(), /Expected a field/)
+  await o.fill('textarea[aria-label="JQL query"]', 'project = QRY AND Team = core ORDER BY created DESC')
+  await o.press('textarea[aria-label="JQL query"]', 'Enter')
+  await o.waitForSelector(`text=${core.key}`)
+  await o.waitForSelector('text=1 result')
+  await o.click('button:has-text("Save as view")')
+  await o.fill('#vn', 'Core team')
+  await o.click('.modal button:has-text("Save")')
+  await o.waitForSelector('h1:has-text("Core team")')
+  await o.waitForTimeout(800)
+  const saved = (await owner('GET', '/views')).body.find(v => v.name === 'Core team')
+  assert.equal(saved.filters.jql, 'project = QRY AND Team = core ORDER BY created DESC')
+  assert.deepEqual(o.problems, [])
+})
+
 test('plan a sprint, start it and complete it: unfinished work goes back to the backlog', { skip, timeout: 90_000 }, async () => {
   const p = (await owner('POST', '/projects', { name: 'Sprinting', key: 'SPR', template: 'scrum' })).body
   const done = p.statuses.find(s => s.category === 'done')

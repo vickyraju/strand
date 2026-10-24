@@ -1345,3 +1345,9 @@ h2.empty-title, h2.section-title, h2.side-title { margin: 0 }
 .icon-choice.on { border-color: transparent }
 
 .change-list { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 13px }
+
+/* JQL search */
+.jql { display: grid; gap: 4px; width: 100% }
+.jql-row { display: flex; gap: 8px; align-items: flex-start }
+.jql-input { flex: 1; resize: vertical; min-height: 40px; font-size: 13px; line-height: 1.5 }
+.jql-help p { margin: 0 0 8px; font-size: 12.5px; line-height: 1.5 }

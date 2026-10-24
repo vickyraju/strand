@@ -181,6 +181,8 @@ export interface ViewFilters {
   priority?:  Priority
   label?:     string
   resolution: ViewResolution
+  /** JQL (with a server): replaces the filters above, as switching to JQL does in Jira */
+  jql?:       string
 }
 /** Who else a saved view is shared with (Jira's filter sharing): a project's people, a group, or one person. */
 export interface ViewShare { kind: 'project' | 'group' | 'user'; id: string; can: 'view' | 'edit' }

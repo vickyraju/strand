@@ -13,6 +13,8 @@ export type Load = {
   /** `next` cursor from the API, to fetch the following page. */
   next: string | null
   status: 'ready' | 'loading' | 'error'
+  /** Why the server refused the search (a JQL mistake), when it did */
+  error?: string
   retry: () => void
   /** Fetch and append the next page (no-op when there is no next). */
   loadMore: () => void
@@ -21,6 +23,7 @@ export type Load = {
 /** The app's view filters mapped onto the API's `GET /search` query string. */
 function searchParams(f: ViewFilters, limit: number, cursor?: string | null): URLSearchParams {
   const q = new URLSearchParams({ q: f.q, resolution: f.resolution })
+  if (f.jql !== undefined) { q.set('jql', f.jql); if (cursor) q.set('cursor', cursor); q.set('limit', String(limit)); return q }
   if (f.projectId) q.set('project', f.projectId)
   if (f.assignee !== null) q.set('assignee', f.assignee || 'none')   // '' = Unassigned
   if (f.type) q.set('type', f.type)
@@ -48,17 +51,18 @@ export function useSearch(f: ViewFilters, limit = 50): Load {
   const [items, setItems] = useState<Issue[]>([])
   const [next, setNext] = useState<string | null>(null)
   const [status, setStatus] = useState<Load['status']>(apiEnabled ? 'loading' : 'ready')
+  const [error, setError] = useState('')
   const [attempt, setAttempt] = useState(0)
   const [appending, setAppending] = useState(false)
   const nextRef = useRef<string | null>(null)
-  const filterKey = JSON.stringify([f.q, f.projectId, f.assignee, f.type, f.priority, f.label, f.resolution])
+  const filterKey = JSON.stringify([f.q, f.projectId, f.assignee, f.type, f.priority, f.label, f.resolution, f.jql])
   const filtersRef = useRef(f)
   filtersRef.current = f
 
   useEffect(() => {
     if (!apiEnabled) { setItems([]); setNext(null); return }
     let cancelled = false
-    setStatus('loading')
+    setStatus('loading'); setError('')
     api<{ items: Row[]; next: string | null }>('GET', `/api/search?${searchParams(f, limit)}`)
       .then(page => {
         if (cancelled) return
@@ -67,7 +71,7 @@ export function useSearch(f: ViewFilters, limit = 50): Load {
         nextRef.current = page.next
         setStatus('ready')
       })
-      .catch(() => { if (!cancelled) setStatus('error') })
+      .catch(e => { if (!cancelled) { setStatus('error'); setError(e instanceof ApiError && e.status === 400 ? e.message : '') } })
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterKey, attempt])
@@ -85,7 +89,7 @@ export function useSearch(f: ViewFilters, limit = 50): Load {
       .catch(() => {})
       .finally(() => setAppending(false))
   }
-  return { items, next, status, retry: () => setAttempt(a => a + 1), loadMore }
+  return { items, next, status, error, retry: () => setAttempt(a => a + 1), loadMore }
 }
 
 /** "Your work" → Assigned to me: open issues assigned to me, due soonest first. */

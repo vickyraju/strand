@@ -20,4 +20,4 @@ export function applyFilters(state: State, f: ViewFilters, viewerId: string | un
 }
 
 export const filtersActive = (f: ViewFilters) =>
-  !!(f.q.trim() || f.projectId || f.assignee !== null || f.type || f.priority || f.label || f.resolution !== 'open')
+  !!(f.q.trim() || f.projectId || f.assignee !== null || f.type || f.priority || f.label || f.resolution !== 'open' || f.jql?.trim())
