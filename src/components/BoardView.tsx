@@ -1,16 +1,17 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { DndContext, DragOverlay, useDroppable, type DragEndEvent, type DragStartEvent } from '@dnd-kit/core'
 import {
   Plus, Columns2, ListChecks, ChevronDown, ChevronRight, ChevronsLeftRight, Settings2, Check, GitBranch, Timer,
 } from 'lucide-react'
 import {
-  useStore, userOf, canTransition, statusOf, indexOf, DEFAULT_FIELDS,
+  useStore, userOf, canTransition, moveContext, statusOf, indexOf, DEFAULT_FIELDS,
   type Project, type Issue, type BoardPrefs, type CardField, type GroupBy, type IssuePatch,
 } from '../data/store'
 import { canEdit } from '../data/access'
 import { useApp, useNavList } from '../appContext'
 import { useFilters } from './filters'
 import BoardCard, { CardGhost } from './BoardCard'
+import { planMove } from './TransitionDialog'
 import { BOARD_INSTRUCTIONS, boardAnnouncements, boardCollision, planDrop, useBoardSensors } from './boardDnd'
 import { CompleteSprintModal } from './BacklogView'
 import { Avatar, Empty, Picker, Popover, Toggle, PriorityIcon, PRIORITY_META, PRIORITIES, TypeIcon, StatusLozenge, plural } from './ui'
@@ -43,7 +44,7 @@ function DroppableCell({ id, statusId, laneKey, collapsed, blocked, children }: 
 
 export default function BoardView({ project }: { project: Project }) {
   const { state, dispatch } = useStore()
-  const { createIssue, openProject, toast } = useApp()
+  const { createIssue, openProject, toast, moveIssue } = useApp()
   const prefs: BoardPrefs = { ...project.boardPrefs, fields: { ...DEFAULT_FIELDS, ...project.boardPrefs.fields } }
   const setPrefs = (p: Partial<BoardPrefs>) => dispatch({ type: 'updateProject', id: project.id, patch: { boardPrefs: { ...prefs, ...p } } })
 
@@ -130,13 +131,14 @@ export default function BoardView({ project }: { project: Project }) {
   // ── Drag and drop ───────────────────────────────────────
   const sensors = useBoardSensors(undefined, canEdit(project))
   /** Forbidden columns grey out while a card is being dragged. */
-  const allowed = (statusId: string) => !dragging || canTransition(project, dragging.status, statusId)
+  const dragCtx = useMemo(() => (dragging ? moveContext(state, dragging) : undefined), [dragging])   // eslint-disable-line react-hooks/exhaustive-deps
+  const allowed = (statusId: string) => !dragging || canTransition(project, dragging.status, statusId, dragCtx)
   const cardFields = prefs.groupBy === 'epic' ? { ...prefs.fields, epic: false } : prefs.fields
   const planFor = (issue: Issue, cellId: unknown) => {
     const [laneKey, statusId] = String(cellId).split('|') as [string, string]
     const lane = lanes.find(l => l.key === laneKey)!
     const moveLane = !!lane.patch && !lane.match(issue) && !(prefs.groupBy === 'epic' && issue.parentId && indexOf(state).byId.get(issue.parentId)?.type !== 'epic')   // sub-items keep their parent
-    return planDrop({ project, issue, statusId, lanePatch: lane.patch, moveLane })
+    return planDrop({ project, issue, statusId, lanePatch: lane.patch, moveLane, ctx: moveContext(state, issue) })
   }
   const issueOf = (id: unknown) => state.issues.find(i => i.id === id)
   const announcements = boardAnnouncements({
@@ -156,6 +158,13 @@ export default function BoardView({ project }: { project: Project }) {
     if (!issue || !over) return
     const plan = planFor(issue, over.id)
     if ('blocked' in plan) { toast(plan.blocked, { tone: 'warn' }); return }
+    // a move whose transition asks for input (or isn't ready) goes through its screen; the swimlane change is made now
+    const { status, ...rest } = plan.patch
+    if (status && planMove(state, issue, status).kind === 'ask') {
+      if (Object.keys(rest).length) dispatch({ type: 'updateIssues', ids: [issue.id], patch: rest })
+      moveIssue(issue.id, status)
+      return
+    }
     if (Object.keys(plan.patch).length) dispatch({ type: 'updateIssues', ids: [issue.id], patch: plan.patch })
   }
 

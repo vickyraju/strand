@@ -213,7 +213,7 @@ export default function WorkflowBuilder({ project }: { project: Project }) {
               onSetStart={() => edit(w => setStart(w, selStatus.id))}
               onDelete={() => requestDeleteStatus(selStatus.id)} />
           ) : selTransition ? (
-            <TransitionPanel transition={selTransition} statuses={workflow.statuses}
+            <TransitionPanel key={selTransition.id} transition={selTransition} statuses={workflow.statuses} fields={project.fields} projectKey={project.key}
               onChange={(patch, key) => edit(w => updateTransition(w, selTransition.id, patch), key)}
               onDelete={deleteSelection} />
           ) : <EmptyPanel />}

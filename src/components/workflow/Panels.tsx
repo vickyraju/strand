@@ -1,5 +1,7 @@
+import { useState } from 'react'
 import { MousePointerClick, Trash2 } from 'lucide-react'
-import type { Category, Status, Transition } from '../../data/store'
+import type { Category, FieldDef, Status, Transition } from '../../data/store'
+import RulesEditor, { rulesSummary } from './RulesEditor'
 import { hasGlobal, type Workflow } from '../../data/workflow'
 import { Checkbox, Toggle, plural } from '../ui'
 
@@ -56,34 +58,47 @@ export function StatusPanel({ status, workflow, count, onChange, onGlobal, onSet
   )
 }
 
-export function TransitionPanel({ transition, statuses, onChange, onDelete }: {
-  transition: Transition; statuses: Status[]; onChange: Change<Transition>; onDelete: () => void
+export function TransitionPanel({ transition, statuses, fields, projectKey, onChange, onDelete }: {
+  transition: Transition; statuses: Status[]; fields: FieldDef[]; projectKey: string; onChange: Change<Transition>; onDelete: () => void
 }) {
+  const [tab, setTab] = useState<'details' | 'rules'>('details')
   const from = transition.from
+  const summary = rulesSummary(transition.rules)
   return (
     <>
-      <div className="wf-panel-kind">Transition</div>
-      <p className="hint" style={{ marginTop: 0, marginBottom: 12 }}>Transitions are the moves people can make. Only these appear in status menus and on the board.</p>
-      <label className="label" htmlFor="wf-tname">Name</label>
-      <input id="wf-tname" className="input" value={transition.name} onChange={e => onChange({ name: e.target.value }, `tname:${transition.id}`)} />
-      <fieldset className="wf-fieldset" style={{ marginTop: 12 }}>
-        <legend className="label">From statuses</legend>
-        <label className="check-row">
-          <Checkbox checked={from === 'any'} label="Any status"
-            onChange={on => onChange({ from: on ? 'any' : statuses.filter(s => s.id !== transition.to).slice(0, 1).map(s => s.id) })} />Any status
-        </label>
-        {from !== 'any' && statuses.filter(s => s.id !== transition.to).map(s => (
-          <label key={s.id} className="check-row">
-            <Checkbox checked={from.includes(s.id)} label={s.name} onChange={on => onChange({ from: on ? [...from, s.id] : from.filter(f => f !== s.id) })} />
-            <span className="status-dot" style={{ background: s.color }} />{s.name}
+      <div className="wf-panel-kind">{transition.to === null ? 'Transition (loop)' : 'Transition'}</div>
+      <div className="segmented full" role="tablist" aria-label="Transition" style={{ marginBottom: 12 }}>
+        <button role="tab" aria-selected={tab === 'details'} className={tab === 'details' ? 'on' : ''} onClick={() => setTab('details')}>Details</button>
+        <button role="tab" aria-selected={tab === 'rules'} className={tab === 'rules' ? 'on' : ''} onClick={() => setTab('rules')}>Rules{summary ? ` (${summary.split(' · ').length})` : ''}</button>
+      </div>
+      {tab === 'rules' ? (
+        <RulesEditor rules={transition.rules ?? {}} statuses={statuses} fields={fields} projectKey={projectKey}
+          onChange={rules => onChange({ rules }, `rules:${transition.id}`)} />
+      ) : <>
+        <p className="hint" style={{ marginTop: 0, marginBottom: 12 }}>Transitions are the moves people can make. Only these appear in status menus and on the board.</p>
+        <label className="label" htmlFor="wf-tname">Name</label>
+        <input id="wf-tname" className="input" value={transition.name} onChange={e => onChange({ name: e.target.value }, `tname:${transition.id}`)} />
+        <fieldset className="wf-fieldset" style={{ marginTop: 12 }}>
+          <legend className="label">From statuses</legend>
+          <label className="check-row">
+            <Checkbox checked={from === 'any'} label="Any status"
+              onChange={on => onChange({ from: on ? 'any' : statuses.filter(s => s.id !== transition.to).slice(0, 1).map(s => s.id) })} />Any status
           </label>
-        ))}
-        {from !== 'any' && from.length === 0 && <p className="hint error" role="alert">Choose at least one status, or Any status.</p>}
-      </fieldset>
-      <label className="label" htmlFor="wf-to" style={{ marginTop: 12 }}>To status</label>
-      <select id="wf-to" className="input" value={transition.to} onChange={e => onChange({ to: e.target.value })}>
-        {statuses.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-      </select>
+          {from !== 'any' && statuses.filter(s => s.id !== transition.to).map(s => (
+            <label key={s.id} className="check-row">
+              <Checkbox checked={from.includes(s.id)} label={s.name} onChange={on => onChange({ from: on ? [...from, s.id] : from.filter(f => f !== s.id) })} />
+              <span className="status-dot" style={{ background: s.color }} />{s.name}
+            </label>
+          ))}
+          {from !== 'any' && from.length === 0 && <p className="hint error" role="alert">Choose at least one status, or Any status.</p>}
+        </fieldset>
+        <label className="label" htmlFor="wf-to" style={{ marginTop: 12 }}>To status</label>
+        <select id="wf-to" className="input" value={transition.to ?? LOOP} onChange={e => onChange({ to: e.target.value === LOOP ? null : e.target.value })}>
+          {statuses.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+          <option value={LOOP}>Stays in its status (an action)</option>
+        </select>
+        {transition.to === null && <p className="hint">A loop: people find it in the work item’s Actions menu. It changes nothing by itself; give it rules to ask for input or perform actions, like “Log progress”.</p>}
+      </>}
       <div className="wf-panel-foot">
         <span />
         <button className="btn btn-secondary text-danger" onClick={onDelete}><Trash2 size={14} />Delete transition</button>
@@ -91,6 +106,9 @@ export function TransitionPanel({ transition, statuses, onChange, onDelete }: {
     </>
   )
 }
+
+/** The "To status" choice that means the item stays where it is. */
+export const LOOP = '__loop'
 
 export function EmptyPanel() {
   return (

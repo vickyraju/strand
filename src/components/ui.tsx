@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 're
 import {
   Bookmark, Bug, SquareCheck, Zap, ChevronsUp, ChevronUp, Equal, ChevronDown, Minus, Check, UserRound, X,
 } from 'lucide-react'
+import type { RuleCtx } from '../data/transitionRules'
 import { transitionsFrom, type IssueType, type Priority, type Project, type Status, type User } from '../data/store'
 
 // ── Type ───────────────────────────────────────────────────
@@ -352,9 +353,10 @@ export function Checkbox({ checked, indeterminate, onChange, label }: {
 
 // ── Option builders ────────────────────────────────────────
 
-/** Status options. With `from`, only statuses the workflow allows moving to (plus the current one). */
-export function statusOptions(project: Project, from?: string): PickerOption<string>[] {
-  const allowed = from === undefined ? null : new Map(transitionsFrom(project, from).map(t => [t.to, t.name]))
+/** Status options. With `from`, only statuses the workflow allows moving to (plus the current one); with `ctx`, only
+ *  moves this person may make (transition rules). */
+export function statusOptions(project: Project, from?: string, ctx?: RuleCtx): PickerOption<string>[] {
+  const allowed = from === undefined || !project.transitions.length ? null : new Map(transitionsFrom(project, from, ctx).map(t => [t.to, t.name]))
   return project.statuses
     .filter(s => !allowed || s.id === from || allowed.has(s.id))
     .map(s => ({

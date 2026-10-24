@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ChevronDown, ChevronRight, ArrowUp, ArrowDown, Plus, Columns3, Ban } from 'lucide-react'
 import {
-  useStore, userOf, projectOf, blockersOf, indexOf, timeAgo, uid,
+  useStore, userOf, projectOf, blockersOf, indexOf, timeAgo, uid, moveContext,
   type Issue, type Priority, type Project, type NewIssue,
 } from '../data/store'
 import { useApp, useNavList } from '../appContext'
@@ -39,7 +39,7 @@ export default function IssueTable({ issues, id, groupBy, onGroupBy, project, sh
   emptyText?:         string
 }) {
   const { state, dispatch } = useStore()
-  const { openIssue, toast } = useApp()
+  const { openIssue, toast, moveIssue } = useApp()
   const storageKey = `forge:table:${id}`
   const [cols, setCols] = useState<Record<Col, boolean>>(() => ({
     type: true, key: true, project: !!showProjectColumn, status: true, assignee: true, priority: true,
@@ -297,7 +297,7 @@ export default function IssueTable({ issues, id, groupBy, onGroupBy, project, sh
                       {cols.project && showProjectColumn && <td className="col-project"><span className="cell-flex"><ProjectIcon project={p} size={16} />{p.key}</span></td>}
                       {cols.status && (
                         <td className="col-status" onClick={e => e.stopPropagation()}>
-                          <Picker value={i.status} options={statusOptions(p, i.status)} onChange={s => set({ status: s })} title="Change status"
+                          <Picker value={i.status} options={statusOptions(p, i.status, moveContext(state, i))} onChange={s => moveIssue(i.id, s)} title="Change status"
                             className={`status-cell cat-${st?.category}`} trigger={<>{st?.name}<ChevronDown size={12} /></>} />
                         </td>
                       )}

@@ -5,17 +5,19 @@ import {
   type Announcements, type CollisionDetection, type KeyboardCoordinateGetter,
 } from '@dnd-kit/core'
 import { canTransition, statusOf, type Issue, type IssuePatch, type Project } from '../data/reducer.ts'
+import type { RuleCtx } from '../data/transitionRules.ts'
 
 // ── The rules ────────────────────────────────────────────
 
 export type DropPlan = { patch: IssuePatch } | { blocked: string }
 
-/** What dropping a card into a cell does: change its status when the workflow allows that move, and, when the cell is in
- *  another swimlane, also change the field the board is grouped by. A move the workflow forbids does nothing at all. */
-export function planDrop(o: { project: Project; issue: Issue; statusId: string; lanePatch?: IssuePatch; moveLane: boolean }): DropPlan {
+/** What dropping a card into a cell does: change its status when the workflow allows that move (for this person, given
+ *  `ctx`: a transition's Restrict rules), and, when the cell is in another swimlane, also change the field the board is
+ *  grouped by. A move the workflow forbids does nothing at all. */
+export function planDrop(o: { project: Project; issue: Issue; statusId: string; lanePatch?: IssuePatch; moveLane: boolean; ctx?: RuleCtx }): DropPlan {
   const patch: IssuePatch = {}
   if (o.issue.status !== o.statusId) {
-    if (!canTransition(o.project, o.issue.status, o.statusId)) {
+    if (!canTransition(o.project, o.issue.status, o.statusId, o.ctx)) {
       return { blocked: `The ${o.project.name} workflow doesn’t allow ${statusOf(o.project, o.issue.status)?.name} → ${statusOf(o.project, o.statusId)?.name}` }
     }
     patch.status = o.statusId

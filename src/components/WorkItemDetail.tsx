@@ -2,11 +2,11 @@ import { useEffect, useRef, useState } from 'react'
 import { usePresence } from '../api/presence'
 import { recordView } from '../api/work'
 import {
-  Maximize2, Minimize2, X, Link2, Trash2, Plus, Eye, EyeOff, ChevronUp, ChevronDown, MoreHorizontal,
+  Maximize2, Minimize2, X, Link2, Trash2, Plus, Eye, EyeOff, ChevronUp, ChevronDown, MoreHorizontal, RefreshCw,
   Ban, Unlink, Pencil, UserCheck, Copy, Paperclip, FileText,
 } from 'lucide-react'
 import {
-  useStore, userOf, projectOf, timeAgo, transitionsFrom,
+  useStore, userOf, projectOf, timeAgo, transitionsFrom, loopsFrom, moveContext,
   type Issue, type IssuePatch, type IssueLink,
 } from '../data/store'
 import { useApp } from '../appContext'
@@ -42,7 +42,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 export default function WorkItemDetail({ issueId, mode, navList }: { issueId: string; mode: 'peek' | 'full'; navList: string[] }) {
   const { state, dispatch } = useStore()
-  const { createIssue, openIssue, closeIssue, openProject, toast } = useApp()
+  const { createIssue, openIssue, closeIssue, openProject, toast, moveIssue, runTransition } = useApp()
   const issue = state.issues.find(i => i.id === issueId)
   const project = projectOf(state, issue?.projectId)
   const readOnly = !canEdit(project)
@@ -111,7 +111,9 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
   const editingNow = editors.length > 0
   const editingNames = editors.map(e => e.name).join(', ')
 
-  const moves    = transitionsFrom(project, issue.status)
+  const moveCtx  = moveContext(state, issue)
+  const moves    = transitionsFrom(project, issue.status, moveCtx)
+  const loops    = loopsFrom(project, issue.status, moveCtx)   // Jira lists these as the item's actions, not as statuses
 
   // Links in both directions, described from this item's point of view
   const links: { other: Issue; label: string; owner: string }[] = [
@@ -160,7 +162,8 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
         </button>
         <button className="icon-btn" onClick={copyLink} title="Copy link" aria-label="Copy link"><Link2 size={16} /></button>
         <Menu title="More actions" trigger={<MoreHorizontal size={16} />} items={[
-          { label: 'Copy key', icon: <Copy size={14} />, onClick: () => { navigator.clipboard?.writeText(issue.key); toast(`Copied ${issue.key}`) } },
+          ...(readOnly ? [] : loops.map(t => ({ label: t.name, icon: <RefreshCw size={14} />, onClick: () => runTransition(issue.id, t.id) }))),
+          { label: 'Copy key', divider: !readOnly && loops.length > 0, icon: <Copy size={14} />, onClick: () => { navigator.clipboard?.writeText(issue.key); toast(`Copied ${issue.key}`) } },
           ...(readOnly ? [] : [{ label: 'Link work item', icon: <Link2 size={14} />, onClick: () => setLinking(true) }]),
           ...(readOnly ? [] : [{ label: 'Save as template', icon: <FileText size={14} />, onClick: () => setTemplating(true) }]),
           ...(!readOnly && issue.type !== 'epic' && !issue.parentId ? [{ label: 'Add sub-item', icon: <Plus size={14} />, onClick: () => createIssue({ projectId: project.id, parentId: issue.id, sprintId: issue.sprintId }) }] : []),
@@ -360,7 +363,7 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
                 { value: issue.status, label: status?.name ?? '', icon: <span className="status-dot" style={{ background: status?.color }} /> },
                 ...moves.map(t => ({ value: t.to, label: transitionLabel(project, t), icon: <span className="status-dot" style={{ background: project.statuses.find(s => s.id === t.to)?.color }} /> })),
               ]}
-              onChange={s => set({ status: s })}
+              onChange={s => moveIssue(issue.id, s)}
               trigger={<>{status?.name}<ChevronDown size={14} /></>}
             />
             {moves.length === 0 && <span className="muted sm">No moves allowed from this status</span>}

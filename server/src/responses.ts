@@ -9,7 +9,7 @@ const day = z.string().describe('YYYY-MM-DD')
 const nullable = <T extends z.ZodType>(t: T) => t.nullable()
 
 export const User = z.object({ id, name: z.string(), initials: z.string(), color: z.string(), title: nullable(z.string()), email: z.string(), role: z.string() })
-export const Me = z.object({ id, email: z.string(), name: z.string(), workspaceId: id, role: z.enum(['owner', 'admin', 'member']), admin: z.boolean() })
+export const Me = z.object({ id, email: z.string(), name: z.string(), workspaceId: id, role: z.enum(['owner', 'admin', 'member']), admin: z.boolean(), groupIds: z.array(id).describe('Groups I am in (transition rules can name groups)') })
 
 export const AccessToken = z.object({ id, name: z.string(), hint: z.string().describe('Last 4 characters of the token'), createdAt: ts, expiresAt: ts, lastUsedAt: nullable(ts), expired: z.boolean() })
 export const AccessTokenCreated = AccessToken.extend({ token: z.string().describe('The secret. Shown only in this response') })
@@ -17,7 +17,14 @@ export const AccessTokenCreated = AccessToken.extend({ token: z.string().describ
 export const Member = z.object({ userId: id, name: z.string(), email: z.string(), initials: z.string(), color: z.string(), title: nullable(z.string()), role: z.enum(['admin', 'member', 'viewer']), addedAt: ts })
 
 export const Status = z.object({ id, projectId: id, name: z.string(), description: z.string(), color: z.string(), category: z.enum(['todo', 'in-progress', 'done']), wipLimit: nullable(z.number()), position: z.number() })
-export const Transition = z.object({ id, projectId: id, name: z.string(), fromIds: nullable(z.array(id)), toId: id })
+export const Transition = z.object({
+  id, projectId: id, name: z.string(), fromIds: nullable(z.array(id)).describe('null: from any status'), toId: nullable(id).describe('null: a loop, the item stays in its status'),
+  rules: z.record(z.string(), z.unknown()).describe('restrict, validate, screen, actions'),
+})
+export const AvailableTransition = z.object({
+  id, name: z.string(), toId: nullable(id), screen: z.array(z.string()).describe('Fields to fill in (and "comment")'),
+  problems: z.record(z.string(), z.string()).describe('What would stop the move if made now, by field'),
+})
 export const Field = z.object({ id, projectId: id, name: z.string(), kind: z.enum(['text', 'number', 'select', 'date']), options: nullable(z.array(z.string())), position: z.number() })
 export const Template = z.object({ id, projectId: id, name: z.string(), type: z.string(), title: z.string(), description: z.string(), priority: z.string(), labels: z.array(z.string()), estimate: nullable(z.number()) })
 export const Rule = z.object({ id, projectId: id, name: z.string(), enabled: z.boolean(), trigger: z.record(z.string(), z.unknown()), actions: z.array(z.record(z.string(), z.unknown())), runs: z.number() })
@@ -154,6 +161,8 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'GET /issues/:key': IssueDetail,
   'GET /issues/:key/development': Development,
   'PATCH /issues/:key': IssueRow,
+  'GET /issues/:key/transitions': z.array(AvailableTransition),
+  'POST /issues/:key/transitions': IssueRow,
   'POST /issues/:key/restore': IssueRow,
   'POST /issues/:key/comments': Comment,
   'PATCH /comments/:id': Comment,

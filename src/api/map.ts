@@ -17,7 +17,9 @@ const mapStatus = (s: Row): Status => ({
   id: s.id, name: s.name, color: s.color, category: s.category,
   ...(s.description ? { description: s.description } : {}), ...(s.wipLimit ? { wipLimit: s.wipLimit } : {}),
 })
-const mapTransition = (t: Row): Transition => ({ id: t.id, name: t.name, from: t.fromIds ?? 'any', to: t.toId })
+const mapTransition = (t: Row): Transition => ({
+  id: t.id, name: t.name, from: t.fromIds ?? 'any', to: t.toId ?? null, ...(t.rules && Object.keys(t.rules).length ? { rules: t.rules } : {}),
+})
 const mapRule = (r: Row): Rule => ({ id: r.id, name: r.name, enabled: r.enabled, trigger: r.trigger, actions: r.actions, runs: r.runs ?? 0 })
 const mapField = (f: Row): FieldDef => ({ id: f.id, name: f.name, kind: f.kind, ...(f.options ? { options: f.options } : {}) })
 const mapRelease = (r: Row): Release => ({
@@ -61,7 +63,7 @@ export function mapProject(p: Row): Project {
 export function mapWorkspace(me: Row, users: Row[], projects: Row[], starredIds: string[], extras: { views?: Row[]; notifications?: Row[] } = {}): State {
   return {
     version: 4, workspaceName: 'Strand',
-    ownerId: me.id, isAdmin: !!me.admin,
+    ownerId: me.id, isAdmin: !!me.admin, groupIds: me.groupIds ?? [],
     users: users.map(mapUser),
     projects: projects.map(mapProject),
     sprints: projects.flatMap(p => (p.sprints ?? []).map(mapSprint)),

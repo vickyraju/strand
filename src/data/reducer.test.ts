@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { reducer, migrate, EMPTY, isDone, type Action, type State, type Issue } from './reducer.ts'
+import { reducer, migrate, EMPTY, isDone, moveContext, transitionsFrom, loopsFrom, type Action, type State, type Issue } from './reducer.ts'
 import { withSample } from './testdata.ts'
 
 /** Do the next actions as someone else (the reducer attributes actions to the signed-in person) */
@@ -312,4 +312,32 @@ test('resolution follows the status: Done when finished (or the one chosen), kep
   assert.deepEqual([s.issues[0]!.resolution, s.issues[0]!.resolvedAt], ["Won't do", first.resolvedAt])
   s = run([{ type: 'updateIssues', ids: ['i1'], patch: { status: todo!.id } }], s)
   assert.deepEqual(['resolution' in s.issues[0]!, 'resolvedAt' in s.issues[0]!], [false, false])
+})
+
+test('transition rules: hidden from those they are not for, refused until their checks pass, loops act without moving', () => {
+  const { s, owner, sam } = workspace()
+  const p = s.projects[0]!
+  const [todo, doing] = [p.statuses[0]!.id, p.statuses[1]!.id]
+  const transitions = [
+    { id: 't-start', name: 'Start', from: [todo], to: doing, rules: { restrict: { op: 'all' as const, items: [{ kind: 'person' as const, who: 'assignee' as const }] } } },
+    { id: 't-log', name: 'Log progress', from: [doing], to: null, rules: { validate: [{ kind: 'required' as const, fields: ['comment'] }], actions: [{ kind: 'set' as const, field: 'priority', value: 'urgent' }] } },
+  ]
+  let t = run([{ type: 'updateProject', id: 'p1', patch: { transitions } }, { type: 'updateIssues', ids: ['i1'], patch: { assigneeId: sam } }], s)
+  // the owner isn't the assignee: Start isn't theirs to use
+  const ownerCtx = moveContext(t, t.issues[0]!)
+  assert.deepEqual(transitionsFrom(t.projects[0]!, todo, ownerCtx), [])
+  t = run([{ type: 'updateIssues', ids: ['i1'], patch: { status: doing } }], t)
+  assert.equal(t.issues[0]!.status, todo)
+  // Sam is: the move goes through
+  t = run([{ type: 'updateIssues', ids: ['i1'], patch: { status: doing } }], asUser(t, sam))
+  assert.equal(t.issues[0]!.status, doing)
+  // the loop: no comment, nothing happens; with one, it stays put, runs its action and adds the comment
+  const before = t
+  t = run([{ type: 'runTransition', issueId: 'i1', transitionId: 't-log', patch: {} }], t)
+  assert.equal(t, before)
+  t = run([{ type: 'runTransition', issueId: 'i1', transitionId: 't-log', patch: {}, comment: 'Halfway' }], t)
+  assert.deepEqual([t.issues[0]!.status, t.issues[0]!.priority], [doing, 'urgent'])
+  assert.equal(t.comments.at(-1)!.body, 'Halfway')
+  assert.ok(t.activity.some(a => a.text === 'did “Log progress”'))
+  assert.equal(loopsFrom(t.projects[0]!, doing, moveContext(asUser(t, owner), t.issues[0]!)).length, 1)
 })

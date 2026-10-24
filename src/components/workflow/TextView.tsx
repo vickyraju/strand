@@ -9,6 +9,7 @@ import type { Category, Status } from '../../data/store'
 import type { Workflow } from '../../data/workflow'
 import { plural } from '../ui'
 import type { Selection } from './types'
+import { rulesSummary } from './RulesEditor'
 
 const CATEGORY_LABEL: Record<Category, string> = { todo: 'To do', 'in-progress': 'In progress', done: 'Done' }
 
@@ -96,7 +97,7 @@ export default function TextView({ workflow, counts, selection, onSelect, onMove
       <h3 className="section-label" style={{ marginTop: 20 }}>Transitions</h3>
       <div className="card-table">
         <table className="table">
-          <thead><tr><th>Name</th><th>From</th><th>To</th></tr></thead>
+          <thead><tr><th>Name</th><th>From</th><th>To</th><th>Rules</th></tr></thead>
           <tbody>
             {workflow.transitions.map(t => {
               const select = () => onSelect({ kind: 'transition', id: t.id })
@@ -105,7 +106,8 @@ export default function TextView({ workflow, counts, selection, onSelect, onMove
                   className={selection?.kind === 'transition' && selection.id === t.id ? 'selected' : ''}>
                   <td>{t.name}</td>
                   <td>{t.from === 'any' ? <span className="muted">Any status</span> : t.from.map(nameOf).join(', ')}</td>
-                  <td>{nameOf(t.to)}</td>
+                  <td>{t.to === null ? <span className="muted">Stays (an action)</span> : nameOf(t.to)}</td>
+                  <td className="muted sm">{rulesSummary(t.rules) || 'None'}</td>
                 </tr>
               )
             })}

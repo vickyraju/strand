@@ -18,6 +18,11 @@ export interface AppActions {
   createIssue: (defaults?: Partial<NewIssue>) => void
   /** `undo`: the action this toast reports; an Undo button shows while that change is still the latest. */
   toast:       (text: string, opts?: { issueId?: string; tone?: 'ok' | 'warn'; undo?: Action['type'] }) => void
+  /** Move a work item to a status the way the workflow says: straight away, or through its transition screen when the
+   *  move asks for input or isn't ready. A move the workflow doesn't offer this person is refused with a message. */
+  moveIssue:   (issueId: string, statusId: string) => void
+  /** Make one transition by id (loops, from the Actions menu). */
+  runTransition: (issueId: string, transitionId: string) => void
   /** The list the user is looking at, for previous/next in the detail view. */
   setNavList:  (ids: string[]) => void
 }
