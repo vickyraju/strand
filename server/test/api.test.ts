@@ -1620,7 +1620,8 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
 
   const send = async (op: string, as: string | null) => {
     const [method] = op.split(' '), [, path, body] = M[op]!
-    const r = await app.inject({ method: method as any, url: `/api/v1${path}`, payload: body as any, headers: as ? await bearer(as) : {} })
+    // tests run the dev login without a secret, where no header means the default dev user: a bad token stands for "not signed in"
+    const r = await app.inject({ method: method as any, url: `/api/v1${path}`, payload: body as any, headers: as ? { 'x-dev-user': as } : { authorization: 'Bearer not-a-token' } })
     return r.statusCode
   }
   const wrong: string[] = []
