@@ -19783,6 +19783,16 @@
             "in": "query",
             "name": "resolution",
             "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 5000
+            },
+            "in": "query",
+            "name": "jql",
+            "required": false,
+            "description": "JQL, as in Jira: replaces the filters above, e.g. project = PAY AND status != Done ORDER BY priority DESC"
           }
         ],
         "responses": {
@@ -19944,6 +19954,16 @@
             "in": "query",
             "name": "resolution",
             "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 5000
+            },
+            "in": "query",
+            "name": "jql",
+            "required": false,
+            "description": "JQL, as in Jira: replaces the filters above, e.g. project = PAY AND status != Done ORDER BY priority DESC"
           },
           {
             "schema": {

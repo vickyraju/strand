@@ -6,6 +6,7 @@ import { visible, visibleAs } from '../access.ts'
 import { projectByKey } from './projects.ts'
 import { audit } from '../audit.ts'
 import { getSetting } from '../settings.ts'
+import { jqlToSql, parseOr400 } from '../jqlSql.ts'
 
 const uuid = z.string().uuid()
 const LIST = `
@@ -25,13 +26,20 @@ const searchFilters = {
   q: z.string().default('').describe('Free text or an issue key'), project: uuid.optional(), assignee: z.string().optional().describe('User id, "me", or "none" for unassigned work'),
   type: z.string().optional(), priority: z.string().optional(), label: z.string().optional(),
   resolution: z.enum(['open', 'done', 'all']).default('open'),
+  jql: z.string().max(5000).optional().describe('JQL, as in Jira: replaces the filters above, e.g. project = PAY AND status != Done ORDER BY priority DESC'),
 }
-type SearchFilters = { q: string; project?: string; assignee?: string; type?: string; priority?: string; label?: string; resolution: 'open' | 'done' | 'all' }
+type SearchFilters = { q: string; project?: string; assignee?: string; type?: string; priority?: string; label?: string; resolution: 'open' | 'done' | 'all'; jql?: string }
 
-/** The SQL conditions for a search, limited to projects I can see (the parameters go into `args`). */
-function searchWhere(me: Me, q: SearchFilters, args: unknown[]) {
+/** The SQL conditions for a search, limited to projects I can see (the parameters go into `args`), and its JQL ORDER BY.
+ *  With JQL, the query replaces the simple filters, as switching to JQL does in Jira. */
+async function searchWhere(me: Me, q: SearchFilters, args: unknown[]): Promise<{ where: string[]; order: string | null }> {
   args.push(me.workspaceId)
   const where = [`i.workspace_id = $${args.length}`, 'i.deleted_at is null', visible(me, 'i.project_id', args)]
+  if (q.jql?.trim()) {
+    const sql = await jqlToSql(db, me, parseOr400(q.jql), args)
+    if (sql.where) where.push(sql.where)
+    return { where, order: sql.order }
+  }
   const add = (sql: string, v: unknown) => { args.push(v); where.push(sql.replace(/\?/g, `$${args.length}`)) }
   const text = q.q.trim()
   if (text) {
@@ -47,7 +55,7 @@ function searchWhere(me: Me, q: SearchFilters, args: unknown[]) {
   if (q.label) add('? = any(i.labels)', q.label)
   if (q.resolution === 'open') where.push(`st.category <> 'done'`)
   if (q.resolution === 'done') where.push(`st.category = 'done'`)
-  return where
+  return { where, order: null }
 }
 
 /** One CSV cell. Text that a spreadsheet would run as a formula (=, +, -, @, tab, return) is prefixed with ' so it stays text. */
@@ -70,7 +78,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     querystring: z.object(searchFilters),
   } }, async (req, reply) => {
     const args: unknown[] = []
-    const where = searchWhere(req.me, req.query, args)
+    const { where, order } = await searchWhere(req.me, req.query, args)
     // a larger search is refused, so nobody gets a silently cut-off file
     // ponytail: built in memory; stream it, or write it to storage in a background job, if exports need to be much larger
     const max = (await getSetting(req.me.workspaceId, 'searchAndBulk')).exportMaxRows
@@ -87,7 +95,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
          left join users a on a.id = i.assignee_id left join users r on r.id = i.reporter_id
          left join sprints sp on sp.id = i.sprint_id left join releases rl on rl.id = i.release_id
          left join issues par on par.id = i.parent_id left join projects par_p on par_p.id = par.project_id
-        where ${where.join(' and ')} order by i.updated_at desc, i.id desc limit $${args.length}`, args)
+        where ${where.join(' and ')} order by ${order ? `${order}, i.id` : 'i.updated_at desc, i.id desc'} limit $${args.length}`, args)
     if (rows.length > max)
       throw new HttpError(400, `More than ${max.toLocaleString('en')} items match. Narrow the search (a project, a type, a label) and export again.`)
     const cols: [string, string][] = [
@@ -109,7 +117,15 @@ const plugin: FastifyPluginAsyncZod = async app => {
   } }, async req => {
     const q = req.query
     const args: unknown[] = []
-    const where = searchWhere(req.me, q, args)
+    const { where, order } = await searchWhere(req.me, q, args)
+    // A JQL ORDER BY pages by position (o:<offset>); otherwise newest first, keyset by (updated_at, id)
+    if (order) {
+      const offset = q.cursor ? Number(Buffer.from(q.cursor, 'base64url').toString().replace(/^o:/, '')) || 0 : 0
+      args.push(q.limit + 1, offset)
+      const rows = await db.query<any>(`${LIST} where ${where.join(' and ')} order by ${order}, i.id limit $${args.length - 1} offset $${args.length}`, args)
+      const more = rows.length > q.limit
+      return { items: more ? rows.slice(0, q.limit) : rows, next: more ? Buffer.from(`o:${offset + q.limit}`).toString('base64url') : null }
+    }
     if (q.cursor) {
       const [t, id] = Buffer.from(q.cursor, 'base64url').toString().split('|')
       args.push(t, id)
