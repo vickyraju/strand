@@ -1,5 +1,7 @@
 import { useState } from 'react'
-import { ArrowLeft, Plus, Zap, Pencil, Trash2, X } from 'lucide-react'
+import { ArrowLeft, Plus, Zap, Pencil, Trash2, X, ScrollText } from 'lucide-react'
+import { apiEnabled } from '../api/client'
+import { AuditLogDialog, DryRun } from './AutomationLog'
 import { useStore, uid, userOf, type Project, type Rule, type RuleAction, type RuleTrigger, type Priority } from '../data/store'
 import { useApp } from '../appContext'
 import { Empty, Modal, Toggle, PRIORITY_META, PRIORITIES, plural } from './ui'
@@ -18,10 +20,11 @@ export function describeTrigger(p: Project, t: RuleTrigger) {
 function describeAction(p: Project, a: RuleAction, users: { id: string; name: string }[]) {
   switch (a.kind) {
     case 'assign':   return a.to === 'reporter' ? 'assign the reporter' : a.to === 'lead' ? 'assign the project lead' : a.to === 'unassign' ? 'remove the assignee' : `assign ${users.find(u => u.id === a.to)?.name ?? 'someone'}`
-    case 'priority': return `set priority to ${PRIORITY_META[a.value].label}`
+    case 'priority': return `set priority to ${PRIORITY_META[a.value]?.label ?? `“${a.value}” (not a priority)`}`
     case 'label':    return `add label “${a.value}”`
     case 'status':   return `move to ${p.statuses.find(s => s.id === a.value)?.name ?? 'a deleted status'}`
     case 'comment':  return 'add a comment'
+    default:         return 'do something this version of Strand doesn’t know'
   }
 }
 
@@ -30,6 +33,7 @@ export default function AutomationView({ project }: { project: Project }) {
   const { openProject, toast } = useApp()
   const [editing, setEditing] = useState<Rule | null>(null)
   const [deleting, setDeleting] = useState<Rule | null>(null)
+  const [log, setLog] = useState<string | null>(null)
   const rules = project.rules
   const setRules = (next: Rule[]) => dispatch({ type: 'updateProject', id: project.id, patch: { rules: next } })
 
@@ -39,6 +43,7 @@ export default function AutomationView({ project }: { project: Project }) {
         <button className="btn btn-ghost" onClick={() => openProject(project.id, 'settings')}><ArrowLeft size={15} />Settings</button>
         <h2 className="wf-title">Automation</h2>
         <div style={{ flex: 1 }} />
+        {apiEnabled && rules.length > 0 && <button className="btn btn-ghost" onClick={() => setLog('all')}><ScrollText size={15} />Audit log</button>}
         {rules.length > 0 && <button className="btn btn-primary" onClick={() => setEditing(blankRule(project))}><Plus size={15} />Create rule</button>}
       </div>
 
@@ -56,7 +61,12 @@ export default function AutomationView({ project }: { project: Project }) {
                 <div className="muted sm">
                   When {describeTrigger(project, r.trigger)}, then {r.actions.map(a => describeAction(project, a, state.users)).join(', ')}.
                 </div>
-                <div className="muted sm">{r.runs ? `Ran ${plural(r.runs, 'time')}` : 'Hasn’t run yet'}</div>
+                <div className="muted sm">
+                  {r.runs ? `Ran ${plural(r.runs, 'time')}` : 'Hasn’t run yet'}
+                  {r.failures ? <span className="text-danger"> · {plural(r.failures, 'failure')}</span> : null}
+                  {r.ownerId && ` · owner ${userOf(state, r.ownerId)?.name ?? 'someone who left'}`}
+                  {apiEnabled && r.runs > 0 && <> · <button className="link" onClick={() => setLog(r.id)}>Audit log</button></>}
+                </div>
               </div>
               <Toggle on={r.enabled} label={r.enabled ? `Turn off ${r.name}` : `Turn on ${r.name}`}
                 onChange={on => { setRules(rules.map(x => x.id === r.id ? { ...x, enabled: on } : x)); toast(`${r.name} ${on ? 'on' : 'off'}`) }} />
@@ -75,6 +85,7 @@ export default function AutomationView({ project }: { project: Project }) {
             toast(`Saved ${r.name}`); setEditing(null)
           }} />
       )}
+      {log && <AuditLogDialog project={project} ruleId={log === 'all' ? undefined : log} onClose={() => setLog(null)} />}
       {deleting && (
         <Modal title={`Delete “${deleting.name}”?`} onClose={() => setDeleting(null)}
           footer={<>
@@ -151,7 +162,7 @@ function RuleModal({ project, rule, onClose, onSave }: { project: Project; rule:
             </div>
           )}
           {a.kind === 'priority' && (
-            <select className="input" aria-label="Priority" value={a.value} onChange={e => setAction(i, { kind: 'priority', value: e.target.value as Priority })}>
+            <select className="input" aria-label="Priority" value={PRIORITY_META[a.value] ? a.value : 'medium'} onChange={e => setAction(i, { kind: 'priority', value: e.target.value as Priority })}>
               {PRIORITIES.map(p => <option key={p} value={p}>{PRIORITY_META[p].label}</option>)}
             </select>
           )}
@@ -166,6 +177,7 @@ function RuleModal({ project, rule, onClose, onSave }: { project: Project; rule:
         </div>
       ))}
       <button className="btn btn-ghost btn-sm" style={{ marginTop: 8 }} onClick={() => setR({ ...r, actions: [...r.actions, blank('priority')] })}><Plus size={14} />Add another action</button>
+      {apiEnabled && valid && <DryRun project={project} actions={r.actions} />}
     </Modal>
   )
 }

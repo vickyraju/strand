@@ -118,6 +118,10 @@ export interface Rule {
   trigger: RuleTrigger
   actions: RuleAction[]
   runs:    number
+  /** Runs that failed (from the server) */
+  failures?: number
+  /** Who made it, and hears when it fails (from the server) */
+  ownerId?: string
 }
 
 export interface Attachment {
@@ -297,7 +301,7 @@ export interface Activity {
   createdAt: number
 }
 
-export type NotificationKind = 'assigned' | 'mentioned' | 'commented' | 'status' | 'due'
+export type NotificationKind = 'assigned' | 'mentioned' | 'commented' | 'status' | 'due' | 'automation'
 
 export interface Notification {
   id:        string

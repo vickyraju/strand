@@ -211,6 +211,7 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; line-height:
 .lozenge-todo        { background: var(--cat-todo); color: var(--cat-todo-text) }
 .lozenge-in-progress { background: var(--cat-progress); color: var(--cat-progress-text) }
 .lozenge-done        { background: var(--cat-done); color: var(--cat-done-text) }
+.lozenge-danger      { background: #FEE2E2; color: #991B1B }
 .status-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; display: inline-block }
 .tag {
   display: inline-block; line-height: 20px; vertical-align: middle; height: 20px; padding: 0 6px; border-radius: 4px; flex-shrink: 0;
@@ -1351,3 +1352,5 @@ h2.empty-title, h2.section-title, h2.side-title { margin: 0 }
 .jql-row { display: flex; gap: 8px; align-items: flex-start }
 .jql-input { flex: 1; resize: vertical; min-height: 40px; font-size: 13px; line-height: 1.5 }
 .jql-help p { margin: 0 0 8px; font-size: 12.5px; line-height: 1.5 }
+
+.dry-run { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); display: grid; gap: 6px }

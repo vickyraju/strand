@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Inbox, AtSign, UserPlus, MessageSquare, ArrowRightLeft, CalendarClock, MoreHorizontal, CheckCheck, Archive, Eye } from 'lucide-react'
+import { Inbox, AtSign, UserPlus, MessageSquare, ArrowRightLeft, CalendarClock, MoreHorizontal, CheckCheck, Archive, Eye, Zap } from 'lucide-react'
 import { useStore, userOf, timeAgo, type Notification, type NotificationKind } from '../data/store'
 import { useApp, useNavList } from '../appContext'
 import { useLocation, navigate, href } from '../router'
@@ -21,7 +21,7 @@ async function fetchNotifications(archived = false, kind?: NotificationKind): Pr
 type Filter = 'all' | 'unread' | 'mentioned' | 'assigned'
 
 const KIND_ICON: Record<NotificationKind, typeof AtSign> = {
-  mentioned: AtSign, assigned: UserPlus, commented: MessageSquare, status: ArrowRightLeft, due: CalendarClock,
+  mentioned: AtSign, assigned: UserPlus, commented: MessageSquare, status: ArrowRightLeft, due: CalendarClock, automation: Zap,
 }
 
 function bucket(ts: number) {
