@@ -35,6 +35,7 @@ const TABLES: [table: string, where: string][] = [
   ['releases', 'project_id = $1'],
   ['item_templates', 'project_id = $1'],
   ['rules', 'project_id = $1'],
+  ['workflow_versions', 'project_id = $1'],
   ['sprints', 'project_id = $1'],
   ['project_members', 'project_id = $1'],
   ['project_group_roles', 'project_id = $1'],
@@ -49,7 +50,7 @@ const TABLES: [table: string, where: string][] = [
 ]
 
 /** Columns that name a person. On restore, a person who no longer exists is left out rather than failing the restore. */
-const PERSON = ['lead_id', 'assignee_id', 'reporter_id', 'author_id', 'actor_id', 'added_by', 'created_by']
+const PERSON = ['lead_id', 'assignee_id', 'reporter_id', 'author_id', 'actor_id', 'added_by', 'created_by', 'published_by']
 /** Rows that only mean something with their person (a membership, a watcher, a star). */
 const NEEDS_PERSON = new Set(['project_members', 'issue_watchers', 'stars'])
 

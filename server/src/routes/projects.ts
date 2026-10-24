@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { db, tx, pick, type Db } from '../db.ts'
 import { HttpError, requireAdmin, type Me } from '../auth.ts'
 import { minFor, need, roleOf, visible, type ProjectRole } from '../access.ts'
-import { subscribe } from '../events.ts'
+import { publish, subscribe } from '../events.ts'
 import { audit, changes } from '../audit.ts'
 import { enqueue, kickJobs } from '../jobs.ts'
 import { backupBucket, backupSettings } from '../backups.ts'
@@ -83,6 +83,33 @@ const projectBody = z.object({
 const keyP = z.object({ key: z.string().describe('Project key (PAY) or id (uuid)') })
 const keyIdP = keyP.extend({ id: uuid })
 const T = { me: ['Account'], projects: ['Projects'], config: ['Project settings'], sprints: ['Sprints'] }
+
+/** The workflow as it is now, in the shape versions keep (camelCase, ordered, so equal workflows compare equal). */
+async function workflowNow(d: Db, projectId: string) {
+  const [w] = await d.query<any>(`select
+    (select coalesce(jsonb_agg(jsonb_build_object('id', id, 'name', name, 'description', description, 'color', color, 'category', category, 'wipLimit', wip_limit, 'position', position) order by position, id), '[]') from statuses where project_id = $1) as statuses,
+    (select coalesce(jsonb_agg(jsonb_build_object('id', id, 'name', name, 'fromIds', from_ids, 'toId', to_id, 'rules', rules, 'typeKeys', type_keys) order by id), '[]') from transitions where project_id = $1) as transitions,
+    (select coalesce(jsonb_agg(jsonb_build_object('key', key, 'name', name, 'color', color, 'icon', icon) order by position, key), '[]') from work_types where project_id = $1) as types`, [projectId])
+  return w as { statuses: any[]; transitions: any[]; types: any[] }
+}
+
+/** Before a status goes: every item on it (live or deleted) moves to `moveTo`, with a history entry for the live ones,
+ *  and transitions stop starting from it. An in-use status needs somewhere to send its items. */
+async function moveOffStatus(d: Db, req: { me: Me; ip?: string }, p: { id: string; key: string }, statusId: string, moveTo?: string) {
+  const [{ n }] = await d.query<{ n: number }>('select count(*)::int as n from issues where status_id = $1', [statusId]) as any
+  if (n && !moveTo) throw new HttpError(409, `${n} work items are in this status: choose a status to move them to (moveTo)`)
+  if (n && (moveTo === statusId || !(await d.query('select 1 from statuses where id = $1 and project_id = $2', [moveTo, p.id])).length))
+    throw new HttpError(400, 'Choose another status of this project to move the work items to')
+  if (n) {
+    await d.query(`insert into activity (issue_id, actor_id, field, from_value, to_value, text)
+                   select id, $3, 'statusId', $1::text, $2::text, 'Changed status (workflow update)' from issues where status_id = $1::uuid and deleted_at is null`, [statusId, moveTo, req.me.id])
+    await d.query('update issues set status_id = $2, version = version + 1, updated_at = now() where status_id = $1', [statusId, moveTo])
+    await audit(d, req, { action: 'project.status.items_moved', type: 'status', id: statusId, project: p, after: { items: n, to: moveTo } })
+    await publish(d, p.id, { type: 'issues.reranked' })
+  }
+  await d.query(`update transitions set from_ids = array_remove(from_ids, $2::uuid) where project_id = $1 and $2::uuid = any(from_ids)`, [p.id, statusId])
+  await d.query(`delete from transitions where project_id = $1 and from_ids = '{}'`, [p.id])
+}
 
 const plugin: FastifyPluginAsyncZod = async app => {
   app.get('/me', { schema: { tags: T.me, summary: 'Current user and role' } }, async req => ({
@@ -188,8 +215,11 @@ const plugin: FastifyPluginAsyncZod = async app => {
       for (const u of new Set([req.me.id, b.leadId ?? req.me.id]))
         await d.query(`insert into project_members (project_id, user_id, role, added_by) values ($1, $2, 'admin', $3) on conflict do nothing`, [p!.id, u, req.me.id])
       const st = DEFAULT_STATUSES[b.template]
-      for (const [i, [name, c, cat]] of st.entries())
-        await d.query('insert into statuses (project_id, name, color, category, position) values ($1, $2, $3, $4, $5)', [p!.id, name, c, cat, i])
+      // Each status can be reached from any status, as a new workflow starts in Jira (people then narrow it in the editor)
+      for (const [i, [name, c, cat]] of st.entries()) {
+        const [s] = await d.query<{ id: string }>('insert into statuses (project_id, name, color, category, position) values ($1, $2, $3, $4, $5) returning id', [p!.id, name, c, cat, i])
+        await d.query('insert into transitions (project_id, name, from_ids, to_id) values ($1, $2, null, $3)', [p!.id, name, s!.id])
+      }
       await audit(d, req, { action: 'project.created', type: 'project', id: p!.id, name: b.key, project: { id: p!.id, key: b.key }, after: { name: b.name, template: b.template } })
       return projectDetail(d, req.me.workspaceId, b.key, 'admin')
     })
@@ -298,10 +328,14 @@ const plugin: FastifyPluginAsyncZod = async app => {
       })
     })
 
-    app.delete(`/projects/:key/${kind}/:id`, { schema: { tags: T.config, summary: `Remove a ${what}`, params: keyIdP } }, async (req, reply) => {
+    app.delete(`/projects/:key/${kind}/:id`, { schema: {
+      tags: T.config, summary: kind === 'statuses' ? 'Remove a status. Its work items (every one, also deleted ones) move to `moveTo`, which an in-use status needs' : `Remove a ${what}`,
+      params: keyIdP, ...(kind === 'statuses' ? { querystring: z.object({ moveTo: uuid.optional().describe('Status that receives its work items') }) } : {}),
+    } }, async (req, reply) => {
       const p = await projectByKey(db, req, req.params.key)
       await requireProjectAdmin(req, p)
       await tx(async d => {
+        if (kind === 'statuses') await moveOffStatus(d, req, p, req.params.id, (req.query as { moveTo?: string }).moveTo)
         const [gone] = await d.query(`delete from ${cfg.table} where id = $1 and project_id = $2 returning *`, [req.params.id, p.id])
         if (!gone) throw new HttpError(404, 'Not found')
         await audit(d, req, { action: `project.${what.replace(' ', '_')}.deleted`, type: what, id: gone.id, name: gone.name ?? null, project: p, before: gone })
@@ -373,6 +407,41 @@ const plugin: FastifyPluginAsyncZod = async app => {
       await audit(d, req, { action: 'project.work_type.deleted', type: 'work type', name: t.name, project: p, before: { name: t.name, items: n }, after: moveTo ? { movedTo: moveTo } : undefined })
     })
     reply.code(204).send()
+  })
+
+  // ── Workflow versions: publishing records the workflow as it is now; earlier ones can be read, compared and restored ──
+  const versionP = keyP.extend({ version: z.coerce.number().int().positive() })
+  app.get('/projects/:key/workflow/versions', { schema: { tags: T.config, summary: 'Published versions of the workflow, newest first', params: keyP } }, async req => {
+    const p = await projectByKey(db, req, req.params.key)
+    return db.query(`select v.version, v.note, v.published_at, u.name as published_by, jsonb_array_length(v.statuses) as statuses, jsonb_array_length(v.transitions) as transitions
+                       from workflow_versions v left join users u on u.id = v.published_by where v.project_id = $1 order by v.version desc limit 200`, [p.id])
+  })
+  app.get('/projects/:key/workflow/versions/:version', { schema: { tags: T.config, summary: 'One published version of the workflow, in full', params: versionP } }, async req => {
+    const p = await projectByKey(db, req, req.params.key)
+    const [v] = await db.query(`select v.version, v.note, v.published_at, u.name as published_by, v.statuses, v.transitions, v.types
+                                  from workflow_versions v left join users u on u.id = v.published_by where v.project_id = $1 and v.version = $2`, [p.id, req.params.version])
+    if (!v) throw new HttpError(404, 'No such version')
+    return v
+  })
+  app.post('/projects/:key/workflow/versions', { schema: {
+    tags: T.config, summary: 'Publish the workflow as it is now (project admins). Nothing new is recorded when it hasn\'t changed since the last version',
+    params: keyP, body: z.object({ note: z.string().max(500).default('') }).default({ note: '' }),
+  } }, async (req, reply) => {
+    const p = await projectByKey(db, req, req.params.key)
+    await requireProjectAdmin(req, p)
+    return tx(async d => {
+      await d.query('select 1 from projects where id = $1 for update', [p.id])   // one publish at a time per project
+      const now = await workflowNow(d, p.id)
+      const [last] = await d.query<any>('select version, statuses, transitions, types from workflow_versions where project_id = $1 order by version desc limit 1', [p.id])
+      const same = last && JSON.stringify([last.statuses, last.transitions, last.types]) === JSON.stringify([now.statuses, now.transitions, now.types])
+      if (!same) {
+        await d.query(`insert into workflow_versions (project_id, version, statuses, transitions, types, note, published_by) values ($1, $2, $3, $4, $5, $6, $7)`,
+          [p.id, (last?.version ?? 0) + 1, JSON.stringify(now.statuses), JSON.stringify(now.transitions), JSON.stringify(now.types), req.body.note, req.me.id])
+        await audit(d, req, { action: 'project.workflow.published', type: 'workflow', name: `Version ${(last?.version ?? 0) + 1}`, project: p, after: { note: req.body.note, statuses: now.statuses.length, transitions: now.transitions.length } })
+        reply.code(201)
+      }
+      return { version: same ? last.version : (last?.version ?? 0) + 1, created: !same }
+    })
   })
 
   // Releasing a version moves its unfinished work to `moveTo` (or clears it)

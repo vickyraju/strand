@@ -5,7 +5,7 @@ import { commentDeps, commentSync, detailLoaded, fetchIssueDetail } from './comm
 import { adoptDetail, linkItems, linkSync, watchItems, watchSync, worklogItems, worklogSync } from './detail'
 import { sprintDeps, sprintSync } from './sprints'
 import { loadProjectIssues, loadWorkspace } from './load'
-import { KINDS, kindSyncs, itemsOf, projectSync, sendDetails, settingsDeps, starSync } from './settings'
+import { KINDS, kindSyncs, itemsOf, projectSync, sendDetails, settingsDeps, starSync, statusMoves } from './settings'
 import { isDone } from '../data/reducer'
 import { notificationSync, personalDeps, refreshNotifications, viewSync } from './personal'
 import { useStore } from '../data/store'
@@ -28,6 +28,7 @@ export function useIssueSync(toast: Toast) {
       getIssues: () => latest.current.issues,
       projectKey: id => latest.current.projects.find(p => p.id === id)?.key,
       statusExists: (projectId, statusId) => !!latest.current.projects.find(p => p.id === projectId)?.statuses.some(s => s.id === statusId),
+      statusMovedByServer: statusId => statusMoves.has(statusId),
       applyServerIssue: issue => dispatch({ type: 'syncIssue', issue }),
       applyProjectIssues: (projectId, issues) =>
         dispatch({ type: 'loadIssues', projectId, issues: issues.map(({ version, ...i }: any) => i) }),

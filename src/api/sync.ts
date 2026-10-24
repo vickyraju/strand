@@ -71,6 +71,8 @@ export interface SyncDeps {
   projectKey: (projectId: string) => string | undefined
   /** Does this status still exist in the project? A move off a deleted status is an admin remap, not a workflow move. */
   statusExists?: (projectId: string, statusId: string) => boolean
+  /** Will removing this status on the server move its items (the workflow editor said where)? */
+  statusMovedByServer?: (statusId: string) => boolean
   /** Replace one issue with the server's copy, keeping the local-only parts. */
   applyServerIssue: (issue: Issue) => void
   /** Replace a project's issues wholesale (used when recovering from a failed request). */
@@ -158,9 +160,14 @@ export function createIssueSync(initial?: SyncDeps) {
       const was = base.get(issue.id)
       const remap = !!patch.statusId && !!was && !!d.statusExists && !d.statusExists(issue.projectId, was.status)
       base.set(issue.id, issue)
+      // its status was removed: removing it on the server moves every item off it, so only send the rest of the change
+      if (remap && d.statusMovedByServer?.(was!.status)) {
+        delete patch.statusId
+        if (!Object.keys(patch).length) continue
+      }
       enqueue(async () => {
         const v = versions.get(issue.id)
-        const headers = { ...(v != null ? { 'if-match': String(v) } : {}), ...(remap ? { 'x-workflow-override': '1' } : {}) }
+        const headers = { ...(v != null ? { 'if-match': String(v) } : {}), ...(remap && patch.statusId ? { 'x-workflow-override': '1' } : {}) }
         reconcile(issue, await d.call('PATCH', `/api/issues/${encodeURIComponent(keyOf(issue))}`, patch, Object.keys(headers).length ? headers : undefined))
       })
     }

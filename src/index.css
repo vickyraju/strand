@@ -1343,3 +1343,5 @@ h2.empty-title, h2.section-title, h2.side-title { margin: 0 }
 .icon-choices { display: flex; flex-wrap: wrap; gap: 4px }
 .icon-choice { width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); cursor: pointer }
 .icon-choice.on { border-color: transparent }
+
+.change-list { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 13px }

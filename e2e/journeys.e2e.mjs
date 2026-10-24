@@ -5,6 +5,8 @@ import { start, stop, skip, signIn, as, url, PEOPLE } from './harness.mjs'
 
 const owner = as('owner@e2e.test'), maya = as('maya@e2e.test'), vic = as('vic@e2e.test')
 const idOf = async email => (await as(email)('GET', '/me')).body.id
+/** A new project lets every status be reached from any other; journeys that draw their own moves start without them. */
+const clearMoves = async p => { for (const t of p.transitions) await owner('DELETE', `/projects/${p.key}/transitions/${t.id}`) }
 
 before(start, { timeout: 120_000 })
 after(stop)
@@ -62,6 +64,7 @@ test('an @mention in a comment reaches that person’s Inbox', { skip, timeout: 
 test('the workflow decides which moves are offered, and the server refuses the rest', { skip, timeout: 60_000 }, async () => {
   const p = (await owner('POST', '/projects', { name: 'Flow', key: 'FLW', template: 'kanban' })).body
   const [todo, doing, done] = [p.statuses[0], p.statuses[1], p.statuses.find(s => s.category === 'done')]
+  await clearMoves(p)
   await owner('POST', '/projects/FLW/transitions', { name: 'Start', fromIds: [todo.id], toId: doing.id })
   await owner('POST', '/projects/FLW/members', { userIds: [await idOf('maya@e2e.test')], role: 'member' })
   const item = (await owner('POST', '/projects/FLW/issues', { title: 'Follow the flow' })).body
@@ -78,6 +81,7 @@ test('the workflow decides which moves are offered, and the server refuses the r
 test('transition rules: an admin adds one in the editor; a move is hidden or asks for details; a loop acts from the Actions menu', { skip, timeout: 90_000 }, async () => {
   const p = (await owner('POST', '/projects', { name: 'Rules', key: 'RLS', template: 'kanban' })).body
   const [todo, doing, done] = [p.statuses[0], p.statuses[1], p.statuses.find(s => s.category === 'done')]
+  await clearMoves(p)
   await owner('POST', '/projects/RLS/transitions', { name: 'Start', fromIds: [todo.id], toId: doing.id })
   await owner('POST', '/projects/RLS/transitions', { name: 'Finish', fromIds: [doing.id], toId: done.id,
     rules: { validate: [{ kind: 'required', fields: ['dueDate'] }], screen: ['dueDate', 'comment'] } })
@@ -94,7 +98,8 @@ test('transition rules: an admin adds one in the editor; a move is hidden or ask
   await o.click('.wf-list tr:has-text("Finish")')
   await o.click('.wf-panel [role="tab"]:has-text("Rules")')
   await o.selectOption('section[aria-label="Restrict transition"] select[aria-label="Add rule"]', { label: 'Only a project role' })
-  await o.click('button:has-text("Update workflow")')
+  await o.click('.wf-bar button:has-text("Update workflow")')
+  await o.click('.modal button:has-text("Update workflow")')
   await o.waitForSelector('text=Workflow updated')
   const saved = (await owner('GET', '/projects/RLS')).body.transitions.find(t => t.name === 'Finish')
   assert.deepEqual(saved.rules.restrict, { op: 'all', items: [{ kind: 'role', roles: ['admin'] }] })
@@ -147,7 +152,7 @@ test('work types: an admin adds one in settings; items of that type follow its o
   await o.waitForSelector('section[aria-label="Work types"] td:has-text("Incident")')
   const inc = (await owner('GET', '/projects/KND')).body.types.find(t => t.name === 'Incident')
   assert.ok(inc, 'the type was saved')
-  for (const t of p.transitions) await owner('DELETE', `/projects/KND/transitions/${t.id}`)
+  await clearMoves(p)
   await owner('POST', '/projects/KND/transitions', { name: 'Resolve', fromIds: [todo.id], toId: done.id, typeKeys: [inc.key] })
   const outage = (await owner('POST', '/projects/KND/issues', { title: 'Outage', type: inc.key })).body
   const task = (await owner('POST', '/projects/KND/issues', { title: 'Ordinary' })).body
@@ -160,6 +165,37 @@ test('work types: an admin adds one in settings; items of that type follow its o
   await o.waitForSelector('.detail')
   await o.click('[title="Change status"]')
   assert.ok(!(await o.$$eval('.picker-menu .picker-item', i => i.map(x => x.textContent))).some(t => t.includes(done.name)))
+  assert.deepEqual(o.problems, [])
+})
+
+test('workflow versions: removing a status says what happens to its items; each update is a version that can be loaded back', { skip, timeout: 90_000 }, async () => {
+  const p = (await owner('POST', '/projects', { name: 'Releases flow', key: 'RFL', template: 'scrum' })).body
+  const review = p.statuses.find(s => s.name === 'In review'), doing = p.statuses.find(s => s.name === 'In progress')
+  const items = []
+  for (let n = 0; n < 2; n++) items.push((await owner('POST', '/projects/RFL/issues', { title: `In review ${n}`, statusId: review.id })).body)
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url('/project/RFL/settings/workflow'))
+  await o.click('.wf-tools [role="tab"]:has-text("List")')
+  await o.click('.wf-list tr:has-text("In review")')
+  await o.click('.wf-panel button:has-text("Delete status")')
+  await o.selectOption('#ds-to', { label: 'In progress' })
+  await o.click('.modal button:has-text("Delete status")')
+  await o.click('.wf-bar button:has-text("Update workflow")')
+  const summary = await o.locator('.modal').innerText()
+  assert.match(summary, /Removes the status “In review”/)
+  assert.match(summary, /move to “In progress”/)
+  await o.fill('#pub-note', 'No review step')
+  await o.click('.modal button:has-text("Update workflow")')
+  await o.waitForSelector('text=Workflow updated: version 1')
+  for (const i of items) assert.equal((await owner('GET', `/issues/${i.key}`)).body.statusId, doing.id)
+  // version 1 is the workflow without the review step; load the original back from the list (it was never published,
+  // so publish it first by API, then load version 1 and see the editor change)
+  const versions = (await owner('GET', '/projects/RFL/workflow/versions')).body
+  assert.deepEqual(versions.map(v => [v.version, v.note]), [[1, 'No review step']])
+  await o.click('.wf-bar button:has-text("Versions")')
+  await o.click('.modal tr:has-text("No review step")')
+  await o.waitForSelector('.modal >> text=Going from version 1')
+  assert.match(await o.locator('.modal').innerText(), /They are the same/)
   assert.deepEqual(o.problems, [])
 })
 
