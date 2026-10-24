@@ -61,7 +61,7 @@ export const ProjectDetail = z.object({
 const issueFields = {
   id, key: z.string().describe('e.g. PAY-12'), projectId: id, number: z.number(), type: z.string().describe('Work type key'),
   title: z.string(), description: z.string(), statusId: id, priority: z.enum(['urgent', 'high', 'medium', 'low', 'none']),
-  assigneeId: nullable(id), reporterId: nullable(id), labels: z.array(z.string()), estimate: nullable(z.number()), timeEstimate: nullable(z.number()),
+  assigneeId: nullable(id), reporterId: nullable(id), labels: z.array(z.string()), estimate: nullable(z.number()), timeEstimate: nullable(z.number()), timeRemaining: nullable(z.number()),
   dueDate: nullable(day), startDate: nullable(day), sprintId: nullable(id), releaseId: nullable(id), parentId: nullable(id),
   custom: z.record(z.string(), z.union([z.string(), z.number()])), rank: z.number(), version: z.number().describe('Send as If-Match to reject stale edits'),
   resolution: nullable(z.enum(['Done', "Won't do", 'Duplicate', 'Cannot reproduce'])).describe('Set while the item is in a Done status'),
@@ -186,6 +186,7 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'POST /issues/:key/comments': Comment,
   'PATCH /comments/:id': Comment,
   'POST /issues/:key/worklogs': Worklog,
+  'PATCH /worklogs/:id': Worklog,
   'GET /search': SearchPage,
   'GET /me/work': WorkList,
   'GET /me/recent': WorkList,

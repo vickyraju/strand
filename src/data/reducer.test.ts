@@ -161,12 +161,13 @@ test('a rule on creation runs for new items', () => {
   assert.equal(s.comments.filter(c => c.issueId === 'i9').length, 1)
 })
 
-test('time logs add up and only the author can delete theirs', () => {
+test('time logs add up; on a server project only the author or a project admin can delete one', () => {
   let { s, sam } = workspace()
   s = run([{ type: 'logWork', issueId: 'i1', minutes: 90, date: '2026-10-01', note: 'setup' }], s)
   s = run([{ type: 'logWork', issueId: 'i1', minutes: 30, date: '2026-10-02', note: '' }], asUser(s, sam))   // from here on Sam is the one acting
   assert.equal(s.issues[0].worklogs.reduce((n, w) => n + w.minutes, 0), 120)
   const ownerLog = s.issues[0].worklogs[0].id
+  s = { ...s, projects: s.projects.map(p => ({ ...p, role: 'member' as const })) }   // Sam is a member of the project, not an admin
   s = run([{ type: 'deleteWorklog', issueId: 'i1', worklogId: ownerLog }], s) // Sam can't delete the owner's log
   assert.equal(s.issues[0].worklogs.length, 2)
   assert.ok(s.activity.some(a => a.text === 'logged 1h 30m'))
@@ -371,4 +372,21 @@ test('work types: a transition limited to some types is only offered to, and onl
   assert.equal(transitionsFrom(t.projects[0]!, todo, moveContext(t, t.issues.find(i => i.id === 'inc')!))[0]!.name, 'Escalate')
   t = run([{ type: 'updateIssues', ids: ['i1', 'inc'], patch: { status: doing } }], t)
   assert.deepEqual(t.issues.map(i => [i.id, i.status === doing]), [['i1', false], ['inc', true]])
+})
+
+test('time tracking: the remaining estimate starts at the original and counts down Jira’s ways; admins change anyone’s logs', () => {
+  const { s, sam } = workspace()
+  let t = run([{ type: 'updateIssues', ids: ['i1'], patch: { timeEstimate: 600 } }], s)
+  const rem = () => t.issues[0]!.timeRemaining
+  assert.equal(rem(), 600)
+  t = run([{ type: 'logWork', issueId: 'i1', minutes: 120, date: '2026-10-20', note: '' }], t); assert.equal(rem(), 480)
+  t = run([{ type: 'logWork', issueId: 'i1', minutes: 60, date: '2026-10-20', note: '', adjust: { adjustEstimate: 'leave' } }], t); assert.equal(rem(), 480)
+  t = run([{ type: 'logWork', issueId: 'i1', minutes: 30, date: '2026-10-20', note: '', adjust: { adjustEstimate: 'new', newEstimate: 100 } }], t); assert.equal(rem(), 100)
+  const first = t.issues[0]!.worklogs[0]!
+  // someone else (Sam) changes the owner's log: in a browser workspace everyone is an admin; on a server project only admins may
+  t = run([{ type: 'updateWorklog', issueId: 'i1', worklogId: first.id, minutes: 150, date: first.date, note: 'more' }], asUser(t, sam))
+  assert.equal(rem(), 70)
+  const member = { ...t, projects: t.projects.map(p => ({ ...p, role: 'member' as const })) }
+  assert.equal(run([{ type: 'deleteWorklog', issueId: 'i1', worklogId: first.id }], member), member)
+  t = run([{ type: 'deleteWorklog', issueId: 'i1', worklogId: first.id }], t); assert.equal(rem(), 220)
 })

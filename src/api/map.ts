@@ -84,6 +84,7 @@ export const mapIssue = (i: Row): Issue => ({
   ...(i.assigneeId ? { assigneeId: i.assigneeId } : {}),
   ...(i.estimate != null ? { estimate: i.estimate } : {}),
   ...(i.timeEstimate != null ? { timeEstimate: i.timeEstimate } : {}),
+  ...(i.timeRemaining != null ? { timeRemaining: i.timeRemaining } : {}),
   ...(i.dueDate ? { dueDate: i.dueDate } : {}), ...(i.startDate ? { startDate: i.startDate } : {}),
   ...(i.sprintId ? { sprintId: i.sprintId } : {}), ...(i.releaseId ? { releaseId: i.releaseId } : {}),
   ...(i.parentId ? { parentId: i.parentId } : {}),

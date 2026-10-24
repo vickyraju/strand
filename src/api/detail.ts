@@ -29,10 +29,11 @@ const exists = (id: string) => !!issueOf(id)
 
 export const worklogSync = createCollectionSync<WorklogItem>({
   id: w => w.id,
-  changed: () => false,                                    // time logs are added and removed, never edited
-  create: async w => { await api('POST', `/api/issues/${keyOf(w.issueId)}/worklogs`, { id: w.id, minutes: w.minutes, date: w.date, note: w.note }) },
-  update: async () => {},
-  remove: async w => { await api('DELETE', `/api/worklogs/${w.id}`) },
+  changed: (a, b) => a.minutes !== b.minutes || a.date !== b.date || a.note !== b.note,
+  // the app changes the item's remaining estimate itself (and sends it with the item), so these leave it as it is
+  create: async w => { await api('POST', `/api/issues/${keyOf(w.issueId)}/worklogs`, { id: w.id, minutes: w.minutes, date: w.date, note: w.note, adjustEstimate: 'leave' }) },
+  update: async (_a, b) => { await api('PATCH', `/api/worklogs/${b.id}`, { minutes: b.minutes, date: b.date, note: b.note, adjustEstimate: 'leave' }) },
+  remove: async w => { await api('DELETE', `/api/worklogs/${w.id}?adjustEstimate=leave`) },
   shouldDelete: w => exists(w.issueId),
   recover: async () => { await Promise.all([...detailLoaded].map(id => commentDeps.reloadDetail(id))) },
   onError: m => commentDeps.onError(m),

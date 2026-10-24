@@ -199,6 +199,28 @@ test('workflow versions: removing a status says what happens to its items; each 
   assert.deepEqual(o.problems, [])
 })
 
+test('time tracking: logging work counts the remaining estimate down; it can be set instead', { skip, timeout: 60_000 }, async () => {
+  await owner('POST', '/projects', { name: 'Hours', key: 'HRS', template: 'kanban' })
+  const item = (await owner('POST', '/projects/HRS/issues', { title: 'Estimated work', timeEstimate: 480 })).body
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url(`/i/${item.key}`))
+  await o.click('.time-bar-btn')
+  await o.fill('#lt-spent', '2h')
+  await o.click('.modal button:has-text("Log time")')
+  await o.waitForSelector('text=Logged 2h')
+  await o.fill('#lt-spent', '1h')
+  await o.click('.modal [role="radio"]:has-text("Set to")')
+  await o.fill('.modal [aria-label="New remaining estimate"]', '1h')
+  await o.click('.modal button:has-text("Log time")')
+  await o.waitForSelector('text=Logged 1h')
+  await o.click('.modal button:has-text("Close")')
+  await o.waitForTimeout(1500)                                           // the changes reach the server
+  const after = (await owner('GET', `/issues/${item.key}`)).body
+  assert.deepEqual([after.timeRemaining, after.worklogs.map(w => w.minutes).sort()], [60, [120, 60].sort()])
+  assert.match(await o.locator('.time-nums').innerText(), /3h logged[\s\S]*1h remaining/)
+  assert.deepEqual(o.problems, [])
+})
+
 test('plan a sprint, start it and complete it: unfinished work goes back to the backlog', { skip, timeout: 90_000 }, async () => {
   const p = (await owner('POST', '/projects', { name: 'Sprinting', key: 'SPR', template: 'scrum' })).body
   const done = p.statuses.find(s => s.category === 'done')

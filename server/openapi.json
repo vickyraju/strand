@@ -12458,6 +12458,10 @@
                             "nullable": true,
                             "type": "number"
                           },
+                          "timeRemaining": {
+                            "nullable": true,
+                            "type": "number"
+                          },
                           "dueDate": {
                             "nullable": true,
                             "type": "string",
@@ -12543,6 +12547,7 @@
                           "labels",
                           "estimate",
                           "timeEstimate",
+                          "timeRemaining",
                           "dueDate",
                           "startDate",
                           "sprintId",
@@ -12872,6 +12877,10 @@
                             "nullable": true,
                             "type": "number"
                           },
+                          "timeRemaining": {
+                            "nullable": true,
+                            "type": "number"
+                          },
                           "dueDate": {
                             "nullable": true,
                             "type": "string",
@@ -12957,6 +12966,7 @@
                           "labels",
                           "estimate",
                           "timeEstimate",
+                          "timeRemaining",
                           "dueDate",
                           "startDate",
                           "sprintId",
@@ -13137,6 +13147,13 @@
                     "minimum": 0,
                     "maximum": 9007199254740991
                   },
+                  "timeRemaining": {
+                    "nullable": true,
+                    "description": "Remaining estimate, minutes (starts at the original estimate)",
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
                   "dueDate": {
                     "nullable": true,
                     "type": "string",
@@ -13288,6 +13305,10 @@
                       "nullable": true,
                       "type": "number"
                     },
+                    "timeRemaining": {
+                      "nullable": true,
+                      "type": "number"
+                    },
                     "dueDate": {
                       "nullable": true,
                       "type": "string",
@@ -13373,6 +13394,7 @@
                     "labels",
                     "estimate",
                     "timeEstimate",
+                    "timeRemaining",
                     "dueDate",
                     "startDate",
                     "sprintId",
@@ -13611,6 +13633,10 @@
                       "nullable": true,
                       "type": "number"
                     },
+                    "timeRemaining": {
+                      "nullable": true,
+                      "type": "number"
+                    },
                     "dueDate": {
                       "nullable": true,
                       "type": "string",
@@ -13696,6 +13722,7 @@
                     "labels",
                     "estimate",
                     "timeEstimate",
+                    "timeRemaining",
                     "dueDate",
                     "startDate",
                     "sprintId",
@@ -13893,6 +13920,10 @@
                       "type": "number"
                     },
                     "timeEstimate": {
+                      "nullable": true,
+                      "type": "number"
+                    },
+                    "timeRemaining": {
                       "nullable": true,
                       "type": "number"
                     },
@@ -14254,6 +14285,10 @@
                             "nullable": true,
                             "type": "number"
                           },
+                          "timeRemaining": {
+                            "nullable": true,
+                            "type": "number"
+                          },
                           "dueDate": {
                             "nullable": true,
                             "type": "string",
@@ -14339,6 +14374,7 @@
                           "labels",
                           "estimate",
                           "timeEstimate",
+                          "timeRemaining",
                           "dueDate",
                           "startDate",
                           "sprintId",
@@ -14371,6 +14407,7 @@
                     "labels",
                     "estimate",
                     "timeEstimate",
+                    "timeRemaining",
                     "dueDate",
                     "startDate",
                     "sprintId",
@@ -14539,6 +14576,13 @@
                     "minimum": 0,
                     "maximum": 9007199254740991
                   },
+                  "timeRemaining": {
+                    "nullable": true,
+                    "description": "Remaining estimate, minutes (starts at the original estimate)",
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
                   "dueDate": {
                     "nullable": true,
                     "type": "string",
@@ -14699,6 +14743,10 @@
                       "nullable": true,
                       "type": "number"
                     },
+                    "timeRemaining": {
+                      "nullable": true,
+                      "type": "number"
+                    },
                     "dueDate": {
                       "nullable": true,
                       "type": "string",
@@ -14784,6 +14832,7 @@
                     "labels",
                     "estimate",
                     "timeEstimate",
+                    "timeRemaining",
                     "dueDate",
                     "startDate",
                     "sprintId",
@@ -15763,6 +15812,13 @@
                         "minimum": 0,
                         "maximum": 9007199254740991
                       },
+                      "timeRemaining": {
+                        "nullable": true,
+                        "description": "Remaining estimate, minutes (starts at the original estimate)",
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
                       "dueDate": {
                         "nullable": true,
                         "type": "string",
@@ -15920,6 +15976,10 @@
                       "nullable": true,
                       "type": "number"
                     },
+                    "timeRemaining": {
+                      "nullable": true,
+                      "type": "number"
+                    },
                     "dueDate": {
                       "nullable": true,
                       "type": "string",
@@ -16005,6 +16065,7 @@
                     "labels",
                     "estimate",
                     "timeEstimate",
+                    "timeRemaining",
                     "dueDate",
                     "startDate",
                     "sprintId",
@@ -16187,6 +16248,13 @@
                         "minimum": 0,
                         "maximum": 9007199254740991
                       },
+                      "timeRemaining": {
+                        "nullable": true,
+                        "description": "Remaining estimate, minutes (starts at the original estimate)",
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
                       "dueDate": {
                         "nullable": true,
                         "type": "string",
@@ -16332,6 +16400,10 @@
                             "nullable": true,
                             "type": "number"
                           },
+                          "timeRemaining": {
+                            "nullable": true,
+                            "type": "number"
+                          },
                           "dueDate": {
                             "nullable": true,
                             "type": "string",
@@ -16417,6 +16489,7 @@
                           "labels",
                           "estimate",
                           "timeEstimate",
+                          "timeRemaining",
                           "dueDate",
                           "startDate",
                           "sprintId",
@@ -16989,6 +17062,10 @@
                       "nullable": true,
                       "type": "number"
                     },
+                    "timeRemaining": {
+                      "nullable": true,
+                      "type": "number"
+                    },
                     "dueDate": {
                       "nullable": true,
                       "type": "string",
@@ -17074,6 +17151,7 @@
                     "labels",
                     "estimate",
                     "timeEstimate",
+                    "timeRemaining",
                     "dueDate",
                     "startDate",
                     "sprintId",
@@ -18106,7 +18184,7 @@
     },
     "/api/v1/issues/{key}/worklogs": {
       "post": {
-        "summary": "Log time on an issue",
+        "summary": "Log time on an issue (the remaining estimate counts down, unless adjustEstimate says otherwise)",
         "tags": [
           "Comments & work logs"
         ],
@@ -18136,6 +18214,29 @@
                   "note": {
                     "default": "",
                     "type": "string"
+                  },
+                  "adjustEstimate": {
+                    "default": "auto",
+                    "description": "auto: count the remaining estimate down (or back up); leave: don't touch it; new: set it to newEstimate; manual: change it by reduceBy",
+                    "type": "string",
+                    "enum": [
+                      "auto",
+                      "leave",
+                      "new",
+                      "manual"
+                    ]
+                  },
+                  "newEstimate": {
+                    "description": "Minutes, with adjustEstimate=new",
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "reduceBy": {
+                    "description": "Minutes, with adjustEstimate=manual",
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
                   }
                 },
                 "required": [
@@ -18293,12 +18394,249 @@
       }
     },
     "/api/v1/worklogs/{id}": {
+      "patch": {
+        "summary": "Change a work log: your own, or anyone's as a project admin (the remaining estimate follows the change in time)",
+        "tags": [
+          "Comments & work logs"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "minutes": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "exclusiveMinimum": true,
+                    "maximum": 9007199254740991
+                  },
+                  "date": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                  },
+                  "note": {
+                    "type": "string"
+                  },
+                  "adjustEstimate": {
+                    "default": "auto",
+                    "description": "auto: count the remaining estimate down (or back up); leave: don't touch it; new: set it to newEstimate; manual: change it by reduceBy",
+                    "type": "string",
+                    "enum": [
+                      "auto",
+                      "leave",
+                      "new",
+                      "manual"
+                    ]
+                  },
+                  "newEstimate": {
+                    "description": "Minutes, with adjustEstimate=new",
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "reduceBy": {
+                    "description": "Minutes, with adjustEstimate=manual",
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "issueId": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "userId": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "minutes": {
+                      "type": "number"
+                    },
+                    "date": {
+                      "type": "string",
+                      "description": "YYYY-MM-DD"
+                    },
+                    "note": {
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "description": "ISO 8601 timestamp"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "issueId",
+                    "userId",
+                    "minutes",
+                    "date",
+                    "note",
+                    "createdAt"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "delete": {
-        "summary": "Delete your own work log",
+        "summary": "Remove a work log: your own, or anyone's as a project admin (its time goes back on the remaining estimate)",
         "tags": [
           "Comments & work logs"
         ],
         "parameters": [
+          {
+            "schema": {
+              "default": "auto",
+              "type": "string",
+              "enum": [
+                "auto",
+                "leave",
+                "new",
+                "manual"
+              ]
+            },
+            "in": "query",
+            "name": "adjustEstimate",
+            "required": false,
+            "description": "auto: count the remaining estimate down (or back up); leave: don't touch it; new: set it to newEstimate; manual: change it by reduceBy"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "in": "query",
+            "name": "newEstimate",
+            "required": false,
+            "description": "Minutes, with adjustEstimate=new"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "in": "query",
+            "name": "reduceBy",
+            "required": false,
+            "description": "Minutes, with adjustEstimate=manual"
+          },
           {
             "schema": {
               "type": "string",
