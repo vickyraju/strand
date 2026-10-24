@@ -17,7 +17,7 @@ export default function CalendarView({ project }: { project: Project }) {
 
   const all = state.issues.filter(i => i.projectId === project.id)
   const people = [...new Set(all.map(i => i.assigneeId).filter((x): x is string => !!x))].map(id => userOf(state, id)!).filter(Boolean)
-  const filters = useFilters(people)
+  const filters = useFilters(people, project)
   const items = filters.apply(all).filter(i => i.dueDate).sort((a, b) => a.rank - b.rank)
   const undated = filters.apply(all).filter(i => !i.dueDate && i.type !== 'epic').length
 

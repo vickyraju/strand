@@ -6,7 +6,7 @@ import { useApp } from '../appContext'
 import { useReportState } from '../api/reports'
 import type { State } from '../data/reducer'
 import { LineChart, ColumnChart, Legend, Scatter, HBars } from './charts'
-import { Avatar, Empty, Picker, TYPE_META, plural } from './ui'
+import { Avatar, Empty, Picker, typeMeta, typeList, plural } from './ui'
 
 type ReportId = 'burndown' | 'velocity' | 'cfd' | 'created' | 'cycle' | 'workload'
 
@@ -179,8 +179,8 @@ function Cycle({ project }: { project: Project }) {
       </div>
       <Scatter ariaLabel="Cycle time per item" height={300} xLabel={dayLabel}
         reference={{ v: median, label: `Median ${Math.round(median * 10) / 10}d` }}
-        points={points.map(p => ({ t: p.done, v: p.days, label: `${p.issue.key} ${p.issue.title}`, color: TYPE_META[p.issue.type].color }))} />
-      <Legend items={(['story', 'task', 'bug'] as const).map(t => ({ label: TYPE_META[t].label, color: TYPE_META[t].color }))} />
+        points={points.map(p => ({ t: p.done, v: p.days, label: `${p.issue.key} ${p.issue.title}`, color: typeMeta(p.issue.type, project).color }))} />
+      <Legend items={typeList(project).filter(t => t.key !== 'epic').map(t => ({ label: t.name, color: t.color }))} />
     </>
   )
 }

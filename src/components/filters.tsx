@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Search, X, Filter } from 'lucide-react'
-import { useStore, blockersOf, type Issue, type IssueType, type User } from '../data/store'
-import { Avatar, Popover, TYPE_META, TypeIcon, Checkbox } from './ui'
+import { useStore, blockersOf, type Issue, type IssueType, type Project, type User } from '../data/store'
+import { Avatar, Popover, typeList, TypeIcon, Checkbox } from './ui'
 
 type Quick = 'mine' | 'recent' | 'due' | 'blocked'
 const QUICK: { id: Quick; label: string }[] = [
@@ -13,7 +13,7 @@ const QUICK: { id: Quick; label: string }[] = [
 const WEEK = 7 * 86_400_000
 
 /** The filter toolbar shared by Board, List and Backlog: text search, people, quick filters and types. */
-export function useFilters(people: User[]) {
+export function useFilters(people: User[], project?: Project) {
   const { state } = useStore()
   const [query, setQuery]   = useState('')
   const [userIds, setUsers] = useState<Set<string>>(new Set())
@@ -86,10 +86,10 @@ export function useFilters(people: User[]) {
           </label>
         ))}
         <div className="section-label" style={{ marginTop: 8 }}>Type</div>
-        {(Object.keys(TYPE_META) as IssueType[]).map(t => (
+        {typeList(project, state.projects).map(({ key: t, name }) => (
           <label key={t} className="check-row">
-            <Checkbox checked={types.has(t)} onChange={() => toggle(types, t, setTypes)} label={TYPE_META[t].label} />
-            <TypeIcon type={t} size={13} />{TYPE_META[t].label}
+            <Checkbox checked={types.has(t)} onChange={() => toggle(types, t, setTypes)} label={name} />
+            <TypeIcon type={t} size={13} project={project} />{name}
           </label>
         ))}
         <div className="section-label" style={{ marginTop: 8 }}>Assignee</div>

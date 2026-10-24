@@ -4,7 +4,18 @@ import { RULE_FIELDS, actionChanges, allows, problems, type Item, type RuleCtx, 
 // ── Types ──────────────────────────────────────────────────
 
 export type Template  = 'kanban' | 'scrum'
-export type IssueType = 'epic' | 'story' | 'task' | 'bug'
+/** A work type's key: one of the built-in four, or one a project added ("t-…"). */
+export type IssueType = string
+export type BuiltinType = 'epic' | 'story' | 'task' | 'bug'
+/** A project's work type (Jira's issue type): its name, colour and icon. The built-in four can be renamed, not removed. */
+export interface WorkType { key: IssueType; name: string; color: string; icon: string }
+export const BUILTIN_TYPES: WorkType[] = [
+  { key: 'epic', name: 'Epic', color: '#7C3AED', icon: 'zap' }, { key: 'story', name: 'Story', color: '#16A34A', icon: 'bookmark' },
+  { key: 'task', name: 'Task', color: '#2563EB', icon: 'check' }, { key: 'bug', name: 'Bug', color: '#DC2626', icon: 'bug' },
+]
+export const isBuiltinType = (k: string): k is BuiltinType => k === 'epic' || k === 'story' || k === 'task' || k === 'bug'
+/** A project's work types (the built-in ones for a project saved before types were configurable). */
+export const typesOf = (p: Pick<Project, 'types'> | undefined) => (p?.types?.length ? p.types : BUILTIN_TYPES)
 export type Priority  = 'urgent' | 'high' | 'medium' | 'low' | 'none'
 export type Category  = 'todo' | 'in-progress' | 'done'
 export type GroupBy   = 'none' | 'assignee' | 'epic' | 'priority'
@@ -36,6 +47,8 @@ export interface Transition {
   from:   string[] | 'any'
   to:     string | null
   rules?: TransitionRules
+  /** The work types it is for (Jira's workflow per work type); unset: every type. */
+  types?: string[]
 }
 
 export interface BoardPrefs {
@@ -66,6 +79,8 @@ export interface Project {
   fields:      FieldDef[]
   releases:    Release[]
   templates:   ItemTemplate[]
+  /** Work types (Jira's issue types); missing in a project saved before they were configurable: the built-in four */
+  types?:      WorkType[]
   /** What I may do here (from the server; unset for a local workspace, where everyone has full access) */
   role?:       'admin' | 'member' | 'viewer'
 }
@@ -295,7 +310,7 @@ export interface State {
 }
 
 export type ProjectPatch = Partial<Pick<Project,
-  'name' | 'description' | 'color' | 'leadId' | 'statuses' | 'transitions' | 'layout' | 'boardPrefs' | 'rules' | 'fields' | 'releases' | 'templates'>>
+  'name' | 'description' | 'color' | 'leadId' | 'statuses' | 'transitions' | 'layout' | 'boardPrefs' | 'rules' | 'fields' | 'releases' | 'templates' | 'types'>>
 export type IssuePatch = Partial<Omit<Issue, 'id' | 'key' | 'projectId' | 'reporterId' | 'createdAt' | 'watcherIds' | 'links' | 'attachments' | 'rank' | 'worklogs'>>
 export type NewIssue = Pick<Issue, 'projectId' | 'title'> & Partial<Pick<Issue,
   'type' | 'description' | 'status' | 'priority' | 'assigneeId' | 'labels' | 'estimate' | 'dueDate' | 'startDate' | 'sprintId' | 'parentId' | 'custom' | 'releaseId' | 'timeEstimate'>>
@@ -415,6 +430,8 @@ export const categoryOf = (p: Project | undefined, statusId: string): Category =
 export const isDone     = (p: Project | undefined, issue: Issue) => categoryOf(p, issue.status) === 'done'
 
 const startsAt = (t: Transition, from: string) => t.from === 'any' || t.from.includes(from)
+/** Is the transition part of the workflow for the item's work type? (Without a context: any type.) */
+const forType = (t: Transition, ctx?: RuleCtx) => !ctx || !t.types?.length || t.types.includes(String(ctx.item.type))
 
 /** Everything a transition's rules look at, for this item and me (the server builds the same from its own data).
  *  A workspace kept in this browser has no roles: everyone there counts as an admin. */
@@ -434,7 +451,7 @@ export function moveContext(state: State, issue: Issue): RuleCtx {
 /** The transition a move from one status to another uses: one that starts there, ends there, and (given a context) whose
  *  Restrict rules let me use it. Undefined when there is none; a project with no transitions at all allows any move. */
 export function transitionFor(p: Project, from: string, to: string, ctx?: RuleCtx): Transition | undefined {
-  return p.transitions.find(t => t.to === to && startsAt(t, from) && (!ctx || allows(t.rules?.restrict, ctx)))
+  return p.transitions.find(t => t.to === to && startsAt(t, from) && forType(t, ctx) && (!ctx || allows(t.rules?.restrict, ctx)))
 }
 
 /** Whether the workflow allows moving from one status to another (for me, given a context). */
@@ -447,12 +464,12 @@ export function canTransition(p: Project, from: string, to: string, ctx?: RuleCt
 export function transitionsFrom(p: Project, from: string, ctx?: RuleCtx) {
   const seen = new Set<string>()
   return p.transitions.filter((t): t is Transition & { to: string } =>
-    t.to !== null && t.to !== from && startsAt(t, from) && (!ctx || allows(t.rules?.restrict, ctx)) && !seen.has(t.to) && !!seen.add(t.to))
+    t.to !== null && t.to !== from && startsAt(t, from) && forType(t, ctx) && (!ctx || allows(t.rules?.restrict, ctx)) && !seen.has(t.to) && !!seen.add(t.to))
 }
 
 /** Loops available from a status: actions that leave the item where it is (shown in the item's Actions menu, as in Jira). */
 export const loopsFrom = (p: Project, from: string, ctx?: RuleCtx) =>
-  p.transitions.filter(t => t.to === null && startsAt(t, from) && (!ctx || allows(t.rules?.restrict, ctx)))
+  p.transitions.filter(t => t.to === null && startsAt(t, from) && forType(t, ctx) && (!ctx || allows(t.rules?.restrict, ctx)))
 
 /** Users mentioned in a comment as `@Full Name`. */
 export function mentionedUsers(body: string, users: User[]) {
@@ -526,7 +543,7 @@ export function reducer(state: State, action: Action, now = Date.now()): State {
       const project: Project = {
         ...action.project, description: '', leadId: actor,
         statuses: DEFAULT_STATUSES, transitions: anyToAny(DEFAULT_STATUSES), layout: {},
-        boardPrefs: DEFAULT_BOARD_PREFS, nextNumber: 1, createdAt: now, rules: [], fields: [], releases: [], templates: [],
+        boardPrefs: DEFAULT_BOARD_PREFS, nextNumber: 1, createdAt: now, rules: [], fields: [], releases: [], templates: [], types: BUILTIN_TYPES,
       }
       return { ...state, projects: [...state.projects, project] }
     }
@@ -644,7 +661,8 @@ export function reducer(state: State, action: Action, now = Date.now()): State {
     case 'runTransition': {
       const issue = state.issues.find(i => i.id === action.issueId)
       const t = state.projects.find(p => p.id === issue?.projectId)?.transitions.find(x => x.id === action.transitionId)
-      if (!issue || !t || !(t.from === 'any' || t.from.includes(issue.status)) || !allows(t.rules?.restrict, moveContext(state, issue))) return state
+      const tctx = issue && moveContext(state, issue)
+      if (!issue || !t || !tctx || !startsAt(t, issue.status) || !forType(t, tctx) || !allows(t.rules?.restrict, tctx)) return state
       const next = updateOne(state, issue.id, t.to ? { ...action.patch, status: t.to } : action.patch, log, notify, userName, now, { transition: t, comment: action.comment })
       return next !== state && t.to && t.to !== issue.status ? runRules(next, issue.id, [{ kind: 'status', to: t.to }], now) : next
     }

@@ -357,3 +357,18 @@ test('clone: a copy at the start status, linked "clones" to the original, with c
   assert.deepEqual(k.links.map(l => [l.type, l.issueId]).sort(), [['blocks', 'o1'], ['clones', 'i1']])
   assert.deepEqual(t.issues.filter(i => i.parentId === 'k1').map(i => i.title), ['Child'])
 })
+
+test('work types: a transition limited to some types is only offered to, and only moves, items of those types', () => {
+  const { s } = workspace()
+  const p = s.projects[0]!
+  const [todo, doing] = [p.statuses[0]!.id, p.statuses[1]!.id]
+  let t = run([
+    { type: 'updateProject', id: 'p1', patch: { types: [...p.types!, { key: 't-incident1', name: 'Incident', color: '#000000', icon: 'shield' }],
+      transitions: [{ id: 'x1', name: 'Escalate', from: [todo], to: doing, types: ['t-incident1'] }] } },
+    { type: 'createIssue', id: 'inc', issue: { projectId: 'p1', title: 'Outage', type: 't-incident1' } },
+  ], s)
+  assert.deepEqual(transitionsFrom(t.projects[0]!, todo, moveContext(t, t.issues.find(i => i.id === 'i1')!)), [])
+  assert.equal(transitionsFrom(t.projects[0]!, todo, moveContext(t, t.issues.find(i => i.id === 'inc')!))[0]!.name, 'Escalate')
+  t = run([{ type: 'updateIssues', ids: ['i1', 'inc'], patch: { status: doing } }], t)
+  assert.deepEqual(t.issues.map(i => [i.id, i.status === doing]), [['i1', false], ['inc', true]])
+})

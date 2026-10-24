@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { MousePointerClick, Trash2 } from 'lucide-react'
-import type { Category, FieldDef, Status, Transition } from '../../data/store'
+import type { Category, FieldDef, Status, Transition, WorkType } from '../../data/store'
 import RulesEditor, { rulesSummary } from './RulesEditor'
 import { hasGlobal, type Workflow } from '../../data/workflow'
 import { Checkbox, Toggle, plural } from '../ui'
@@ -58,8 +58,8 @@ export function StatusPanel({ status, workflow, count, onChange, onGlobal, onSet
   )
 }
 
-export function TransitionPanel({ transition, statuses, fields, projectKey, onChange, onDelete }: {
-  transition: Transition; statuses: Status[]; fields: FieldDef[]; projectKey: string; onChange: Change<Transition>; onDelete: () => void
+export function TransitionPanel({ transition, statuses, fields, types, projectKey, onChange, onDelete }: {
+  transition: Transition; statuses: Status[]; fields: FieldDef[]; types: WorkType[]; projectKey: string; onChange: Change<Transition>; onDelete: () => void
 }) {
   const [tab, setTab] = useState<'details' | 'rules'>('details')
   const from = transition.from
@@ -97,6 +97,19 @@ export function TransitionPanel({ transition, statuses, fields, projectKey, onCh
           {statuses.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
           <option value={LOOP}>Stays in its status (an action)</option>
         </select>
+        <fieldset className="wf-fieldset" style={{ marginTop: 12 }}>
+          <legend className="label">For work types</legend>
+          <label className="check-row">
+            <Checkbox checked={!transition.types?.length} label="Every work type" onChange={on => onChange({ types: on ? undefined : types.map(t => t.key) })} />Every work type
+          </label>
+          {!!transition.types?.length && types.map(t => (
+            <label key={t.key} className="check-row">
+              <Checkbox checked={transition.types!.includes(t.key)} label={t.name}
+                onChange={on => onChange({ types: on ? [...transition.types!, t.key] : transition.types!.filter(k => k !== t.key).length ? transition.types!.filter(k => k !== t.key) : undefined })} />{t.name}
+            </label>
+          ))}
+          {!!transition.types?.length && <p className="hint">Only these follow it: each work type has its own workflow over the project’s statuses.</p>}
+        </fieldset>
         {transition.to === null && <p className="hint">A loop: people find it in the work item’s Actions menu. It changes nothing by itself; give it rules to ask for input or perform actions, like “Log progress”.</p>}
       </>}
       <div className="wf-panel-foot">

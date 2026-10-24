@@ -135,6 +135,34 @@ test('transition rules: an admin adds one in the editor; a move is hidden or ask
   assert.deepEqual([...o.problems, ...m.problems], [])
 })
 
+test('work types: an admin adds one in settings; items of that type follow its own transition', { skip, timeout: 90_000 }, async () => {
+  const p = (await owner('POST', '/projects', { name: 'Kinds', key: 'KND', template: 'kanban' })).body
+  const [todo, , done] = [p.statuses[0], p.statuses[1], p.statuses.find(s => s.category === 'done')]
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url('/project/KND/settings'))
+  await o.click('section[aria-label="Work types"] button:has-text("Add work type")')
+  await o.fill('#wt-name', 'Incident')
+  await o.click('.modal button[aria-label="shield"]')
+  await o.click('.modal button:has-text("Add")')
+  await o.waitForSelector('section[aria-label="Work types"] td:has-text("Incident")')
+  const inc = (await owner('GET', '/projects/KND')).body.types.find(t => t.name === 'Incident')
+  assert.ok(inc, 'the type was saved')
+  for (const t of p.transitions) await owner('DELETE', `/projects/KND/transitions/${t.id}`)
+  await owner('POST', '/projects/KND/transitions', { name: 'Resolve', fromIds: [todo.id], toId: done.id, typeKeys: [inc.key] })
+  const outage = (await owner('POST', '/projects/KND/issues', { title: 'Outage', type: inc.key })).body
+  const task = (await owner('POST', '/projects/KND/issues', { title: 'Ordinary' })).body
+  await o.goto(url(`/i/${outage.key}`))
+  await o.waitForSelector('.detail [aria-label="Incident"]')
+  await o.click('[title="Change status"]')
+  assert.ok((await o.$$eval('.picker-menu .picker-item', i => i.map(x => x.textContent))).some(t => t.includes(done.name)))
+  await o.keyboard.press('Escape')
+  await o.goto(url(`/i/${task.key}`))
+  await o.waitForSelector('.detail')
+  await o.click('[title="Change status"]')
+  assert.ok(!(await o.$$eval('.picker-menu .picker-item', i => i.map(x => x.textContent))).some(t => t.includes(done.name)))
+  assert.deepEqual(o.problems, [])
+})
+
 test('plan a sprint, start it and complete it: unfinished work goes back to the backlog', { skip, timeout: 90_000 }, async () => {
   const p = (await owner('POST', '/projects', { name: 'Sprinting', key: 'SPR', template: 'scrum' })).body
   const done = p.statuses.find(s => s.category === 'done')

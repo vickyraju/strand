@@ -1,9 +1,9 @@
 import { CheckCircle2, Pencil, PlusCircle, CalendarClock, Gauge } from 'lucide-react'
-import { useStore, userOf, isDone, timeAgo, type Project, type IssueType } from '../data/store'
+import { useStore, userOf, isDone, timeAgo, type Project } from '../data/store'
 import { lastWeek } from '../data/analytics'
 import { useApp } from '../appContext'
 import { Donut, HBars } from './charts'
-import { Avatar, Empty, TypeIcon, TYPE_META, PRIORITIES, PRIORITY_META, PriorityIcon, plural } from './ui'
+import { Avatar, Empty, TypeIcon, typeList, PRIORITIES, PRIORITY_META, PriorityIcon, plural } from './ui'
 
 export default function SummaryView({ project }: { project: Project }) {
   const { state } = useStore()
@@ -116,7 +116,7 @@ export default function SummaryView({ project }: { project: Project }) {
         <section className="panel">
           <h2 className="panel-title">Types of work</h2>
           <p className="muted">All work items by type.</p>
-          <HBars data={(Object.keys(TYPE_META) as IssueType[]).map(t => ({ key: t, label: <><TypeIcon type={t} size={14} />{TYPE_META[t].label}</>, value: items.filter(i => i.type === t).length, color: TYPE_META[t].color }))} />
+          <HBars data={typeList(project).map(t => ({ key: t.key, label: <><TypeIcon type={t.key} size={14} project={project} />{t.name}</>, value: items.filter(i => i.type === t.key).length, color: t.color }))} />
         </section>
 
         <section className="panel">

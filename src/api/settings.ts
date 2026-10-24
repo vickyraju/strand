@@ -27,7 +27,7 @@ export function itemsOf(projects: Project[], kind: Kind): Item[] {
     const mk = (v: { id: string }, body: Record<string, unknown>, released?: boolean): Item => ({ id: v.id, projectId: p.id, body, ...(released !== undefined ? { released } : {}) })
     switch (kind) {
       case 'statuses':    return p.statuses.map((s, position) => mk(s, { name: s.name, description: s.description ?? '', color: s.color, category: s.category, wipLimit: s.wipLimit ?? null, position }))
-      case 'transitions': return p.transitions.map(t => mk(t, { name: t.name, fromIds: t.from === 'any' ? null : t.from, toId: t.to, rules: t.rules ?? {} }))
+      case 'transitions': return p.transitions.map(t => mk(t, { name: t.name, fromIds: t.from === 'any' ? null : t.from, toId: t.to, rules: t.rules ?? {}, typeKeys: t.types?.length ? t.types : null }))
       case 'fields':      return p.fields.map((f, position) => mk(f, { name: f.name, kind: f.kind, options: f.options ?? null, position }))
       case 'templates':   return p.templates.map(t => mk(t, { name: t.name, type: t.type, title: t.title, description: t.description, priority: t.priority, labels: t.labels, estimate: t.estimate ?? null }))
       case 'rules':       return p.rules.map(r => mk(r, { name: r.name, enabled: r.enabled, trigger: r.trigger, actions: r.actions }))

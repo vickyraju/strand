@@ -42,7 +42,10 @@ export const rulesSchema = z.object({
   for (const a of r.actions ?? []) if (a.kind === 'assign' && a.to === 'user' && !a.userId) c.addIssue({ code: 'custom', path: ['actions'], message: 'Choose who to assign' })
 }) satisfies z.ZodType<TransitionRules>
 
-export interface TransitionRow { id: string; name: string; fromIds: string[] | null; toId: string | null; rules: TransitionRules }
+export interface TransitionRow { id: string; name: string; fromIds: string[] | null; toId: string | null; rules: TransitionRules; typeKeys: string[] | null }
+
+/** Is this transition part of the workflow for the item's work type? (null: every type) */
+const forType = (t: TransitionRow, item: any) => t.typeKeys === null || t.typeKeys.includes(item.type)
 
 /** Everything a rule may look at for one item and one mover (null: automation). */
 export async function ruleContext(d: Db, item: any, me: Me | null): Promise<RuleCtx> {
@@ -66,7 +69,7 @@ export async function ruleContext(d: Db, item: any, me: Me | null): Promise<Rule
 }
 
 const rowsOf = (d: Db, projectId: string) =>
-  d.query<TransitionRow>('select id, name, from_ids, to_id, rules from transitions where project_id = $1 order by id', [projectId])
+  d.query<TransitionRow>('select id, name, from_ids, to_id, rules, type_keys from transitions where project_id = $1 order by id', [projectId])
 
 /** The transition for moving `item` to status `to`: one that starts where the item is and ends there, and whose
  *  Restrict rules let this mover use it. Null when the project has no workflow (any move goes).
@@ -74,7 +77,7 @@ const rowsOf = (d: Db, projectId: string) =>
 export async function transitionTo(d: Db, item: any, to: string, ctx: RuleCtx): Promise<TransitionRow | null> {
   const all = await rowsOf(d, item.projectId)
   if (!all.length) return null
-  const fits = all.filter(t => t.toId === to && (t.fromIds === null || t.fromIds.includes(item.statusId)))
+  const fits = all.filter(t => forType(t, item) && t.toId === to && (t.fromIds === null || t.fromIds.includes(item.statusId)))
   if (!fits.length) throw new HttpError(409, 'That move is not allowed by the workflow')
   const usable = fits.find(t => allows(t.rules.restrict, ctx))
   if (!usable) throw new HttpError(403, `You can’t make this move: ${restrictMessage(fits[0]!.rules.restrict)}`)
@@ -83,8 +86,8 @@ export async function transitionTo(d: Db, item: any, to: string, ctx: RuleCtx): 
 
 /** A transition chosen by id (POST /issues/:key/transitions), which must start where the item is and be allowed for this mover. */
 export async function transitionById(d: Db, item: any, id: string, ctx: RuleCtx): Promise<TransitionRow> {
-  const [t] = await d.query<TransitionRow>('select id, name, from_ids, to_id, rules from transitions where id = $1 and project_id = $2', [id, item.projectId])
-  if (!t) throw new HttpError(404, 'No such transition in this project')
+  const [t] = await d.query<TransitionRow>('select id, name, from_ids, to_id, rules, type_keys from transitions where id = $1 and project_id = $2', [id, item.projectId])
+  if (!t || !forType(t, item)) throw new HttpError(404, 'No such transition for this work type')
   if (t.fromIds !== null && !t.fromIds.includes(item.statusId)) throw new HttpError(409, `“${t.name}” doesn’t start from this item’s status`)
   if (!allows(t.rules.restrict, ctx)) throw new HttpError(403, `You can’t make this move: ${restrictMessage(t.rules.restrict)}`)
   return t
@@ -92,7 +95,7 @@ export async function transitionById(d: Db, item: any, id: string, ctx: RuleCtx)
 
 /** Transitions this mover can use from where the item is now (Jira's GET issue transitions). */
 export async function available(d: Db, item: any, ctx: RuleCtx) {
-  return (await rowsOf(d, item.projectId)).filter(t => (t.fromIds === null || t.fromIds.includes(item.statusId)) && t.toId !== item.statusId && allows(t.rules.restrict, ctx))
+  return (await rowsOf(d, item.projectId)).filter(t => forType(t, item) && (t.fromIds === null || t.fromIds.includes(item.statusId)) && t.toId !== item.statusId && allows(t.rules.restrict, ctx))
 }
 
 /** A short reason for a refusal, from the kinds of rule involved. */

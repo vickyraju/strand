@@ -29,6 +29,7 @@ const prefixOf = (s: BackupSettings) => (s.prefix ?? 'project-backups/').replace
 const TABLES: [table: string, where: string][] = [
   ['projects', 'id = $1'],
   ['statuses', 'project_id = $1'],
+  ['work_types', 'project_id = $1'],
   ['transitions', 'project_id = $1'],
   ['field_defs', 'project_id = $1'],
   ['releases', 'project_id = $1'],
@@ -36,6 +37,7 @@ const TABLES: [table: string, where: string][] = [
   ['rules', 'project_id = $1'],
   ['sprints', 'project_id = $1'],
   ['project_members', 'project_id = $1'],
+  ['project_group_roles', 'project_id = $1'],
   ['stars', 'project_id = $1'],
   ['issues', 'project_id = $1'],
   ['issue_links', 'issue_id in (select id from issues where project_id = $1) or target_id in (select id from issues where project_id = $1)'],
@@ -157,11 +159,15 @@ async function restoreProject(p: { backupId: string; actorId: string | null; act
         `select column_name, data_type from information_schema.columns where table_schema = 'public' and table_name = $1 and is_generated = 'NEVER'`, [table])).rows
       const json = new Set(cols.filter(x => x.data_type === 'jsonb' || x.data_type === 'json').map(x => x.column_name as string))
       const names = cols.map(x => x.column_name as string)
+      // a new project row seeds the built-in work types; the backup's own (renamed, added) replace them
+      if (table === 'work_types') await c.query('delete from work_types where project_id = $1', [doc.project.id])
+      const groups = table === 'project_group_roles' ? new Set((await c.query('select id from groups')).rows.map(r => r.id as string)) : null
       for (const r0 of rows) {
         const r = { ...r0 }
         if (table === 'projects') r.deleting_at = null
         if (table === 'issues') r.parent_id = null                     // set below, once every item exists
         if (NEEDS_PERSON.has(table) && !people.has(String(r.user_id))) continue
+        if (groups && !groups.has(String(r.group_id))) continue        // a group removed from the directory since
         for (const k of PERSON) if (r[k] != null && !people.has(String(r[k]))) r[k] = null
         if (table === 'issue_links' && !(issueIds.has(String(r.issue_id)) || existing.has(String(r.issue_id))) ||
             table === 'issue_links' && !(issueIds.has(String(r.target_id)) || existing.has(String(r.target_id)))) continue

@@ -19,6 +19,7 @@ const mapStatus = (s: Row): Status => ({
 })
 const mapTransition = (t: Row): Transition => ({
   id: t.id, name: t.name, from: t.fromIds ?? 'any', to: t.toId ?? null, ...(t.rules && Object.keys(t.rules).length ? { rules: t.rules } : {}),
+  ...(t.typeKeys?.length ? { types: t.typeKeys } : {}),
 })
 const mapRule = (r: Row): Rule => ({ id: r.id, name: r.name, enabled: r.enabled, trigger: r.trigger, actions: r.actions, runs: r.runs ?? 0 })
 const mapField = (f: Row): FieldDef => ({ id: f.id, name: f.name, kind: f.kind, ...(f.options ? { options: f.options } : {}) })
@@ -55,6 +56,7 @@ export function mapProject(p: Row): Project {
     fields: (p.fields ?? []).map(mapField),
     releases: (p.releases ?? []).map(mapRelease),
     templates: (p.templates ?? []).map(mapTemplate),
+    ...(p.types?.length ? { types: p.types.map((t: Row) => ({ key: t.key, name: t.name, color: t.color, icon: t.icon })) } : {}),
     ...(p.role ? { role: p.role } : {}),
   }
 }

@@ -44,7 +44,7 @@ export default function TimelineView({ project }: { project: Project }) {
   }
   const span = (i: Issue) => ownSpan(i) ?? sprintSpan(i)
   const people = [...new Set(all.map(i => i.assigneeId).filter((x): x is string => !!x))].map(id => userOf(state, id)!).filter(Boolean)
-  const filters = useFilters(people)
+  const filters = useFilters(people, project)
   const visible = new Set(filters.apply(all).map(i => i.id))
 
   // Rows: each epic followed by its items, then items without an epic. Sub-items stay inside their parent.

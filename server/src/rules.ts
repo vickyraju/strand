@@ -7,12 +7,13 @@ export interface RuleCtx { projectId: string; issueId: string; reporterId: strin
 type Trigger = { kind: 'created' } | { kind: 'assigned' } | { kind: 'status'; to: string }
 
 /** Does the project's workflow have a move from one status to another (whatever its rules)? A project with no transitions allows any move. */
-export async function moveAllowed(d: Db, projectId: string, from: string, to: string): Promise<boolean> {
+export async function moveAllowed(d: Db, projectId: string, from: string, to: string, type?: string): Promise<boolean> {
   if (from === to) return true
   const [{ n }] = await d.query<{ n: number }>('select count(*)::int as n from transitions where project_id = $1', [projectId]) as any
   if (!n) return true
   const ok = await d.query(
-    'select 1 from transitions where project_id = $1 and to_id = $2 and (from_ids is null or $3 = any(from_ids))', [projectId, to, from])
+    `select 1 from transitions where project_id = $1 and to_id = $2 and (from_ids is null or $3 = any(from_ids))
+        and (type_keys is null or $4::text is null or $4 = any(type_keys))`, [projectId, to, from, type ?? null])
   return ok.length > 0
 }
 
@@ -31,8 +32,8 @@ export async function runRules(d: Db, ctx: RuleCtx, t: Trigger) {
   for (const r of rules) {
     if (r.trigger.kind !== t.kind || (t.kind === 'status' && (r.trigger as any).to !== t.to)) continue
     for (const a of r.actions) {
-      const [cur] = await d.query<{ statusId: string; assigneeId: string | null; priority: string; labels: string[] }>(
-        'select status_id, assignee_id, priority, labels from issues where id = $1', [ctx.issueId])
+      const [cur] = await d.query<{ statusId: string; assigneeId: string | null; priority: string; labels: string[]; type: string }>(
+        'select status_id, assignee_id, priority, labels, type from issues where id = $1', [ctx.issueId])
       const set = (col: string, value: unknown) =>
         d.query(`update issues set ${col} = $2, updated_at = now(), version = version + 1 where id = $1`, [ctx.issueId, value])
       switch (a.kind) {
@@ -58,7 +59,7 @@ export async function runRules(d: Db, ctx: RuleCtx, t: Trigger) {
           break
         case 'status': {
           const [target] = await d.query('select 1 from statuses where id = $1 and project_id = $2', [a.value, ctx.projectId])
-          if (!target || !(await moveAllowed(d, ctx.projectId, cur!.statusId, a.value))) {
+          if (!target || !(await moveAllowed(d, ctx.projectId, cur!.statusId, a.value, cur!.type))) {
             await history(d, ctx.issueId, null, null, null, 'Automation skipped a status change the workflow does not allow'); break
           }
           if (a.value === cur!.statusId) break

@@ -20,6 +20,11 @@ export const Status = z.object({ id, projectId: id, name: z.string(), descriptio
 export const Transition = z.object({
   id, projectId: id, name: z.string(), fromIds: nullable(z.array(id)).describe('null: from any status'), toId: nullable(id).describe('null: a loop, the item stays in its status'),
   rules: z.record(z.string(), z.unknown()).describe('restrict, validate, screen, actions'),
+  typeKeys: nullable(z.array(z.string())).describe('Work types this transition is for (null: every type)'),
+})
+export const WorkType = z.object({
+  id, projectId: id, key: z.string().describe('What an item\'s `type` holds'), name: z.string(), color: z.string(),
+  icon: z.string(), position: z.number(),
 })
 export const LinkType = z.object({
   id: z.string(), name: z.string(), outward: z.string().describe('How a link reads from its source: "blocks"'), inward: z.string().describe('How it reads from its target: "is blocked by"'),
@@ -49,12 +54,12 @@ export const ProjectDetail = z.object({
   id, workspaceId: id, key: z.string(), name: z.string(), description: z.string(), color: z.string(), template: z.enum(['kanban', 'scrum']),
   leadId: nullable(id), archivedAt: nullable(ts), nextNumber: z.number(), boardPrefs: z.record(z.string(), z.unknown()), layout: z.record(z.string(), z.unknown()),
   sample: z.boolean(), createdAt: ts, role: z.enum(['admin', 'member', 'viewer']).describe('My role in this project'),
-  statuses: z.array(Status), transitions: z.array(Transition), fields: z.array(Field), templates: z.array(Template),
+  statuses: z.array(Status), transitions: z.array(Transition), types: z.array(WorkType), fields: z.array(Field), templates: z.array(Template),
   rules: z.array(Rule), releases: z.array(Release), sprints: z.array(Sprint),
 })
 
 const issueFields = {
-  id, key: z.string().describe('e.g. PAY-12'), projectId: id, number: z.number(), type: z.enum(['epic', 'story', 'task', 'bug']),
+  id, key: z.string().describe('e.g. PAY-12'), projectId: id, number: z.number(), type: z.string().describe('Work type key'),
   title: z.string(), description: z.string(), statusId: id, priority: z.enum(['urgent', 'high', 'medium', 'low', 'none']),
   assigneeId: nullable(id), reporterId: nullable(id), labels: z.array(z.string()), estimate: nullable(z.number()), timeEstimate: nullable(z.number()),
   dueDate: nullable(day), startDate: nullable(day), sprintId: nullable(id), releaseId: nullable(id), parentId: nullable(id),
@@ -167,6 +172,8 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'PATCH /issues/:key': IssueRow,
   'POST /issues/:key/clone': IssueRow,
   'GET /link-types': z.array(LinkType),
+  'POST /projects/:key/types': WorkType,
+  'PATCH /projects/:key/types/:typeKey': WorkType,
   'POST /admin/link-types': LinkType,
   'PATCH /admin/link-types/:id': LinkType,
   'GET /issues/:key/transitions': z.array(AvailableTransition),

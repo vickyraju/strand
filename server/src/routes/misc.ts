@@ -76,7 +76,8 @@ const plugin: FastifyPluginAsyncZod = async app => {
     const max = (await getSetting(req.me.workspaceId, 'searchAndBulk')).exportMaxRows
     args.push(max + 1)
     const rows = await db.query<any>(
-      `select p.key || '-' || i.number as key, p.key as project, i.type, i.title, st.name as status, i.priority,
+      `select p.key || '-' || i.number as key, p.key as project,
+              coalesce((select wt.name from work_types wt where wt.project_id = i.project_id and wt.key = i.type), i.type) as type, i.title, st.name as status, i.priority,
               a.name as assignee, r.name as reporter, i.labels, i.estimate, i.time_estimate, i.start_date, i.due_date,
               sp.name as sprint, rl.name as release, par_p.key || '-' || par.number as parent, i.resolution,
               i.resolved_at, i.created_at, i.updated_at, i.description

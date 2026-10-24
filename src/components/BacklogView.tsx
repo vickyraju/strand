@@ -28,7 +28,7 @@ export default function BacklogView({ project }: { project: Project }) {
 
   const items = state.issues.filter(i => i.projectId === project.id && i.type !== 'epic')
   const people = [...new Set(items.map(i => i.assigneeId).filter((x): x is string => !!x))].map(id => userOf(state, id)!).filter(Boolean)
-  const filters = useFilters(people)
+  const filters = useFilters(people, project)
 
   const sprints = state.sprints
     .filter(s => s.projectId === project.id && s.state !== 'closed')

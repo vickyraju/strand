@@ -49,8 +49,8 @@ function StatusRow({ status, index, count, incoming, selected, onSelect }: {
 }
 
 /** The workflow as two tables, like Jira's text view: statuses (drag a row's handle to reorder) and transitions. */
-export default function TextView({ workflow, counts, selection, onSelect, onMoveStatus }: {
-  workflow: Workflow; counts: Record<string, number>; selection: Selection
+export default function TextView({ workflow, counts, selection, onSelect, onMoveStatus, typeName = k => k }: {
+  workflow: Workflow; counts: Record<string, number>; selection: Selection; typeName?: (key: string) => string
   onSelect: (s: Selection) => void; onMoveStatus: (id: string, toIndex: number) => void
 }) {
   const sensors = useSensors(
@@ -97,7 +97,7 @@ export default function TextView({ workflow, counts, selection, onSelect, onMove
       <h3 className="section-label" style={{ marginTop: 20 }}>Transitions</h3>
       <div className="card-table">
         <table className="table">
-          <thead><tr><th>Name</th><th>From</th><th>To</th><th>Rules</th></tr></thead>
+          <thead><tr><th>Name</th><th>From</th><th>To</th><th>Work types</th><th>Rules</th></tr></thead>
           <tbody>
             {workflow.transitions.map(t => {
               const select = () => onSelect({ kind: 'transition', id: t.id })
@@ -107,6 +107,7 @@ export default function TextView({ workflow, counts, selection, onSelect, onMove
                   <td>{t.name}</td>
                   <td>{t.from === 'any' ? <span className="muted">Any status</span> : t.from.map(nameOf).join(', ')}</td>
                   <td>{t.to === null ? <span className="muted">Stays (an action)</span> : nameOf(t.to)}</td>
+                  <td className="muted sm">{t.types?.length ? t.types.map(k => typeName(k)).join(', ') : 'Every type'}</td>
                   <td className="muted sm">{rulesSummary(t.rules) || 'None'}</td>
                 </tr>
               )
