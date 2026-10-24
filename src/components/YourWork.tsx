@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { FolderPlus, Plus, Clock, Eye, UserCheck, Star, Columns2, CalendarClock, Ban, Inbox } from 'lucide-react'
 import { useStore, projectOf, isDone, blockersOf, type Issue, type Project } from '../data/store'
+import { usePublicSettings } from '../api/settings-public'
 import { useApp, useNavList } from '../appContext'
 import IssueRow from './IssueRow'
 import { ProjectIcon, StarButton } from './ProjectView'
@@ -46,7 +47,8 @@ export default function YourWork({ onCreateProject }: { onCreateProject: () => v
   const serverProjects = useRecentProjects()
   const localAssigned = state.issues.filter(i => i.assigneeId === me.id && i.type !== 'epic' && !isDone(projectFor(i), i))
   const assigned: Issue[] = apiEnabled ? work.items.filter(i => i.type !== 'epic') : localAssigned
-  const localDueSoon = assigned.filter(i => i.dueDate && new Date(i.dueDate + 'T23:59').getTime() - Date.now() < 3 * 86_400_000).length
+  const soonDays = usePublicSettings().dueReminders.dueSoonDays   // System settings
+  const localDueSoon = assigned.filter(i => i.dueDate && new Date(i.dueDate + 'T23:59').getTime() - Date.now() < soonDays * 86_400_000).length
   // With an API the cards show the database's counts (the list below holds at most the first 200 items)
   const counts = {
     assigned: apiEnabled ? summary?.assigned ?? assigned.length : assigned.length,

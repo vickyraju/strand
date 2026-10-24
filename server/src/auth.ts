@@ -1,6 +1,7 @@
 import { createRemoteJWKSet, jwtVerify } from 'jose'
 import type { FastifyRequest } from 'fastify'
 import { createHash } from 'node:crypto'
+import { getSetting } from './settings.ts'
 import { db, tx } from './db.ts'
 
 export type Role = 'owner' | 'admin' | 'member'
@@ -121,6 +122,7 @@ async function authenticateToken(token: string): Promise<Me> {
       order by w.created_at limit 1`, [hashToken(token)])
   if (!t) throw new HttpError(401, 'Invalid token')
   if (!t.active) throw new HttpError(403, 'Account is deactivated')
+  if (!(await getSetting(t.workspaceId, 'accessTokens')).enabled) throw new HttpError(401, 'Personal access tokens are turned off')
   // "last used" is written at most once a minute per token, so a busy script does not turn every call into a write
   await db.query(`update personal_access_tokens set last_used_at = now() where id = $1 and (last_used_at is null or last_used_at < now() - interval '1 minute')`, [t.id])
   return { id: t.userId, email: t.email, name: t.name, workspaceId: t.workspaceId, role: t.role, admin: t.role !== 'member', via: 'pat' }

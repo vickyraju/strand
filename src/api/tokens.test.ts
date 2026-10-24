@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { activeCount, curlExample, tokenStatus, type AccessToken } from './tokens.ts'
+import { activeCount, curlExample, daysLabel, expiryChoices, tokenStatus, type AccessToken } from './tokens.ts'
 
 const DAY = 86_400_000
 const at = (days: number, now: number) => new Date(now + days * DAY).toISOString()
@@ -22,4 +22,11 @@ test('only unexpired tokens count toward the limit', () => {
 
 test('the example call uses the API address and the token', () => {
   assert.equal(curlExample('https://app.example.com', 'jbp_x'), 'curl -H "Authorization: Bearer jbp_x" https://app.example.com/api/v1/me')
+})
+
+test('token lifetimes offered follow the administrator’s limits', () => {
+  assert.deepEqual(expiryChoices(365, 90), [7, 30, 90, 180, 365])
+  assert.deepEqual(expiryChoices(60, 14), [7, 14, 30, 60])                  // nothing longer than allowed; the default and the longest are offered
+  assert.deepEqual(expiryChoices(730, 90), [7, 30, 90, 180, 365, 730])
+  assert.deepEqual([daysLabel(30), daysLabel(365), daysLabel(730)], ['30 days', '1 year', '2 years'])
 })

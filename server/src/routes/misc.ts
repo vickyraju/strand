@@ -5,6 +5,7 @@ import { HttpError, type Me } from '../auth.ts'
 import { visible, visibleAs } from '../access.ts'
 import { projectByKey } from './projects.ts'
 import { audit } from '../audit.ts'
+import { getSetting } from '../settings.ts'
 
 const uuid = z.string().uuid()
 const LIST = `
@@ -56,24 +57,24 @@ export function csvCell(v: unknown): string {
   return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
 }
 
-/** Most rows one export returns; a larger search is refused so nobody gets a silently cut-off file.
- *  ponytail: built in memory; stream it, or write it to storage in a background job, if exports need to be larger. */
-export const EXPORT_MAX = 20_000
 
 const idP = z.object({ id: uuid })
 const pageQ = { cursor: z.string().optional().describe('`next` from the previous page') }
 
 const plugin: FastifyPluginAsyncZod = async app => {
   // Cross-project search / saved-view results. Keyset by (updated_at, id) desc.
-  // The same search as a spreadsheet: every matching item (up to EXPORT_MAX) with its main fields, readable names
+  // The same search as a spreadsheet: every matching item (up to the export limit in System settings), readable names
   // instead of ids. Only items the person can see; each export is written to the audit log.
   app.get('/search/export.csv', { schema: {
-    tags: ['Search & work'], summary: `Download a search as CSV (same filters as /search; at most ${EXPORT_MAX} items, newest first)`,
+    tags: ['Search & work'], summary: 'Download a search as CSV (same filters as /search; at most the export limit in System settings, newest first)',
     querystring: z.object(searchFilters),
   } }, async (req, reply) => {
     const args: unknown[] = []
     const where = searchWhere(req.me, req.query, args)
-    args.push(EXPORT_MAX + 1)
+    // a larger search is refused, so nobody gets a silently cut-off file
+    // ponytail: built in memory; stream it, or write it to storage in a background job, if exports need to be much larger
+    const max = (await getSetting(req.me.workspaceId, 'searchAndBulk')).exportMaxRows
+    args.push(max + 1)
     const rows = await db.query<any>(
       `select p.key || '-' || i.number as key, p.key as project, i.type, i.title, st.name as status, i.priority,
               a.name as assignee, r.name as reporter, i.labels, i.estimate, i.time_estimate, i.start_date, i.due_date,
@@ -84,8 +85,8 @@ const plugin: FastifyPluginAsyncZod = async app => {
          left join sprints sp on sp.id = i.sprint_id left join releases rl on rl.id = i.release_id
          left join issues par on par.id = i.parent_id left join projects par_p on par_p.id = par.project_id
         where ${where.join(' and ')} order by i.updated_at desc, i.id desc limit $${args.length}`, args)
-    if (rows.length > EXPORT_MAX)
-      throw new HttpError(400, `More than ${EXPORT_MAX.toLocaleString('en')} items match. Narrow the search (a project, a type, a label) and export again.`)
+    if (rows.length > max)
+      throw new HttpError(400, `More than ${max.toLocaleString('en')} items match. Narrow the search (a project, a type, a label) and export again.`)
     const cols: [string, string][] = [
       ['Key', 'key'], ['Project', 'project'], ['Type', 'type'], ['Title', 'title'], ['Status', 'status'], ['Priority', 'priority'],
       ['Assignee', 'assignee'], ['Reporter', 'reporter'], ['Labels', 'labels'], ['Story points', 'estimate'], ['Time estimate (minutes)', 'timeEstimate'],
@@ -148,17 +149,18 @@ const plugin: FastifyPluginAsyncZod = async app => {
       limit 40`, [req.me.workspaceId, req.me.id]))
 
   // "Your work": the numbers on the cards, counted by the database so they stay right past the first 200 items
-  app.get('/me/work/summary', { schema: { tags: ['Search & work'], summary: 'Counts for the Your work cards: open items assigned to me, due within 3 days (or late), late, and blocked by unfinished work' } }, async req => {
+  app.get('/me/work/summary', { schema: { tags: ['Search & work'], summary: 'Counts for the Your work cards: open items assigned to me, due soon (window in System settings) or late, late, and blocked by unfinished work' } }, async req => {
+    const soon = (await getSetting(req.me.workspaceId, 'dueReminders')).dueSoonDays
     const [r] = await db.query<any>(
       `select count(*)::int as assigned,
-              count(*) filter (where i.due_date is not null and i.due_date <= (now() at time zone 'utc')::date + 3)::int as due_soon,
+              count(*) filter (where i.due_date is not null and i.due_date <= (now() at time zone 'utc')::date + $3::int)::int as due_soon,
               count(*) filter (where i.due_date < (now() at time zone 'utc')::date)::int as overdue,
               count(*) filter (where exists (
                 select 1 from issue_links l join issues b on b.id = l.issue_id join statuses bs on bs.id = b.status_id
                  where l.target_id = i.id and l.type = 'blocks' and b.deleted_at is null and bs.category <> 'done'))::int as blocked
          from issues i join statuses st on st.id = i.status_id
-        where i.workspace_id = $1 and i.assignee_id = $2 and i.deleted_at is null and ${visibleAs(req.me, 'i.project_id', 2)} and i.type <> 'epic' and st.category <> 'done'`, [req.me.workspaceId, req.me.id])
-    return r
+        where i.workspace_id = $1 and i.assignee_id = $2 and i.deleted_at is null and ${visibleAs(req.me, 'i.project_id', 2)} and i.type <> 'epic' and st.category <> 'done'`, [req.me.workspaceId, req.me.id, soon])
+    return { ...r, dueSoonDays: soon }
   })
 
   // "Your work → Recent projects": where work happened most recently, with my open items and how much is done
@@ -197,7 +199,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
 
   // ── Notifications ──
   // "Due soon" has no scheduler behind it: when someone loads their notifications we add one for each open item assigned to them that is due
-  // tomorrow or sooner (up to 3 days late), once per item and due date. Skipped if this person was checked recently.
+  // within the window set in System settings (days ahead, days late), once per item and due date. Skipped if this person was checked recently.
   const dueScan = new Map<string, number>()
   const DUE_SCAN_MS = Number(process.env.DUE_SCAN_INTERVAL_MS ?? 600_000)
   async function ensureDueNotifications(me: Me) {
@@ -205,16 +207,18 @@ const plugin: FastifyPluginAsyncZod = async app => {
     const last = dueScan.get(userId)
     if (last !== undefined && Date.now() - last < DUE_SCAN_MS) return
     dueScan.set(userId, Date.now())
+    const policy = await getSetting(workspaceId, 'dueReminders')
+    if (!policy.enabled) return
     await db.query(
       `insert into notifications (user_id, issue_id, kind, text)
        select $2, i.id, 'due', 'is due on ' || i.due_date::text
          from issues i join statuses st on st.id = i.status_id
         where i.workspace_id = $1 and i.assignee_id = $2 and i.deleted_at is null and ${visibleAs(me, 'i.project_id', 2)} and st.category <> 'done'
-          and i.due_date between (now() at time zone 'utc')::date - 3 and (now() at time zone 'utc')::date + 1   -- UTC, so the answer does not depend on the server's timezone
+          and i.due_date between (now() at time zone 'utc')::date - $3::int and (now() at time zone 'utc')::date + $4::int   -- UTC, so the answer does not depend on the server's timezone
           and not exists (select 1 from notifications n where n.user_id = $2 and n.issue_id = i.id and n.kind = 'due' and n.text = 'is due on ' || i.due_date::text)
        on conflict (user_id, issue_id, text) where kind = 'due' do nothing  -- another API pod may have just made it
       `,
-      [workspaceId, userId])
+      [workspaceId, userId, policy.daysLate, policy.daysAhead])
   }
 
   app.get('/notifications', { schema: { tags: ['Notifications'], summary: 'My notifications (newest 200)', querystring: z.object({

@@ -8,6 +8,7 @@ import { audit, changes } from '../audit.ts'
 import { enqueue, kickJobs } from '../jobs.ts'
 import { allowedBackupBuckets, backupBucket, backupSettings } from '../backups.ts'
 import { s3 } from '../storage.ts'
+import { SETTINGS, getSetting, isSettingKey, setSetting, type SettingKey } from '../settings.ts'
 
 const idP = z.object({ id: z.string().uuid() })
 const TAG = ['Admin']
@@ -23,6 +24,46 @@ const plugin: FastifyPluginAsyncZod = async app => {
          from memberships m join users u on u.id = m.user_id
         where m.workspace_id = $1 order by u.active desc, lower(u.name), u.id limit 5000`, [req.me.workspaceId])
   })
+
+  // ── System settings: policies a workspace admin controls (rate limiting, attachments, tokens, export and bulk sizes, due reminders) ──
+  const keyP = z.object({ key: z.string().describe(`One of: ${Object.keys(SETTINGS).filter(k => !('ownRoutes' in SETTINGS[k as SettingKey])).join(', ')}`) })
+  const view = async (ws: string, key: SettingKey) => {
+    const s = SETTINGS[key]
+    return { key, label: s.label, description: s.description, value: await getSetting(ws, key), default: s.default }
+  }
+  app.get('/admin/settings', { schema: { tags: TAG, summary: 'Every system setting with its current value and default (global admins)' } }, async req => {
+    requireAdmin(req)
+    return Promise.all((Object.keys(SETTINGS) as SettingKey[]).filter(k => !('ownRoutes' in SETTINGS[k])).map(k => view(req.me.workspaceId, k)))
+  })
+  app.put('/admin/settings/:key', { schema: {
+    tags: TAG, summary: 'Change one system setting (global admins). Send the whole value; it is checked against the setting\'s rules', params: keyP, body: z.record(z.string(), z.unknown()),
+  } }, async req => {
+    requireAdmin(req)
+    const key = req.params.key
+    if (!isSettingKey(key) || 'ownRoutes' in SETTINGS[key]) throw new HttpError(404, 'No such setting')
+    const parsed = SETTINGS[key].schema.safeParse(req.body)
+    if (!parsed.success) throw new HttpError(400, 'That setting is not valid',
+      Object.fromEntries(parsed.error.issues.map(i => [i.path.join('.') || 'value', i.message])))
+    await tx(async d => {
+      const before = await getSetting(req.me.workspaceId, key, d)
+      await setSetting(d, req.me.workspaceId, key, parsed.data, req.me.id)
+      const c = changes(before as any, parsed.data as any)
+      if (c.changed) await audit(d, req, { action: `settings.${key}.updated`, type: 'settings', name: SETTINGS[key].label, before: c.before, after: c.after })
+    })
+    return view(req.me.workspaceId, key)
+  })
+  // Rate limiting › Limited accounts: who was refused in the last 24 hours (newest first)
+  app.get('/admin/rate-limits/limited', { schema: { tags: TAG, summary: 'People whose access tokens were rate limited in the last 24 hours (global admins)' } }, async req => {
+    requireAdmin(req)
+    return db.query(
+      `select u.id as user_id, u.name, u.email, r.first_at, r.last_at, r.times
+         from rate_limited_accounts r join users u on u.id = r.user_id
+        where r.workspace_id = $1 and r.last_at > now() - interval '24 hours' order by r.last_at desc limit 500`, [req.me.workspaceId])
+  })
+
+  // what the web app needs to behave like the server (limits it shows or checks before sending)
+  app.get('/settings/public', { schema: { tags: ['Me'], summary: 'Settings every signed-in person may see: attachment, token, export, bulk and due-date limits' } }, async req =>
+    Object.fromEntries(await Promise.all((Object.keys(SETTINGS) as SettingKey[]).filter(k => SETTINGS[k].public).map(async k => [k, await getSetting(req.me.workspaceId, k)]))))
 
   // ── Backups taken when a project is deleted (a workspace setting, for global admins) ──
   app.get('/admin/settings/project-backups', { schema: { tags: TAG, summary: 'Whether deleting a project backs it up first, and where (global admins)' } }, async req => {
@@ -45,10 +86,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     const next = { enabled: req.body.enabled, ...(req.body.bucket ? { bucket: req.body.bucket } : {}), ...(req.body.prefix !== undefined ? { prefix: req.body.prefix } : {}) }
     await tx(async d => {
       const before = await backupSettings(d, req.me.workspaceId)
-      await d.query(
-        `insert into workspace_settings (workspace_id, project_backups, updated_by) values ($1, $2, $3)
-         on conflict (workspace_id) do update set project_backups = $2, updated_at = now(), updated_by = $3`,
-        [req.me.workspaceId, JSON.stringify(next), req.me.id])
+      await setSetting(d, req.me.workspaceId, 'projectBackups', next, req.me.id)
       const c = changes(before as any, next as any)
       if (c.changed) await audit(d, req, { action: 'settings.project_backups.updated', type: 'settings', name: 'Project backups', before: c.before, after: c.after })
     })

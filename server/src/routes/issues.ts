@@ -5,6 +5,7 @@ import { HttpError, type Me } from '../auth.ts'
 import { canJoinWork, minFor, need, roleOf, visible, type ProjectRole } from '../access.ts'
 import { publish } from '../events.ts'
 import { audit } from '../audit.ts'
+import { getSetting } from '../settings.ts'
 import { runRules, moveAllowed } from '../rules.ts'
 import { projectByKey } from './projects.ts'
 
@@ -329,10 +330,16 @@ const plugin: FastifyPluginAsyncZod = async app => {
     return tx(async d => applyPatch(d, req.me, await issueByKey(d, req, req.params.key), req.body, { ifMatch, override: req.headers['x-workflow-override'] === '1', ip: req.ip }))
   })
 
-  // ── Bulk (up to 200 issues, all or nothing: nothing changes if any issue is missing or refuses the change) ──
-  const refs = z.array(z.string()).min(1).max(200).describe('Issue keys (PAY-12) or ids')
+  // ── Bulk (all or nothing: nothing changes if any issue is missing or refuses the change; size limit in System settings) ──
+  const refs = z.array(z.string()).min(1).max(5000).describe('Issue keys (PAY-12) or ids; at most the bulk limit in System settings')
   const bulkResult = (n: number) => ({ count: n })
+  const checkBulk = async (req: { me: Me; body: { issues: string[] } }) => {
+    const max = (await getSetting(req.me.workspaceId, 'searchAndBulk')).bulkMaxItems
+    const n = new Set(req.body.issues).size
+    if (n > max) throw new HttpError(400, `A bulk change can include at most ${max} work items (you sent ${n})`, { issues: `At most ${max}` })
+  }
   app.post('/issues/bulk/edit', { schema: { tags: ['Issues: bulk'], summary: 'Apply the same field changes to many issues (workflow rules apply to each)', body: z.object({ issues: refs, patch: patchBody }) } }, async req => {
+    await checkBulk(req)
     return tx(async d => {
       const out: any[] = []
       for (const ref of [...new Set(req.body.issues)]) out.push(await applyPatch(d, req.me, await issueByKey(d, req, ref), req.body.patch, { ifMatch: null, override: false }))
@@ -340,6 +347,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     })
   })
   app.post('/issues/bulk/delete', { schema: { tags: ['Issues: bulk'], summary: 'Soft-delete many issues (restorable)', body: z.object({ issues: refs }) } }, async req => {
+    await checkBulk(req)
     return tx(async d => {
       const rows = []
       for (const ref of [...new Set(req.body.issues)]) rows.push(await issueByKey(d, req, ref))
@@ -350,6 +358,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     })
   })
   app.post('/issues/bulk/restore', { schema: { tags: ['Issues: bulk'], summary: 'Restore many soft-deleted issues (Undo)', body: z.object({ issues: refs }) } }, async req => {
+    await checkBulk(req)
     return tx(async d => {
       const rows = []
       for (const ref of [...new Set(req.body.issues)]) rows.push(await issueByKey(d, req, ref, true))

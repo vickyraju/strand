@@ -16,7 +16,8 @@ export const withPrefix = (path: string, prefix = API_PREFIX) => (path.startsWit
 
 export class ApiError extends Error {
   status: number
-  constructor(status: number, message: string) { super(message); this.status = status }
+  errors?: Record<string, string>   // per-field messages, when the server checked a form
+  constructor(status: number, message: string, errors?: Record<string, string>) { super(message); this.status = status; this.errors = errors }
 }
 
 export function buildRequest(base: string, token: string | null, method: string, path: string, body?: unknown, headers: Record<string, string> = {}): [string, RequestInit] {
@@ -32,6 +33,6 @@ export async function api<T = unknown>(method: string, path: string, body?: unkn
   if (res.status === 401) forgetSession()           // token refused: back to the sign-in screen
   if (res.status === 204) return undefined as T
   const data = await res.json().catch(() => null)
-  if (!res.ok) throw new ApiError(res.status, data?.error ?? `Request failed (${res.status})`)
+  if (!res.ok) throw new ApiError(res.status, data?.error ?? `Request failed (${res.status})`, data?.errors)
   return data as T
 }

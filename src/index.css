@@ -1312,3 +1312,8 @@ h2.empty-title, h2.section-title, h2.side-title { margin: 0 }
 .admin-person .muted { margin-left: 4px }
 .admin-change { max-width: 340px; overflow: hidden; text-overflow: ellipsis }
 .admin-body .panel + .panel { margin-top: 16px }
+.admin-body > section > .muted + .panel { margin-top: 12px }
+.settings-grid { display: grid; gap: 12px; margin-top: 12px }
+.settings-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap }
+.settings-label { display: flex; flex-direction: column; width: 300px; font-size: 13px; font-weight: 500 }
+.settings-label .muted { font-weight: 400 }

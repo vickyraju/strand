@@ -11,7 +11,7 @@ const url = process.env.DATABASE_URL
 const skip = !url && 'DATABASE_URL not set'
 const TENANT = '11111111-1111-4111-8111-111111111111', CLIENT = '22222222-2222-4222-8222-222222222222'
 Object.assign(process.env, {
-  SCIM_TOKEN: 'scim-secret', NODE_ENV: 'test', RATE_LIMIT_PER_MIN: '1000000', GITHUB_WEBHOOK_SECRET: 'whsec-test', DOCS_ENABLED: '1', DUE_SCAN_INTERVAL_MS: '0',
+  SCIM_TOKEN: 'scim-secret', NODE_ENV: 'test', GITHUB_WEBHOOK_SECRET: 'whsec-test', DOCS_ENABLED: '1', DUE_SCAN_INTERVAL_MS: '0',
   CORS_ORIGINS: 'https://app.example.com/, https://admin.example.com', ENTRA_TENANT_ID: TENANT, ENTRA_CLIENT_ID: CLIENT,
 })
 
@@ -931,10 +931,10 @@ test('your work summary counts open assigned items past the first page: due soon
   await call('POST', `/api/v1/issues/${blocker.key}/links`, { type: 'blocks', targetKey: soon.key })
   await call('POST', `/api/v1/issues/${blocker.key}/links`, { type: 'relates', targetKey: later.key })               // a plain relation does not block
   const sum = async () => (await call('GET', '/api/v1/me/work/summary', undefined, who)).body
-  assert.deepEqual(await sum(), { assigned: 4, dueSoon: 2, overdue: 1, blocked: 1 })                                     // soon+late are due within 3 days; late is also overdue
+  assert.deepEqual(await sum(), { assigned: 4, dueSoon: 2, overdue: 1, blocked: 1, dueSoonDays: 3 })                                     // soon+late are due within 3 days; late is also overdue
   await call('PATCH', `/api/v1/issues/${blocker.key}`, { statusId: done })
   assert.equal((await sum()).blocked, 0)                                                                                // once the blocker is done, nothing is blocked
-  assert.deepEqual(await (async () => (await call('GET', '/api/v1/me/work/summary', undefined, 'yw.nobody@x.com')).body)(), { assigned: 0, dueSoon: 0, overdue: 0, blocked: 0 })
+  assert.deepEqual(await (async () => (await call('GET', '/api/v1/me/work/summary', undefined, 'yw.nobody@x.com')).body)(), { assigned: 0, dueSoon: 0, overdue: 0, blocked: 0, dueSoonDays: 3 })
   assert.ok(late.key)
 })
 
@@ -1665,6 +1665,10 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     'GET /admin/project-backups/{id}/url': ['gadmin', `/admin/project-backups/${backup}/url`],
     'POST /admin/project-backups/{id}/restore': ['gadmin', `/admin/project-backups/${backup}/restore`],
     'GET /jobs/{id}': ['own', `/jobs/${job}`],
+    'GET /admin/settings': ['gadmin', '/admin/settings'],
+    'PUT /admin/settings/{key}': ['gadmin', '/admin/settings/attachments', { enabled: true, maxSizeMb: 25 }],
+    'GET /admin/rate-limits/limited': ['gadmin', '/admin/rate-limits/limited'],
+    'GET /settings/public': ['any', '/settings/public'],
   }
 
   // every documented operation has a row, and every row is a documented operation
@@ -1751,4 +1755,78 @@ test('concurrency: same-version edits, a retried create, simultaneous reordering
     else assert.equal(r.sprint_id, null)                                                   // unfinished: back to the backlog, never left in a closed sprint
   }
   assert.equal((await call('GET', '/api/v1/projects/RCE')).body.sprints.find((s: any) => s.id === sprint.id).state, 'closed')
+})
+
+test('system settings: admins change policies at runtime (validated, audited); everyone reads the public ones; the API follows them', { skip }, async () => {
+  const { clearSettingsCache } = await import('../src/settings.ts')
+  const put = (key: string, value: object, who = 'owner@x.com') => call('PUT', `/api/v1/admin/settings/${key}`, value, who)
+  const all = (await call('GET', '/api/v1/admin/settings')).body
+  assert.deepEqual(all.map((s: any) => s.key), ['rateLimiting', 'attachments', 'accessTokens', 'searchAndBulk', 'dueReminders'])
+  assert.equal(all.find((s: any) => s.key === 'rateLimiting').value.enabled, false)                  // no limit unless an admin sets one
+  assert.equal((await call('GET', '/api/v1/admin/settings', undefined, 'set.member@x.com')).status, 403)
+  assert.equal((await put('attachments', { enabled: true, maxSizeMb: 5 }, 'set.member@x.com')).status, 403)
+  assert.equal((await put('nonsense', {})).status, 404)
+  const bad = await put('accessTokens', { enabled: true, maxPerUser: 0, maxExpiryDays: 30, defaultExpiryDays: 60 })
+  assert.equal(bad.status, 400); assert.ok(bad.body.errors.maxPerUser && bad.body.errors.defaultExpiryDays)
+
+  // public settings: what the web app needs, for anyone signed in (not rate limiting)
+  const pub = (await call('GET', '/api/v1/settings/public', undefined, 'set.member@x.com')).body
+  assert.deepEqual(Object.keys(pub).sort(), ['accessTokens', 'attachments', 'dueReminders', 'searchAndBulk'])
+
+  // attachments: size limit and the switch
+  await call('POST', '/api/v1/projects', { name: 'Settings', key: 'SET', template: 'kanban' })
+  for (let n = 0; n < 4; n++) await call('POST', '/api/v1/projects/SET/issues', { title: `s${n}` })
+  assert.equal((await put('attachments', { enabled: true, maxSizeMb: 1 })).status, 200)
+  assert.equal((await call('POST', '/api/v1/issues/SET-1/attachments', { name: 'big.bin', size: 2 * 1024 * 1024, type: 'application/octet-stream' })).status, 400)
+  assert.equal((await call('POST', '/api/v1/issues/SET-1/attachments', { name: 'ok.txt', size: 100, type: 'text/plain' })).status, 201)
+  await put('attachments', { enabled: false, maxSizeMb: 1 })
+  assert.equal((await call('POST', '/api/v1/issues/SET-1/attachments', { name: 'ok.txt', size: 100, type: 'text/plain' })).status, 403)
+  await put('attachments', { enabled: true, maxSizeMb: 25 })
+
+  // bulk size and export size
+  await put('searchAndBulk', { exportMaxRows: 100, bulkMaxItems: 2 })
+  assert.equal((await call('POST', '/api/v1/issues/bulk/edit', { issues: ['SET-1', 'SET-2', 'SET-3'], patch: { priority: 'high' } })).status, 400)
+  assert.equal((await call('POST', '/api/v1/issues/bulk/edit', { issues: ['SET-1', 'SET-2'], patch: { priority: 'high' } })).status, 200)
+  await put('searchAndBulk', { exportMaxRows: 20000, bulkMaxItems: 200 })
+
+  // access tokens: lifetime, number, and the switch (which also stops existing tokens)
+  await put('accessTokens', { enabled: true, maxPerUser: 1, maxExpiryDays: 30, defaultExpiryDays: 7 })
+  assert.equal((await call('POST', '/api/v1/me/tokens', { name: 'too long', expiresInDays: 60 }, 'set.tokens@x.com')).status, 400)
+  const T = 'set.tokens@x.com'                                                            // someone with no tokens yet
+  const tok = (await call('POST', '/api/v1/me/tokens', { name: 'default' }, T)).body
+  assert.equal(Math.round((Date.parse(tok.expiresAt) - Date.now()) / 86_400_000), 7)
+  assert.equal((await call('POST', '/api/v1/me/tokens', { name: 'second' }, T)).status, 409)
+  const viaToken = (method: string, url: string) => app.inject({ method: method as any, url, headers: { authorization: `Bearer ${tok.token}` } })
+  assert.equal((await viaToken('GET', '/api/v1/me')).statusCode, 200)
+  await put('accessTokens', { enabled: false, maxPerUser: 1, maxExpiryDays: 30, defaultExpiryDays: 7 })
+  assert.equal((await viaToken('GET', '/api/v1/me')).statusCode, 401)
+  await put('accessTokens', { enabled: true, maxPerUser: 10, maxExpiryDays: 365, defaultExpiryDays: 90 })
+
+  // rate limiting: none by default, then a small limit for tokens only; the web app is never limited; an exemption lifts it
+  assert.equal((await viaToken('GET', '/api/v1/me')).headers['x-ratelimit-limit'], undefined)
+  await put('rateLimiting', { enabled: true, mode: 'limit', requests: 1, intervalSeconds: 3600, burst: 2, exemptions: [] })
+  const r = [await viaToken('GET', '/api/v1/me'), await viaToken('GET', '/api/v1/me'), await viaToken('GET', '/api/v1/me')]
+  assert.deepEqual(r.map(x => x.statusCode), [200, 200, 429])
+  assert.deepEqual([r[0]!.headers['x-ratelimit-limit'], r[1]!.headers['x-ratelimit-remaining']], ['2', '0'])
+  assert.ok(Number(r[2]!.headers['retry-after']) > 0)
+  for (let n = 0; n < 5; n++) assert.equal((await call('GET', '/api/v1/me', undefined, T)).status, 200)   // the same person in the web app: never limited
+  const limited = (await call('GET', '/api/v1/admin/rate-limits/limited')).body
+  assert.equal(limited[0].email, T)
+  const me = (await call('GET', '/api/v1/me', undefined, T)).body.id
+  await put('rateLimiting', { enabled: true, mode: 'limit', requests: 1, intervalSeconds: 3600, burst: 2, exemptions: [{ userId: me, mode: 'unlimited' }] })
+  assert.equal((await viaToken('GET', '/api/v1/me')).statusCode, 200)
+  await put('rateLimiting', { enabled: true, mode: 'block', requests: 1, intervalSeconds: 3600, burst: 2, exemptions: [] })
+  assert.equal((await viaToken('GET', '/api/v1/me')).statusCode, 429)
+  await put('rateLimiting', { enabled: false, mode: 'limit', requests: 100, intervalSeconds: 60, burst: 100, exemptions: [] })
+  assert.equal((await viaToken('GET', '/api/v1/me')).statusCode, 200)
+
+  // every change is in the audit log, with what changed
+  const log = (await call('GET', '/api/v1/audit?action=settings.')).body.items
+  assert.ok(log.some((e: any) => e.action === 'settings.attachments.updated' && e.after.maxSizeMb === 1))
+  assert.ok(log.some((e: any) => e.action === 'settings.rateLimiting.updated'))
+  // a value saved by another pod is picked up (the cache is short): simulate by writing directly and clearing this pod's cache
+  await pool.query(`update system_settings set value = jsonb_set(value, '{maxSizeMb}', '3') where key = 'attachments'`)
+  clearSettingsCache()
+  assert.equal((await call('GET', '/api/v1/settings/public')).body.attachments.maxSizeMb, 3)
+  await put('attachments', { enabled: true, maxSizeMb: 25 })
 })
