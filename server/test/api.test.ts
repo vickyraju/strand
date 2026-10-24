@@ -1537,3 +1537,160 @@ test('groups: SCIM provisions teams; a project role given to a group reaches eve
   assert.equal((await call('GET', '/api/v1/issues/GRP-1', undefined, 'grp.cat@x.com')).status, 404)
   assert.equal((await call('GET', '/api/v1/projects/GRP', undefined, 'grp.ann@x.com')).body.role, 'viewer')    // her own role remains
 })
+
+// ── Permission matrix: every documented route, with who must be refused. A new route fails this test until it has a row. ──
+test('permission matrix: every API route refuses outsiders, and refuses viewers and members where it should', { skip, timeout: 120_000 }, async () => {
+  const { db } = await import('../src/db.ts')
+  const { enqueue } = await import('../src/jobs.ts')
+  const who = { viewer: 'mtx.viewer@x.com', member: 'mtx.member@x.com', outsider: 'mtx.outsider@x.com' }
+  const id = async (e: string) => (await call('GET', '/api/v1/me', undefined, e)).body.id as string
+  // A project the owner runs, with one of everything
+  const p = (await call('POST', '/api/v1/projects', { name: 'Matrix', key: 'MTX', template: 'scrum' })).body
+  await join('MTX', who.viewer, 'viewer'); await join('MTX', who.member, 'member')
+  const viewerId = await id(who.viewer)
+  await id(who.outsider)
+  const ownerId = await id('owner@x.com')
+  const make = async (kind: string, body: object) => (await call('POST', `/api/v1/projects/MTX/${kind}`, body)).body.id as string
+  const status = await make('statuses', { name: 'Extra', color: '#000000', category: 'todo' })
+  const transition = await make('transitions', { name: 'Go', fromIds: null, toId: p.statuses[1].id })
+  const field = await make('fields', { name: 'Team', kind: 'text', options: null, position: 0 })
+  const template = await make('templates', { name: 'Bug', type: 'bug', title: 'Bug:' })
+  const rule = await make('rules', { name: 'Rule', trigger: { kind: 'created' }, actions: [] })
+  const release = await make('releases', { name: '1.0' })
+  const sprint = await make('sprints', { name: 'Sprint' })
+  for (const t of ['one', 'two', 'three']) await call('POST', '/api/v1/projects/MTX/issues', { title: t })
+  await call('DELETE', '/api/v1/issues/MTX-2')                                         // a deleted item, to restore
+  const comment = (await call('POST', '/api/v1/issues/MTX-1/comments', { body: 'mine' })).body.id
+  const worklog = (await call('POST', '/api/v1/issues/MTX-1/worklogs', { minutes: 5, date: '2026-10-01' })).body.id
+  const ticket = (await call('POST', '/api/v1/issues/MTX-1/attachments', { name: 'a.txt', size: 1, type: 'text/plain' })).body
+  await fetch(ticket.uploadUrl, { method: 'PUT', body: 'a' }); await call('POST', `/api/v1/attachments/${ticket.id}/complete`)
+  const group = (await pool.query(`insert into groups (display_name) values ('Matrix team') returning id`)).rows[0].id
+  await call('POST', '/api/v1/projects/MTX/groups', { groupId: group, role: 'viewer' })
+  const view = (await call('POST', '/api/v1/views', { name: 'Mine', filters: {} })).body.id
+  const token = (await call('POST', '/api/v1/me/tokens', { name: 'mine' })).body.id
+  const notification = (await pool.query(
+    `insert into notifications (user_id, issue_id, kind, text) select $1, i.id, 'assigned', 'matrix' from issues i join projects p on p.id = i.project_id where p.key = 'MTX' limit 1 returning id`, [ownerId])).rows[0].id
+  const job = await enqueue(db, 'matrix.noop', {}, { workspaceId: p.workspaceId, createdBy: ownerId })
+  const backup = (await pool.query(`insert into project_backups (workspace_id, project_id, project_key, project_name, bucket, object_key, items, files, bytes, sha256)
+    values ($1, gen_random_uuid(), 'OLD', 'Old', 'files', 'x/project.json', 0, 0, 0, 'x') returning id`, [p.workspaceId])).rows[0].id
+
+  // Who must be refused:
+  //   any    - anyone signed in (results are limited to what they may see); only a missing sign-in is refused
+  //   read   - project viewers; outsiders get 404 (the project does not exist for them)
+  //   viewer - viewers may do it too (comment, watch, star…); outsiders 404
+  //   write  - members; viewers 403; outsiders 404
+  //   padmin - project admins; members and viewers 403; outsiders 404
+  //   gadmin - workspace admins; everyone else 403
+  //   own    - only the person it belongs to; others 403 or 404
+  type Rule = 'any' | 'read' | 'viewer' | 'write' | 'padmin' | 'gadmin' | 'own'
+  const K = 'MTX', I = 'MTX-1'
+  const M: Record<string, [Rule, string, object?]> = {
+    'GET /me': ['any', '/me'], 'GET /users': ['any', '/users'], 'GET /users/search': ['any', '/users/search'],
+    'GET /projects': ['any', '/projects'], 'POST /projects': ['any', '/projects', { name: 'M', key: 'MTXNEW', template: 'kanban' }],
+    'GET /projects/search': ['any', '/projects/search'],
+    'POST /projects/{key}/archive': ['padmin', `/projects/${K}/archive`], 'POST /projects/{key}/restore': ['padmin', `/projects/${K}/restore`],
+    'GET /projects/{key}': ['read', `/projects/${K}`], 'PATCH /projects/{key}': ['padmin', `/projects/${K}`, { name: 'x' }],
+    'DELETE /projects/{key}': ['gadmin', `/projects/${K}`],
+    'PUT /projects/{key}/star': ['viewer', `/projects/${K}/star`], 'DELETE /projects/{key}/star': ['viewer', `/projects/${K}/star`],
+    'GET /projects/{key}/events': ['read', `/projects/${K}/events`],
+    'POST /projects/{key}/statuses': ['padmin', `/projects/${K}/statuses`, { name: 's', color: '#000000', category: 'todo' }],
+    'PATCH /projects/{key}/statuses/{id}': ['padmin', `/projects/${K}/statuses/${status}`, { name: 'x' }],
+    'DELETE /projects/{key}/statuses/{id}': ['padmin', `/projects/${K}/statuses/${status}`],
+    'POST /projects/{key}/transitions': ['padmin', `/projects/${K}/transitions`, { name: 't', fromIds: null, toId: p.statuses[0].id }],
+    'PATCH /projects/{key}/transitions/{id}': ['padmin', `/projects/${K}/transitions/${transition}`, { name: 'x' }],
+    'DELETE /projects/{key}/transitions/{id}': ['padmin', `/projects/${K}/transitions/${transition}`],
+    'POST /projects/{key}/fields': ['padmin', `/projects/${K}/fields`, { name: 'f', kind: 'text', options: null, position: 1 }],
+    'PATCH /projects/{key}/fields/{id}': ['padmin', `/projects/${K}/fields/${field}`, { name: 'x' }],
+    'DELETE /projects/{key}/fields/{id}': ['padmin', `/projects/${K}/fields/${field}`],
+    'POST /projects/{key}/templates': ['padmin', `/projects/${K}/templates`, { name: 't', type: 'task', title: 't' }],
+    'PATCH /projects/{key}/templates/{id}': ['padmin', `/projects/${K}/templates/${template}`, { name: 'x' }],
+    'DELETE /projects/{key}/templates/{id}': ['padmin', `/projects/${K}/templates/${template}`],
+    'POST /projects/{key}/rules': ['padmin', `/projects/${K}/rules`, { name: 'r', trigger: { kind: 'created' }, actions: [] }],
+    'PATCH /projects/{key}/rules/{id}': ['padmin', `/projects/${K}/rules/${rule}`, { name: 'x' }],
+    'DELETE /projects/{key}/rules/{id}': ['padmin', `/projects/${K}/rules/${rule}`],
+    'POST /projects/{key}/releases': ['padmin', `/projects/${K}/releases`, { name: 'r' }],
+    'PATCH /projects/{key}/releases/{id}': ['padmin', `/projects/${K}/releases/${release}`, { name: 'x' }],
+    'DELETE /projects/{key}/releases/{id}': ['padmin', `/projects/${K}/releases/${release}`],
+    'POST /projects/{key}/releases/{id}/release': ['padmin', `/projects/${K}/releases/${release}/release`, {}],
+    'POST /projects/{key}/sprints': ['write', `/projects/${K}/sprints`, { name: 's' }],
+    'PATCH /projects/{key}/sprints/{id}': ['write', `/projects/${K}/sprints/${sprint}`, { name: 'x' }],
+    'DELETE /projects/{key}/sprints/{id}': ['write', `/projects/${K}/sprints/${sprint}`],
+    'POST /projects/{key}/sprints/{id}/start': ['write', `/projects/${K}/sprints/${sprint}/start`, { endsAt: '2026-12-01T00:00:00.000Z' }],
+    'POST /projects/{key}/sprints/{id}/complete': ['write', `/projects/${K}/sprints/${sprint}/complete`, {}],
+    'GET /projects/{key}/members': ['read', `/projects/${K}/members`],
+    'POST /projects/{key}/members': ['padmin', `/projects/${K}/members`, { userIds: [viewerId], role: 'member' }],
+    'PATCH /projects/{key}/members/{userId}': ['padmin', `/projects/${K}/members/${viewerId}`, { role: 'member' }],
+    'DELETE /projects/{key}/members/{userId}': ['padmin', `/projects/${K}/members/${ownerId}`],
+    'GET /groups/search': ['any', '/groups/search'],
+    'GET /projects/{key}/groups': ['read', `/projects/${K}/groups`],
+    'POST /projects/{key}/groups': ['padmin', `/projects/${K}/groups`, { groupId: group, role: 'member' }],
+    'PATCH /projects/{key}/groups/{groupId}': ['padmin', `/projects/${K}/groups/${group}`, { role: 'member' }],
+    'DELETE /projects/{key}/groups/{groupId}': ['padmin', `/projects/${K}/groups/${group}`],
+    'GET /projects/{key}/report-data': ['read', `/projects/${K}/report-data`],
+    'GET /projects/{key}/issues': ['read', `/projects/${K}/issues`],
+    'POST /projects/{key}/issues': ['write', `/projects/${K}/issues`, { title: 'x' }],
+    'GET /issues/{key}': ['read', `/issues/${I}`], 'PATCH /issues/{key}': ['write', `/issues/${I}`, { title: 'x' }],
+    'DELETE /issues/{key}': ['write', `/issues/${I}`],
+    'GET /issues/{key}/comments': ['read', `/issues/${I}/comments`], 'POST /issues/{key}/comments': ['viewer', `/issues/${I}/comments`, { body: 'x' }],
+    'GET /issues/{key}/activity': ['read', `/issues/${I}/activity`],
+    'POST /issues/bulk/edit': ['write', '/issues/bulk/edit', { issues: [I], patch: { title: 'x' } }],
+    'POST /issues/bulk/delete': ['write', '/issues/bulk/delete', { issues: [I] }],
+    'POST /issues/bulk/restore': ['write', '/issues/bulk/restore', { issues: ['MTX-2'] }],
+    'POST /issues/{key}/view': ['viewer', `/issues/${I}/view`], 'POST /issues/{key}/restore': ['write', '/issues/MTX-2/restore'],
+    'POST /issues/{key}/links': ['write', `/issues/${I}/links`, { type: 'relates', targetKey: 'MTX-3' }],
+    'DELETE /issues/{key}/links': ['write', `/issues/${I}/links?type=relates&target=MTX-3`],
+    'PUT /issues/{key}/watch': ['viewer', `/issues/${I}/watch`], 'DELETE /issues/{key}/watch': ['viewer', `/issues/${I}/watch`],
+    'POST /issues/{key}/presence': ['write', `/issues/${I}/presence`], 'DELETE /issues/{key}/presence': ['viewer', `/issues/${I}/presence`],
+    'PATCH /comments/{id}': ['own', `/comments/${comment}`, { body: 'x' }], 'DELETE /comments/{id}': ['own', `/comments/${comment}`],
+    'POST /issues/{key}/worklogs': ['write', `/issues/${I}/worklogs`, { minutes: 5, date: '2026-10-01' }],
+    'DELETE /worklogs/{id}': ['own', `/worklogs/${worklog}`],
+    'GET /search/export.csv': ['any', '/search/export.csv'], 'GET /search': ['any', '/search'], 'GET /labels': ['any', '/labels'],
+    'GET /me/work': ['any', '/me/work'], 'GET /me/recent': ['any', '/me/recent'], 'GET /me/work/summary': ['any', '/me/work/summary'],
+    'GET /me/projects/recent': ['any', '/me/projects/recent'], 'GET /me/viewed': ['any', '/me/viewed'],
+    'GET /projects/{key}/summary': ['read', `/projects/${K}/summary`],
+    'GET /notifications': ['any', '/notifications'], 'PATCH /notifications/{id}': ['own', `/notifications/${notification}`, { read: true }],
+    'POST /notifications/read-all': ['any', '/notifications/read-all'],
+    'GET /views': ['any', '/views'], 'POST /views': ['any', '/views', { name: 'v', filters: {} }],
+    'PATCH /views/{id}': ['own', `/views/${view}`, { name: 'x' }], 'DELETE /views/{id}': ['own', `/views/${view}`],
+    'POST /issues/{key}/attachments': ['write', `/issues/${I}/attachments`, { name: 'b.txt', size: 1, type: 'text/plain' }],
+    'POST /attachments/{id}/complete': ['write', `/attachments/${ticket.id}/complete`],
+    'GET /attachments/{id}/url': ['read', `/attachments/${ticket.id}/url`], 'DELETE /attachments/{id}': ['write', `/attachments/${ticket.id}`],
+    'GET /issues/{key}/development': ['read', `/issues/${I}/development`],
+    'GET /me/tokens': ['any', '/me/tokens'], 'POST /me/tokens': ['any', '/me/tokens', { name: 't' }], 'DELETE /me/tokens/{id}': ['own', `/me/tokens/${token}`],
+    'POST /import': ['gadmin', '/import', { version: 4, projects: [] }],
+    'GET /audit': ['gadmin', '/audit'], 'GET /admin/users': ['gadmin', '/admin/users'],
+    'GET /admin/settings/project-backups': ['gadmin', '/admin/settings/project-backups'],
+    'PUT /admin/settings/project-backups': ['gadmin', '/admin/settings/project-backups', { enabled: true }],
+    'GET /admin/project-backups': ['gadmin', '/admin/project-backups'],
+    'GET /admin/project-backups/{id}/url': ['gadmin', `/admin/project-backups/${backup}/url`],
+    'POST /admin/project-backups/{id}/restore': ['gadmin', `/admin/project-backups/${backup}/restore`],
+    'GET /jobs/{id}': ['own', `/jobs/${job}`],
+  }
+
+  // every documented operation has a row, and every row is a documented operation
+  const spec = JSON.parse(readFileSync(new URL('../openapi.json', import.meta.url), 'utf8'))
+  const documented = Object.entries(spec.paths as Record<string, object>).filter(([path]) => path.startsWith('/api/v1/'))
+    .flatMap(([path, ops]) => Object.keys(ops).map(m => `${m.toUpperCase()} ${path.slice(7)}`))
+  assert.deepEqual(documented.filter(op => !(op in M)), [], 'routes with no permission rule')
+  assert.deepEqual(Object.keys(M).filter(op => !documented.includes(op)), [], 'rules for routes that do not exist')
+
+  const send = async (op: string, as: string | null) => {
+    const [method] = op.split(' '), [, path, body] = M[op]!
+    const r = await app.inject({ method: method as any, url: `/api/v1${path}`, payload: body as any, headers: as ? await bearer(as) : {} })
+    return r.statusCode
+  }
+  const wrong: string[] = []
+  const expect = (op: string, as: string, got: number, ok: number[]) => { if (!ok.includes(got)) wrong.push(`${op} as ${as}: ${got}, expected ${ok.join(' or ')}`) }
+  for (const op of Object.keys(M)) {
+    const rule = M[op]![0]
+    expect(op, 'nobody', await send(op, null), [401])
+    if (rule === 'read' || rule === 'viewer') expect(op, 'outsider', await send(op, who.outsider), [404])
+    if (rule === 'write') { expect(op, 'outsider', await send(op, who.outsider), [404]); expect(op, 'viewer', await send(op, who.viewer), [403]) }
+    if (rule === 'padmin') {
+      expect(op, 'outsider', await send(op, who.outsider), [404]); expect(op, 'viewer', await send(op, who.viewer), [403]); expect(op, 'member', await send(op, who.member), [403])
+    }
+    if (rule === 'gadmin') { expect(op, 'member', await send(op, who.member), [403]); expect(op, 'outsider', await send(op, who.outsider), [403]) }
+    if (rule === 'own') { expect(op, 'member', await send(op, who.member), [403, 404]); expect(op, 'outsider', await send(op, who.outsider), [403, 404]) }
+  }
+  assert.deepEqual(wrong, [])
+})
