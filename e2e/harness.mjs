@@ -56,7 +56,7 @@ export async function start() {
   }
   run(['src/index.ts'], `${root}server`, {
     DATABASE_URL: dbUrl, PORT: String(apiPort), NODE_ENV: 'test', AUTH_DEV: '1', DEV_AUTH_SECRET: SECRET, ENTRA_TENANT_ID: '', ENTRA_CLIENT_ID: '',
-    CORS_ORIGINS: webUrl, JOBS_POLL_MS: '500', RATE_LIMIT_PER_MIN: '100000', DUE_SCAN_INTERVAL_MS: '0', FILE_SWEEP_MS: '0', S3_BUCKET: '',
+    CORS_ORIGINS: webUrl, JOBS_POLL_MS: '500', DUE_SCAN_INTERVAL_MS: '0', FILE_SWEEP_MS: '0', S3_BUCKET: '',
   })
   run(['node_modules/vite/bin/vite.js', '--port', String(webPort), '--strictPort', '--host', 'localhost'], root, {
     VITE_API_URL: apiUrl, VITE_API_PREFIX: '/api/v1',

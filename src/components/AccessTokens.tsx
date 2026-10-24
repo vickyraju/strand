@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Copy, KeyRound, Plus, Trash2 } from 'lucide-react'
 import { useApp } from '../appContext'
+import { usePublicSettings } from '../api/settings-public'
 import { API_URL, ApiError } from '../api/client'
 import {
-  DEFAULT_EXPIRY_DAYS, EXPIRY_CHOICES, MAX_ACTIVE_TOKENS, activeCount, createToken, curlExample, listTokens, revokeToken, tokenStatus,
+  activeCount, daysLabel, expiryChoices, createToken, curlExample, listTokens, revokeToken, tokenStatus,
   type AccessToken, type CreatedToken,
 } from '../api/tokens'
 import { Modal } from './ui'
@@ -17,7 +18,8 @@ export default function AccessTokens() {
   const [tokens, setTokens] = useState<AccessToken[] | null>(null)
   const [error, setError] = useState('')
   const [name, setName] = useState('')
-  const [days, setDays] = useState<number>(DEFAULT_EXPIRY_DAYS)
+  const policy = usePublicSettings().accessTokens   // System settings
+  const [days, setDays] = useState<number | null>(null)   // null: the default from System settings
   const [busy, setBusy] = useState(false)
   const [created, setCreated] = useState<CreatedToken | null>(null)   // the secret, held only until the dialog is closed
   const [revoking, setRevoking] = useState<AccessToken | null>(null)
@@ -25,12 +27,13 @@ export default function AccessTokens() {
   const load = () => listTokens().then(t => { setTokens(t); setError('') }, e => setError(message(e)))
   useEffect(() => { void load() }, [])
 
-  const atLimit = tokens ? activeCount(tokens) >= MAX_ACTIVE_TOKENS : false
+  const atLimit = tokens ? activeCount(tokens) >= policy.maxPerUser : false
+  const chosen = days ?? policy.defaultExpiryDays
 
   const create = async () => {
     setBusy(true); setError('')
     try {
-      setCreated(await createToken(name.trim(), days))
+      setCreated(await createToken(name.trim(), chosen))
       setName('')
       await load()
     } catch (e) { setError(message(e)) } finally { setBusy(false) }
@@ -48,6 +51,7 @@ export default function AccessTokens() {
       <h2 className="panel-title">Personal access tokens</h2>
       <p className="muted">Let a script or integration call the API as you. A token has your permissions and stops working when it expires or when you revoke it. Treat it like a password.</p>
 
+      {!policy.enabled && <p role="status" className="hint error">Your administrator has turned personal access tokens off. Existing tokens do not work until they turn them back on.</p>}
       {error && <p role="alert" className="hint error">{error}</p>}
 
       {tokens && tokens.length > 0 && (
@@ -83,13 +87,13 @@ export default function AccessTokens() {
         </div>
         <div>
           <label className="label" htmlFor="tok-days">Expires after</label>
-          <select id="tok-days" className="input" value={days} onChange={e => setDays(Number(e.target.value))}>
-            {EXPIRY_CHOICES.map(d => <option key={d} value={d}>{d === 365 ? '1 year' : `${d} days`}</option>)}
+          <select id="tok-days" className="input" value={chosen} onChange={e => setDays(Number(e.target.value))}>
+            {expiryChoices(policy.maxExpiryDays, policy.defaultExpiryDays).map(d => <option key={d} value={d}>{daysLabel(d)}</option>)}
           </select>
         </div>
-        <button type="submit" className="btn btn-primary" disabled={!name.trim() || busy || atLimit}><Plus size={15} />Create token</button>
+        <button type="submit" className="btn btn-primary" disabled={!name.trim() || busy || atLimit || !policy.enabled}><Plus size={15} />Create token</button>
       </form>
-      {atLimit && <p className="hint">You have {MAX_ACTIVE_TOKENS} active tokens, the most allowed. Revoke one to create another.</p>}
+      {atLimit && <p className="hint">You have {policy.maxPerUser} active tokens, the most allowed. Revoke one to create another.</p>}
 
       {created && (
         <Modal title="Your new token" onClose={() => setCreated(null)}

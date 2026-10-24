@@ -4,8 +4,6 @@ import { api } from './client'
 import { issueSync } from './sync'
 import type { Attachment, Issue } from '../data/reducer'
 
-/** The server's limit for one file. */
-export const MAX_UPLOAD = 25 * 1024 * 1024
 
 export async function uploadAttachment(issue: Issue, file: File): Promise<Attachment> {
   const type = file.type || 'application/octet-stream'

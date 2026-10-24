@@ -56,6 +56,10 @@ export const IssueRow = z.object(issueFields)
 const GroupGrant = z.object({
   groupId: id, name: z.string(), role: z.enum(['admin', 'member', 'viewer']), addedAt: ts, members: z.number().describe('Active people in the group'),
 })
+const SettingView = z.object({
+  key: z.string(), label: z.string(), description: z.string(),
+  value: z.record(z.string(), z.unknown()).describe('Current value'), default: z.record(z.string(), z.unknown()).describe('Value when nothing is saved'),
+})
 const BackupSettings = z.object({
   enabled: z.boolean().describe('Deleting a project backs it up first'), bucket: nullable(z.string()), prefix: z.string(),
   effectiveBucket: nullable(z.string()).describe('Where backups actually go (empty: nowhere configured, so deleting a project is refused)'),
@@ -162,7 +166,7 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'POST /projects/:key/members': z.array(Member),
   'PATCH /projects/:key/members/:userId': Member,
   'GET /labels': z.array(z.string()),
-  'GET /me/work/summary': z.object({ assigned: z.number(), dueSoon: z.number(), overdue: z.number(), blocked: z.number() }),
+  'GET /me/work/summary': z.object({ assigned: z.number(), dueSoon: z.number(), overdue: z.number(), blocked: z.number(), dueSoonDays: z.number().describe('What “due soon” means here, in days') }),
   'GET /me/projects/recent': z.array(z.object({ id, key: z.string(), name: z.string(), color: z.string(), template: z.string(), myOpen: z.number(), done: z.number(), total: z.number(), lastActivity: ts })),
   'GET /notifications': z.array(NotificationItem),
   'PATCH /notifications/:id': Notification,
@@ -177,6 +181,12 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'POST /projects/:key/groups': z.array(GroupGrant),
   'PATCH /projects/:key/groups/:groupId': z.array(GroupGrant),
   'GET /groups/search': z.array(z.object({ id, name: z.string(), members: z.number() })),
+  'GET /admin/settings': z.array(SettingView),
+  'PUT /admin/settings/:key': SettingView,
+  'GET /settings/public': z.record(z.string(), z.record(z.string(), z.unknown())).describe('attachments, accessTokens, searchAndBulk, dueReminders'),
+  'GET /admin/rate-limits/limited': z.array(z.object({
+    userId: id, name: z.string(), email: z.string(), firstAt: ts, lastAt: ts, times: z.number().describe('Minutes in which they were refused at least once'),
+  })),
   'GET /admin/users': z.array(z.object({
     id, name: z.string(), email: z.string(), initials: z.string(), color: z.string(), title: nullable(z.string()), active: z.boolean(),
     role: z.enum(['owner', 'admin', 'member']), createdAt: ts, projects: z.number().describe('Projects they are a member of'),

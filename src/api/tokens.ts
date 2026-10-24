@@ -7,9 +7,11 @@ export interface AccessToken {
 }
 export interface CreatedToken extends AccessToken { token: string }
 
-export const EXPIRY_CHOICES = [7, 30, 90, 180, 365] as const
-export const DEFAULT_EXPIRY_DAYS = 90
-export const MAX_ACTIVE_TOKENS = 10
+/** Lifetimes to offer: the usual ones up to the longest allowed (System settings), plus the default and the longest. */
+export function expiryChoices(maxDays: number, defaultDays: number): number[] {
+  return [...new Set([7, 30, 90, 180, 365, defaultDays, maxDays])].filter(d => d <= maxDays).sort((a, b) => a - b)
+}
+export const daysLabel = (d: number) => (d % 365 === 0 ? (d === 365 ? '1 year' : `${d / 365} years`) : `${d} days`)
 const SOON_DAYS = 5   // the "expires soon" warning window (the same as Atlassian's)
 
 export const listTokens = () => api<AccessToken[]>('GET', '/api/me/tokens')

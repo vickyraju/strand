@@ -4,7 +4,8 @@ import { useStore, uid, userOf, timeAgo, type Issue } from '../data/store'
 import type { Attachment } from '../data/reducer'
 import { fileUrl, saveFile, readAsDataUrl, usedBytes, formatBytes, MAX_FILE, MAX_TOTAL } from '../data/files'
 import { apiEnabled, ApiError } from '../api/client'
-import { attachmentUrl, deleteAttachment, uploadAttachment, MAX_UPLOAD } from '../api/attachments'
+import { attachmentUrl, deleteAttachment, uploadAttachment } from '../api/attachments'
+import { usePublicSettings } from '../api/settings-public'
 import { useApp } from '../appContext'
 
 const failure = (e: unknown) => (e instanceof ApiError || e instanceof Error ? e.message : 'something went wrong')
@@ -18,7 +19,8 @@ export default function Attachments({ issue, pickRef }: { issue: Issue; pickRef?
   const input = pickRef ?? ownRef
   const [over, setOver] = useState(false)
   const [uploading, setUploading] = useState<string[]>([])
-  const maxFile = apiEnabled ? MAX_UPLOAD : MAX_FILE
+  const policy = usePublicSettings().attachments   // System settings
+  const maxFile = apiEnabled ? policy.maxSizeMb * 1024 * 1024 : MAX_FILE
 
   const add = async (files: FileList | File[]) => {
     for (const file of Array.from(files)) {

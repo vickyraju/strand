@@ -8,9 +8,9 @@ import { HttpError, type Me } from '../auth.ts'
 import { minFor, need, roleOf, type ProjectRole } from '../access.ts'
 import { issueByKey } from './issues.ts'
 import { s3, filesBucket } from '../storage.ts'
+import { getSetting } from '../settings.ts'
 
 // Files go browser → S3 directly via presigned URLs; the API never proxies bytes.
-const MAX_BYTES = 25 * 1024 * 1024
 const bucket = filesBucket
 const needBucket = () => { if (!bucket()) throw new HttpError(503, 'File storage is not configured (S3_BUCKET)') }
 
@@ -56,9 +56,13 @@ const plugin: FastifyPluginAsyncZod = async app => {
   app.post('/issues/:key/attachments', { schema: {
     tags: ['Attachments'], summary: 'Register an attachment; returns a presigned uploadUrl to PUT the bytes to (5 min). Then call /attachments/:id/complete',
     params: z.object({ key: z.string().describe('Issue key, e.g. PAY-12') }),
-    body: z.object({ name: z.string().min(1).max(255), size: z.number().int().positive().max(MAX_BYTES), type: z.string().max(255) }),
+    body: z.object({ name: z.string().min(1).max(255), size: z.number().int().positive().describe('Bytes; at most the size set in System settings › Attachments'), type: z.string().max(255) }),
   } }, async req => {
     needBucket()
+    const policy = await getSetting(req.me.workspaceId, 'attachments')
+    if (!policy.enabled) throw new HttpError(403, 'Attachments are turned off in System settings')
+    if (req.body.size > policy.maxSizeMb * 1024 * 1024)
+      throw new HttpError(400, `Files can be at most ${policy.maxSizeMb} MB`, { size: `At most ${policy.maxSizeMb} MB` })
     const b = req.body
     const i = await issueByKey(db, req, req.params.key)
     const objectKey = `${req.me.workspaceId}/${i.id}/${randomUUID()}`

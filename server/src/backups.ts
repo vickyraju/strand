@@ -8,15 +8,13 @@ import { db, pool, type Db } from './db.ts'
 import { HttpError } from './auth.ts'
 import { audit } from './audit.ts'
 import { registerJob } from './jobs.ts'
+import { getSetting } from './settings.ts'
 import { s3, filesBucket } from './storage.ts'
 
 export interface BackupSettings { enabled: boolean; bucket?: string; prefix?: string }
 
-/** The workspace's backup setting. Backups are on unless a global admin turns them off. */
-export async function backupSettings(d: Db, workspaceId: string): Promise<BackupSettings> {
-  const [r] = await d.query<{ projectBackups: BackupSettings }>('select project_backups from workspace_settings where workspace_id = $1', [workspaceId])
-  return { ...r?.projectBackups, enabled: r?.projectBackups?.enabled ?? true }
-}
+/** The workspace's backup setting (System settings). Backups are on unless a global admin turns them off. */
+export const backupSettings = (d: Db, workspaceId: string): Promise<BackupSettings> => getSetting(workspaceId, 'projectBackups', d)
 
 /** Buckets a workspace may choose for its backups (operators list them in BACKUP_BUCKETS, comma-separated). A workspace
  *  admin cannot send backups, or take restores, from anywhere else. */

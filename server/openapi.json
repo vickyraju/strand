@@ -13499,12 +13499,12 @@
                 "properties": {
                   "issues": {
                     "minItems": 1,
-                    "maxItems": 200,
+                    "maxItems": 5000,
                     "type": "array",
                     "items": {
                       "type": "string"
                     },
-                    "description": "Issue keys (PAY-12) or ids"
+                    "description": "Issue keys (PAY-12) or ids; at most the bulk limit in System settings"
                   },
                   "patch": {
                     "type": "object",
@@ -13927,12 +13927,12 @@
                 "properties": {
                   "issues": {
                     "minItems": 1,
-                    "maxItems": 200,
+                    "maxItems": 5000,
                     "type": "array",
                     "items": {
                       "type": "string"
                     },
-                    "description": "Issue keys (PAY-12) or ids"
+                    "description": "Issue keys (PAY-12) or ids; at most the bulk limit in System settings"
                   }
                 },
                 "required": [
@@ -14062,12 +14062,12 @@
                 "properties": {
                   "issues": {
                     "minItems": 1,
-                    "maxItems": 200,
+                    "maxItems": 5000,
                     "type": "array",
                     "items": {
                       "type": "string"
                     },
-                    "description": "Issue keys (PAY-12) or ids"
+                    "description": "Issue keys (PAY-12) or ids; at most the bulk limit in System settings"
                   }
                 },
                 "required": [
@@ -15791,7 +15791,7 @@
     },
     "/api/v1/search/export.csv": {
       "get": {
-        "summary": "Download a search as CSV (same filters as /search; at most 20000 items, newest first)",
+        "summary": "Download a search as CSV (same filters as /search; at most the export limit in System settings, newest first)",
         "tags": [
           "Search & work"
         ],
@@ -16662,7 +16662,7 @@
     },
     "/api/v1/me/work/summary": {
       "get": {
-        "summary": "Counts for the Your work cards: open items assigned to me, due within 3 days (or late), late, and blocked by unfinished work",
+        "summary": "Counts for the Your work cards: open items assigned to me, due soon (window in System settings) or late, late, and blocked by unfinished work",
         "tags": [
           "Search & work"
         ],
@@ -16685,13 +16685,18 @@
                     },
                     "blocked": {
                       "type": "number"
+                    },
+                    "dueSoonDays": {
+                      "type": "number",
+                      "description": "What “due soon” means here, in days"
                     }
                   },
                   "required": [
                     "assigned",
                     "dueSoon",
                     "overdue",
-                    "blocked"
+                    "blocked",
+                    "dueSoonDays"
                   ],
                   "additionalProperties": false
                 }
@@ -18255,7 +18260,8 @@
                     "type": "integer",
                     "minimum": 0,
                     "exclusiveMinimum": true,
-                    "maximum": 26214400
+                    "maximum": 9007199254740991,
+                    "description": "Bytes; at most the size set in System settings › Attachments"
                   },
                   "type": {
                     "type": "string",
@@ -19278,7 +19284,7 @@
         }
       },
       "post": {
-        "summary": "Create a personal access token. The secret is returned once and cannot be shown again. Needs a sign-in, not a token; at most 10 active tokens",
+        "summary": "Create a personal access token. The secret is returned once and cannot be shown again. Needs a sign-in, not a token; limits are in System settings",
         "tags": [
           "Access tokens"
         ],
@@ -19296,10 +19302,10 @@
                     "description": "What the token is for, e.g. \"Release script\""
                   },
                   "expiresInDays": {
-                    "default": 90,
+                    "description": "Days until it stops working; default and longest allowed are in System settings",
                     "type": "integer",
                     "minimum": 1,
-                    "maximum": 365
+                    "maximum": 3650
                   }
                 },
                 "required": [
@@ -20024,6 +20030,415 @@
                     ],
                     "additionalProperties": false
                   }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/settings": {
+      "get": {
+        "summary": "Every system setting with its current value and default (global admins)",
+        "tags": [
+          "Admin"
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "key": {
+                        "type": "string"
+                      },
+                      "label": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "type": "string"
+                      },
+                      "value": {
+                        "type": "object",
+                        "additionalProperties": {},
+                        "description": "Current value"
+                      },
+                      "default": {
+                        "type": "object",
+                        "additionalProperties": {},
+                        "description": "Value when nothing is saved"
+                      }
+                    },
+                    "required": [
+                      "key",
+                      "label",
+                      "description",
+                      "value",
+                      "default"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/settings/{key}": {
+      "put": {
+        "summary": "Change one system setting (global admins). Send the whole value; it is checked against the setting's rules",
+        "tags": [
+          "Admin"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": {}
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "description": "One of: rateLimiting, attachments, accessTokens, searchAndBulk, dueReminders"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "key": {
+                      "type": "string"
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "value": {
+                      "type": "object",
+                      "additionalProperties": {},
+                      "description": "Current value"
+                    },
+                    "default": {
+                      "type": "object",
+                      "additionalProperties": {},
+                      "description": "Value when nothing is saved"
+                    }
+                  },
+                  "required": [
+                    "key",
+                    "label",
+                    "description",
+                    "value",
+                    "default"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/rate-limits/limited": {
+      "get": {
+        "summary": "People whose access tokens were rate limited in the last 24 hours (global admins)",
+        "tags": [
+          "Admin"
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "userId": {
+                        "type": "string",
+                        "description": "uuid"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "email": {
+                        "type": "string"
+                      },
+                      "firstAt": {
+                        "type": "string",
+                        "description": "ISO 8601 timestamp"
+                      },
+                      "lastAt": {
+                        "type": "string",
+                        "description": "ISO 8601 timestamp"
+                      },
+                      "times": {
+                        "type": "number",
+                        "description": "Minutes in which they were refused at least once"
+                      }
+                    },
+                    "required": [
+                      "userId",
+                      "name",
+                      "email",
+                      "firstAt",
+                      "lastAt",
+                      "times"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/settings/public": {
+      "get": {
+        "summary": "Settings every signed-in person may see: attachment, token, export, bulk and due-date limits",
+        "tags": [
+          "Me"
+        ],
+        "responses": {
+          "200": {
+            "description": "attachments, accessTokens, searchAndBulk, dueReminders",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "object",
+                    "additionalProperties": {}
+                  },
+                  "description": "attachments, accessTokens, searchAndBulk, dueReminders"
                 }
               }
             }

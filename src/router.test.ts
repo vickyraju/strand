@@ -19,5 +19,6 @@ test('administration urls: /admin and its sections; unknown sections are not fou
   assert.deepEqual(parse('/admin', '').route, { name: 'admin', section: undefined })
   assert.deepEqual(parse('/admin/audit', '').route, { name: 'admin', section: 'audit' })
   assert.equal(href({ name: 'admin', section: 'backups' }), '/admin/backups')
+  assert.deepEqual(parse('/admin/settings', '').route, { name: 'admin', section: 'settings' })
   assert.equal(parse('/admin/nope', '').route.name, 'not-found')
 })
