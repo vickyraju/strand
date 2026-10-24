@@ -33,7 +33,7 @@ before(async () => {
   jwks = createServer((_q, res) => { res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ keys: [jwk] })) })
   await new Promise<void>(r => jwks.listen(0, '127.0.0.1', r))
   authority = `http://127.0.0.1:${(jwks.address() as { port: number }).port}`
-  Object.assign(process.env, { DATABASE_URL: target.href, NODE_ENV: 'test', ENTRA_TENANT_ID: TENANT, ENTRA_CLIENT_ID: CLIENT, ENTRA_AUTHORITY: authority })
+  Object.assign(process.env, { DATABASE_URL: target.href, NODE_ENV: 'test', JOBS_POLL_MS: '0', ENTRA_TENANT_ID: TENANT, ENTRA_CLIENT_ID: CLIENT, ENTRA_AUTHORITY: authority })
   app = await (await import('../src/app.ts')).build()
 })
 after(async () => {
