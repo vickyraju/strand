@@ -390,3 +390,16 @@ test('time tracking: the remaining estimate starts at the original and counts do
   assert.equal(run([{ type: 'deleteWorklog', issueId: 'i1', worklogId: first.id }], member), member)
   t = run([{ type: 'deleteWorklog', issueId: 'i1', worklogId: first.id }], t); assert.equal(rem(), 220)
 })
+
+test('components: new work in one goes to its lead (or the project lead) unless someone is chosen', () => {
+  const { s, owner, sam } = workspace()
+  let t = run([{ type: 'updateProject', id: 'p1', patch: { components: [
+    { id: 'c-api', name: 'API', description: '', leadId: sam, defaultAssignee: 'component_lead' },
+    { id: 'c-web', name: 'Web', description: '', defaultAssignee: 'project_lead' }] } }], s)
+  t = run([
+    { type: 'createIssue', id: 'a', issue: { projectId: 'p1', title: 'api', componentIds: ['c-api'] } },
+    { type: 'createIssue', id: 'b', issue: { projectId: 'p1', title: 'web', componentIds: ['c-web'] } },
+    { type: 'createIssue', id: 'c', issue: { projectId: 'p1', title: 'chosen', componentIds: ['c-api'], assigneeId: undefined } },
+  ], t)
+  assert.deepEqual(['a', 'b', 'c'].map(id => t.issues.find(i => i.id === id)!.assigneeId), [sam, owner, undefined])
+})

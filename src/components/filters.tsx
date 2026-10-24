@@ -19,6 +19,7 @@ export function useFilters(people: User[], project?: Project) {
   const [userIds, setUsers] = useState<Set<string>>(new Set())
   const [quick, setQuick]   = useState<Set<Quick>>(new Set())
   const [types, setTypes]   = useState<Set<IssueType>>(new Set())
+  const [parts, setParts]   = useState<Set<string>>(new Set())
 
   const toggle = <T,>(set: Set<T>, v: T, apply: (s: Set<T>) => void) => {
     const n = new Set(set)
@@ -26,9 +27,9 @@ export function useFilters(people: User[], project?: Project) {
     apply(n)
   }
 
-  const extraCount = [...quick].filter(q => q !== 'mine').length + types.size + (userIds.has('none') ? 1 : 0)
-  const active = !!query.trim() || userIds.size > 0 || quick.size > 0 || types.size > 0
-  const clear = () => { setQuery(''); setUsers(new Set()); setQuick(new Set()); setTypes(new Set()) }
+  const extraCount = [...quick].filter(q => q !== 'mine').length + types.size + parts.size + (userIds.has('none') ? 1 : 0)
+  const active = !!query.trim() || userIds.size > 0 || quick.size > 0 || types.size > 0 || parts.size > 0
+  const clear = () => { setQuery(''); setUsers(new Set()); setQuick(new Set()); setTypes(new Set()); setParts(new Set()) }
 
   const apply = (issues: Issue[]) => {
     const q = query.trim().toLowerCase()
@@ -37,6 +38,7 @@ export function useFilters(people: User[], project?: Project) {
       (!q || i.title.toLowerCase().includes(q) || i.key.toLowerCase().includes(q) || i.labels.some(l => l.toLowerCase().includes(q))) &&
       (userIds.size === 0 || userIds.has(i.assigneeId ?? 'none')) &&
       (types.size === 0 || types.has(i.type)) &&
+      (parts.size === 0 || (i.componentIds ?? []).some(c => parts.has(c))) &&
       (!quick.has('mine') || i.assigneeId === state.me?.id) &&
       (!quick.has('recent') || now - i.updatedAt < 2 * 86_400_000) &&
       (!quick.has('due') || (!!i.dueDate && new Date(i.dueDate + 'T23:59').getTime() - now < WEEK)) &&
@@ -92,6 +94,14 @@ export function useFilters(people: User[], project?: Project) {
             <TypeIcon type={t} size={13} project={project} />{name}
           </label>
         ))}
+        {(project?.components?.length ?? 0) > 0 && <>
+          <div className="section-label" style={{ marginTop: 8 }}>Component</div>
+          {project!.components!.map(c => (
+            <label key={c.id} className="check-row">
+              <Checkbox checked={parts.has(c.id)} onChange={() => toggle(parts, c.id, setParts)} label={c.name} />{c.name}
+            </label>
+          ))}
+        </>}
         <div className="section-label" style={{ marginTop: 8 }}>Assignee</div>
         <label className="check-row">
           <Checkbox checked={userIds.has('none')} onChange={() => toggle(userIds, 'none', setUsers)} label="Unassigned" />

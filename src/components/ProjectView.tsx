@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
 import WorkTypesPanel from './WorkTypesPanel'
+import ComponentsPanel from './ComponentsPanel'
 import { Plus, Star, FolderPlus, Columns2, List, ListChecks, Settings, Gauge, BarChart3, GanttChart, CalendarDays, Rocket, Check, GitBranch, Info, Zap, Users } from 'lucide-react'
 import { useStore, userOf, isDone, timeAgo, PROJECT_COLORS, type Project, type ProjectPatch } from '../data/store'
 import { useApp } from '../appContext'
@@ -356,6 +357,7 @@ function ProjectSettings({ project }: { project: Project }) {
       </section>
 
       <WorkTypesPanel project={project} />
+      <ComponentsPanel project={project} />
       <FieldsPanel project={project} />
       <TemplatesPanel project={project} />
       <ImportPanel project={project} />

@@ -56,6 +56,7 @@ export function mapProject(p: Row): Project {
     fields: (p.fields ?? []).map(mapField),
     releases: (p.releases ?? []).map(mapRelease),
     templates: (p.templates ?? []).map(mapTemplate),
+    ...(p.components?.length ? { components: p.components.map((c: Row) => ({ id: c.id, name: c.name, description: c.description ?? '', defaultAssignee: c.defaultAssignee, ...(c.leadId ? { leadId: c.leadId } : {}) })) } : {}),
     ...(p.types?.length ? { types: p.types.map((t: Row) => ({ key: t.key, name: t.name, color: t.color, icon: t.icon })) } : {}),
     ...(p.role ? { role: p.role } : {}),
   }
@@ -85,6 +86,8 @@ export const mapIssue = (i: Row): Issue => ({
   ...(i.estimate != null ? { estimate: i.estimate } : {}),
   ...(i.timeEstimate != null ? { timeEstimate: i.timeEstimate } : {}),
   ...(i.timeRemaining != null ? { timeRemaining: i.timeRemaining } : {}),
+  ...(i.componentIds?.length ? { componentIds: i.componentIds } : {}),
+  ...(i.affectsReleaseIds?.length ? { affectsReleaseIds: i.affectsReleaseIds } : {}),
   ...(i.dueDate ? { dueDate: i.dueDate } : {}), ...(i.startDate ? { startDate: i.startDate } : {}),
   ...(i.sprintId ? { sprintId: i.sprintId } : {}), ...(i.releaseId ? { releaseId: i.releaseId } : {}),
   ...(i.parentId ? { parentId: i.parentId } : {}),
