@@ -13,7 +13,7 @@ import { projectByKey } from './projects.ts'
 
 const uuid = z.string().uuid()
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
-const type = z.enum(['epic', 'story', 'task', 'bug'])
+const type = z.string().min(1).max(40).describe('A work type key of the project (GET /projects/:key: types): epic, story, task, bug, or one the project added')
 const priority = z.enum(['urgent', 'high', 'medium', 'low', 'none'])
 export const RESOLUTIONS = ['Done', "Won't do", 'Duplicate', 'Cannot reproduce'] as const
 
@@ -190,10 +190,11 @@ async function applyPatch(d: Db, me: Me, cur: any, patch: z.infer<typeof patchBo
     if (Object.keys(errors).length) throw new HttpError(400, `“${t!.name}” needs more information`, errors)
   }
   // a move the workflow does not allow, made by a project admin with the override, is recorded
-  if (moving && override && !(await moveAllowed(d, cur.projectId, cur.statusId, patch.statusId!)))
+  if (moving && override && !(await moveAllowed(d, cur.projectId, cur.statusId, patch.statusId!, cur.type)))
     await audit(d, { me, ip: o.ip }, { action: 'issue.workflow_overridden', type: 'issue', id: cur.id, name: cur.key, project: { id: cur.projectId, key: cur.key.split('-')[0] },
       before: { statusId: cur.statusId }, after: { statusId: patch.statusId } })
   if (patch.parentId === cur.id) throw new HttpError(400, 'An item cannot be its own parent')
+  if (patch.type !== undefined && patch.type !== cur.type) await checkType(d, cur.projectId, patch.type)
   if (patch.custom) await checkCustom(d, cur.projectId, patch.custom, cur.custom)
   if (patch.resolution) {
     const [st] = await d.query<{ category: string }>('select category from statuses where id = $1', [patch.statusId ?? cur.statusId])
@@ -238,12 +239,20 @@ async function applyPatch(d: Db, me: Me, cur: any, patch: z.infer<typeof patchBo
   return (await d.query<any>(`${ISSUE_ROW} where i.id = $1`, [cur.id]))[0]
 }
 
+/** Is this one of the project's work types? (400 otherwise) */
+async function checkType(d: Db, projectId: string, type: string | undefined) {
+  if (type === undefined) return
+  if (!(await d.query('select 1 from work_types where project_id = $1 and key = $2', [projectId, type])).length)
+    throw new HttpError(400, 'That work type isn’t in this project', { type: 'Unknown work type' })
+}
+
 /** Create one issue (key, rank and start status from the project unless given), with its first history entry, the
  *  assignee's notification and "created" automation. Returns its id. Shared by create and clone. */
 async function insertIssue(d: Db, me: Me, projectId: string, b: Record<string, any>, created = 'Created this work item') {
   const [pr] = await d.query<{ leadId: string | null }>('select lead_id from projects where id = $1', [projectId])
   if (b.assigneeId && !(await canJoinWork(d, projectId, b.assigneeId))) throw new HttpError(400, 'The assignee must be a member of this project')
   if (b.custom) await checkCustom(d, projectId, b.custom)
+  await checkType(d, projectId, b.type)
   let statusId = b.statusId
   if (!statusId) {
     const [s] = await d.query<{ id: string }>('select id from statuses where project_id = $1 order by position limit 1', [projectId])

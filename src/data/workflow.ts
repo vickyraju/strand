@@ -112,12 +112,14 @@ export function connect(w: Workflow, fromId: string, toId: string, name?: string
   return { ...addTransition(w, { name: name?.trim() || target.name, from: [fromId], to: toId }), created: true }
 }
 
-export function updateTransition(w: Workflow, id: string, patch: Partial<Pick<Transition, 'name' | 'from' | 'to' | 'rules'>>): Workflow {
+export function updateTransition(w: Workflow, id: string, patch: Partial<Pick<Transition, 'name' | 'from' | 'to' | 'rules' | 'types'>>): Workflow {
   const old = w.transitions.find(t => t.id === id)
   if (!old) return w
   const to = patch.to !== undefined ? patch.to : old.to
   const next: Transition = { ...old, name: patch.name ?? old.name, to, from: cleanFrom(patch.from ?? old.from, to), ...(patch.rules !== undefined ? { rules: patch.rules } : {}) }
-  if (next.name === old.name && next.to === old.to && JSON.stringify(next.from) === JSON.stringify(old.from) && JSON.stringify(next.rules) === JSON.stringify(old.rules)) return w
+  if ('types' in patch) { if (patch.types?.length) next.types = patch.types; else delete next.types }
+  if (next.name === old.name && next.to === old.to && JSON.stringify(next.from) === JSON.stringify(old.from) && JSON.stringify(next.rules) === JSON.stringify(old.rules)
+    && JSON.stringify(next.types) === JSON.stringify(old.types)) return w
   return { ...w, transitions: w.transitions.map(t => (t.id === id ? next : t)) }
 }
 

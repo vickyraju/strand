@@ -1204,6 +1204,46 @@ test('clone: a copy in the start status linked to the original, with its childre
   assert.equal((await call('POST', `/api/v1/issues/${src.key}/clone`, {}, 'cln.viewer@x.com')).status, 403)
 })
 
+test('work types: the built-in four, renamed per project; added types; a workflow per type; removing one moves its items', { skip }, async () => {
+  const p = (await call('POST', '/api/v1/projects', { name: 'Typed', key: 'TYP', template: 'kanban' })).body
+  const [todo, doing, done] = [p.statuses[0], p.statuses[1], p.statuses.find((s: any) => s.category === 'done')]
+  assert.deepEqual(p.types.map((t: any) => [t.key, t.name]), [['epic', 'Epic'], ['story', 'Story'], ['task', 'Task'], ['bug', 'Bug']])
+  // rename a built-in (this project only); add a type; a duplicate name is refused
+  assert.equal((await call('PATCH', '/api/v1/projects/TYP/types/story', { name: 'User story' })).body.name, 'User story')
+  const inc = await call('POST', '/api/v1/projects/TYP/types', { name: 'Incident', color: '#B91C1C', icon: 'shield' })
+  assert.equal(inc.status, 201); assert.match(inc.body.key, /^t-/)
+  assert.equal((await call('POST', '/api/v1/projects/TYP/types', { name: 'incident', color: '#B91C1C', icon: 'shield' })).status, 409)
+  // items may be of the project's types only
+  const i = (await call('POST', '/api/v1/projects/TYP/issues', { title: 'Outage', type: inc.body.key })).body
+  assert.equal(i.type, inc.body.key)
+  assert.equal((await call('POST', '/api/v1/projects/TYP/issues', { title: 'x', type: 'nonsense' })).status, 400)
+  assert.equal((await call('PATCH', `/api/v1/issues/${i.key}`, { type: 'feature' })).status, 400)
+  // the CSV export shows the type's name
+  const csv = (await app.inject({ method: 'GET', url: `/api/v1/search/export.csv?project=${p.id}`, headers: { 'x-dev-user': 'owner@x.com' } })).body
+  assert.match(csv, /Incident/)
+  // a workflow per type: incidents go To do -> Done directly; everything else goes through In progress
+  for (const t of p.transitions) await call('DELETE', `/api/v1/projects/TYP/transitions/${t.id}`)
+  await call('POST', '/api/v1/projects/TYP/transitions', { name: 'Start', fromIds: [todo.id], toId: doing.id })
+  await call('POST', '/api/v1/projects/TYP/transitions', { name: 'Finish', fromIds: [doing.id], toId: done.id })
+  await call('POST', '/api/v1/projects/TYP/transitions', { name: 'Resolve', fromIds: [todo.id], toId: done.id, typeKeys: [inc.body.key] })
+  const task = (await call('POST', '/api/v1/projects/TYP/issues', { title: 'Plain task' })).body
+  assert.deepEqual((await call('GET', `/api/v1/issues/${i.key}/transitions`)).body.map((t: any) => t.name).sort(), ['Resolve', 'Start'])
+  assert.deepEqual((await call('GET', `/api/v1/issues/${task.key}/transitions`)).body.map((t: any) => t.name), ['Start'])
+  assert.equal((await call('PATCH', `/api/v1/issues/${task.key}`, { statusId: done.id })).status, 409)
+  assert.equal((await call('PATCH', `/api/v1/issues/${i.key}`, { statusId: done.id })).status, 200)
+  // built-ins stay; removing an added type in use needs a type to move its items to, and the history says so
+  assert.equal((await call('DELETE', '/api/v1/projects/TYP/types/bug')).status, 409)
+  assert.equal((await call('DELETE', `/api/v1/projects/TYP/types/${inc.body.key}`)).status, 409)
+  assert.equal((await call('DELETE', `/api/v1/projects/TYP/types/${inc.body.key}?moveTo=bug`)).status, 204)
+  assert.equal((await call('GET', `/api/v1/issues/${i.key}`)).body.type, 'bug')
+  const after = (await call('GET', '/api/v1/projects/TYP')).body
+  assert.equal(after.transitions.find((t: any) => t.name === 'Resolve').typeKeys, null)   // its only type went: for every type again
+  assert.ok((await pool.query(`select 1 from activity where issue_id = $1 and field = 'type' and to_value = 'bug'`, [i.id])).rows.length)
+  // members can't change the types
+  await join('TYP', 'typ.member@x.com')
+  assert.equal((await call('POST', '/api/v1/projects/TYP/types', { name: 'Spike', color: '#000000', icon: 'flag' }, 'typ.member@x.com')).status, 403)
+})
+
 test('report data: every live item and every status change in order, for people who can see the project', { skip }, async () => {
   const p = (await call('POST', '/api/v1/projects', { name: 'Reports', key: 'REP', template: 'kanban' })).body
   const [a, b, c] = p.statuses
@@ -1761,6 +1801,9 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     'GET /admin/rate-limits/limited': ['gadmin', '/admin/rate-limits/limited'],
     'GET /settings/public': ['any', '/settings/public'],
     'GET /link-types': ['any', '/link-types'],
+    'POST /projects/{key}/types': ['padmin', `/projects/${K}/types`, { name: 'Matrix type', color: '#123456', icon: 'flag' }],
+    'PATCH /projects/{key}/types/{typeKey}': ['padmin', `/projects/${K}/types/story`, { color: '#16A34A' }],
+    'DELETE /projects/{key}/types/{typeKey}': ['padmin', `/projects/${K}/types/t-nothinghere`],
     'POST /admin/link-types': ['gadmin', '/admin/link-types', { name: 'Matrix link', outward: 'x', inward: 'y' }],
     'PATCH /admin/link-types/{id}': ['gadmin', '/admin/link-types/relates', { outward: 'relates to' }],
     'DELETE /admin/link-types/{id}': ['gadmin', '/admin/link-types/nothing-here'],

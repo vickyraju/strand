@@ -1338,3 +1338,8 @@ h2.empty-title, h2.section-title, h2.side-title { margin: 0 }
 .wf-loops { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; max-width: 70%; padding: 6px 8px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow-sm) }
 .wf-loop { height: 24px; padding: 0 10px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); font-size: 12px; cursor: pointer }
 .wf-loop:hover, .wf-loop.on { border-color: var(--brand); color: var(--brand) }
+
+/* Work type icon choice */
+.icon-choices { display: flex; flex-wrap: wrap; gap: 4px }
+.icon-choice { width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); cursor: pointer }
+.icon-choice.on { border-color: transparent }

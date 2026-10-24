@@ -14,7 +14,7 @@ import { canEdit } from '../data/access'
 import { RESOLUTIONS } from '../data/reducer'
 import { href, navigate } from '../router'
 import {
-  Picker, Menu, TypeIcon, PriorityIcon, Avatar, Modal, TYPE_META, PRIORITY_META, StatusLozenge,
+  Picker, Menu, TypeIcon, PriorityIcon, Avatar, Modal, typeMeta, PRIORITY_META, StatusLozenge,
   priorityOptions, typeOptions, plural, formatDate,
 } from './ui'
 import { UserPicker } from './UserPicker'
@@ -391,8 +391,8 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
               </Field>
             )}
             <Field label="Type">
-              <Picker value={issue.type} options={typeOptions(!issue.parentId && children.every(c => c.type !== 'epic'))} onChange={type => set({ type })} className="field-btn" title="Type"
-                trigger={<><TypeIcon type={issue.type} size={14} />{TYPE_META[issue.type].label}</>} />
+              <Picker value={issue.type} options={typeOptions(project, !issue.parentId && children.every(c => c.type !== 'epic'))} onChange={type => set({ type })} className="field-btn" title="Type"
+                trigger={<><TypeIcon type={issue.type} size={14} project={project} />{typeMeta(issue.type, project).label}</>} />
             </Field>
             {issue.type !== 'epic' && (
               <Field label="Parent">
@@ -456,7 +456,7 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
       {linking && <LinkDialog issue={issue} onClose={() => setLinking(false)} />}
       {cloning && <CloneDialog issue={issue} onClose={() => setCloning(false)} />}
       {templating && (
-        <TemplateDialog
+        <TemplateDialog project={project}
           template={{ ...blankTemplate(), name: issue.title, type: issue.type, description: issue.description, priority: issue.priority, labels: issue.labels, estimate: issue.estimate }}
           onClose={() => setTemplating(false)}
           onSave={t => { dispatch({ type: 'updateProject', id: project.id, patch: { templates: [...project.templates, t] } }); toast(`Saved template ${t.name}`); setTemplating(false) }} />

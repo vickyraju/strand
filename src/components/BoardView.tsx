@@ -62,7 +62,7 @@ export default function BoardView({ project }: { project: Project }) {
   const people = [...new Set(projectItems.map(i => i.assigneeId).filter((x): x is string => !!x))]
     .map(id => userOf(state, id)!).filter(Boolean)
     .sort((a, b) => (a.id === state.me?.id ? -1 : b.id === state.me?.id ? 1 : a.name.localeCompare(b.name)))
-  const filters = useFilters(people)
+  const filters = useFilters(people, project)
 
   const all = projectItems.filter(i => !sprint || i.sprintId === sprint.id)
   const issues = filters.apply(all).sort((a, b) => a.rank - b.rank)

@@ -1,5 +1,5 @@
 // CSV import: parse (RFC 4180: quoted fields, escaped quotes, newlines inside quotes) and map rows to work items.
-import type { IssueType, NewIssue, Priority, Project, User } from './reducer.ts'
+import { typesOf, type IssueType, type NewIssue, type Priority, type Project, type User } from './reducer.ts'
 
 export function parseCsv(text: string): string[][] {
   const rows: string[][] = []
@@ -85,7 +85,7 @@ export function mapRows(rows: string[][], mapping: Partial<Record<ImportField, n
         projectId: project.id,
         title: get(r, 'title'),
         description: get(r, 'description'),
-        type: TYPE[get(r, 'type').toLowerCase()] ?? 'task',
+        type: typesOf(project).find(t => t.name.toLowerCase() === get(r, 'type').toLowerCase())?.key ?? TYPE[get(r, 'type').toLowerCase()] ?? 'task',
         status: status?.id ?? project.statuses[0].id,
         priority: PRIORITY[get(r, 'priority').toLowerCase()] ?? 'medium',
         assigneeId: assignee?.id,

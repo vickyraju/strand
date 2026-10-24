@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
+import WorkTypesPanel from './WorkTypesPanel'
 import { Plus, Star, FolderPlus, Columns2, List, ListChecks, Settings, Gauge, BarChart3, GanttChart, CalendarDays, Rocket, Check, GitBranch, Info, Zap, Users } from 'lucide-react'
 import { useStore, userOf, isDone, timeAgo, PROJECT_COLORS, type Project, type ProjectPatch } from '../data/store'
 import { useApp } from '../appContext'
@@ -259,7 +260,7 @@ function ListTab({ project }: { project: Project }) {
   const [groupBy, setGroupBy] = useState<TableGroup>(() => (localStorage.getItem(`forge:list-group:${project.id}`) as TableGroup) ?? 'status')
   const all = state.issues.filter(i => i.projectId === project.id)
   const people = [...new Set(all.map(i => i.assigneeId).filter((x): x is string => !!x))].map(id => userOf(state, id)!).filter(Boolean)
-  const filters = useFilters(people)
+  const filters = useFilters(people, project)
 
   if (all.length === 0) {
     return (
@@ -354,6 +355,7 @@ function ProjectSettings({ project }: { project: Project }) {
         </div>
       </section>
 
+      <WorkTypesPanel project={project} />
       <FieldsPanel project={project} />
       <TemplatesPanel project={project} />
       <ImportPanel project={project} />

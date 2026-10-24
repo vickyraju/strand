@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Plus, ArrowLeft, AlertTriangle, Workflow as WorkflowIcon, List as ListIcon, Undo2, Redo2, Network, PanelRightClose, PanelRightOpen } from 'lucide-react'
-import { useStore, type Project } from '../data/store'
+import { useStore, typesOf, type Project } from '../data/store'
 import { useApp } from '../appContext'
 import { Checkbox, Modal } from './ui'
 import {
@@ -201,7 +201,7 @@ export default function WorkflowBuilder({ project }: { project: Project }) {
             <WorkflowCanvas workflow={workflow} usage={counts} selection={activeSelection} showLabels={showLabels} onSelect={onSelect} onMoveNodes={onMoveNodes}
               onConnectStatuses={connectStatuses} onReconnect={reconnect} onDelete={deleteSelection} focus={focus} />
           ) : (
-            <TextView workflow={workflow} counts={counts} selection={activeSelection} onSelect={onSelect} onMoveStatus={moveInOrder} />
+            <TextView workflow={workflow} counts={counts} selection={activeSelection} onSelect={onSelect} onMoveStatus={moveInOrder} typeName={k => typesOf(project).find(t => t.key === k)?.name ?? 'a removed type'} />
           )}
         </div>
 
@@ -213,7 +213,7 @@ export default function WorkflowBuilder({ project }: { project: Project }) {
               onSetStart={() => edit(w => setStart(w, selStatus.id))}
               onDelete={() => requestDeleteStatus(selStatus.id)} />
           ) : selTransition ? (
-            <TransitionPanel key={selTransition.id} transition={selTransition} statuses={workflow.statuses} fields={project.fields} projectKey={project.key}
+            <TransitionPanel key={selTransition.id} transition={selTransition} statuses={workflow.statuses} fields={project.fields} types={typesOf(project)} projectKey={project.key}
               onChange={(patch, key) => edit(w => updateTransition(w, selTransition.id, patch), key)}
               onDelete={deleteSelection} />
           ) : <EmptyPanel />}

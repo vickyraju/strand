@@ -1388,6 +1388,14 @@
                             "type": "object",
                             "additionalProperties": {},
                             "description": "restrict, validate, screen, actions"
+                          },
+                          "typeKeys": {
+                            "nullable": true,
+                            "description": "Work types this transition is for (null: every type)",
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
                           }
                         },
                         "required": [
@@ -1396,7 +1404,50 @@
                           "name",
                           "fromIds",
                           "toId",
-                          "rules"
+                          "rules",
+                          "typeKeys"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "types": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "description": "uuid"
+                          },
+                          "projectId": {
+                            "type": "string",
+                            "description": "uuid"
+                          },
+                          "key": {
+                            "type": "string",
+                            "description": "What an item's `type` holds"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "color": {
+                            "type": "string"
+                          },
+                          "icon": {
+                            "type": "string"
+                          },
+                          "position": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "projectId",
+                          "key",
+                          "name",
+                          "color",
+                          "icon",
+                          "position"
                         ],
                         "additionalProperties": false
                       }
@@ -1707,6 +1758,7 @@
                     "role",
                     "statuses",
                     "transitions",
+                    "types",
                     "fields",
                     "templates",
                     "rules",
@@ -2215,6 +2267,14 @@
                             "type": "object",
                             "additionalProperties": {},
                             "description": "restrict, validate, screen, actions"
+                          },
+                          "typeKeys": {
+                            "nullable": true,
+                            "description": "Work types this transition is for (null: every type)",
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
                           }
                         },
                         "required": [
@@ -2223,7 +2283,50 @@
                           "name",
                           "fromIds",
                           "toId",
-                          "rules"
+                          "rules",
+                          "typeKeys"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "types": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "description": "uuid"
+                          },
+                          "projectId": {
+                            "type": "string",
+                            "description": "uuid"
+                          },
+                          "key": {
+                            "type": "string",
+                            "description": "What an item's `type` holds"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "color": {
+                            "type": "string"
+                          },
+                          "icon": {
+                            "type": "string"
+                          },
+                          "position": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "projectId",
+                          "key",
+                          "name",
+                          "color",
+                          "icon",
+                          "position"
                         ],
                         "additionalProperties": false
                       }
@@ -2534,6 +2637,7 @@
                     "role",
                     "statuses",
                     "transitions",
+                    "types",
                     "fields",
                     "templates",
                     "rules",
@@ -2804,6 +2908,14 @@
                             "type": "object",
                             "additionalProperties": {},
                             "description": "restrict, validate, screen, actions"
+                          },
+                          "typeKeys": {
+                            "nullable": true,
+                            "description": "Work types this transition is for (null: every type)",
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
                           }
                         },
                         "required": [
@@ -2812,7 +2924,50 @@
                           "name",
                           "fromIds",
                           "toId",
-                          "rules"
+                          "rules",
+                          "typeKeys"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "types": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "description": "uuid"
+                          },
+                          "projectId": {
+                            "type": "string",
+                            "description": "uuid"
+                          },
+                          "key": {
+                            "type": "string",
+                            "description": "What an item's `type` holds"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "color": {
+                            "type": "string"
+                          },
+                          "icon": {
+                            "type": "string"
+                          },
+                          "position": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "projectId",
+                          "key",
+                          "name",
+                          "color",
+                          "icon",
+                          "position"
                         ],
                         "additionalProperties": false
                       }
@@ -3123,6 +3278,7 @@
                     "role",
                     "statuses",
                     "transitions",
+                    "types",
                     "fields",
                     "templates",
                     "rules",
@@ -3393,6 +3549,14 @@
                             "type": "object",
                             "additionalProperties": {},
                             "description": "restrict, validate, screen, actions"
+                          },
+                          "typeKeys": {
+                            "nullable": true,
+                            "description": "Work types this transition is for (null: every type)",
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
                           }
                         },
                         "required": [
@@ -3401,7 +3565,50 @@
                           "name",
                           "fromIds",
                           "toId",
-                          "rules"
+                          "rules",
+                          "typeKeys"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "types": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "description": "uuid"
+                          },
+                          "projectId": {
+                            "type": "string",
+                            "description": "uuid"
+                          },
+                          "key": {
+                            "type": "string",
+                            "description": "What an item's `type` holds"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "color": {
+                            "type": "string"
+                          },
+                          "icon": {
+                            "type": "string"
+                          },
+                          "position": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "projectId",
+                          "key",
+                          "name",
+                          "color",
+                          "icon",
+                          "position"
                         ],
                         "additionalProperties": false
                       }
@@ -3712,6 +3919,7 @@
                     "role",
                     "statuses",
                     "transitions",
+                    "types",
                     "fields",
                     "templates",
                     "rules",
@@ -4018,6 +4226,14 @@
                             "type": "object",
                             "additionalProperties": {},
                             "description": "restrict, validate, screen, actions"
+                          },
+                          "typeKeys": {
+                            "nullable": true,
+                            "description": "Work types this transition is for (null: every type)",
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
                           }
                         },
                         "required": [
@@ -4026,7 +4242,50 @@
                           "name",
                           "fromIds",
                           "toId",
-                          "rules"
+                          "rules",
+                          "typeKeys"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "types": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "description": "uuid"
+                          },
+                          "projectId": {
+                            "type": "string",
+                            "description": "uuid"
+                          },
+                          "key": {
+                            "type": "string",
+                            "description": "What an item's `type` holds"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "color": {
+                            "type": "string"
+                          },
+                          "icon": {
+                            "type": "string"
+                          },
+                          "position": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "projectId",
+                          "key",
+                          "name",
+                          "color",
+                          "icon",
+                          "position"
                         ],
                         "additionalProperties": false
                       }
@@ -4337,6 +4596,7 @@
                     "role",
                     "statuses",
                     "transitions",
+                    "types",
                     "fields",
                     "templates",
                     "rules",
@@ -5652,6 +5912,16 @@
                     },
                     "description": "Restrict, validate, screen and actions"
                   },
+                  "typeKeys": {
+                    "nullable": true,
+                    "description": "Work types this transition is for (Jira's workflow per work type); null: every type",
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 40
+                    }
+                  },
                   "id": {
                     "description": "Client-chosen id",
                     "type": "string",
@@ -5715,6 +5985,14 @@
                       "type": "object",
                       "additionalProperties": {},
                       "description": "restrict, validate, screen, actions"
+                    },
+                    "typeKeys": {
+                      "nullable": true,
+                      "description": "Work types this transition is for (null: every type)",
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
                     }
                   },
                   "required": [
@@ -5723,7 +6001,8 @@
                     "name",
                     "fromIds",
                     "toId",
-                    "rules"
+                    "rules",
+                    "typeKeys"
                   ],
                   "additionalProperties": false
                 }
@@ -6067,6 +6346,16 @@
                       }
                     },
                     "description": "Restrict, validate, screen and actions"
+                  },
+                  "typeKeys": {
+                    "nullable": true,
+                    "description": "Work types this transition is for (Jira's workflow per work type); null: every type",
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 40
+                    }
                   }
                 }
               }
@@ -6131,6 +6420,14 @@
                       "type": "object",
                       "additionalProperties": {},
                       "description": "restrict, validate, screen, actions"
+                    },
+                    "typeKeys": {
+                      "nullable": true,
+                      "description": "Work types this transition is for (null: every type)",
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
                     }
                   },
                   "required": [
@@ -6139,7 +6436,8 @@
                     "name",
                     "fromIds",
                     "toId",
-                    "rules"
+                    "rules",
+                    "typeKeys"
                   ],
                   "additionalProperties": false
                 }
@@ -6874,12 +7172,8 @@
                   },
                   "type": {
                     "type": "string",
-                    "enum": [
-                      "epic",
-                      "story",
-                      "task",
-                      "bug"
-                    ]
+                    "minLength": 1,
+                    "maxLength": 40
                   },
                   "title": {
                     "type": "string"
@@ -7096,12 +7390,8 @@
                   },
                   "type": {
                     "type": "string",
-                    "enum": [
-                      "epic",
-                      "story",
-                      "task",
-                      "bug"
-                    ]
+                    "minLength": 1,
+                    "maxLength": 40
                   },
                   "title": {
                     "type": "string"
@@ -8392,6 +8682,513 @@
             },
             "in": "path",
             "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{key}/types": {
+      "post": {
+        "summary": "Add a work type (project admins)",
+        "tags": [
+          "Project settings"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "color": {
+                    "type": "string",
+                    "pattern": "^#[0-9a-fA-F]{6}$"
+                  },
+                  "icon": {
+                    "type": "string",
+                    "enum": [
+                      "zap",
+                      "bookmark",
+                      "check",
+                      "bug",
+                      "flag",
+                      "star",
+                      "wrench",
+                      "book",
+                      "shield",
+                      "lightbulb",
+                      "rocket",
+                      "circle"
+                    ]
+                  }
+                },
+                "required": [
+                  "name",
+                  "color",
+                  "icon"
+                ]
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "description": "Project key (PAY) or id (uuid)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "projectId": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "key": {
+                      "type": "string",
+                      "description": "What an item's `type` holds"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "color": {
+                      "type": "string"
+                    },
+                    "icon": {
+                      "type": "string"
+                    },
+                    "position": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "projectId",
+                    "key",
+                    "name",
+                    "color",
+                    "icon",
+                    "position"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{key}/types/{typeKey}": {
+      "patch": {
+        "summary": "Rename or restyle a work type (project admins)",
+        "tags": [
+          "Project settings"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "color": {
+                    "type": "string",
+                    "pattern": "^#[0-9a-fA-F]{6}$"
+                  },
+                  "icon": {
+                    "type": "string",
+                    "enum": [
+                      "zap",
+                      "bookmark",
+                      "check",
+                      "bug",
+                      "flag",
+                      "star",
+                      "wrench",
+                      "book",
+                      "shield",
+                      "lightbulb",
+                      "rocket",
+                      "circle"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "description": "Project key (PAY) or id (uuid)"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 40
+            },
+            "in": "path",
+            "name": "typeKey",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "projectId": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "key": {
+                      "type": "string",
+                      "description": "What an item's `type` holds"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "color": {
+                      "type": "string"
+                    },
+                    "icon": {
+                      "type": "string"
+                    },
+                    "position": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "projectId",
+                    "key",
+                    "name",
+                    "color",
+                    "icon",
+                    "position"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Remove a work type the project added (project admins). Its items, and its templates, move to `moveTo`",
+        "tags": [
+          "Project settings"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 40
+            },
+            "in": "query",
+            "name": "moveTo",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "description": "Project key (PAY) or id (uuid)"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 40
+            },
+            "in": "path",
+            "name": "typeKey",
             "required": true
           }
         ],
@@ -11144,12 +11941,7 @@
                           },
                           "type": {
                             "type": "string",
-                            "enum": [
-                              "epic",
-                              "story",
-                              "task",
-                              "bug"
-                            ]
+                            "description": "Work type key"
                           },
                           "title": {
                             "type": "string"
@@ -11454,16 +12246,13 @@
           {
             "schema": {
               "type": "string",
-              "enum": [
-                "epic",
-                "story",
-                "task",
-                "bug"
-              ]
+              "minLength": 1,
+              "maxLength": 40
             },
             "in": "query",
             "name": "type",
-            "required": false
+            "required": false,
+            "description": "A work type key of the project (GET /projects/:key: types): epic, story, task, bug, or one the project added"
           },
           {
             "schema": {
@@ -11566,12 +12355,7 @@
                           },
                           "type": {
                             "type": "string",
-                            "enum": [
-                              "epic",
-                              "story",
-                              "task",
-                              "bug"
-                            ]
+                            "description": "Work type key"
                           },
                           "title": {
                             "type": "string"
@@ -11839,12 +12623,9 @@
                   },
                   "type": {
                     "type": "string",
-                    "enum": [
-                      "epic",
-                      "story",
-                      "task",
-                      "bug"
-                    ]
+                    "minLength": 1,
+                    "maxLength": 40,
+                    "description": "A work type key of the project (GET /projects/:key: types): epic, story, task, bug, or one the project added"
                   },
                   "priority": {
                     "type": "string",
@@ -11990,12 +12771,7 @@
                     },
                     "type": {
                       "type": "string",
-                      "enum": [
-                        "epic",
-                        "story",
-                        "task",
-                        "bug"
-                      ]
+                      "description": "Work type key"
                     },
                     "title": {
                       "type": "string"
@@ -12318,12 +13094,7 @@
                     },
                     "type": {
                       "type": "string",
-                      "enum": [
-                        "epic",
-                        "story",
-                        "task",
-                        "bug"
-                      ]
+                      "description": "Work type key"
                     },
                     "title": {
                       "type": "string"
@@ -12608,12 +13379,7 @@
                     },
                     "type": {
                       "type": "string",
-                      "enum": [
-                        "epic",
-                        "story",
-                        "task",
-                        "bug"
-                      ]
+                      "description": "Work type key"
                     },
                     "title": {
                       "type": "string"
@@ -12971,12 +13737,7 @@
                           },
                           "type": {
                             "type": "string",
-                            "enum": [
-                              "epic",
-                              "story",
-                              "task",
-                              "bug"
-                            ]
+                            "description": "Work type key"
                           },
                           "title": {
                             "type": "string"
@@ -13263,12 +14024,9 @@
                   },
                   "type": {
                     "type": "string",
-                    "enum": [
-                      "epic",
-                      "story",
-                      "task",
-                      "bug"
-                    ]
+                    "minLength": 1,
+                    "maxLength": 40,
+                    "description": "A work type key of the project (GET /projects/:key: types): epic, story, task, bug, or one the project added"
                   },
                   "priority": {
                     "type": "string",
@@ -13424,12 +14182,7 @@
                     },
                     "type": {
                       "type": "string",
-                      "enum": [
-                        "epic",
-                        "story",
-                        "task",
-                        "bug"
-                      ]
+                      "description": "Work type key"
                     },
                     "title": {
                       "type": "string"
@@ -14500,12 +15253,9 @@
                       },
                       "type": {
                         "type": "string",
-                        "enum": [
-                          "epic",
-                          "story",
-                          "task",
-                          "bug"
-                        ]
+                        "minLength": 1,
+                        "maxLength": 40,
+                        "description": "A work type key of the project (GET /projects/:key: types): epic, story, task, bug, or one the project added"
                       },
                       "priority": {
                         "type": "string",
@@ -14653,12 +15403,7 @@
                     },
                     "type": {
                       "type": "string",
-                      "enum": [
-                        "epic",
-                        "story",
-                        "task",
-                        "bug"
-                      ]
+                      "description": "Work type key"
                     },
                     "title": {
                       "type": "string"
@@ -14927,12 +15672,9 @@
                       },
                       "type": {
                         "type": "string",
-                        "enum": [
-                          "epic",
-                          "story",
-                          "task",
-                          "bug"
-                        ]
+                        "minLength": 1,
+                        "maxLength": 40,
+                        "description": "A work type key of the project (GET /projects/:key: types): epic, story, task, bug, or one the project added"
                       },
                       "priority": {
                         "type": "string",
@@ -15073,12 +15815,7 @@
                           },
                           "type": {
                             "type": "string",
-                            "enum": [
-                              "epic",
-                              "story",
-                              "task",
-                              "bug"
-                            ]
+                            "description": "Work type key"
                           },
                           "title": {
                             "type": "string"
@@ -15735,12 +16472,7 @@
                     },
                     "type": {
                       "type": "string",
-                      "enum": [
-                        "epic",
-                        "story",
-                        "task",
-                        "bug"
-                      ]
+                      "description": "Work type key"
                     },
                     "title": {
                       "type": "string"

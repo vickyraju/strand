@@ -3,7 +3,7 @@ import { Plus, Trash2, FileText, Upload, AlertTriangle } from 'lucide-react'
 import { useStore, uid, type ItemTemplate, type Project, type IssueType, type Priority } from '../data/store'
 import { parseCsv, guessMapping, mapRows, IMPORT_FIELDS, type ImportField } from '../data/csv'
 import { useApp } from '../appContext'
-import { Modal, TypeIcon, TYPE_META, PRIORITY_META, PRIORITIES, plural } from './ui'
+import { Modal, TypeIcon, typeMeta, typeList, PRIORITY_META, PRIORITIES, plural } from './ui'
 
 // ── Templates ──────────────────────────────────────────────
 
@@ -29,7 +29,7 @@ export function TemplatesPanel({ project }: { project: Project }) {
               <TypeIcon type={t.type} size={18} />
               <div className="person-text">
                 <span className="strong">{t.name}</span>
-                <span className="muted sm">{TYPE_META[t.type].label} · {PRIORITY_META[t.priority].label}{t.labels.length ? ` · ${t.labels.join(', ')}` : ''}</span>
+                <span className="muted sm">{typeMeta(t.type, project).label} · {PRIORITY_META[t.priority].label}{t.labels.length ? ` · ${t.labels.join(', ')}` : ''}</span>
               </div>
               <button className="btn btn-ghost btn-sm" onClick={() => setEditing(t)}>Edit</button>
               <button className="icon-btn" onClick={() => { setTemplates(project.templates.filter(x => x.id !== t.id)); toast(`Deleted ${t.name}`) }} aria-label={`Delete ${t.name}`} title="Delete"><Trash2 size={14} /></button>
@@ -38,7 +38,7 @@ export function TemplatesPanel({ project }: { project: Project }) {
         </div>
       )}
       {editing && (
-        <TemplateDialog template={editing} onClose={() => setEditing(null)} onSave={t => {
+        <TemplateDialog template={editing} project={project} onClose={() => setEditing(null)} onSave={t => {
           setTemplates(project.templates.some(x => x.id === t.id) ? project.templates.map(x => x.id === t.id ? t : x) : [...project.templates, t])
           toast(`Saved ${t.name}`); setEditing(null)
         }} />
@@ -49,7 +49,7 @@ export function TemplatesPanel({ project }: { project: Project }) {
 
 export const blankTemplate = (): ItemTemplate => ({ id: uid(), name: '', type: 'task', title: '', description: '', priority: 'medium', labels: [] })
 
-export function TemplateDialog({ template, onClose, onSave }: { template: ItemTemplate; onClose: () => void; onSave: (t: ItemTemplate) => void }) {
+export function TemplateDialog({ template, project, onClose, onSave }: { template: ItemTemplate; project: Project; onClose: () => void; onSave: (t: ItemTemplate) => void }) {
   const [t, setT] = useState(template)
   const [labels, setLabels] = useState(template.labels.join(', '))
   return (
@@ -64,7 +64,7 @@ export function TemplateDialog({ template, onClose, onSave }: { template: ItemTe
         <div style={{ flex: 1 }}>
           <label className="label" htmlFor="tp-type">Type</label>
           <select id="tp-type" className="input" value={t.type} onChange={e => setT({ ...t, type: e.target.value as IssueType })}>
-            {(Object.keys(TYPE_META) as IssueType[]).map(k => <option key={k} value={k}>{TYPE_META[k].label}</option>)}
+            {typeList(project).map(k => <option key={k.key} value={k.key}>{k.name}</option>)}
           </select>
         </div>
         <div style={{ flex: 1 }}>

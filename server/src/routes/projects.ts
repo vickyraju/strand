@@ -39,7 +39,7 @@ async function requireProjectAdmin(_req: FastifyRequest, p: { role: ProjectRole 
 // Child collections of a project. `json` columns are stored as jsonb.
 const CHILD = {
   statuses:    { table: 'statuses',       cols: ['name', 'description', 'color', 'category', 'wipLimit', 'position'] },
-  transitions: { table: 'transitions',    cols: ['name', 'fromIds', 'toId', 'rules'], json: ['rules'] },
+  transitions: { table: 'transitions',    cols: ['name', 'fromIds', 'toId', 'rules', 'typeKeys'], json: ['rules'] },
   fields:      { table: 'field_defs',     cols: ['name', 'kind', 'options', 'position'] },
   templates:   { table: 'item_templates', cols: ['name', 'type', 'title', 'description', 'priority', 'labels', 'estimate'] },
   rules:       { table: 'rules',          cols: ['name', 'enabled', 'trigger', 'actions'], json: ['trigger', 'actions'] },
@@ -52,10 +52,11 @@ const childPatch = {
   transitions: z.object({
     name: z.string().min(1), fromIds: z.array(uuid).nullable().describe('null: from any status'),
     toId: uuid.nullable().describe('null: a loop, the item stays in its status'), rules: rulesSchema.describe('Restrict, validate, screen and actions'),
+    typeKeys: z.array(z.string().max(40)).min(1).nullable().describe('Work types this transition is for (Jira\'s workflow per work type); null: every type'),
   }).partial(),
   fields: z.object({ name: z.string().min(1), kind: z.enum(['text', 'number', 'select', 'date']), options: z.array(z.string()).nullable(), position: z.number().int() }).partial(),
   templates: z.object({
-    name: z.string().min(1), type: z.enum(['epic', 'story', 'task', 'bug']), title: z.string(), description: z.string(),
+    name: z.string().min(1), type: z.string().min(1).max(40), title: z.string(), description: z.string(),
     priority: z.enum(['urgent', 'high', 'medium', 'low', 'none']), labels: z.array(z.string()), estimate: z.number().nullable(),
   }).partial(),
   rules: z.object({
@@ -311,6 +312,69 @@ const plugin: FastifyPluginAsyncZod = async app => {
     })
   }
 
+  // ── Work types (Jira's issue types): the built-in four can be renamed and recoloured; a project can add its own,
+  // and removing one moves its items to another type ──
+  const ICONS = ['zap', 'bookmark', 'check', 'bug', 'flag', 'star', 'wrench', 'book', 'shield', 'lightbulb', 'rocket', 'circle'] as const
+  const typeBody = z.object({ name: z.string().trim().min(1).max(40), color, icon: z.enum(ICONS) })
+  const typeP = keyP.extend({ typeKey: z.string().max(40) })
+  app.post('/projects/:key/types', { schema: { tags: T.config, summary: 'Add a work type (project admins)', params: keyP, body: typeBody } }, async (req, reply) => {
+    const p = await projectByKey(db, req, req.params.key)
+    await requireProjectAdmin(req, p)
+    return tx(async d => {
+      if ((await d.query('select 1 from work_types where project_id = $1 and lower(name) = lower($2)', [p.id, req.body.name])).length)
+        throw new HttpError(409, 'A work type with that name already exists', { name: 'Already used' })
+      const key = 't-' + crypto.randomUUID().replace(/-/g, '').slice(0, 10)
+      const [row] = await d.query(`insert into work_types (project_id, key, name, color, icon, position)
+        values ($1, $2, $3, $4, $5, (select coalesce(max(position), 0) + 1 from work_types where project_id = $1)) returning *`, [p.id, key, req.body.name, req.body.color, req.body.icon])
+      await audit(d, req, { action: 'project.work_type.created', type: 'work type', name: req.body.name, project: p, after: req.body })
+      reply.code(201)
+      return row
+    })
+  })
+  app.patch('/projects/:key/types/:typeKey', { schema: { tags: T.config, summary: 'Rename or restyle a work type (project admins)', params: typeP, body: typeBody.partial() } }, async req => {
+    const p = await projectByKey(db, req, req.params.key)
+    await requireProjectAdmin(req, p)
+    return tx(async d => {
+      const [before] = await d.query<any>('select * from work_types where project_id = $1 and key = $2 for update', [p.id, req.params.typeKey])
+      if (!before) throw new HttpError(404, 'No such work type')
+      if (req.body.name && (await d.query('select 1 from work_types where project_id = $1 and key <> $2 and lower(name) = lower($3)', [p.id, req.params.typeKey, req.body.name])).length)
+        throw new HttpError(409, 'A work type with that name already exists', { name: 'Already used' })
+      const next = { name: req.body.name ?? before.name, color: req.body.color ?? before.color, icon: req.body.icon ?? before.icon }
+      const [row] = await d.query('update work_types set name = $3, color = $4, icon = $5 where project_id = $1 and key = $2 returning *', [p.id, req.params.typeKey, next.name, next.color, next.icon])
+      const c = changes(before, next)
+      if (c.changed) await audit(d, req, { action: 'project.work_type.updated', type: 'work type', name: next.name, project: p, before: c.before, after: c.after })
+      return row
+    })
+  })
+  app.delete('/projects/:key/types/:typeKey', { schema: {
+    tags: T.config, summary: 'Remove a work type the project added (project admins). Its items, and its templates, move to `moveTo`', params: typeP,
+    querystring: z.object({ moveTo: z.string().max(40).optional() }),
+  } }, async (req, reply) => {
+    const p = await projectByKey(db, req, req.params.key)
+    await requireProjectAdmin(req, p)
+    await tx(async d => {
+      const [t] = await d.query<any>('select * from work_types where project_id = $1 and key = $2 for update', [p.id, req.params.typeKey])
+      if (!t) throw new HttpError(404, 'No such work type')
+      if (['epic', 'story', 'task', 'bug'].includes(t.key)) throw new HttpError(409, `${t.name} is built in: rename it instead`)
+      const [{ n }] = await d.query<{ n: number }>('select count(*)::int as n from issues where project_id = $1 and type = $2', [p.id, t.key]) as any
+      const moveTo = req.query.moveTo
+      if (n && !moveTo) throw new HttpError(409, `${n} work items are of this type: choose a type to move them to`)
+      if (moveTo && (moveTo === t.key || !(await d.query('select 1 from work_types where project_id = $1 and key = $2', [p.id, moveTo])).length))
+        throw new HttpError(400, 'Choose another work type of this project')
+      if (n) {
+        await d.query(`insert into activity (issue_id, actor_id, field, from_value, to_value, text)
+                       select id, $3, 'type', $2, $4, 'Changed type (its work type was removed)' from issues where project_id = $1 and type = $2`, [p.id, t.key, req.me.id, moveTo])
+        await d.query('update issues set type = $3, version = version + 1, updated_at = now() where project_id = $1 and type = $2', [p.id, t.key, moveTo])
+      }
+      await d.query('update item_templates set type = $3 where project_id = $1 and type = $2', [p.id, t.key, moveTo ?? 'task'])
+      // transitions limited to it no longer name it; one left for no type at all is for every type again
+      await d.query(`update transitions set type_keys = nullif(array_remove(type_keys, $2), '{}') where project_id = $1 and $2 = any(type_keys)`, [p.id, t.key])
+      await d.query('delete from work_types where id = $1', [t.id])
+      await audit(d, req, { action: 'project.work_type.deleted', type: 'work type', name: t.name, project: p, before: { name: t.name, items: n }, after: moveTo ? { movedTo: moveTo } : undefined })
+    })
+    reply.code(204).send()
+  })
+
   // Releasing a version moves its unfinished work to `moveTo` (or clears it)
   app.post('/projects/:key/releases/:id/release', { schema: {
     tags: T.config, summary: 'Mark a release shipped; unfinished work moves to another release', params: keyIdP,
@@ -405,11 +469,11 @@ export async function projectDetail(d: Db, ws: string, key: string, role: Projec
   const p = { id: project.id as string }
   const by = (table: string, order: string) => d.query(`select * from ${table} where project_id = $1 order by ${order}`, [p.id])
   // Sequential: `d` may be a single transaction connection, which can't run queries in parallel
-  const statuses = await by('statuses', 'position'), transitions = await by('transitions', 'id')
+  const statuses = await by('statuses', 'position'), transitions = await by('transitions', 'id'), types = await by('work_types', 'position, name')
   const fields = await by('field_defs', 'position'), templates = await by('item_templates', 'name')
   const rules = await by('rules', 'id'), releases = await by('releases', 'release_date nulls last, id')
   const sprints = await by('sprints', 'created_at')
-  return { ...project, role, statuses, transitions, fields, templates, rules, releases, sprints }
+  return { ...project, role, statuses, transitions, types, fields, templates, rules, releases, sprints }
 }
 
 export default plugin

@@ -1,21 +1,37 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import {
   Bookmark, Bug, SquareCheck, Zap, ChevronsUp, ChevronUp, Equal, ChevronDown, Minus, Check, UserRound, X,
+  Flag, Star, Wrench, BookOpen, Shield, Lightbulb, Rocket, Circle,
 } from 'lucide-react'
 import type { RuleCtx } from '../data/transitionRules'
-import { transitionsFrom, type IssueType, type Priority, type Project, type Status, type User } from '../data/store'
+import { useStore, transitionsFrom, typesOf, BUILTIN_TYPES, type IssueType, type Priority, type Project, type Status, type User } from '../data/store'
 
 // ── Type ───────────────────────────────────────────────────
 
-export const TYPE_META: Record<IssueType, { label: string; Icon: typeof Bug; color: string }> = {
-  epic:  { label: 'Epic',  Icon: Zap,         color: '#7C3AED' },
-  story: { label: 'Story', Icon: Bookmark,    color: '#16A34A' },
-  task:  { label: 'Task',  Icon: SquareCheck, color: '#2563EB' },
-  bug:   { label: 'Bug',   Icon: Bug,         color: '#DC2626' },
+/** Icons a work type can have. */
+export const TYPE_ICONS: Record<string, typeof Bug> = {
+  zap: Zap, bookmark: Bookmark, check: SquareCheck, bug: Bug, flag: Flag, star: Star, wrench: Wrench, book: BookOpen,
+  shield: Shield, lightbulb: Lightbulb, rocket: Rocket, circle: Circle,
 }
 
-export function TypeIcon({ type, size = 14 }: { type: IssueType; size?: number }) {
-  const { Icon, color, label } = TYPE_META[type]
+/** How a work type looks, from its project (renamed built-ins, added types) or, without one, any loaded project's. */
+export function typeMeta(type: IssueType, project?: Pick<Project, 'types'>, all: Pick<Project, 'types'>[] = []) {
+  const t = typesOf(project).find(x => x.key === type)
+    ?? (project ? undefined : all.flatMap(p => p.types ?? []).find(x => x.key === type))
+    ?? BUILTIN_TYPES.find(x => x.key === type)
+  return { label: t?.name ?? 'Work item', color: t?.color ?? '#78716C', Icon: TYPE_ICONS[t?.icon ?? ''] ?? Circle }
+}
+
+/** The work types to offer, from a project or (no project) every loaded project's, each once. */
+export function typeList(project?: Pick<Project, 'types'>, all: Pick<Project, 'types'>[] = []) {
+  if (project) return typesOf(project)
+  const seen = new Set<string>()
+  return [...BUILTIN_TYPES, ...all.flatMap(p => p.types ?? [])].filter(t => !seen.has(t.key) && !!seen.add(t.key))
+}
+
+export function TypeIcon({ type, size = 14, project }: { type: IssueType; size?: number; project?: Pick<Project, 'types'> }) {
+  const { state } = useStore()
+  const { Icon, color, label } = typeMeta(type, project ?? state.projects.find(p => p.types?.some(t => t.key === type)), state.projects)
   return (
     <span className="type-icon" role="img" style={{ background: color, width: size + 2, height: size + 2 }} title={label} aria-label={label}>
       <Icon size={size - 4} strokeWidth={2.5} color="#FFFFFF" />
@@ -369,9 +385,10 @@ export function statusOptions(project: Project, from?: string, ctx?: RuleCtx): P
 export const priorityOptions: PickerOption<Priority>[] =
   PRIORITIES.map(p => ({ value: p, label: PRIORITY_META[p].label, icon: <PriorityIcon priority={p} /> }))
 
-export const typeOptions = (allowEpic = true): PickerOption<IssueType>[] =>
-  (Object.keys(TYPE_META) as IssueType[]).filter(t => allowEpic || t !== 'epic')
-    .map(t => ({ value: t, label: TYPE_META[t].label, icon: <TypeIcon type={t} /> }))
+/** Work types to choose from: the project's (without one, every loaded project's); `allowEpic` false leaves out the parent level. */
+export const typeOptions = (project?: Pick<Project, 'types'>, allowEpic = true, all: Pick<Project, 'types'>[] = []): PickerOption<IssueType>[] =>
+  typeList(project, all).filter(t => allowEpic || t.key !== 'epic')
+    .map(t => ({ value: t.key, label: t.name, icon: <TypeIcon type={t.key} project={project} /> }))
 
 export const userOptions = (users: User[]): PickerOption<string | undefined>[] => [
   { value: undefined, label: 'Unassigned', icon: <Avatar size={20} /> },

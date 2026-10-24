@@ -7,7 +7,7 @@ import {
 import { useApp, useNavList } from '../appContext'
 import BulkBar from './BulkBar'
 import {
-  Avatar, Checkbox, Picker, Popover, Toggle, TypeIcon, PriorityIcon, PRIORITY_META, PRIORITIES, TYPE_META,
+  Avatar, Checkbox, Picker, Popover, Toggle, TypeIcon, PriorityIcon, PRIORITY_META, PRIORITIES, typeMeta,
   statusOptions, priorityOptions, formatDate, isOverdue,
 } from './ui'
 import { UserPicker } from './UserPicker'
@@ -137,7 +137,7 @@ export default function IssueTable({ issues, id, groupBy, onGroupBy, project, sh
       const e = byId.get(id)
       return {
         key: id || 'none', label: e ? <><TypeIcon type="epic" size={13} /><span className="mono muted">{e.key}</span>{e.title}</> : 'No epic',
-        color: e ? TYPE_META.epic.color : undefined, items: sorted.filter(i => (epicOf(i)?.id ?? '') === id),
+        color: e ? typeMeta('epic', state.projects.find(p => p.id === e.projectId)).color : undefined, items: sorted.filter(i => (epicOf(i)?.id ?? '') === id),
         defaults: project ? { projectId: project.id, parentId: e?.id } : undefined,
       }
     })

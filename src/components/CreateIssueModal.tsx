@@ -4,7 +4,7 @@ import { useStore, uid, userOf, type NewIssue, type IssueType, type Priority } f
 import { useApp } from '../appContext'
 import { canEdit } from '../data/access'
 import {
-  Picker, TypeIcon, PriorityIcon, Avatar, TYPE_META, PRIORITY_META, Toggle,
+  Picker, TypeIcon, PriorityIcon, Avatar, typeMeta, PRIORITY_META, Toggle,
   statusOptions, priorityOptions, typeOptions,
 } from './ui'
 import { UserPicker } from './UserPicker'
@@ -113,8 +113,8 @@ export default function CreateIssueModal({ defaults, onClose }: {
         </div>
 
         <div className="compose-chips">
-          <Picker value={type} options={typeOptions(!defaults.parentId)} onChange={setType} title="Type"
-            trigger={<><TypeIcon type={type} size={13} />{TYPE_META[type].label}</>} />
+          <Picker value={type} options={typeOptions(project, !defaults.parentId)} onChange={setType} title="Type"
+            trigger={<><TypeIcon type={type} size={13} project={project} />{typeMeta(type, project).label}</>} />
           <Picker value={status} options={statusOptions(project)} onChange={setStatus} title="Status"
             trigger={<><span className="status-dot" style={{ background: statusObj?.color }} />{statusObj?.name}</>} />
           <Picker value={priority} options={priorityOptions} onChange={setPriority} title="Priority"
