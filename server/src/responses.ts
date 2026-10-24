@@ -21,6 +21,10 @@ export const Transition = z.object({
   id, projectId: id, name: z.string(), fromIds: nullable(z.array(id)).describe('null: from any status'), toId: nullable(id).describe('null: a loop, the item stays in its status'),
   rules: z.record(z.string(), z.unknown()).describe('restrict, validate, screen, actions'),
 })
+export const LinkType = z.object({
+  id: z.string(), name: z.string(), outward: z.string().describe('How a link reads from its source: "blocks"'), inward: z.string().describe('How it reads from its target: "is blocked by"'),
+  builtin: z.boolean().describe('Built in (the app relies on it): can be renamed, not removed'), position: z.number(), uses: z.number().describe('Links of this type'),
+})
 export const AvailableTransition = z.object({
   id, name: z.string(), toId: nullable(id), screen: z.array(z.string()).describe('Fields to fill in (and "comment")'),
   problems: z.record(z.string(), z.string()).describe('What would stop the move if made now, by field'),
@@ -78,7 +82,7 @@ export const Activity = z.object({ id, issueId: id, actorId: nullable(id), field
 export const IssueDetail = z.object({
   ...issueFields,
   // present unless left out with ?expand=
-  links: z.array(z.object({ type: z.enum(['blocks', 'relates']), dir: z.enum(['in', 'out']), issueId: id, key: z.string(), title: z.string() })).optional(),
+  links: z.array(z.object({ type: z.string().describe('Link type id (GET /link-types)'), dir: z.enum(['in', 'out']), issueId: id, key: z.string(), title: z.string() })).optional(),
   watcherIds: z.array(id).optional(), comments: z.array(Comment).optional(), activity: z.array(Activity).optional(), worklogs: z.array(Worklog).optional(),
   attachments: z.array(z.object({ id, name: z.string(), size: z.number(), type: z.string(), addedBy: nullable(id), addedAt: ts })).optional(),
   children: z.array(IssueRow).optional(),
@@ -161,6 +165,9 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'GET /issues/:key': IssueDetail,
   'GET /issues/:key/development': Development,
   'PATCH /issues/:key': IssueRow,
+  'GET /link-types': z.array(LinkType),
+  'POST /admin/link-types': LinkType,
+  'PATCH /admin/link-types/:id': LinkType,
   'GET /issues/:key/transitions': z.array(AvailableTransition),
   'POST /issues/:key/transitions': IssueRow,
   'POST /issues/:key/restore': IssueRow,

@@ -6,8 +6,8 @@ import {
   Ban, Unlink, Pencil, UserCheck, Copy, Paperclip, FileText,
 } from 'lucide-react'
 import {
-  useStore, userOf, projectOf, timeAgo, transitionsFrom, loopsFrom, moveContext,
-  type Issue, type IssuePatch, type IssueLink,
+  useStore, userOf, projectOf, timeAgo, transitionsFrom, loopsFrom, moveContext, linkWords, DEFAULT_LINK_TYPES,
+  type Issue, type IssuePatch,
 } from '../data/store'
 import { useApp } from '../appContext'
 import { canEdit } from '../data/access'
@@ -116,10 +116,10 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
   const loops    = loopsFrom(project, issue.status, moveCtx)   // Jira lists these as the item's actions, not as statuses
 
   // Links in both directions, described from this item's point of view
-  const links: { other: Issue; label: string; owner: string }[] = [
+  const links: { other: Issue; label: string; blocked: boolean; owner: string }[] = [
     ...issue.links.map(l => ({ l, other: state.issues.find(i => i.id === l.issueId) }))
-      .filter(x => x.other).map(({ l, other }) => ({ other: other!, label: l.type === 'blocks' ? 'blocks' : 'relates to', owner: issue.id })),
-    ...state.issues.flatMap(o => o.links.filter(l => l.issueId === issue.id).map(l => ({ other: o, label: l.type === 'blocks' ? 'is blocked by' : 'relates to', owner: o.id }))),
+      .filter(x => x.other).map(({ l, other }) => ({ other: other!, label: linkWords(state, l.type, true), blocked: false, owner: issue.id })),
+    ...state.issues.flatMap(o => o.links.filter(l => l.issueId === issue.id).map(l => ({ other: o, label: linkWords(state, l.type, false), blocked: l.type === 'blocks', owner: o.id }))),
   ]
 
   const events = state.activity.filter(a => a.issueId === issue.id)
@@ -258,11 +258,11 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
                 <button className="icon-btn sm" onClick={() => setLinking(true)} aria-label="Link work item" title="Link work item"><Plus size={15} /></button>
               </div>
               <div className="rows-box">
-                {links.map(({ other, label, owner }) => {
+                {links.map(({ other, label, blocked, owner }) => {
                   const op = projectOf(state, other.projectId)!
                   return (
                     <div key={`${owner}-${other.id}`} className="link-row">
-                      <span className={`link-type${label === 'is blocked by' ? ' danger' : ''}`}>{label === 'is blocked by' && <Ban size={12} />}{label}</span>
+                      <span className={`link-type${blocked ? ' danger' : ''}`}>{blocked && <Ban size={12} />}{label}</span>
                       <button className="link-target" onClick={() => openIssue(other.id)}>
                         <TypeIcon type={other.type} size={13} /><span className="mono muted">{other.key}</span><span className="cell-ellipsis">{other.title}</span>
                       </button>
@@ -472,7 +472,12 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
 
 function LinkDialog({ issue, onClose }: { issue: Issue; onClose: () => void }) {
   const { state, dispatch } = useStore()
-  const [type, setType] = useState<'blocks' | 'blocked' | 'relates'>('blocks')
+  // Jira's one list of phrases: each type read from this item's side, both ways (once when both read the same)
+  const phrases = (state.linkTypes ?? DEFAULT_LINK_TYPES).flatMap(t => [
+    { key: `${t.id}:out`, type: t.id, out: true, label: t.outward },
+    ...(t.inward !== t.outward ? [{ key: `${t.id}:in`, type: t.id, out: false, label: t.inward }] : []),
+  ])
+  const [phrase, setPhrase] = useState(phrases[0]!.key)
   const [query, setQuery] = useState('')
   const linked = new Set([...issue.links.map(l => l.issueId), ...state.issues.filter(o => o.links.some(l => l.issueId === issue.id)).map(o => o.id)])
   const q = query.trim().toLowerCase()
@@ -481,18 +486,17 @@ function LinkDialog({ issue, onClose }: { issue: Issue; onClose: () => void }) {
     .slice(0, 8)
 
   const link = (other: Issue) => {
-    const l: IssueLink = { type: type === 'relates' ? 'relates' : 'blocks', issueId: type === 'blocked' ? issue.id : other.id }
-    dispatch({ type: 'addLink', issueId: type === 'blocked' ? other.id : issue.id, link: l })
+    const p = phrases.find(x => x.key === phrase)!
+    dispatch({ type: 'addLink', issueId: p.out ? issue.id : other.id, link: { type: p.type, issueId: p.out ? other.id : issue.id } })
     onClose()
   }
 
   return (
     <Modal title={`Link ${issue.key} to another work item`} onClose={onClose} width={520}>
-      <div className="segmented full" role="radiogroup" aria-label="Link type">
-        {([['blocks', 'Blocks'], ['blocked', 'Is blocked by'], ['relates', 'Relates to']] as const).map(([v, l]) => (
-          <button key={v} role="radio" aria-checked={type === v} className={type === v ? 'on' : ''} onClick={() => setType(v)}>{l}</button>
-        ))}
-      </div>
+      <label className="label" htmlFor="link-phrase">This work item</label>
+      <select id="link-phrase" className="input" value={phrase} onChange={e => setPhrase(e.target.value)}>
+        {phrases.map(p => <option key={p.key} value={p.key}>{p.label}</option>)}
+      </select>
       <input className="input" style={{ marginTop: 12 }} value={query} onChange={e => setQuery(e.target.value)} placeholder="Search by key or title" autoFocus aria-label="Search work items" />
       <div className="link-results" role="listbox">
         {options.length === 0 && <p className="muted sm" style={{ padding: 8 }}>No matching work items.</p>}

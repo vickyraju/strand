@@ -4,7 +4,7 @@ import { sprintSync } from './sprints'
 import { adoptProject, loadSettingsBase } from './settings'
 import { keysToLoad, readRecent } from './recent'
 import { loadPersonalBase } from './personal'
-import type { Issue, Sprint, State } from '../data/reducer'
+import type { Issue, LinkType, Sprint, State } from '../data/reducer'
 
 /** Run `fn` over `items`, at most `limit` at a time, keeping the order of the results. */
 async function mapLimit<T, R>(items: T[], limit: number, fn: (t: T) => Promise<R>): Promise<R[]> {
@@ -34,12 +34,13 @@ export async function loadProjectByKey(key: string) {
  *  already on screen (`keep`). Every other project is fetched when opened, or found with the project search.
  *  ponytail: users still load as one list (first 1000 by name). At tens of thousands of users the pickers need to search. */
 export async function loadWorkspace(keep: string[] = []): Promise<State> {
-  const [me, users, starredPage, views, notifications] = await Promise.all([
+  const [me, users, starredPage, views, notifications, linkTypes] = await Promise.all([
     api<any>('GET', '/api/me'),
     api<any[]>('GET', '/api/users'),
     api<{ items: any[] }>('GET', '/api/projects/search?starred=1&limit=100'),
     api<any[]>('GET', '/api/views'),
     api<any[]>('GET', '/api/notifications'),
+    api<LinkType[]>('GET', '/api/link-types').catch(() => undefined),
   ])
   let keys = keysToLoad(starredPage.items.map(p => p.key), readRecent(), keep)
   // Nothing starred or opened yet (a new teammate, a new browser): start from where work is happening, not from an empty app
@@ -48,6 +49,7 @@ export async function loadWorkspace(keep: string[] = []): Promise<State> {
   const ok = loaded.filter((x): x is NonNullable<typeof x> => !!x)
   const state = mapWorkspace(me, users, [], starredPage.items.map(p => p.id), { views, notifications })
   state.projects = ok.map(x => x.project)
+  if (linkTypes) state.linkTypes = linkTypes.map(({ id, name, outward, inward, builtin }) => ({ id, name, outward, inward, builtin }))
   state.sprints = ok.flatMap(x => x.sprints)
   sprintSync.load(state.sprints)   // the server's data is the base, so none of it is sent back
   loadSettingsBase(state.projects, state.starred)

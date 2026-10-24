@@ -52,6 +52,66 @@ const plugin: FastifyPluginAsyncZod = async app => {
     })
     return view(req.me.workspaceId, key)
   })
+  // ── Link types (Jira's issue linking): everyone reads them; workspace admins add, rename and remove them ──
+  const LINK = 'select id, name, outward, inward, builtin, position, (select count(*)::int from issue_links l join issues i on i.id = l.issue_id where l.type = t.id and i.workspace_id = t.workspace_id) as uses from link_types t'
+  const linkBody = z.object({ name: z.string().trim().min(1).max(60), outward: z.string().trim().min(1).max(60), inward: z.string().trim().min(1).max(60) })
+  const linkP = z.object({ id: z.string().max(40) })
+  app.get('/link-types', { schema: { tags: ['Links & watchers'], summary: 'Kinds of link between work items, each with how it reads both ways' } }, async req =>
+    db.query(`${LINK} where t.workspace_id = $1 order by t.position, t.name`, [req.me.workspaceId]))
+  app.post('/admin/link-types', { schema: { tags: TAG, summary: 'Add a link type (global admins)', body: linkBody } }, async (req, reply) => {
+    requireAdmin(req)
+    const slug = req.body.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').replace(/^(?![a-z])/, 'x-').slice(0, 40) || 'link'
+    return tx(async d => {
+      const taken = new Set((await d.query<{ id: string; name: string }>('select id, lower(name) as name from link_types where workspace_id = $1', [req.me.workspaceId])).flatMap(r => [r.id, r.name]))
+      if (taken.has(req.body.name.toLowerCase())) throw new HttpError(409, 'A link type with that name already exists', { name: 'Already used' })
+      let id = slug
+      for (let n = 2; taken.has(id); n++) id = `${slug.slice(0, 36)}-${n}`
+      await d.query(`insert into link_types (workspace_id, id, name, outward, inward, position)
+                     values ($1, $2, $3, $4, $5, (select coalesce(max(position), 0) + 1 from link_types where workspace_id = $1))`,
+        [req.me.workspaceId, id, req.body.name, req.body.outward, req.body.inward])
+      await audit(d, req, { action: 'link_type.created', type: 'link_type', name: req.body.name, after: req.body })
+      reply.code(201)
+      return (await d.query(`${LINK} where t.workspace_id = $1 and t.id = $2`, [req.me.workspaceId, id]))[0]
+    })
+  })
+  app.patch('/admin/link-types/:id', { schema: { tags: TAG, summary: 'Rename a link type or change how it reads (global admins)', params: linkP, body: linkBody.partial() } }, async req => {
+    requireAdmin(req)
+    return tx(async d => {
+      const [before] = await d.query<any>('select name, outward, inward from link_types where workspace_id = $1 and id = $2', [req.me.workspaceId, req.params.id])
+      if (!before) throw new HttpError(404, 'No such link type')
+      const next = { ...before, ...req.body }
+      if (req.body.name && (await d.query('select 1 from link_types where workspace_id = $1 and id <> $2 and lower(name) = lower($3)', [req.me.workspaceId, req.params.id, req.body.name])).length)
+        throw new HttpError(409, 'A link type with that name already exists', { name: 'Already used' })
+      await d.query('update link_types set name = $3, outward = $4, inward = $5 where workspace_id = $1 and id = $2', [req.me.workspaceId, req.params.id, next.name, next.outward, next.inward])
+      const c = changes(before, next)
+      if (c.changed) await audit(d, req, { action: 'link_type.updated', type: 'link_type', name: next.name, before: c.before, after: c.after })
+      return (await d.query(`${LINK} where t.workspace_id = $1 and t.id = $2`, [req.me.workspaceId, req.params.id]))[0]
+    })
+  })
+  app.delete('/admin/link-types/:id', { schema: {
+    tags: TAG, summary: 'Remove a link type (global admins). Links of that type move to `moveTo`, or are removed with `removeLinks=1`; one in use needs either',
+    params: linkP, querystring: z.object({ moveTo: z.string().max(40).optional(), removeLinks: z.enum(['1']).optional() }),
+  } }, async (req, reply) => {
+    requireAdmin(req)
+    await tx(async d => {
+      const [t] = await d.query<any>(`${LINK} where t.workspace_id = $1 and t.id = $2`, [req.me.workspaceId, req.params.id])
+      if (!t) throw new HttpError(404, 'No such link type')
+      if (t.builtin) throw new HttpError(409, `${t.name} is built in: the app relies on it`)
+      const { moveTo, removeLinks } = req.query
+      if (t.uses && !moveTo && !removeLinks) throw new HttpError(409, `${t.uses} links use ${t.name}: choose a type to move them to, or remove them`)
+      const ws = 'issue_id in (select id from issues where workspace_id = $1)'
+      if (t.uses && moveTo) {
+        if (moveTo === t.id || !(await d.query('select 1 from link_types where workspace_id = $1 and id = $2', [req.me.workspaceId, moveTo])).length) throw new HttpError(400, 'Choose another link type to move the links to')
+        // a pair already linked by the target type keeps that link; the old one goes
+        await d.query(`delete from issue_links l where l.type = $2 and ${ws} and exists (select 1 from issue_links x where x.issue_id = l.issue_id and x.target_id = l.target_id and x.type = $3)`, [req.me.workspaceId, t.id, moveTo])
+        await d.query(`update issue_links set type = $3 where type = $2 and ${ws}`, [req.me.workspaceId, t.id, moveTo])
+      } else if (t.uses) await d.query(`delete from issue_links where type = $2 and ${ws}`, [req.me.workspaceId, t.id])
+      await d.query('delete from link_types where workspace_id = $1 and id = $2', [req.me.workspaceId, t.id])
+      await audit(d, req, { action: 'link_type.deleted', type: 'link_type', name: t.name, before: { name: t.name, links: t.uses }, after: moveTo ? { movedTo: moveTo } : undefined })
+    })
+    reply.code(204).send()
+  })
+
   // Rate limiting › Limited accounts: who was refused in the last 24 hours (newest first)
   app.get('/admin/rate-limits/limited', { schema: { tags: TAG, summary: 'People whose access tokens were rate limited in the last 24 hours (global admins)' } }, async req => {
     requireAdmin(req)
