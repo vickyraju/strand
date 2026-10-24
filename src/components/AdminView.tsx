@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Users, ScrollText, Archive, Download, RotateCcw, SlidersHorizontal } from 'lucide-react'
+import { Users, ScrollText, Archive, Download, RotateCcw, SlidersHorizontal, Link2 } from 'lucide-react'
 import { api, apiEnabled, ApiError } from '../api/client'
 import { useStore, timeAgo } from '../data/store'
 import { isGlobalAdmin } from '../data/access'
@@ -8,11 +8,13 @@ import { href, navigate, type AdminSection } from '../router'
 import { formatBytes } from '../data/files'
 import { Avatar, Empty, Modal, Toggle, plural } from './ui'
 import SystemSettings from './SystemSettings'
+import LinkTypesAdmin from './LinkTypesAdmin'
 
 const SECTIONS: { id: AdminSection; label: string; Icon: typeof Users }[] = [
   { id: 'people', label: 'People', Icon: Users },
   { id: 'audit', label: 'Audit log', Icon: ScrollText },
   { id: 'backups', label: 'Project backups', Icon: Archive },
+  { id: 'link-types', label: 'Link types', Icon: Link2 },
   { id: 'settings', label: 'System settings', Icon: SlidersHorizontal },
 ]
 const message = (e: unknown) => (e instanceof ApiError ? e.message : 'Could not reach the server.')
@@ -37,6 +39,7 @@ export default function AdminView({ section = 'people' }: { section?: AdminSecti
         {section === 'people' && <People />}
         {section === 'audit' && <AuditLog />}
         {section === 'backups' && <Backups />}
+        {section === 'link-types' && <LinkTypesAdmin />}
         {section === 'settings' && <SystemSettings />}
       </div>
     </div>

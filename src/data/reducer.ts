@@ -160,7 +160,23 @@ export interface SavedView {
   filters:  ViewFilters
 }
 
-export interface IssueLink { type: 'blocks' | 'relates'; issueId: string }
+/** A link from this item to another. `type` is a link type's id (`LinkType`), read from this side with its outward words. */
+export interface IssueLink { type: string; issueId: string }
+
+/** A kind of link (Jira's issue link types), and how it reads each way: "blocks" / "is blocked by". */
+export interface LinkType { id: string; name: string; outward: string; inward: string; builtin?: boolean }
+/** Jira's link types: what a workspace starts with (the server keeps the workspace's own list). */
+export const DEFAULT_LINK_TYPES: LinkType[] = [
+  { id: 'blocks', name: 'Blocks', outward: 'blocks', inward: 'is blocked by', builtin: true },
+  { id: 'clones', name: 'Cloners', outward: 'clones', inward: 'is cloned by', builtin: true },
+  { id: 'duplicates', name: 'Duplicate', outward: 'duplicates', inward: 'is duplicated by' },
+  { id: 'relates', name: 'Relates', outward: 'relates to', inward: 'relates to' },
+]
+/** How a link reads from one end: `out` from the item it starts at, otherwise from its target. */
+export const linkWords = (s: Pick<State, 'linkTypes'>, type: string, out: boolean) => {
+  const t = (s.linkTypes ?? DEFAULT_LINK_TYPES).find(x => x.id === type)
+  return t ? (out ? t.outward : t.inward) : out ? 'links to' : 'is linked from'
+}
 
 /** Someone with this issue open for editing right now (the server's edit-presence table). */
 export interface Editor { userId: string; name: string; initials: string; color: string }
@@ -262,6 +278,8 @@ export interface State {
   isAdmin?:      boolean
   /** Groups I am in (transition rules can name groups). */
   groupIds?:     string[]
+  /** The workspace's link types (from the server; Jira's defaults otherwise). */
+  linkTypes?:    LinkType[]
   users:         User[]
   projects:      Project[]
   issues:        Issue[]
@@ -295,6 +313,7 @@ export type Action =
   | { type: 'toggleStar'; projectId: string }
   | { type: 'createIssue'; id: string; issue: NewIssue }
   | { type: 'updateIssues'; ids: string[]; patch: IssuePatch }
+  | { type: 'setLinkTypes'; linkTypes: LinkType[] }
   /** Make one transition by its id, with the fields and comment its screen asked for (loops go this way). */
   | { type: 'runTransition'; issueId: string; transitionId: string; patch: IssuePatch; comment?: string }
   | { type: 'deleteIssues'; ids: string[] }
@@ -599,6 +618,8 @@ export function reducer(state: State, action: Action, now = Date.now()): State {
       }
       return next
     }
+    case 'setLinkTypes':
+      return { ...state, linkTypes: action.linkTypes }
     case 'runTransition': {
       const issue = state.issues.find(i => i.id === action.issueId)
       const t = state.projects.find(p => p.id === issue?.projectId)?.transitions.find(x => x.id === action.transitionId)
@@ -626,7 +647,7 @@ export function reducer(state: State, action: Action, now = Date.now()): State {
       return {
         ...state,
         issues:   state.issues.map(i => i.id === action.issueId ? { ...i, links: [...i.links, action.link], updatedAt: now } : i),
-        activity: [...state.activity, log(action.issueId, `linked ${other?.key ?? 'an item'} (${action.link.type === 'blocks' ? 'blocks' : 'relates to'})`)],
+        activity: [...state.activity, log(action.issueId, `linked ${other?.key ?? 'an item'} (${linkWords(state, action.link.type, true)})`)],
       }
     }
     case 'removeLink':

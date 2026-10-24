@@ -7,7 +7,7 @@ import { issueSync } from './sync.ts'
 import type { Issue, Worklog } from '../data/reducer.ts'
 
 export interface WorklogItem extends Worklog { issueId: string }
-export interface LinkItem { id: string; issueId: string; type: 'blocks' | 'relates'; otherId: string }
+export interface LinkItem { id: string; issueId: string; type: string; otherId: string }
 export interface WatchItem { id: string }                 // issue id: I am watching it
 
 // ── Pure: what the local issues say, for the issues whose detail has been loaded ──
@@ -70,7 +70,7 @@ export const watchSync = createCollectionSync<WatchItem>({
 
 /** One issue's detail arrived from the server: it becomes the base for comments, time logs, links and watching. */
 export function adoptDetail(
-  d: { issueId: string; comments: import('../data/reducer.ts').Comment[]; worklogs: Worklog[]; links: { type: 'blocks' | 'relates'; issueId: string }[]; watcherIds: string[] },
+  d: { issueId: string; comments: import('../data/reducer.ts').Comment[]; worklogs: Worklog[]; links: { type: string; issueId: string }[]; watcherIds: string[] },
   meId: string | null,
 ) {
   const id = d.issueId

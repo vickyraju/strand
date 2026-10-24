@@ -168,6 +168,11 @@ async function keepRanksApart(d: Db, projectId: string, issueId: string, rank: n
 
 /** One issue edit: version check, workflow check, history, notifications, automation, live event. Shared by the single and bulk edits. */
 async function applyPatch(d: Db, me: Me, cur: any, patch: z.infer<typeof patchBody>, o: { ifMatch: number | null; override: boolean; ip?: string; transition?: TransitionRow; comment?: string }) {
+  // Hold the row for the rest of the transaction, and work from its latest copy: a change made between reading it and
+  // here (a sprint completing, another edit) is then seen by the checks below instead of failing the save. If-Match
+  // still refuses a stale edit.
+  const [{ version }] = await d.query<{ version: number }>('select version from issues where id = $1 for update', [cur.id]) as any
+  if (version !== cur.version) cur = (await d.query<any>(`${ISSUE_ROW} where i.id = $1`, [cur.id]))[0]
   if (o.ifMatch !== null && o.ifMatch !== cur.version) throw new HttpError(409, `Edited elsewhere (current version ${cur.version})`)
   const [lead] = await d.query<{ leadId: string | null }>('select lead_id from projects where id = $1', [cur.projectId])
   const override = o.override && (await roleOf(d, me, cur.projectId)) === 'admin'
@@ -466,17 +471,19 @@ const plugin: FastifyPluginAsyncZod = async app => {
   })
 
   // ── Links & watchers ──
-  const linkBody = z.object({ type: z.enum(['blocks', 'relates']), targetKey: z.string() })
-  app.post('/issues/:key/links', { schema: { tags: ['Links & watchers'], summary: 'Link two issues (blocks / relates)', params: keyP, body: linkBody } }, async (req, reply) => {
+  const linkType = z.string().max(40).describe('A link type id (GET /link-types), e.g. blocks, relates, duplicates, clones')
+  const linkBody = z.object({ type: linkType, targetKey: z.string() })
+  app.post('/issues/:key/links', { schema: { tags: ['Links & watchers'], summary: 'Link two issues: this one <type\'s outward words> the target (blocks, relates to, duplicates…)', params: keyP, body: linkBody } }, async (req, reply) => {
     const b = req.body
     const [a, t] = await Promise.all([issueByKey(db, req, req.params.key), issueByKey(db, req, b.targetKey, false, 'viewer')])
     if (a.id === t.id) throw new HttpError(400, 'Cannot link an item to itself')
+    if (!(await db.query('select 1 from link_types where workspace_id = $1 and id = $2', [req.me.workspaceId, b.type])).length) throw new HttpError(400, 'No such link type', { type: 'Unknown link type' })
     await db.query('insert into issue_links (issue_id, target_id, type) values ($1, $2, $3) on conflict do nothing', [a.id, t.id, b.type])
     reply.code(204).send()
   })
   app.delete('/issues/:key/links', { schema: {
     tags: ['Links & watchers'], summary: 'Remove a link', params: keyP,
-    querystring: z.object({ type: z.enum(['blocks', 'relates']), target: z.string().describe('Key of the linked issue') }),
+    querystring: z.object({ type: linkType, target: z.string().describe('Key of the linked issue') }),
   } }, async (req, reply) => {
     const q = { type: req.query.type, targetKey: req.query.target }
     const [a, t] = await Promise.all([issueByKey(db, req, req.params.key), issueByKey(db, req, q.targetKey, false, 'viewer')])

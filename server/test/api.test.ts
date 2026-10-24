@@ -1198,6 +1198,35 @@ test('transition rules: who may move, what a move needs, what it does; loops; ev
   assert.ok((await pool.query(`select 1 from activity where issue_id = $1 and text like 'Automation skipped a status change: %required%'`, [k.id])).rows.length)
 })
 
+test('link types: Jira’s four to start with; admins add, rename and remove them; links in use move or go; built-ins stay', { skip }, async () => {
+  await call('POST', '/api/v1/projects', { name: 'Linked', key: 'LNK', template: 'kanban' })
+  for (let n = 0; n < 3; n++) await call('POST', '/api/v1/projects/LNK/issues', { title: `l${n}` })
+  const types = (await call('GET', '/api/v1/link-types', undefined, 'lnk.member@x.com')).body
+  assert.deepEqual(types.map((t: any) => [t.id, t.outward, t.inward]), [
+    ['blocks', 'blocks', 'is blocked by'], ['clones', 'clones', 'is cloned by'], ['duplicates', 'duplicates', 'is duplicated by'], ['relates', 'relates to', 'relates to']])
+  // a new kind of link, used both ways; an unknown kind is refused
+  const made = await call('POST', '/api/v1/admin/link-types', { name: 'Causes', outward: 'causes', inward: 'is caused by' })
+  assert.equal(made.status, 201); assert.equal(made.body.id, 'causes')
+  assert.equal((await call('POST', '/api/v1/admin/link-types', { name: 'causes', outward: 'a', inward: 'b' })).status, 409)
+  assert.equal((await call('POST', '/api/v1/admin/link-types', { name: 'Nope', outward: 'a', inward: 'b' }, 'lnk.member@x.com')).status, 403)
+  assert.equal((await call('POST', '/api/v1/issues/LNK-1/links', { type: 'causes', targetKey: 'LNK-2' })).status, 204)
+  assert.equal((await call('POST', '/api/v1/issues/LNK-1/links', { type: 'duplicates', targetKey: 'LNK-2' })).status, 204)
+  assert.equal((await call('POST', '/api/v1/issues/LNK-3/links', { type: 'causes', targetKey: 'LNK-2' })).status, 204)
+  assert.equal((await call('POST', '/api/v1/issues/LNK-1/links', { type: 'nonsense', targetKey: 'LNK-3' })).status, 400)
+  // rename: links keep their type
+  assert.equal((await call('PATCH', '/api/v1/admin/link-types/causes', { inward: 'is the result of' })).body.inward, 'is the result of')
+  // removing one in use needs a decision; moving merges with links already there; built-ins can't go
+  assert.equal((await call('DELETE', '/api/v1/admin/link-types/causes')).status, 409)
+  assert.equal((await call('DELETE', '/api/v1/admin/link-types/causes?moveTo=duplicates')).status, 204)
+  const links = (await call('GET', '/api/v1/issues/LNK-2?expand=links')).body.links.map((l: any) => [l.type, l.dir, l.key]).sort()
+  assert.deepEqual(links, [['duplicates', 'in', 'LNK-1'], ['duplicates', 'in', 'LNK-3']])
+  assert.equal((await call('DELETE', '/api/v1/admin/link-types/blocks?removeLinks=1')).status, 409)
+  assert.equal((await call('DELETE', '/api/v1/admin/link-types/duplicates?removeLinks=1')).status, 204)
+  assert.deepEqual((await call('GET', '/api/v1/issues/LNK-2?expand=links')).body.links, [])
+  const log = (await call('GET', '/api/v1/audit?action=link_type')).body.items.map((e: any) => e.action)
+  assert.deepEqual(log.sort(), ['link_type.created', 'link_type.deleted', 'link_type.deleted', 'link_type.updated'])
+})
+
 test('report data: every live item and every status change in order, for people who can see the project', { skip }, async () => {
   const p = (await call('POST', '/api/v1/projects', { name: 'Reports', key: 'REP', template: 'kanban' })).body
   const [a, b, c] = p.statuses
@@ -1753,6 +1782,10 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     'PUT /admin/settings/{key}': ['gadmin', '/admin/settings/attachments', { enabled: true, maxSizeMb: 25 }],
     'GET /admin/rate-limits/limited': ['gadmin', '/admin/rate-limits/limited'],
     'GET /settings/public': ['any', '/settings/public'],
+    'GET /link-types': ['any', '/link-types'],
+    'POST /admin/link-types': ['gadmin', '/admin/link-types', { name: 'Matrix link', outward: 'x', inward: 'y' }],
+    'PATCH /admin/link-types/{id}': ['gadmin', '/admin/link-types/relates', { outward: 'relates to' }],
+    'DELETE /admin/link-types/{id}': ['gadmin', '/admin/link-types/nothing-here'],
   }
 
   // every documented operation has a row, and every row is a documented operation
@@ -1804,6 +1837,15 @@ test('concurrency: same-version edits, a retried create, simultaneous reordering
   const winner = edits.find(r => r.status === 200)!.body
   assert.equal((await call('GET', `/api/v1/issues/${target.key}`)).body.title, winner.title)
   assert.equal(winner.version, target.version + 1)
+  // …but an edit that didn't ask for a version check isn't refused because something else saved the item while it ran
+  const held = await pool.connect()
+  await held.query('begin'); await held.query(`update issues set title = 'changed meanwhile', version = version + 1 where id = $1`, [target.id])
+  const unchecked = call('PATCH', `/api/v1/issues/${target.key}`, { priority: 'high' })
+  await new Promise(r => setTimeout(r, 300))
+  await held.query('commit'); held.release()
+  const u = await unchecked
+  assert.equal(u.status, 200, JSON.stringify(u.body))
+  assert.deepEqual([u.body.title, u.body.priority], ['changed meanwhile', 'high'])
 
   // 2. A flaky network sends the same new comment five times at once: one comment, the rest conflict
   const cid = '0192f0c0-0000-7000-8000-0000000c0de1'
