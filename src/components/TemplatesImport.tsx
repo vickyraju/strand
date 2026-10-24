@@ -3,6 +3,8 @@ import { Plus, Trash2, FileText, Upload, AlertTriangle } from 'lucide-react'
 import { useStore, uid, type ItemTemplate, type Project, type IssueType, type Priority } from '../data/store'
 import { parseCsv, guessMapping, mapRows, IMPORT_FIELDS, type ImportField } from '../data/csv'
 import { useApp } from '../appContext'
+import { apiEnabled } from '../api/client'
+import ServerImport from './ServerImport'
 import { Modal, TypeIcon, typeMeta, typeList, PRIORITY_META, PRIORITIES, plural } from './ui'
 
 // ── Templates ──────────────────────────────────────────────
@@ -101,7 +103,7 @@ export function ImportPanel({ project }: { project: Project }) {
         </div>
         <button className="btn btn-secondary" onClick={() => setOpen(true)}><Upload size={14} />Import CSV</button>
       </div>
-      {open && <ImportDialog project={project} onClose={() => setOpen(false)} />}
+      {open && (apiEnabled ? <ServerImport project={project} onClose={() => setOpen(false)} /> : <ImportDialog project={project} onClose={() => setOpen(false)} />)}
     </section>
   )
 }

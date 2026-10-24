@@ -10,6 +10,8 @@ import { enqueue, kickJobs } from '../jobs.ts'
 import { backupBucket, backupSettings } from '../backups.ts'
 import { rulesSchema } from '../transitions.ts'
 import { dryRun } from '../rules.ts'
+import { checkImport } from '../csvImport.ts'
+import { getSetting } from '../settings.ts'
 
 const uuid = z.string().uuid()
 const color = z.string().regex(/^#[0-9a-fA-F]{6}$/)
@@ -482,6 +484,37 @@ const plugin: FastifyPluginAsyncZod = async app => {
       if (!i) throw new HttpError(404, 'No such work item in this project', { issue: 'Not found here' })
       return dryRun(d, { projectId: p.id, issueId: i.id, reporterId: i.reporterId, leadId: i.leadId }, { actions: req.body.actions })
     })
+  })
+
+  // ── CSV import (Jira's importer): check every row first; import in the background; a rerun adds nothing twice ──
+  const importMapping = z.record(z.string().regex(/^(title|description|type|status|priority|assignee|labels|estimate|dueDate|startDate|components|fixVersion|custom\.[0-9a-f-]{36})$/), z.number().int().min(0))
+    .describe('Field → column number (0 is the first column). Fields: title (required), description, type, status, priority, assignee, labels, estimate, dueDate, startDate, components, fixVersion, custom.<field id>')
+  app.post('/projects/:key/import', { schema: {
+    tags: T.config, summary: 'Import work items from CSV. With dryRun (the default) nothing is created: every row is checked and reported. Otherwise the import runs as a job (GET /jobs/:id)',
+    params: keyP, body: z.object({
+      csv: z.string().min(1).max(15 * 1024 * 1024), mapping: importMapping, dryRun: z.boolean().default(true),
+      importId: uuid.optional().describe('Same id, same import: running it again only adds rows not yet imported'),
+    }),
+  } }, async (req, reply) => {
+    const p = await projectByKey(db, req, req.params.key)                                     // members can import, as they can create
+    const b = req.body
+    if (b.mapping.title === undefined) throw new HttpError(400, 'Choose which column holds the title', { mapping: 'title is required' })
+    const { importMaxRows } = await getSetting(req.me.workspaceId, 'searchAndBulk')
+    const { header, items, report } = await checkImport(db, p.id, b.csv, b.mapping)
+    if (report.length > importMaxRows) throw new HttpError(400, `A CSV import can have at most ${importMaxRows.toLocaleString('en')} rows (this file has ${report.length.toLocaleString('en')})`, { csv: 'Too many rows' })
+    const summary = { columns: header, rows: report.length, ready: items.length, skipped: report.filter(r => !r.ok).length, report }
+    if (b.dryRun) return { ...summary, jobId: null }
+    if (!items.length) throw new HttpError(400, 'No row can be imported', { csv: 'Nothing to import' })
+    const importId = b.importId ?? crypto.randomUUID()
+    const jobId = await tx(async d => {
+      const id = await enqueue(d, 'csv.import', { importId, projectId: p.id, me: req.me, csv: b.csv, mapping: b.mapping },
+        { workspaceId: req.me.workspaceId, createdBy: req.me.id, dedupeKey: `csv.import:${importId}` })
+      await audit(d, req, { action: 'project.csv_imported', type: 'import', id: importId, project: p, after: { rows: report.length, ready: items.length } })
+      return id
+    })
+    kickJobs(app.log)                                                                          // once the job is committed
+    reply.code(202)
+    return { ...summary, jobId, importId }
   })
 
   // Releasing a version moves its unfinished work to `moveTo` (or clears it)

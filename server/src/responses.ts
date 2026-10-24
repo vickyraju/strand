@@ -179,6 +179,11 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'PATCH /issues/:key': IssueRow,
   'POST /issues/:key/clone': IssueRow,
   'GET /link-types': z.array(LinkType),
+  'POST /projects/:key/import': z.object({
+    columns: z.array(z.string()), rows: z.number(), ready: z.number().describe('Rows that will become work items'), skipped: z.number().describe('Rows left out (no title…)'),
+    report: z.array(z.object({ row: z.number().describe('As a spreadsheet numbers it'), title: z.string(), ok: z.boolean(), errors: z.array(z.string()), warnings: z.array(z.string()) })),
+    jobId: nullable(id).describe('The import job (null on a dry run)'), importId: id.optional(),
+  }),
   'GET /projects/:key/automation/runs': z.array(z.object({ id, ruleId: id, rule: z.string(), issueId: nullable(id), issueKey: nullable(z.string()), trigger: z.record(z.string(), z.unknown()),
     result: z.enum(['success', 'some_skipped', 'no_change', 'failed']), steps: z.array(Step), error: nullable(z.string()), at: ts })),
   'POST /projects/:key/automation/dry-run': z.object({ steps: z.array(Step), error: nullable(z.string()) }),

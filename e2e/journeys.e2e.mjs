@@ -318,6 +318,25 @@ test('automation: a dry run shows what a rule would do; the audit log shows each
   assert.deepEqual(o.problems, [])
 })
 
+test('CSV import: the server checks every row first, says what is wrong, then imports in the background', { skip, timeout: 60_000 }, async () => {
+  await owner('POST', '/projects', { name: 'Imports', key: 'IMPT', template: 'kanban' })
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url('/project/IMPT/settings'))
+  await o.click('button:has-text("Import CSV")')
+  await o.setInputFiles('.modal input[type=file]', { name: 'jira-export.csv', mimeType: 'text/csv', buffer: Buffer.from(
+    'Summary,Issue Type,Priority,Due Date\nFirst imported,Bug,Highest,01/Oct/26\n,Task,Low,\nSecond imported,Story,Trivial,someday\n') })
+  await o.waitForSelector('.modal >> text=will be created from')
+  const text = await o.locator('.modal').innerText()
+  assert.match(text, /2 work items will be created from 3 rows; 1 row will be left out/)
+  assert.match(text, /Row 3: No title/)
+  assert.match(text, /Row 4 .*Due date “someday” isn’t a date/)
+  await o.click('.modal button:has-text("Import 2 work items")')
+  await o.waitForSelector('text=Imported 2 work items into Imports', { timeout: 20_000 })
+  const items = (await owner('GET', `/search?jql=${encodeURIComponent('project = IMPT ORDER BY key')}`)).body.items
+  assert.deepEqual(items.map(i => [i.title, i.type, i.priority]), [['First imported', 'bug', 'urgent'], ['Second imported', 'story', 'low']])
+  assert.deepEqual(o.problems, [])
+})
+
 test('plan a sprint, start it and complete it: unfinished work goes back to the backlog', { skip, timeout: 90_000 }, async () => {
   const p = (await owner('POST', '/projects', { name: 'Sprinting', key: 'SPR', template: 'scrum' })).body
   const done = p.statuses.find(s => s.category === 'done')
