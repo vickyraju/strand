@@ -1639,3 +1639,61 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
   }
   assert.deepEqual(wrong, [])
 })
+
+// ── Concurrency: several people (or retries) hitting the same records at the same moment ──
+test('concurrency: same-version edits, a retried create, simultaneous reordering, and sprint completion during edits all stay consistent', { skip, timeout: 120_000 }, async () => {
+  const p = (await call('POST', '/api/v1/projects', { name: 'Race', key: 'RCE', template: 'scrum' })).body
+  const done = p.statuses.find((s: any) => s.category === 'done')
+  const items: any[] = []
+  for (let n = 0; n < 12; n++) items.push((await call('POST', '/api/v1/projects/RCE/issues', { title: `race ${n}` })).body)
+
+  // 1. Five people edit the same item from the same version: exactly one wins, the others are told it changed
+  const target = items[0]
+  // Hold the row so all five read the same version before any of them writes (otherwise they would simply take turns)
+  const lock = await pool.connect()
+  await lock.query('begin'); await lock.query('select 1 from issues where id = $1 for update', [target.id])
+  const racingEdits = Promise.all(Array.from({ length: 5 }, (_, k) =>
+    call('PATCH', `/api/v1/issues/${target.key}`, { title: `edit ${k}` }, 'owner@x.com', { 'if-match': String(target.version) })))
+  await new Promise(r => setTimeout(r, 300))
+  await lock.query('commit'); lock.release()
+  const edits = await racingEdits
+  assert.deepEqual(edits.map(r => r.status).sort(), [200, 409, 409, 409, 409])
+  const winner = edits.find(r => r.status === 200)!.body
+  assert.equal((await call('GET', `/api/v1/issues/${target.key}`)).body.title, winner.title)
+  assert.equal(winner.version, target.version + 1)
+
+  // 2. A flaky network sends the same new comment five times at once: one comment, the rest conflict
+  const cid = '0192f0c0-0000-7000-8000-0000000c0de1'
+  const posts = await Promise.all(Array.from({ length: 5 }, () => call('POST', `/api/v1/issues/${target.key}/comments`, { id: cid, body: 'only once' })))
+  assert.equal(posts.filter(r => r.status === 201).length, 1)
+  assert.ok(posts.every(r => r.status === 201 || r.status === 409))
+  assert.equal((await pool.query('select count(*)::int as n from comments where id = $1', [cid])).rows[0].n, 1)
+
+  // 3. Ten people drag different items to the top at once: every item stays, every rank is unique, the order is the same for everyone
+  const list = async () => (await call('GET', '/api/v1/projects/RCE/issues?limit=100')).body.items as any[]
+  const before = await list()
+  const top = before[0].rank
+  await Promise.all(before.slice(2).map((it, k) => call('PATCH', `/api/v1/issues/${it.key}`, { rank: top - 1 - k / 1000 })))
+  const after = await list()
+  assert.equal(after.length, before.length)
+  assert.equal(new Set(after.map(x => x.rank)).size, after.length)
+  assert.deepEqual((await list()).map(x => x.id), after.map(x => x.id))
+
+  // 4. A sprint is completed while its items are being edited: every item ends either done in the closed sprint or back in the backlog
+  const sprint = (await call('POST', '/api/v1/projects/RCE/sprints', { name: 'Race sprint' })).body
+  for (const it of items.slice(1)) await call('PATCH', `/api/v1/issues/${it.key}`, { sprintId: sprint.id })
+  await call('POST', `/api/v1/projects/RCE/sprints/${sprint.id}/start`, { endsAt: '2026-12-01T00:00:00.000Z' })
+  const racing = Promise.all(items.slice(1).map((it, k) =>
+    call('PATCH', `/api/v1/issues/${it.key}`, k % 2 ? { statusId: done.id } : { title: `${it.title} (edited)` })))
+  const complete = call('POST', `/api/v1/projects/RCE/sprints/${sprint.id}/complete`, {})
+  const [results, completed] = await Promise.all([racing, complete])
+  assert.equal(completed.status, 200)
+  assert.ok(results.every(r => r.status === 200), JSON.stringify(results.map(r => r.status)))
+  const rows = (await pool.query(
+    `select i.sprint_id, st.category from issues i join statuses st on st.id = i.status_id where i.id = any($1::uuid[])`, [items.slice(1).map(i => i.id)])).rows
+  for (const r of rows) {
+    if (r.category === 'done') assert.ok(r.sprint_id === sprint.id || r.sprint_id === null)   // finished: stays with the sprint (or was finished after it closed)
+    else assert.equal(r.sprint_id, null)                                                   // unfinished: back to the backlog, never left in a closed sprint
+  }
+  assert.equal((await call('GET', '/api/v1/projects/RCE')).body.sprints.find((s: any) => s.id === sprint.id).state, 'closed')
+})

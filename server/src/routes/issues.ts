@@ -167,10 +167,11 @@ async function applyPatch(d: Db, me: Me, cur: any, patch: z.infer<typeof patchBo
   const changed = Object.keys(patch).filter(k => k !== 'rank' && JSON.stringify((patch as any)[k]) !== JSON.stringify(cur[k]))
   const w = pick(patch, FIELDS, ['custom'])
   if (!w.keys.length) return cur
-  const [{ n }] = await d.query<{ n: number }>(
+  // No row back: someone saved this item after we read it (no row at all, so nothing to destructure)
+  const updated = await d.query(
     `update issues set ${w.cols.map((c, i) => `${c} = $${i + 3}`).join(', ')}, version = version + 1, updated_at = now()
-      where id = $1 and version = $2 returning 1 as n`, [cur.id, cur.version, ...w.vals]) as any
-  if (!n) throw new HttpError(409, 'Edited elsewhere')
+      where id = $1 and version = $2 returning 1 as n`, [cur.id, cur.version, ...w.vals])
+  if (!updated.length) throw new HttpError(409, 'Edited elsewhere: reload to see the latest version')
 
   for (const f of changed) {
     const to = (patch as any)[f], from = cur[f]
