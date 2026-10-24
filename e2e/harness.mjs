@@ -54,7 +54,7 @@ export async function start() {
   // a clean database with every migration
   const pg = createRequire(new URL('../server/package.json', import.meta.url))('pg')
   const c = new pg.Client({ connectionString: dbUrl }); await c.connect()
-  await c.query('drop schema public cascade; create schema public'); await c.end()
+  try { await c.query('drop schema public cascade; create schema public') } finally { await c.end() }   // an open connection would keep the run from ending
   execFileSync('node', ['scripts/migrate.ts'], { cwd: `${root}server`, env: { ...process.env, DATABASE_URL: dbUrl }, stdio: 'ignore' })
 
   jwksServer = createServer((_q, r) => { r.setHeader('content-type', 'application/json'); r.end(JSON.stringify({ keys: [jwk] })) })
