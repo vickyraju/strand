@@ -292,7 +292,7 @@ function Shell() {
         {createProjectOpen && (
           <CreateProjectModal
             onClose={() => setCreateProjectOpen(false)}
-            onCreated={id => { setCreateProjectOpen(false); actions.openProject(id) }}
+            onCreated={key => { setCreateProjectOpen(false); navigate(href({ name: 'project', key })) }}
           />
         )}
         {createDefaults && <CreateIssueModal defaults={createDefaults} onClose={() => setCreateDefaults(null)} />}

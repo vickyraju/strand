@@ -7,7 +7,7 @@
 // A heartbeat (POST /issues/:key/presence) every 30 s keeps your row alive; the server prunes anything
 // older than 90 s, so a closed tab disappears on its own. The explicit DELETE clears it immediately.
 import { useEffect, useRef } from 'react'
-import { api, apiEnabled, buildRequest, getLogin, API_URL } from './client'
+import { api, apiEnabled, buildRequest, getLogin, API_URL, withPrefix } from './client'
 import { useStore } from '../data/store'
 import { loadProjectIssues } from './load'
 import { issueSync } from './sync'
@@ -25,7 +25,7 @@ async function run(key: string, s: Stream) {
   let wait = 1000, connected = false
   while (!s.abort.signal.aborted) {
     try {
-      const [url, init] = buildRequest(API_URL!, getLogin(), 'GET', `/api/projects/${encodeURIComponent(key)}/events`, undefined, { accept: 'text/event-stream' })
+      const [url, init] = buildRequest(API_URL!, getLogin(), 'GET', withPrefix(`/api/projects/${encodeURIComponent(key)}/events`), undefined, { accept: 'text/event-stream' })
       const res = await fetch(url, { ...init, signal: s.abort.signal })
       if (res.status === 403 || res.status === 404) return   // no access (any more): retrying cannot help
       if (!res.ok || !res.body) throw new Error(String(res.status))
