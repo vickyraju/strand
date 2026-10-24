@@ -37,6 +37,8 @@ const call = async (method: string, path: string, body?: unknown, who = 'owner@x
 }
 
 /** Make `email` a member of project `key` (creating the person if they have never signed in). Global admins need no membership. */
+/** A new project's workflow lets every status be reached from any other; tests that draw their own moves start without them. */
+const clearMoves = async (key: string) => { for (const t of (await call('GET', `/api/v1/projects/${key}`)).body.transitions) await call('DELETE', `/api/v1/projects/${key}/transitions/${t.id}`) }
 const join = async (key: string, email: string, role: 'admin' | 'member' | 'viewer' = 'member') => {
   await call('GET', '/api/v1/me', undefined, email)
   await pool.query(
@@ -61,6 +63,7 @@ after(async () => { if (skip) return; await app.close(); await pool.end(); s3Ser
 
 test('project → issue lifecycle with workflow, versions and undo', { skip }, async () => {
   const p = await call('POST', '/api/v1/projects', { name: 'Payments', key: 'PAY', template: 'kanban' })
+  await clearMoves('PAY')
   assert.equal(p.status, 201)
   assert.deepEqual(p.body.statuses.map((s: any) => s.name), ['To do', 'In progress', 'Done'])
   const [todo, doing, done] = p.body.statuses
@@ -251,6 +254,7 @@ test('comments, sprints and settings items accept client ids', { skip }, async (
 
 test('workflow override: refused for plain members, honored for the project lead and admins', { skip }, async () => {
   const p = (await call('POST', '/api/v1/projects', { name: 'Override', key: 'OVR', template: 'kanban' }, 'lead@x.com')).body
+  await clearMoves('OVR')
   const [todo, doing, done] = p.statuses
   await call('POST', '/api/v1/projects/OVR/transitions', { name: 'Start', fromIds: [todo.id], toId: doing.id }, 'lead@x.com')
   await call('POST', '/api/v1/projects/OVR/issues', { title: 'stuck', statusId: doing.id }, 'lead@x.com')
@@ -491,6 +495,7 @@ test('issue detail: expand picks the related records; comments and history have 
 
 test('bulk edit, delete and restore: one call, all or nothing, workflow still enforced', { skip }, async () => {
   const p = (await call('POST', '/api/v1/projects', { name: 'Bulk', key: 'BLK', template: 'kanban' })).body
+  await clearMoves('BLK')
   const [todo, doing, done] = p.statuses
   for (let n = 1; n <= 4; n++) await call('POST', '/api/v1/projects/BLK/issues', { title: `b${n}` })
   const edit = await call('POST', '/api/v1/issues/bulk/edit', { issues: ['BLK-1', 'BLK-2', 'BLK-3'], patch: { priority: 'high', labels: ['x'] } })
@@ -1030,6 +1035,7 @@ test('project members: last admin is protected, self-leave works, removal clears
 
 test('automation follows the workflow and project membership like a person would, and says when it skips', { skip }, async () => {
   const p = (await call('POST', '/api/v1/projects', { name: 'Automate', key: 'AUT', template: 'kanban' })).body
+  await clearMoves('AUT')
   const [todo, doing, done] = [p.statuses[0], p.statuses[1], p.statuses.find((s: any) => s.category === 'done')]
   await call('POST', '/api/v1/projects/AUT/transitions', { name: 'Start', fromIds: [todo.id], toId: doing.id })
   await join('AUT', 'au.member@x.com')
@@ -1242,6 +1248,42 @@ test('work types: the built-in four, renamed per project; added types; a workflo
   // members can't change the types
   await join('TYP', 'typ.member@x.com')
   assert.equal((await call('POST', '/api/v1/projects/TYP/types', { name: 'Spike', color: '#000000', icon: 'flag' }, 'typ.member@x.com')).status, 403)
+})
+
+test('workflow versions: publishing records the workflow; nothing new when unchanged; a status in use goes only with somewhere for its items', { skip }, async () => {
+  const p = (await call('POST', '/api/v1/projects', { name: 'Versioned', key: 'VER', template: 'kanban' })).body
+  const [todo, doing, done] = [p.statuses[0], p.statuses[1], p.statuses.find((s: any) => s.category === 'done')]
+  const v1 = await call('POST', '/api/v1/projects/VER/workflow/versions', { note: 'First' })
+  assert.equal(v1.status, 201); assert.deepEqual(v1.body, { version: 1, created: true })
+  assert.deepEqual((await call('POST', '/api/v1/projects/VER/workflow/versions', {})).body, { version: 1, created: false })
+  // a review status, used by items, some of them not open in anyone's browser (made straight in the database)
+  const review = (await call('POST', '/api/v1/projects/VER/statuses', { name: 'Review', color: '#a855f7', category: 'in-progress' })).body
+  await call('POST', '/api/v1/projects/VER/transitions', { name: 'To review', fromIds: [doing.id, review.id], toId: review.id === doing.id ? done.id : done.id })
+  await call('POST', '/api/v1/projects/VER/transitions', { name: 'Back', fromIds: [review.id], toId: todo.id })
+  const items = []
+  for (let n = 0; n < 3; n++) items.push((await call('POST', '/api/v1/projects/VER/issues', { title: `r${n}`, statusId: review.id })).body)
+  await call('DELETE', `/api/v1/issues/${items[2].key}`)                        // a deleted item still counts
+  assert.equal((await call('POST', '/api/v1/projects/VER/workflow/versions', { note: 'Review step' })).body.version, 2)
+  // removing it: refused without a destination; with one, every item moves (history written) and transitions let go of it
+  assert.equal((await call('DELETE', `/api/v1/projects/VER/statuses/${review.id}`)).status, 409)
+  assert.equal((await call('DELETE', `/api/v1/projects/VER/statuses/${review.id}?moveTo=${review.id}`)).status, 400)
+  assert.equal((await call('DELETE', `/api/v1/projects/VER/statuses/${review.id}?moveTo=${doing.id}`)).status, 204)
+  const rows = (await pool.query('select status_id from issues where id = any($1::uuid[])', [items.map(i => i.id)])).rows
+  assert.ok(rows.every(r => r.status_id === doing.id))
+  assert.ok((await pool.query(`select 1 from activity where issue_id = $1 and text = 'Changed status (workflow update)'`, [items[0].id])).rows.length)
+  const ts = (await call('GET', '/api/v1/projects/VER')).body.transitions
+  assert.deepEqual(ts.find((t: any) => t.name === 'To review').fromIds, [doing.id])
+  assert.equal(ts.some((t: any) => t.name === 'Back'), false)                    // it only started there
+  // versions list and read back; viewers read, only admins publish
+  assert.equal((await call('POST', '/api/v1/projects/VER/workflow/versions', { note: 'Without review' })).body.version, 3)
+  const list = (await call('GET', '/api/v1/projects/VER/workflow/versions')).body
+  assert.deepEqual(list.map((v: any) => [v.version, v.note]), [[3, 'Without review'], [2, 'Review step'], [1, 'First']])
+  const two = (await call('GET', '/api/v1/projects/VER/workflow/versions/2')).body
+  assert.ok(two.statuses.some((s: any) => s.name === 'Review') && two.transitions.some((t: any) => t.name === 'Back'))
+  await join('VER', 'ver.viewer@x.com', 'viewer')
+  assert.equal((await call('GET', '/api/v1/projects/VER/workflow/versions', undefined, 'ver.viewer@x.com')).status, 200)
+  assert.equal((await call('POST', '/api/v1/projects/VER/workflow/versions', {}, 'ver.viewer@x.com')).status, 403)
+  assert.equal((await call('GET', '/api/v1/projects/VER/workflow/versions/9')).status, 404)
 })
 
 test('report data: every live item and every status change in order, for people who can see the project', { skip }, async () => {
@@ -1801,6 +1843,9 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     'GET /admin/rate-limits/limited': ['gadmin', '/admin/rate-limits/limited'],
     'GET /settings/public': ['any', '/settings/public'],
     'GET /link-types': ['any', '/link-types'],
+    'GET /projects/{key}/workflow/versions': ['read', `/projects/${K}/workflow/versions`],
+    'GET /projects/{key}/workflow/versions/{version}': ['read', `/projects/${K}/workflow/versions/1`],
+    'POST /projects/{key}/workflow/versions': ['padmin', `/projects/${K}/workflow/versions`, { note: 'm' }],
     'POST /projects/{key}/types': ['padmin', `/projects/${K}/types`, { name: 'Matrix type', color: '#123456', icon: 'flag' }],
     'PATCH /projects/{key}/types/{typeKey}': ['padmin', `/projects/${K}/types/story`, { color: '#16A34A' }],
     'DELETE /projects/{key}/types/{typeKey}': ['padmin', `/projects/${K}/types/t-nothinghere`],

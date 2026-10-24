@@ -54,6 +54,10 @@ const keyOf = (projectId: string) => {
 }
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 
+/** Where a removed status's work items go (status id → status id), set by the workflow editor when it saves. The server
+ *  moves every item, also those this browser never loaded, in the same request that removes the status. */
+export const statusMoves = new Map<string, string>()
+
 function kindSync(kind: Kind) {
   const path = (i: Item) => `/api/projects/${keyOf(i.projectId)}/${kind}`
   return createCollectionSync<Item>({
@@ -68,7 +72,11 @@ function kindSync(kind: Kind) {
         await settingsDeps.reloadProject(b.projectId)          // the server moved work between releases
       }
     },
-    remove: async i => { await api('DELETE', `${path(i)}/${i.id}`) },
+    remove: async i => {
+      const moveTo = kind === 'statuses' ? statusMoves.get(i.id) : undefined
+      await api('DELETE', `${path(i)}/${i.id}${moveTo ? `?moveTo=${moveTo}` : ''}`)
+      if (moveTo) { statusMoves.delete(i.id); await settingsDeps.reloadProject(i.projectId) }   // the server moved its items: take their new versions
+    },
     // the whole project went away: the project delete removes these, a separate request is not needed
     shouldDelete: i => settingsDeps.getProjects().some(p => p.id === i.projectId),
     recover: () => settingsDeps.reloadAll(),

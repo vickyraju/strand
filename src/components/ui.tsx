@@ -410,7 +410,7 @@ export function Empty({ icon, title, body, action }: {
   )
 }
 
-export const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
+export const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : /(s|x|ch|sh)$/.test(word) ? 'es' : 's'}`
 
 /** "Mar 4" for a YYYY-MM-DD date. */
 export const formatDate = (date: string) =>

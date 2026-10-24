@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Plus, ArrowLeft, AlertTriangle, Workflow as WorkflowIcon, List as ListIcon, Undo2, Redo2, Network, PanelRightClose, PanelRightOpen } from 'lucide-react'
+import { Plus, ArrowLeft, AlertTriangle, Workflow as WorkflowIcon, List as ListIcon, Undo2, Redo2, Network, PanelRightClose, PanelRightOpen, History } from 'lucide-react'
 import { useStore, typesOf, type Project } from '../data/store'
 import { useApp } from '../appContext'
 import { Checkbox, Modal } from './ui'
@@ -12,6 +12,10 @@ import WorkflowCanvas from './workflow/WorkflowCanvas'
 import { AddStatusDialog, CreateTransitionDialog, DeleteStatusDialog, type NewStatusInput, type NewTransition } from './workflow/dialogs'
 import { EmptyPanel, StatusPanel, TransitionPanel } from './workflow/Panels'
 import TextView from './workflow/TextView'
+import { PublishDialog, VersionsDialog, workflowOf } from './workflow/Versions'
+import { api, apiEnabled } from '../api/client'
+import { idle as queueIdle } from '../api/queue'
+import { statusMoves } from '../api/settings'
 import { sameSelection, type Selection } from './workflow/types'
 
 type Dialog = null | { kind: 'transition'; initial: NewTransition } | { kind: 'status' } | { kind: 'delete'; id: string }
@@ -30,6 +34,8 @@ export default function WorkflowBuilder({ project }: { project: Project }) {
   const [leaving, setLeaving] = useState(false)
   const [panelOpen, setPanelOpen] = useState(true)
   const [focus, setFocus] = useState<{ id?: string; tick: number }>()
+  const [publishing, setPublishing] = useState(false)
+  const [versionsOpen, setVersionsOpen] = useState(false)
 
   const dirty = !sameWorkflow(workflow, original)
   const counts = useMemo(() => {
@@ -101,22 +107,49 @@ export default function WorkflowBuilder({ project }: { project: Project }) {
   const openAddTransition = () => setDialog({ kind: 'transition', initial: { from: [workflow.statuses[0]!.id], to: workflow.statuses[1]!.id, name: workflow.statuses[1]!.name } })
 
   // ── Save and discard ──
+  const exists = (id: string) => workflow.statuses.some(s => s.id === id)
+  const moveTarget = (id: string) => resolveMove(moves, id, exists) ?? workflow.statuses[0]!.id
+  /** Check first; then "Update workflow" says what changes before anything is saved. */
   const save = () => {
     const found = validateWorkflow(workflow)
     setShowIssues(true)
     if (found.some(i => i.level === 'error')) return
-    const exists = (id: string) => workflow.statuses.some(s => s.id === id)
-    // Move work items off deleted statuses first, while both statuses still exist
-    const removed = project.statuses.filter(s => !exists(s.id) && counts[s.id])
+    if (!found.length) setShowIssues(false)
+    setPublishing(true)
+  }
+  const publish = async (note: string) => {
+    setPublishing(false)
+    const removedAll = project.statuses.filter(s => !exists(s.id))
+    // With a server, removing a status moves every one of its items there, also those not loaded here
+    if (apiEnabled) for (const s of removedAll) statusMoves.set(s.id, moveTarget(s.id))
+    // Move the items shown here off deleted statuses first, while both statuses still exist
+    const removed = removedAll.filter(s => counts[s.id])
     if (removed.length) {
       dispatch({ type: 'updateProject', id: project.id, patch: { statuses: [...workflow.statuses, ...removed] } })
-      for (const s of removed) dispatch({ type: 'remapStatus', projectId: project.id, from: s.id, to: resolveMove(moves, s.id, exists) ?? workflow.statuses[0]!.id })
+      for (const s of removed) dispatch({ type: 'remapStatus', projectId: project.id, from: s.id, to: moveTarget(s.id) })
     }
     const layout = Object.fromEntries(Object.entries(workflow.layout).filter(([id]) => exists(id)))
     dispatch({ type: 'updateProject', id: project.id, patch: { statuses: workflow.statuses, transitions: workflow.transitions, layout } })
     setHist(startHistory({ workflow: { ...workflow, layout }, moves: {} }))
-    if (!found.length) setShowIssues(false)
-    toast('Workflow updated')
+    if (!apiEnabled) { toast('Workflow updated'); return }
+    // once every change has reached the server, record it as a version
+    await new Promise(r => setTimeout(r, 0))
+    await queueIdle()
+    try {
+      const v = await api<{ version: number; created: boolean }>('POST', `/api/projects/${encodeURIComponent(project.key)}/workflow/versions`, { note })
+      toast(v.created ? `Workflow updated: version ${v.version}` : 'Workflow updated')
+    } catch { toast('Workflow updated, but the version wasn’t recorded', { tone: 'warn' }) }
+  }
+  /** A published version into the editor, as an edit (undo goes back). Statuses it lacks send their items to one of its own. */
+  const loadVersion = (v: Parameters<typeof workflowOf>[0]) => {
+    const next = workflowOf(v, workflow.layout, typesOf(project).map(t => t.key))
+    const has = (id: string) => next.statuses.some(s => s.id === id)
+    const extra: Record<string, string> = {}
+    for (const s of project.statuses) if (!has(s.id))
+      extra[s.id] = next.statuses.find(x => x.category === s.category)?.id ?? next.statuses[0]!.id
+    setHist(h => pushHistory(h, { workflow: next, moves: { ...h.present.moves, ...extra } }))
+    setVersionsOpen(false); setSelected(null)
+    toast(`Version ${v.version} is in the editor. Update the workflow to use it.`)
   }
   const discard = () => { setHist(startHistory({ workflow: original, moves: {} })); setShowIssues(false); setSelected(null) }
 
@@ -160,6 +193,7 @@ export default function WorkflowBuilder({ project }: { project: Project }) {
         <h2 className="wf-title">Workflow</h2>
         {dirty && <span className="lozenge lozenge-in-progress">Unsaved changes</span>}
         <div style={{ flex: 1 }} />
+        {apiEnabled && <button className="btn btn-ghost" onClick={() => setVersionsOpen(true)}><History size={15} />Versions</button>}
         <button className="btn btn-secondary" onClick={discard} disabled={!dirty}>Discard changes</button>
         <button className="btn btn-primary" onClick={save} disabled={!dirty}>Update workflow</button>
       </div>
@@ -220,6 +254,10 @@ export default function WorkflowBuilder({ project }: { project: Project }) {
         </aside>}
       </div>
 
+      {publishing && <PublishDialog before={original} after={workflow} server={apiEnabled}
+        moved={project.statuses.filter(s => !exists(s.id)).map(s => ({ from: s.name, to: workflow.statuses.find(x => x.id === moveTarget(s.id))?.name ?? '', count: counts[s.id] ?? 0 }))}
+        onClose={() => setPublishing(false)} onPublish={note => void publish(note)} />}
+      {versionsOpen && <VersionsDialog projectKey={encodeURIComponent(project.key)} current={workflow} onClose={() => setVersionsOpen(false)} onRestore={loadVersion} />}
       {dialog?.kind === 'transition' && <CreateTransitionDialog statuses={workflow.statuses} initial={dialog.initial} onCreate={createTransition} onClose={() => setDialog(null)} />}
       {dialog?.kind === 'status' && <AddStatusDialog existing={workflow.statuses} onAdd={createStatus} onClose={() => setDialog(null)} />}
       {dialog?.kind === 'delete' && (() => {

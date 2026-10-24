@@ -347,3 +347,15 @@ test('two workflows with the same content are the same, whatever the object', ()
   assert.ok(!sameWorkflow(base(), moveNode(base(), 'a', { x: 1, y: 1 })))
   assert.ok(!sameWorkflow(base(), moveStatus(base(), 'd', 0)))
 })
+
+test('diff: what a save changes, matched by id, in words; moving boxes is not a change', async () => {
+  const { diffWorkflows, describeDiff } = await import('./workflow.ts')
+  const a = { statuses: [{ id: 's1', name: 'To do', color: '#000', category: 'todo' as const }, { id: 's2', name: 'Review', color: '#000', category: 'in-progress' as const }],
+    transitions: [{ id: 't1', name: 'Start', from: ['s1'], to: 's2' }], layout: { s1: { x: 0, y: 0 } } }
+  const b = { statuses: [{ id: 's1', name: 'Backlog', color: '#000', category: 'todo' as const }, { id: 's3', name: 'Done', color: '#0f0', category: 'done' as const }],
+    transitions: [{ id: 't1', name: 'Start', from: ['s1'], to: 's3' }, { id: 't2', name: 'Log', from: 'any' as const, to: null }], layout: { s1: { x: 50, y: 0 } } }
+  assert.deepEqual(describeDiff(diffWorkflows(a, b)), [
+    'Adds the status “Done”', 'Removes the status “Review”', 'Renames “To do” to “Backlog”',
+    'Adds the transition “Log”', 'Changes the transition “Start” (where it goes, its rules or work types)'])
+  assert.deepEqual(describeDiff(diffWorkflows(a, { statuses: [...a.statuses], transitions: [...a.transitions] })), [])
+})

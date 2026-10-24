@@ -324,3 +324,41 @@ export function redo<T>(h: History<T>): History<T> {
 
 /** Replace the current state and forget the history (after saving or discarding). */
 export const resetHistory = <T>(present: T): History<T> => startHistory(present)
+
+// ── Comparing (saving shows what changes; versions compare with each other) ──
+
+export interface WorkflowDiff {
+  statusesAdded: Status[]; statusesRemoved: Status[]; statusesRenamed: { from: string; to: string }[]; statusesChanged: Status[]
+  transitionsAdded: Transition[]; transitionsRemoved: Transition[]; transitionsChanged: Transition[]
+}
+
+/** What changes going from one workflow to another, matched by id. Layout (where boxes sit) is not a change. */
+export function diffWorkflows(a: Pick<Workflow, 'statuses' | 'transitions'>, b: Pick<Workflow, 'statuses' | 'transitions'>): WorkflowDiff {
+  const sa = new Map(a.statuses.map(s => [s.id, s])), sb = new Map(b.statuses.map(s => [s.id, s]))
+  const ta = new Map(a.transitions.map(t => [t.id, t])), tb = new Map(b.transitions.map(t => [t.id, t]))
+  const both = b.statuses.filter(s => sa.has(s.id))
+  const rest = (s: Status) => { const { name: _n, ...x } = s; return JSON.stringify(x) }
+  return {
+    statusesAdded: b.statuses.filter(s => !sa.has(s.id)),
+    statusesRemoved: a.statuses.filter(s => !sb.has(s.id)),
+    statusesRenamed: both.filter(s => sa.get(s.id)!.name !== s.name).map(s => ({ from: sa.get(s.id)!.name, to: s.name })),
+    statusesChanged: both.filter(s => rest(sa.get(s.id)!) !== rest(s)),
+    transitionsAdded: b.transitions.filter(t => !ta.has(t.id)),
+    transitionsRemoved: a.transitions.filter(t => !tb.has(t.id)),
+    transitionsChanged: b.transitions.filter(t => ta.has(t.id) && JSON.stringify(ta.get(t.id)) !== JSON.stringify(t)),
+  }
+}
+
+/** The diff as sentences, for people. Empty when nothing changes. */
+export function describeDiff(d: WorkflowDiff): string[] {
+  const names = (xs: { name: string }[]) => xs.map(x => `“${x.name}”`).join(', ')
+  const out: string[] = []
+  if (d.statusesAdded.length) out.push(`Adds ${d.statusesAdded.length === 1 ? 'the status' : 'statuses'} ${names(d.statusesAdded)}`)
+  if (d.statusesRemoved.length) out.push(`Removes ${d.statusesRemoved.length === 1 ? 'the status' : 'statuses'} ${names(d.statusesRemoved)}`)
+  for (const r of d.statusesRenamed) out.push(`Renames “${r.from}” to “${r.to}”`)
+  if (d.statusesChanged.length) out.push(`Changes ${names(d.statusesChanged)} (category, colour, description, WIP limit or position)`)
+  if (d.transitionsAdded.length) out.push(`Adds ${d.transitionsAdded.length === 1 ? 'the transition' : 'transitions'} ${names(d.transitionsAdded)}`)
+  if (d.transitionsRemoved.length) out.push(`Removes ${d.transitionsRemoved.length === 1 ? 'the transition' : 'transitions'} ${names(d.transitionsRemoved)}`)
+  if (d.transitionsChanged.length) out.push(`Changes ${d.transitionsChanged.length === 1 ? 'the transition' : 'transitions'} ${names(d.transitionsChanged)} (where it goes, its rules or work types)`)
+  return out
+}

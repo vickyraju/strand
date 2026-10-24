@@ -346,7 +346,7 @@ function ProjectSettings({ project }: { project: Project }) {
         <div className="panel-title-row">
           <div>
             <h2 className="panel-title">Workflow</h2>
-            <p className="muted">{plural(project.statuses.length, 'status', )} · {plural(project.transitions.length, 'transition')}. The workflow decides the board columns and which moves are allowed.</p>
+            <p className="muted">{plural(project.statuses.length, 'status')} · {plural(project.transitions.length, 'transition')}. The workflow decides the board columns and which moves are allowed.</p>
           </div>
           <button className="btn btn-secondary" onClick={() => openProject(project.id, 'settings', 'workflow')}><GitBranch size={14} />Edit workflow</button>
         </div>
