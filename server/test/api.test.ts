@@ -1423,7 +1423,7 @@ test('JQL search: fields by name, custom fields, AND/OR/NOT, lists, empties, dat
   const p2 = await call('GET', `/api/v1/search?jql=${encodeURIComponent('project = JQL ORDER BY priority DESC')}&limit=3&cursor=${p1.body.next}`)
   assert.deepEqual([...p1.body.items, ...p2.body.items].map((i: any) => i.key), [a.key, c.key, d.key, b.key])
   // the export follows the query and its order
-  const csv = (await app.inject({ method: 'GET', url: `/api/v1/search/export.csv?jql=${encodeURIComponent('project = JQL AND type = bug ORDER BY priority ASC')}`, headers: await bearer('owner@x.com') })).body
+  const csv = (await app.inject({ method: 'GET', url: `/api/v1/search/export.csv?jql=${encodeURIComponent('project = JQL AND type = bug ORDER BY priority ASC')}`, headers: { 'x-dev-user': 'owner@x.com' } })).body
   assert.ok(csv.indexOf('Fix payout') < csv.indexOf('Login fails') && csv.indexOf('Login fails') > 0)
   // mistakes are explained
   const bad = async (jql: string) => (await call('GET', `/api/v1/search?jql=${encodeURIComponent(jql)}`)).body.error as string
