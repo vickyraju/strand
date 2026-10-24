@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import ShareViewDialog from './ShareViewDialog'
 import { Search as SearchIcon, X, ChevronDown, Bookmark, MoreHorizontal, Pencil, Trash2, Users, Lock, Save, Download } from 'lucide-react'
 import { useStore, projectOf, uid, type Issue, type IssueType, type Priority, type ViewFilters, type ViewResolution } from '../data/store'
 import { applyFilters, filtersActive, EMPTY_FILTERS } from '../data/views'
@@ -40,7 +41,10 @@ export default function SearchView({ query, viewId }: { query: string; viewId?: 
   useEnsureProjects(results.map(i => projectKeyOf(i.key)))                       // so each row knows its workflow and shows its status
   const labels = apiEnabled ? labelList.items.map(l => l.name) : [...new Set(state.issues.flatMap(i => i.labels))].sort()
   const dirty = !!view && JSON.stringify(view.filters) !== JSON.stringify(f)
-  const canEdit = !view || view.ownerId === state.me?.id
+  const canEdit = !view || view.ownerId === state.me?.id || !!view.canEdit
+  /** Only its owner (or a workspace admin) decides who can see it, deletes it, or gives it away. */
+  const governs = !!view && (view.ownerId === state.me?.id || (apiEnabled && !!state.isAdmin))
+  const [sharing, setSharing] = useState(false)
   const any = <T,>(l: string, opts: PickerOption<T>[]) => [{ value: undefined as T, label: l }, ...opts]
   const projectRow = projects.byId(f.projectId)
   const project = projectOf(state, f.projectId) ?? (projectRow ? { name: projectRow.name, color: projectRow.color } : undefined)
@@ -76,8 +80,8 @@ export default function SearchView({ query, viewId }: { query: string; viewId?: 
           <>
             <Bookmark size={20} className="tone-green" />
             <h1 className="page-title">{view.name}</h1>
-            <span className="lozenge lozenge-todo" title={view.shared ? 'Everyone in the workspace can see this view' : 'Only you can see this view'}>
-              {view.shared ? 'Shared' : 'Private'}
+            <span className="lozenge lozenge-todo" title={view.shared ? 'Everyone in the workspace can see this view' : view.share?.length ? 'Shared with some projects, groups or people' : 'Only you can see this view'}>
+              {view.shared || view.share?.length ? 'Shared' : 'Private'}
             </span>
             {view.ownerId !== state.me?.id && <span className="muted sm">by {state.users.find(u => u.id === view.ownerId)?.name}</span>}
           </>
@@ -102,11 +106,13 @@ export default function SearchView({ query, viewId }: { query: string; viewId?: 
         {view && canEdit && (
           <Menu title="View actions" className="icon-btn" trigger={<MoreHorizontal size={17} />} items={[
             { label: 'Rename', icon: <Pencil size={14} />, onClick: () => setNaming('rename') },
-            { label: view.shared ? 'Make private' : 'Share with workspace', icon: view.shared ? <Lock size={14} /> : <Users size={14} />,
-              onClick: () => { dispatch({ type: 'saveView', view: { ...view, shared: !view.shared } }); toast(view.shared ? 'View is now private' : 'View shared with the workspace') } },
-            { label: 'Delete view', icon: <Trash2 size={14} />, danger: true, divider: true, onClick: () => setConfirmDelete(true) },
+            ...(governs ? [{ label: 'Share…', icon: view.shared || view.share?.length ? <Users size={14} /> : <Lock size={14} />, onClick: () => setSharing(true) }] : []),
+            ...(governs ? [{ label: 'Delete view', icon: <Trash2 size={14} />, danger: true, divider: true, onClick: () => setConfirmDelete(true) }] : []),
           ]} />
         )}
+        {sharing && view && <ShareViewDialog view={view} onClose={() => setSharing(false)} onSave={(shared, share) => {
+          dispatch({ type: 'saveView', view: { ...view, shared, share } }); setSharing(false); toast(shared || share.length ? `${view.name} is shared` : `${view.name} is private`)
+        }} />}
       </div>
 
       <div className="search-bar">

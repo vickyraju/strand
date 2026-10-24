@@ -242,6 +242,33 @@ test('components: an admin adds one with a lead; new work in it goes to the lead
   assert.deepEqual(o.problems, [])
 })
 
+test('saved views: shared with a project to edit, a member of it finds the view and changes it', { skip, timeout: 60_000 }, async () => {
+  const p = (await owner('POST', '/projects', { name: 'Shared', key: 'SHV', template: 'kanban' })).body
+  await owner('POST', '/projects/SHV/members', { userIds: [await idOf('maya@e2e.test')], role: 'member' })
+  const v = (await owner('POST', '/views', { name: 'Urgent work', filters: { q: '', priority: 'urgent' } })).body
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url(`/search?view=${v.id}`))
+  await o.click('[title="View actions"]')
+  await o.click('.picker-item:has-text("Share…")')
+  await o.selectOption('.modal select[aria-label="Share with a project"]', { label: 'Shared' })
+  await o.selectOption('.modal select[aria-label^="What"]', 'edit')
+  await o.click('.modal button:has-text("Save")')
+  await o.waitForSelector('text=Urgent work is shared')
+  await o.waitForTimeout(1000)
+  assert.deepEqual((await owner('GET', '/views')).body.find(x => x.id === v.id).share, [{ kind: 'project', id: p.id, can: 'edit' }])
+  const m = await signIn('maya@e2e.test')
+  await m.goto(url(`/search?view=${v.id}`))
+  await m.waitForSelector('h1:has-text("Urgent work")')
+  await m.click('[title="View actions"]')
+  assert.equal(await m.locator('.picker-item:has-text("Share…")').count(), 0)        // editing, not resharing
+  await m.click('.picker-item:has-text("Rename")')
+  await m.fill('#vn', 'Urgent and high')
+  await m.click('.modal button:has-text("Save")')
+  await m.waitForTimeout(1000)
+  assert.equal((await owner('GET', '/views')).body.find(x => x.id === v.id).name, 'Urgent and high')
+  assert.deepEqual([...o.problems, ...m.problems], [])
+})
+
 test('plan a sprint, start it and complete it: unfinished work goes back to the backlog', { skip, timeout: 90_000 }, async () => {
   const p = (await owner('POST', '/projects', { name: 'Sprinting', key: 'SPR', template: 'scrum' })).body
   const done = p.statuses.find(s => s.category === 'done')

@@ -153,7 +153,10 @@ export function mapIssueDetail(d: Row) {
   }
 }
 
-export const mapView = (v: Row): SavedView => ({ id: v.id, name: v.name, ownerId: v.ownerId, shared: !!v.shared, filters: v.filters })
+export const mapView = (v: Row): SavedView => ({
+  id: v.id, name: v.name, ownerId: v.ownerId, shared: !!v.shared, filters: v.filters,
+  ...(v.share?.length ? { share: v.share } : {}), ...(v.canEdit !== undefined ? { canEdit: !!v.canEdit } : {}),
+})
 
 // ── Reports (GET /projects/:key/report-data) ──
 export interface StatusChange { issueId: string; fromId: string | null; toId: string; at: string }

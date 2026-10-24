@@ -46,7 +46,7 @@ export default function CommandPalette({ onClose, onCreateProject }: { onClose: 
     }))
 
   const views: Item[] = state.views
-    .filter(v => (v.shared || v.ownerId === state.me?.id) && match(v.name))
+    .filter(v => match(v.name))
     .map(v => ({ id: v.id, section: 'Saved views', icon: <Bookmark size={14} />, label: v.name, run: () => navigate(href({ name: 'search', q: '', view: v.id })) }))
 
   const all = [...issues, ...projects, ...views, ...items]

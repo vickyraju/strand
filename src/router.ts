@@ -2,8 +2,8 @@ import { useSyncExternalStore } from 'react'
 
 export type ProjectTab = 'summary' | 'board' | 'backlog' | 'list' | 'timeline' | 'calendar' | 'releases' | 'reports' | 'settings'
 
-export type AdminSection = 'people' | 'audit' | 'backups' | 'settings' | 'link-types'
-const ADMIN: AdminSection[] = ['people', 'audit', 'backups', 'settings', 'link-types']
+export type AdminSection = 'people' | 'audit' | 'backups' | 'settings' | 'link-types' | 'views'
+const ADMIN: AdminSection[] = ['people', 'audit', 'backups', 'settings', 'link-types', 'views']
 
 export type Route =
   | { name: 'home' }

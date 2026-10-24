@@ -118,7 +118,12 @@ export const Summary = z.object({
 
 export const Notification = z.object({ id, userId: id, actorId: nullable(id), issueId: id, kind: z.string(), text: z.string(), read: z.boolean(), archived: z.boolean(), createdAt: ts })
 export const NotificationItem = Notification.extend({ issueKey: z.string(), issueTitle: z.string(), projectKey: z.string() })
-export const SavedView = z.object({ id, workspaceId: id, ownerId: id, name: z.string(), shared: z.boolean(), filters: z.record(z.string(), z.unknown()) })
+export const SavedView = z.object({
+  id, workspaceId: id, ownerId: id, ownerName: z.string(), ownerActive: z.boolean().describe('False: its owner left; an admin can give it to someone'),
+  name: z.string(), shared: z.boolean().describe('Everyone in the workspace can see it'),
+  share: z.array(z.object({ kind: z.enum(['project', 'group', 'user']), id, can: z.enum(['view', 'edit']) })),
+  canEdit: z.boolean().describe('I can change its name and filters'), filters: z.record(z.string(), z.unknown()),
+})
 
 export const AttachmentTicket = z.object({ id, name: z.string(), size: z.number(), type: z.string(), addedAt: ts, uploadUrl: z.string().describe('PUT the file bytes here within 5 minutes') })
 export const ImportReport = z.object({ projects: z.number(), issues: z.number(), skippedProjects: z.array(z.string()), skippedAttachments: z.number() })
@@ -203,6 +208,7 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'GET /views': z.array(SavedView),
   'POST /views': SavedView,
   'PATCH /views/:id': SavedView,
+  'GET /admin/views': z.array(SavedView),
   'POST /issues/:key/attachments': AttachmentTicket,
   'GET /attachments/:id/url': z.object({ url: z.string() }),
   'GET /admin/settings/project-backups': BackupSettings,

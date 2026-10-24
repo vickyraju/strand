@@ -182,11 +182,18 @@ export interface ViewFilters {
   label?:     string
   resolution: ViewResolution
 }
+/** Who else a saved view is shared with (Jira's filter sharing): a project's people, a group, or one person. */
+export interface ViewShare { kind: 'project' | 'group' | 'user'; id: string; can: 'view' | 'edit' }
 export interface SavedView {
   id:       string
   name:     string
   ownerId:  string
+  /** Everyone in the workspace can see it */
   shared:   boolean
+  /** …and these, to view or to edit */
+  share?:   ViewShare[]
+  /** I may change its name and filters (from the server; a view kept in this browser: when it is mine) */
+  canEdit?: boolean
   filters:  ViewFilters
 }
 

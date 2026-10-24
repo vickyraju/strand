@@ -85,7 +85,7 @@ export function useIssueSync(toast: Toast) {
     document.addEventListener('visibilitychange', tick)
     return () => { window.clearInterval(t); document.removeEventListener('visibilitychange', tick) }
   }, [dispatch])
-  useEffect(() => { if (apiEnabled) viewSync.flush(state.views.filter(v => v.ownerId === state.ownerId)) }, [state.views])
+  useEffect(() => { if (apiEnabled) viewSync.flush(state.views.filter(v => v.ownerId === state.ownerId || v.canEdit)) }, [state.views])
   useEffect(() => { if (apiEnabled) notificationSync.flush(state.notifications.filter(n => n.userId === state.ownerId)) }, [state.notifications])
 
   // Project settings: workflow, fields, templates, rules, releases, stars, details, delete

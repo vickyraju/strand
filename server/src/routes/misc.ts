@@ -1,7 +1,7 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
-import { db } from '../db.ts'
-import { HttpError, type Me } from '../auth.ts'
+import { db, tx, type Db } from '../db.ts'
+import { HttpError, requireAdmin, type Me } from '../auth.ts'
 import { visible, visibleAs } from '../access.ts'
 import { projectByKey } from './projects.ts'
 import { audit } from '../audit.ts'
@@ -254,26 +254,80 @@ const plugin: FastifyPluginAsyncZod = async app => {
   })
 
   // ── Saved views (owner edits; shared views visible to all) ──
-  app.get('/views', { schema: { tags: ['Saved views'], summary: 'My saved views plus shared ones' } }, async req => db.query(
-    'select * from saved_views where workspace_id = $1 and (owner_id = $2 or shared) order by name', [req.me.workspaceId, req.me.id]))
-  app.post('/views', { schema: { tags: ['Saved views'], summary: 'Save a view', body: z.object({ id: uuid.optional().describe('Client-chosen id'), name: z.string().min(1), shared: z.boolean().default(false), filters: viewFilters }) } }, async req => {
-    const b = req.body
-    return (await db.query('insert into saved_views (id, workspace_id, owner_id, name, shared, filters) values (coalesce($6::uuid, uuid_v7()), $1, $2, $3, $4, $5) returning *',
-      [req.me.workspaceId, req.me.id, b.name, b.shared, JSON.stringify(b.filters), b.id ?? null]))[0]
-  })
-  app.patch('/views/:id', { schema: { tags: ['Saved views'], summary: 'Edit my saved view', params: idP, body: z.object({ name: z.string().min(1), shared: z.boolean(), filters: viewFilters }).partial() } }, async req => {
-    const b = req.body
-    const [v] = await db.query(
-      `update saved_views set name = coalesce($3, name), shared = coalesce($4, shared), filters = coalesce($5::jsonb, filters)
-        where id = $1 and owner_id = $2 returning *`,
-      [req.params.id, req.me.id, b.name ?? null, b.shared ?? null, b.filters ? JSON.stringify(b.filters) : null])
-    if (!v) throw new HttpError(404, 'Not found, or not yours')
+  // ── Saved views (Jira's filters): mine, those shared with the workspace, and those shared with a project, group or
+  // person I am part of. Shared people can view or edit; only the owner (or a workspace admin) changes who can. ──
+  const shareEntry = z.object({ kind: z.enum(['project', 'group', 'user']), id: uuid, can: z.enum(['view', 'edit']).default('view') })
+  const share = z.array(shareEntry).max(50).describe('Who else can see it (view) or change it (edit): projects, groups, people')
+  /** SQL: does a share entry `e` (jsonb) include me? */
+  const includesMe = (me: Me, n: number) => `(
+      (e->>'kind' = 'user' and e->>'id' = $${n}::text)
+   or (e->>'kind' = 'group' and (e->>'id')::uuid in (select group_id from group_members where user_id = $${n}))
+   or (e->>'kind' = 'project' and ${me.admin ? 'true' : `(e->>'id')::uuid in (select project_id from project_access where user_id = $${n})`}))`
+  const VIEW = (me: Me) => `select v.*, u.name as owner_name, u.active as owner_active,
+      (v.owner_id = $2 or $3 or exists (select 1 from jsonb_array_elements(v.share) e where e->>'can' = 'edit' and ${includesMe(me, 2)})) as can_edit
+    from saved_views v join users u on u.id = v.owner_id`
+  const canSee = (me: Me) => `(v.owner_id = $2 or v.shared or exists (select 1 from jsonb_array_elements(v.share) e where ${includesMe(me, 2)}))`
+  const viewArgs = (req: { me: Me }) => [req.me.workspaceId, req.me.id, req.me.admin]
+  /** The view, if I can see it (404 otherwise), with whether I can change it. */
+  const viewFor = async (d: Db, req: { me: Me }, id: string) => {
+    const [v] = await d.query<any>(`${VIEW(req.me)} where v.workspace_id = $1 and v.id = $4 and ${canSee(req.me)}`, [...viewArgs(req), id])
+    if (!v) throw new HttpError(404, 'View not found')
     return v
+  }
+  /** Share entries must name this workspace's projects, groups and people. */
+  const checkShare = async (d: Db, ws: string, entries: z.infer<typeof share>) => {
+    for (const e of entries) {
+      const sql = e.kind === 'project' ? 'select 1 from projects where id = $1 and workspace_id = $2'
+        : e.kind === 'group' ? 'select 1 from groups where id = $1 and $2::uuid is not null'
+        : 'select 1 from memberships where user_id = $1 and workspace_id = $2'
+      if (!(await d.query(sql, [e.id, ws])).length) throw new HttpError(400, `No such ${e.kind} to share with`, { share: `Unknown ${e.kind}` })
+    }
+  }
+  app.get('/views', { schema: { tags: ['Saved views'], summary: 'Saved views I can see: mine, and those shared with me (the workspace, my projects, my groups, me)' } }, async req =>
+    db.query(`${VIEW(req.me)} where v.workspace_id = $1 and ${canSee(req.me)} order by v.name`, viewArgs(req)))
+  app.post('/views', { schema: { tags: ['Saved views'], summary: 'Save a view', body: z.object({
+    id: uuid.optional().describe('Client-chosen id'), name: z.string().min(1), shared: z.boolean().default(false), share: share.default([]), filters: viewFilters,
+  }) } }, async (req, reply) => {
+    const b = req.body
+    return tx(async d => {
+      await checkShare(d, req.me.workspaceId, b.share)
+      const [row] = await d.query<{ id: string }>('insert into saved_views (id, workspace_id, owner_id, name, shared, share, filters) values (coalesce($7::uuid, uuid_v7()), $1, $2, $3, $4, $5, $6) returning id',
+        [req.me.workspaceId, req.me.id, b.name, b.shared, JSON.stringify(b.share), JSON.stringify(b.filters), b.id ?? null])
+      reply.code(201)
+      return viewFor(d, req, row!.id)
+    })
   })
-  app.delete('/views/:id', { schema: { tags: ['Saved views'], summary: 'Delete my saved view', params: idP } }, async (req, reply) => {
-    const r = await db.query('delete from saved_views where id = $1 and owner_id = $2 returning id', [req.params.id, req.me.id])
-    if (!r.length) throw new HttpError(404, 'Not found, or not yours')
+  app.patch('/views/:id', { schema: { tags: ['Saved views'], summary: 'Change a view: its owner and people it is shared with to edit can change its name and filters; only the owner or a workspace admin changes who it is shared with, or its owner',
+    params: idP, body: z.object({ name: z.string().min(1), shared: z.boolean(), share, filters: viewFilters, ownerId: uuid.describe('Give it to someone else') }).partial() } }, async req => {
+    const b = req.body
+    return tx(async d => {
+      const v = await viewFor(d, req, req.params.id)
+      if (!v.canEdit) throw new HttpError(403, 'Only its owner, or someone it is shared with to edit, can change this view')
+      const governs = v.ownerId === req.me.id || req.me.admin
+      if ((b.shared !== undefined || b.share !== undefined || b.ownerId !== undefined) && !governs) throw new HttpError(403, 'Only its owner or a workspace admin changes who can see it')
+      if (b.share) await checkShare(d, req.me.workspaceId, b.share)
+      if (b.ownerId && !(await d.query('select 1 from memberships m join users u on u.id = m.user_id where m.user_id = $1 and m.workspace_id = $2 and u.active', [b.ownerId, req.me.workspaceId])).length)
+        throw new HttpError(400, 'The new owner must be an active person in the workspace', { ownerId: 'Not an active person here' })
+      await d.query(
+        `update saved_views set name = coalesce($2, name), shared = coalesce($3, shared), share = coalesce($4::jsonb, share), filters = coalesce($5::jsonb, filters), owner_id = coalesce($6, owner_id)
+          where id = $1`, [v.id, b.name ?? null, b.shared ?? null, b.share ? JSON.stringify(b.share) : null, b.filters ? JSON.stringify(b.filters) : null, b.ownerId ?? null])
+      if (b.ownerId && b.ownerId !== v.ownerId) await audit(d, req, { action: 'view.owner_changed', type: 'view', id: v.id, name: v.name, before: { ownerId: v.ownerId }, after: { ownerId: b.ownerId } })
+      return viewFor(d, req, v.id)
+    })
+  })
+  app.delete('/views/:id', { schema: { tags: ['Saved views'], summary: 'Delete a view (its owner, or a workspace admin)', params: idP } }, async (req, reply) => {
+    await tx(async d => {
+      const v = await viewFor(d, req, req.params.id)
+      if (v.ownerId !== req.me.id && !req.me.admin) throw new HttpError(403, 'Only its owner or a workspace admin can delete this view')
+      await d.query('delete from saved_views where id = $1', [v.id])
+      if (v.ownerId !== req.me.id) await audit(d, req, { action: 'view.deleted', type: 'view', id: v.id, name: v.name, before: { ownerId: v.ownerId } })
+    })
     reply.code(204).send()
+  })
+  // Administration › Shared views (Jira's "Filters"): every view shared beyond its owner, and any owned by someone who left
+  app.get('/admin/views', { schema: { tags: ['Admin'], summary: 'Views shared with anyone, and views whose owner is deactivated (workspace admins)' } }, async req => {
+    requireAdmin(req)
+    return db.query(`${VIEW(req.me)} where v.workspace_id = $1 and (v.shared or jsonb_array_length(v.share) > 0 or not u.active) order by u.active, v.name`, viewArgs(req))
   })
 }
 
