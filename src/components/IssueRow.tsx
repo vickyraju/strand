@@ -1,6 +1,6 @@
 import type { useDraggable } from '@dnd-kit/core'
 import { CalendarDays, Ban } from 'lucide-react'
-import { useStore, userOf, blockersOf, indexOf, timeAgo, type Issue, type Project } from '../data/store'
+import { useStore, userOf, blockersOf, indexOf, timeAgo, moveContext, type Issue, type Project } from '../data/store'
 import { useApp } from '../appContext'
 import { Picker, TypeIcon, PriorityIcon, Avatar, Checkbox, statusOptions, priorityOptions, formatDate, isOverdue } from './ui'
 import { UserPicker } from './UserPicker'
@@ -26,7 +26,7 @@ export interface IssueRowProps {
 /** A dense, editable work item row for backlogs, sub-items and personal lists. */
 export default function IssueRow({ issue, project, showProject, trailing, selected, onSelect, showUpdated = true, drag, dragging, ghost, ghostCount }: IssueRowProps) {
   const { state, dispatch } = useStore()
-  const { openIssue } = useApp()
+  const { openIssue, moveIssue } = useApp()
   const status = project.statuses.find(s => s.id === issue.status)
   const done = status?.category === 'done'
   const blocked = !done && blockersOf(state, issue).length > 0
@@ -62,7 +62,7 @@ export default function IssueRow({ issue, project, showProject, trailing, select
         <span className={`due hide-sm${isOverdue(issue.dueDate) && !done ? ' overdue' : ''}`}><CalendarDays size={12} />{formatDate(issue.dueDate)}</span>
       )}
       {issue.estimate != null && <span className="points">{issue.estimate}</span>}
-      <Picker value={issue.status} options={statusOptions(project, issue.status)} onChange={s => set({ status: s })}
+      <Picker value={issue.status} options={statusOptions(project, issue.status, moveContext(state, issue))} onChange={s => moveIssue(issue.id, s)}
         className={`status-cell sm cat-${status?.category}`} title="Change status" trigger={status?.name} />
       <Picker value={issue.priority} options={priorityOptions} onChange={priority => set({ priority })}
         className="icon-btn sm" title="Change priority" trigger={<PriorityIcon priority={issue.priority} />} />

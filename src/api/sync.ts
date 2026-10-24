@@ -176,6 +176,16 @@ export function createIssueSync(initial?: SyncDeps) {
   return {
     configure(next: SyncDeps) { deps = next },
     load, flush,
+    /** An issue the server changed through another route (a transition): it becomes the base, so it is not sent back. */
+    adopt(row: any) {
+      const issue = mapIssue(row)
+      const now = deps?.getIssues().find(i => i.id === issue.id)
+      base.set(issue.id, now ? { ...now, ...issue, watcherIds: now.watcherIds, links: now.links, attachments: now.attachments, worklogs: now.worklogs } : issue)
+      keys.set(issue.id, row.key); versions.set(issue.id, row.version)
+      deps?.applyServerIssue(issue)
+    },
+    /** The version the server last gave for an issue, for If-Match. */
+    versionOf: (id: string) => versions.get(id),
     /** Resolves when everything queued so far has been sent (used by tests and before sign-out). */
     idle: queueIdle,
     /** The key the server knows an issue by (a new issue's local key differs until its create is answered). */

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { X, Trash2 } from 'lucide-react'
-import { useStore, canTransition, type IssuePatch, type Priority } from '../data/store'
+import { useStore, type IssuePatch, type Priority } from '../data/store'
+import { planMove } from './TransitionDialog'
 import { useApp } from '../appContext'
 import { Picker, Modal, statusOptions, priorityOptions, plural } from './ui'
 import { UserPicker } from './UserPicker'
@@ -20,9 +21,10 @@ export default function BulkBar({ ids, onClear }: { ids: string[]; onClear: () =
   const apply = (patch: IssuePatch, what: string) => {
     let target = ids
     if (patch.status && project) {
-      target = items.filter(i => canTransition(project, i.status, patch.status!)).map(i => i.id)
+      // only items this move can go through for, as they are: a move that asks for input is made one item at a time
+      target = items.filter(i => i.status === patch.status || planMove(state, i, patch.status!).kind === 'direct').map(i => i.id)
       const skipped = ids.length - target.length
-      if (skipped) toast(`${plural(skipped, 'item')} couldn’t move because the workflow doesn’t allow it`, { tone: 'warn' })
+      if (skipped) toast(`${plural(skipped, 'item')} couldn’t move: the workflow doesn’t allow it, or the move needs details. Move ${skipped === 1 ? 'it' : 'them'} one at a time.`, { tone: 'warn' })
     }
     if (target.length) {
       dispatch({ type: 'updateIssues', ids: target, patch })

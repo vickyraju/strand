@@ -1,4 +1,5 @@
 // Pure data layer: types, reducer, migration and selectors. No React here so it can be unit-tested with `node --test`.
+import { RULE_FIELDS, actionChanges, allows, problems, type Item, type RuleCtx, type TransitionRules } from './transitionRules.ts'
 
 // ── Types ──────────────────────────────────────────────────
 
@@ -27,12 +28,14 @@ export interface Status {
   wipLimit?: number
 }
 
-/** A move into `to`. `from: 'any'` means every status may move here. */
+/** A move into `to`. `from: 'any'` means every status may move here. `to: null` is a loop: the item stays in its status
+ *  (an action such as "Log progress"). `rules`: who may use it, what it needs and what it does (transitionRules.ts). */
 export interface Transition {
-  id:   string
-  name: string
-  from: string[] | 'any'
-  to:   string
+  id:     string
+  name:   string
+  from:   string[] | 'any'
+  to:     string | null
+  rules?: TransitionRules
 }
 
 export interface BoardPrefs {
@@ -257,6 +260,8 @@ export interface State {
   ownerId:       string | null
   /** Workspace owner or admin: administers every project (from the server; unset for a workspace kept in this browser) */
   isAdmin?:      boolean
+  /** Groups I am in (transition rules can name groups). */
+  groupIds?:     string[]
   users:         User[]
   projects:      Project[]
   issues:        Issue[]
@@ -290,6 +295,8 @@ export type Action =
   | { type: 'toggleStar'; projectId: string }
   | { type: 'createIssue'; id: string; issue: NewIssue }
   | { type: 'updateIssues'; ids: string[]; patch: IssuePatch }
+  /** Make one transition by its id, with the fields and comment its screen asked for (loops go this way). */
+  | { type: 'runTransition'; issueId: string; transitionId: string; patch: IssuePatch; comment?: string }
   | { type: 'deleteIssues'; ids: string[] }
   | { type: 'toggleWatch'; issueId: string }
   | { type: 'moveIssue'; id: string; beforeId?: string; container?: string | null }
@@ -386,18 +393,45 @@ export const statusOf   = (p: Project | undefined, statusId: string) => p?.statu
 export const categoryOf = (p: Project | undefined, statusId: string): Category => statusOf(p, statusId)?.category ?? 'todo'
 export const isDone     = (p: Project | undefined, issue: Issue) => categoryOf(p, issue.status) === 'done'
 
-/** Whether the workflow allows moving from one status to another. */
-export function canTransition(p: Project, from: string, to: string) {
-  if (from === to) return true
-  return p.transitions.some(t => t.to === to && (t.from === 'any' || t.from.includes(from)))
+const startsAt = (t: Transition, from: string) => t.from === 'any' || t.from.includes(from)
+
+/** Everything a transition's rules look at, for this item and me (the server builds the same from its own data).
+ *  A workspace kept in this browser has no roles: everyone there counts as an admin. */
+export function moveContext(state: State, issue: Issue): RuleCtx {
+  const project = state.projects.find(p => p.id === issue.projectId)
+  const parent = issue.parentId ? state.issues.find(i => i.id === issue.parentId) : undefined
+  return {
+    mover: { id: actorId(state), role: project?.role ?? 'admin', groupIds: state.groupIds ?? [] },
+    item: issue as unknown as Item, leadId: project?.leadId || null,
+    openChildren: state.issues.filter(c => c.parentId === issue.id && categoryOf(state.projects.find(p => p.id === c.projectId), c.status) !== 'done').length,
+    parent: parent ? { ...(parent as unknown as Item), statusId: parent.status } : null,
+    statusName: id => statusOf(project, id)?.name ?? 'another status',
+    fieldName: f => (f.startsWith('custom.') ? project?.fields.find(x => x.id === f.slice(7))?.name ?? 'A custom field' : RULE_FIELDS[f] ?? f),
+  }
 }
 
-/** The transitions available from a status, one per target status. */
-export function transitionsFrom(p: Project, from: string) {
-  const seen = new Set<string>()
-  return p.transitions.filter(t =>
-    t.to !== from && (t.from === 'any' || t.from.includes(from)) && !seen.has(t.to) && seen.add(t.to))
+/** The transition a move from one status to another uses: one that starts there, ends there, and (given a context) whose
+ *  Restrict rules let me use it. Undefined when there is none; a project with no transitions at all allows any move. */
+export function transitionFor(p: Project, from: string, to: string, ctx?: RuleCtx): Transition | undefined {
+  return p.transitions.find(t => t.to === to && startsAt(t, from) && (!ctx || allows(t.rules?.restrict, ctx)))
 }
+
+/** Whether the workflow allows moving from one status to another (for me, given a context). */
+export function canTransition(p: Project, from: string, to: string, ctx?: RuleCtx) {
+  if (from === to || p.transitions.length === 0) return true
+  return !!transitionFor(p, from, to, ctx)
+}
+
+/** The transitions available from a status, one per target status (loops are separate: `loopsFrom`). */
+export function transitionsFrom(p: Project, from: string, ctx?: RuleCtx) {
+  const seen = new Set<string>()
+  return p.transitions.filter((t): t is Transition & { to: string } =>
+    t.to !== null && t.to !== from && startsAt(t, from) && (!ctx || allows(t.rules?.restrict, ctx)) && !seen.has(t.to) && !!seen.add(t.to))
+}
+
+/** Loops available from a status: actions that leave the item where it is (shown in the item's Actions menu, as in Jira). */
+export const loopsFrom = (p: Project, from: string, ctx?: RuleCtx) =>
+  p.transitions.filter(t => t.to === null && startsAt(t, from) && (!ctx || allows(t.rules?.restrict, ctx)))
 
 /** Users mentioned in a comment as `@Full Name`. */
 export function mentionedUsers(body: string, users: User[]) {
@@ -564,6 +598,13 @@ export function reducer(state: State, action: Action, now = Date.now()): State {
         if (events.length) next = runRules(next, id, events, now)
       }
       return next
+    }
+    case 'runTransition': {
+      const issue = state.issues.find(i => i.id === action.issueId)
+      const t = state.projects.find(p => p.id === issue?.projectId)?.transitions.find(x => x.id === action.transitionId)
+      if (!issue || !t || !(t.from === 'any' || t.from.includes(issue.status)) || !allows(t.rules?.restrict, moveContext(state, issue))) return state
+      const next = updateOne(state, issue.id, t.to ? { ...action.patch, status: t.to } : action.patch, log, notify, userName, now, { transition: t, comment: action.comment })
+      return next !== state && t.to && t.to !== issue.status ? runRules(next, issue.id, [{ kind: 'status', to: t.to }], now) : next
     }
     case 'deleteIssues': {
       const ids = new Set(action.ids)
@@ -811,7 +852,8 @@ export function runRules(state: State, issueId: string, events: RuleTrigger[], n
       } else if (a.kind === 'label' && a.value.trim() && !current.labels.includes(a.value.trim())) {
         say(`added label ${a.value.trim()} (rule “${rule.name}”)`)
         current = { ...current, labels: [...current.labels, a.value.trim()] }
-      } else if (a.kind === 'status' && a.value !== current.status && project.statuses.some(st => st.id === a.value)) {
+      } else if (a.kind === 'status' && a.value !== current.status && project.statuses.some(st => st.id === a.value)
+          && canTransition(project, current.status, a.value, { ...moveContext(state, current), mover: null })) {   // automation follows the workflow too
         say(`changed status to ${statusOf(project, a.value)?.name} (rule “${rule.name}”)`, 'status', current.status, a.value)
         current = { ...current, status: a.value }
       } else if (a.kind === 'comment' && a.body.trim()) {
@@ -851,17 +893,32 @@ function updateOne(
   notify: (userIds: (string | undefined)[], issueId: string, kind: NotificationKind, text: string) => Notification[],
   userName: (id?: string) => string | undefined,
   now: number,
+  o: { transition?: Transition; comment?: string } = {},
 ): State {
   const prev = state.issues.find(i => i.id === id)
   if (!prev) return state
   const project = state.projects.find(p => p.id === prev.projectId)
   if (!project) return state
-  // The workflow decides which status moves are allowed
-  if (patch.status && !canTransition(project, prev.status, patch.status)) return state
+  // The workflow decides which status moves are allowed, and the transition's rules who may make one and what it needs
+  // (the server checks the same). Its actions run here only for a workspace kept in this browser: otherwise the server runs them.
+  let t = o.transition
+  let actionComments: string[] = []
+  if ((patch.status && patch.status !== prev.status) || t) {
+    const ctx = moveContext(state, prev)
+    if (!t && project.transitions.length) { t = transitionFor(project, prev.status, patch.status!, ctx); if (!t) return state }
+    const after = { ...prev, ...patch } as unknown as Item
+    if (t && Object.keys(problems(t.rules, ctx, prev as unknown as Item, after, o.comment)).length) return state
+    if (t && state.isAdmin === undefined) {
+      const a = actionChanges(t.rules, ctx, after, new Date(now))
+      patch = { ...patch, ...Object.fromEntries(Object.entries(a.patch).map(([k, v]) => [k, v ?? undefined])) } as IssuePatch
+      actionComments = a.comments
+    }
+  }
+  const loop = !!t && t.to === null
 
   const changed = (Object.keys(patch) as (keyof IssuePatch)[])
     .filter(k => JSON.stringify(prev[k]) !== JSON.stringify(patch[k]))
-  if (changed.length === 0) return state
+  if (changed.length === 0 && !loop) return state
 
   const who = userName(actorId(state))
   const activity: Activity[] = []
@@ -889,11 +946,15 @@ function updateOne(
     }
   }
 
+  if (loop) activity.push(log(id, `did “${t!.name}”`))
+  const comments: Comment[] = [o.comment, ...actionComments].filter((b): b is string => !!b?.trim())
+    .map(body => ({ id: uid(), issueId: id, authorId: actorId(state), body, createdAt: now }))
   return {
     ...state,
     issues:        state.issues.map(i => i.id === id ? withResolution(project, prev, { ...i, ...patch, watcherIds: watchers, updatedAt: now }, now) : i),
     activity:      [...state.activity, ...activity],
     notifications: [...state.notifications, ...notes],
+    comments:      comments.length ? [...state.comments, ...comments] : state.comments,
   }
 }
 

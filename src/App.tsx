@@ -15,12 +15,14 @@ import CreateProjectModal from './components/CreateProjectModal'
 import CreateIssueModal from './components/CreateIssueModal'
 import ShortcutsDialog from './components/ShortcutsDialog'
 import { ProjectsView, ProjectView, TAB_LABEL } from './components/ProjectView'
-import { StoreProvider, useStore, type NewIssue } from './data/store'
+import { StoreProvider, useStore, moveContext, type NewIssue } from './data/store'
 import { useProjectIssues } from './api/useProjectIssues'
 import { useProjectOnDemand } from './api/useProjectOnDemand'
 import { rememberProject } from './api/recent'
 import { apiEnabled } from './api/client'
 import { useIssueSync } from './api/useIssueSync'
+import TransitionDialog, { makeTransition, planMove, type Pending } from './components/TransitionDialog'
+import { problems } from './data/transitionRules'
 import { useIssueDetail } from './api/useIssueDetail'
 import { loadProjectByKey } from './api/load'
 import { loadIssueFull } from './api/work'
@@ -66,6 +68,7 @@ function Shell() {
   const [createProjectOpen, setCreateProjectOpen] = useState(false)
   const [toast, setToast] = useState<{ text: string; issueId?: string; tone: 'ok' | 'warn'; undo?: string; n: number } | null>(null)
   const toastTimer = useRef<number>(undefined)
+  const [pendingMove, setPendingMove] = useState<Pending | null>(null)
   const navList = useRef<string[]>([])
 
   const project = route.name === 'project' ? state.projects.find(p => p.key === route.key) : undefined
@@ -153,6 +156,23 @@ function Shell() {
       toastTimer.current = window.setTimeout(() => setToast(null), opts?.undo ? 8000 : 5000)
     },
     setNavList: ids => { navList.current = ids },
+    moveIssue: (issueId, statusId) => {
+      const issue = state.issues.find(i => i.id === issueId)
+      if (!issue) return
+      const plan = planMove(state, issue, statusId)
+      if (plan.kind === 'refused') actions.toast(plan.reason, { tone: 'warn' })
+      else if (plan.kind === 'ask') setPendingMove({ issueId, transitionId: plan.transition.id })
+      else dispatch({ type: 'updateIssues', ids: [issueId], patch: { status: statusId } })
+    },
+    runTransition: (issueId, transitionId) => {
+      const issue = state.issues.find(i => i.id === issueId)
+      const t = state.projects.find(p => p.id === issue?.projectId)?.transitions.find(x => x.id === transitionId)
+      if (!issue || !t) return
+      const after = { ...issue, ...(t.to ? { status: t.to } : {}) } as any
+      const ctx = moveContext(state, issue)
+      if (t.rules?.screen?.length || Object.keys(problems(t.rules, ctx, issue as any, after)).length) { setPendingMove({ issueId, transitionId }); return }
+      void makeTransition(dispatch, issue, t, {}, '').then(err => actions.toast(err ? Object.values(err)[0]! : `${t.name}: done`, err ? { tone: 'warn' } : undefined))
+    },
   }
 
   const modalOpen = paletteOpen || shortcutsOpen || !!createDefaults || createProjectOpen
@@ -298,6 +318,7 @@ function Shell() {
         {createDefaults && <CreateIssueModal defaults={createDefaults} onClose={() => setCreateDefaults(null)} />}
         {paletteOpen && <CommandPalette onClose={() => setPaletteOpen(false)} onCreateProject={() => setCreateProjectOpen(true)} />}
         {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
+        {pendingMove && <TransitionDialog pending={pendingMove} onClose={() => setPendingMove(null)} onDone={text => { setPendingMove(null); actions.toast(text) }} />}
       </div>
     </AppContext.Provider>
   )

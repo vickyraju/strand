@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import {
-  Background, BackgroundVariant, ConnectionMode, Controls, MarkerType, MiniMap, ReactFlow, useEdgesState, useNodesState,
+  Background, BackgroundVariant, ConnectionMode, Controls, MarkerType, MiniMap, Panel, ReactFlow, useEdgesState, useNodesState,
   type OnConnect, type OnSelectionChangeFunc, type ReactFlowInstance,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
@@ -104,6 +104,7 @@ export default function WorkflowCanvas({ workflow, usage, selection, showLabels,
     else if (e.length) onSelect({ kind: 'transition', id: (e[0] as TransitionEdgeType).data!.transitionId })
   }, [onSelect])
 
+  const loops = workflow.transitions.filter(t => t.to === null)   // no arrow to draw: listed over the diagram instead
   return (
     <ReactFlow
       nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes}
@@ -124,6 +125,15 @@ export default function WorkflowCanvas({ workflow, usage, selection, showLabels,
       <Background variant={BackgroundVariant.Dots} gap={20} size={1.2} />
       <MiniMap pannable zoomable nodeColor={n => CATEGORY_COLOR[(n as StatusNodeType).data.category]} nodeStrokeWidth={0} />
       <Controls showInteractive={false} />
+      {loops.length > 0 && (
+        <Panel position="top-left" className="wf-loops" aria-label="Loops">
+          <span className="muted sm">Stay in status:</span>
+          {loops.map(t => (
+            <button key={t.id} type="button" className={`wf-loop${selection?.kind === 'transition' && selection.id === t.id ? ' on' : ''}`} onClick={() => onSelect({ kind: 'transition', id: t.id })}
+              title={t.from === 'any' ? 'From any status' : `From ${t.from.map(f => workflow.statuses.find(s => s.id === f)?.name).join(', ')}`}>↻ {t.name}</button>
+          ))}
+        </Panel>
+      )}
     </ReactFlow>
   )
 }

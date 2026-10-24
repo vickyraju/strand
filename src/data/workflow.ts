@@ -92,10 +92,10 @@ export function moveNode(w: Workflow, id: string, pos: Pos): Workflow {
 
 // ── Transitions ──────────────────────────────────────────
 
-/** A move never starts where it ends, and a status is listed once. */
-const cleanFrom = (from: string[] | 'any', to: string) => (from === 'any' ? 'any' : [...new Set(from)].filter(f => f !== to))
+/** A move never starts where it ends (a loop, `to` null, stays where it starts), and a status is listed once. */
+const cleanFrom = (from: string[] | 'any', to: string | null) => (from === 'any' ? 'any' : [...new Set(from)].filter(f => f !== to))
 
-export function addTransition(w: Workflow, t: { name: string; from: string[] | 'any'; to: string }): { workflow: Workflow; id?: string } {
+export function addTransition(w: Workflow, t: { name: string; from: string[] | 'any'; to: string | null }): { workflow: Workflow; id?: string } {
   const from = cleanFrom(t.from, t.to)
   if (from !== 'any' && from.length === 0) return { workflow: w }
   const id = uid()
@@ -112,12 +112,12 @@ export function connect(w: Workflow, fromId: string, toId: string, name?: string
   return { ...addTransition(w, { name: name?.trim() || target.name, from: [fromId], to: toId }), created: true }
 }
 
-export function updateTransition(w: Workflow, id: string, patch: Partial<Pick<Transition, 'name' | 'from' | 'to'>>): Workflow {
+export function updateTransition(w: Workflow, id: string, patch: Partial<Pick<Transition, 'name' | 'from' | 'to' | 'rules'>>): Workflow {
   const old = w.transitions.find(t => t.id === id)
   if (!old) return w
-  const to = patch.to ?? old.to
-  const next: Transition = { ...old, name: patch.name ?? old.name, to, from: cleanFrom(patch.from ?? old.from, to) }
-  if (next.name === old.name && next.to === old.to && JSON.stringify(next.from) === JSON.stringify(old.from)) return w
+  const to = patch.to !== undefined ? patch.to : old.to
+  const next: Transition = { ...old, name: patch.name ?? old.name, to, from: cleanFrom(patch.from ?? old.from, to), ...(patch.rules !== undefined ? { rules: patch.rules } : {}) }
+  if (next.name === old.name && next.to === old.to && JSON.stringify(next.from) === JSON.stringify(old.from) && JSON.stringify(next.rules) === JSON.stringify(old.rules)) return w
   return { ...w, transitions: w.transitions.map(t => (t.id === id ? next : t)) }
 }
 
@@ -172,9 +172,9 @@ export interface WorkflowEdge { id: string; transitionId: string; from: string; 
 
 export function edgesOf(w: Workflow): WorkflowEdge[] {
   const ids = new Set(w.statuses.map(s => s.id))
-  return w.transitions.flatMap(t => (t.from === 'any' || !ids.has(t.to)
+  return w.transitions.flatMap(t => (t.from === 'any' || t.to === null || !ids.has(t.to)
     ? []
-    : t.from.filter(f => ids.has(f)).map(f => ({ id: `${t.id}:${f}`, transitionId: t.id, from: f, to: t.to, name: t.name }))))
+    : t.from.filter(f => ids.has(f)).map(f => ({ id: `${t.id}:${f}`, transitionId: t.id, from: f, to: t.to as string, name: t.name }))))
 }
 
 /** How far to bend each arrow sideways so arrows between the same two statuses do not sit on top of each other:
@@ -199,10 +199,10 @@ export function reachable(w: Workflow): Set<string> {
   const queue: string[] = []
   const visit = (id: string) => { if (ids.has(id) && !seen.has(id)) { seen.add(id); queue.push(id) } }
   if (w.statuses[0]) visit(w.statuses[0].id)
-  for (const t of w.transitions) if (t.from === 'any') visit(t.to)
+  for (const t of w.transitions) if (t.from === 'any' && t.to) visit(t.to)
   while (queue.length) {
     const id = queue.pop()!
-    for (const t of w.transitions) if (t.from !== 'any' && t.from.includes(id)) visit(t.to)
+    for (const t of w.transitions) if (t.from !== 'any' && t.from.includes(id) && t.to) visit(t.to)
   }
   return seen
 }
@@ -236,7 +236,7 @@ export function validateWorkflow(w: Workflow): WorkflowIssue[] {
   const reach = reachable(w)
   for (const s of w.statuses) {
     if (!reach.has(s.id)) errors.push({ level: 'error', code: 'unreachable', message: `“${s.name}” can’t be reached. Add a transition into it.`, target: { kind: 'status', id: s.id } })
-    if (s.category !== 'done' && !w.transitions.some(t => t.to !== s.id && (t.from === 'any' || t.from.includes(s.id))))
+    if (s.category !== 'done' && !w.transitions.some(t => t.to !== null && t.to !== s.id && (t.from === 'any' || t.from.includes(s.id))))
       errors.push({ level: 'error', code: 'dead-end', message: `Work can’t leave “${s.name}”. Add a transition out of it.`, target: { kind: 'status', id: s.id } })
   }
 

@@ -1,6 +1,6 @@
 import { useDraggable } from '@dnd-kit/core'
-import { MoreHorizontal, CalendarDays, Ban, UserCheck, Link2, Trash2, ArrowRight, Eye } from 'lucide-react'
-import { useStore, userOf, blockersOf, indexOf, transitionsFrom, type Issue, type Project, type CardField } from '../data/store'
+import { MoreHorizontal, CalendarDays, Ban, UserCheck, Link2, Trash2, ArrowRight, Eye, RefreshCw } from 'lucide-react'
+import { useStore, userOf, blockersOf, indexOf, transitionsFrom, loopsFrom, moveContext, type Issue, type Project, type CardField } from '../data/store'
 import { useApp } from '../appContext'
 import { href } from '../router'
 import { TypeIcon, PriorityIcon, Avatar, Menu, formatDate, isOverdue, type MenuItem } from './ui'
@@ -32,7 +32,7 @@ export function CardGhost(props: Omit<CardProps, 'dragging'>) {
 
 function CardView({ issue, project, fields, dragging, ghost, drag }: CardProps & { ghost?: boolean; drag?: ReturnType<typeof useDraggable> }) {
   const { state, dispatch } = useStore()
-  const { openIssue, toast } = useApp()
+  const { openIssue, toast, moveIssue, runTransition } = useApp()
   const status   = project.statuses.find(s => s.id === issue.status)
   const done     = status?.category === 'done'
   const index    = indexOf(state)
@@ -45,11 +45,12 @@ function CardView({ issue, project, fields, dragging, ghost, drag }: CardProps &
 
   const menu: MenuItem[] = [
     { label: 'Open', icon: <Eye size={14} />, onClick: () => openIssue(issue.id) },
-    ...transitionsFrom(project, issue.status).map((t, i) => ({
+    ...transitionsFrom(project, issue.status, moveContext(state, issue)).map((t, i) => ({
       label: transitionLabel(project, t),
       icon: <ArrowRight size={14} />, divider: i === 0,
-      onClick: () => dispatch({ type: 'updateIssues', ids: [issue.id], patch: { status: t.to } }),
+      onClick: () => moveIssue(issue.id, t.to),
     })),
+    ...loopsFrom(project, issue.status, moveContext(state, issue)).map(t => ({ label: t.name, icon: <RefreshCw size={14} />, onClick: () => runTransition(issue.id, t.id) })),
     ...(issue.assigneeId !== state.me?.id ? [{ label: 'Assign to me', icon: <UserCheck size={14} />, divider: true,
       onClick: () => dispatch({ type: 'updateIssues', ids: [issue.id], patch: { assigneeId: state.me?.id } }) }] : []),
     { label: 'Copy link', icon: <Link2 size={14} />, divider: issue.assigneeId === state.me?.id,

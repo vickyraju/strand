@@ -75,6 +75,66 @@ test('the workflow decides which moves are offered, and the server refuses the r
   assert.deepEqual(m.problems, [])
 })
 
+test('transition rules: an admin adds one in the editor; a move is hidden or asks for details; a loop acts from the Actions menu', { skip, timeout: 90_000 }, async () => {
+  const p = (await owner('POST', '/projects', { name: 'Rules', key: 'RLS', template: 'kanban' })).body
+  const [todo, doing, done] = [p.statuses[0], p.statuses[1], p.statuses.find(s => s.category === 'done')]
+  await owner('POST', '/projects/RLS/transitions', { name: 'Start', fromIds: [todo.id], toId: doing.id })
+  await owner('POST', '/projects/RLS/transitions', { name: 'Finish', fromIds: [doing.id], toId: done.id,
+    rules: { validate: [{ kind: 'required', fields: ['dueDate'] }], screen: ['dueDate', 'comment'] } })
+  await owner('POST', '/projects/RLS/transitions', { name: 'Log progress', fromIds: [doing.id], toId: null,
+    rules: { validate: [{ kind: 'required', fields: ['comment'] }], screen: ['comment'] } })
+  await owner('POST', '/projects/RLS/members', { userIds: [await idOf('maya@e2e.test')], role: 'member' })
+  const item = (await owner('POST', '/projects/RLS/issues', { title: 'Ruled work' })).body
+  await owner('PATCH', `/issues/${item.key}`, { statusId: doing.id })
+
+  // the admin restricts Finish to project admins in the workflow editor (list view, Rules tab)
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url('/project/RLS/settings/workflow'))
+  await o.click('.wf-tools [role="tab"]:has-text("List")')
+  await o.click('.wf-list tr:has-text("Finish")')
+  await o.click('.wf-panel [role="tab"]:has-text("Rules")')
+  await o.selectOption('section[aria-label="Restrict transition"] select[aria-label="Add rule"]', { label: 'Only a project role' })
+  await o.click('button:has-text("Update workflow")')
+  await o.waitForSelector('text=Workflow updated')
+  const saved = (await owner('GET', '/projects/RLS')).body.transitions.find(t => t.name === 'Finish')
+  assert.deepEqual(saved.rules.restrict, { op: 'all', items: [{ kind: 'role', roles: ['admin'] }] })
+
+  // Maya (a member) isn't offered Finish, and the server refuses it
+  const m = await signIn('maya@e2e.test')
+  await m.goto(url(`/i/${item.key}`))
+  await m.click('[title="Change status"]')
+  const offered = await m.$$eval('.picker-menu .picker-item', items => items.map(i => i.textContent.trim()))
+  assert.ok(!offered.some(t => t.includes(done.name)), `offered: ${offered}`)
+  await m.keyboard.press('Escape')
+  assert.equal((await maya('PATCH', `/issues/${item.key}`, { statusId: done.id })).status, 403)
+
+  // the loop is in her Actions menu; its screen asks for a comment, and the item stays where it is
+  await m.click('[title="More actions"]')
+  await m.click('.picker-item:has-text("Log progress")')
+  const dialog = m.locator('.modal')
+  assert.equal(await dialog.locator('button:has-text("Log progress")').isDisabled(), true)
+  await dialog.locator('#tr-comment').fill('Halfway there')
+  await dialog.locator('button:has-text("Log progress")').click()
+  await m.waitForSelector('text=Log progress: done')
+  const after = (await owner('GET', `/issues/${item.key}`)).body
+  assert.equal(after.statusId, doing.id)
+  assert.ok(after.comments.some(c => c.body === 'Halfway there'))
+
+  // the admin finishes it: the transition screen asks for the due date first
+  await o.goto(url(`/i/${item.key}`))
+  await o.click('[title="Change status"]')
+  await o.click(`.picker-menu .picker-item:has-text("${done.name}")`)
+  const finish = o.locator('.modal')
+  await finish.waitFor()
+  assert.match(await finish.innerText(), /Due date is required/)
+  await finish.locator('#tr-dueDate').fill('2026-12-01')
+  await finish.locator('button:has-text("Finish")').click()
+  await o.waitForSelector(`text=${item.key} moved to ${done.name}`)
+  const finished = (await owner('GET', `/issues/${item.key}`)).body
+  assert.deepEqual([finished.statusId, finished.dueDate], [done.id, '2026-12-01'])
+  assert.deepEqual([...o.problems, ...m.problems], [])
+})
+
 test('plan a sprint, start it and complete it: unfinished work goes back to the backlog', { skip, timeout: 90_000 }, async () => {
   const p = (await owner('POST', '/projects', { name: 'Sprinting', key: 'SPR', template: 'scrum' })).body
   const done = p.statuses.find(s => s.category === 'done')

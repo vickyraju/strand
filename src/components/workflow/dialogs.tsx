@@ -1,24 +1,25 @@
 import { useState } from 'react'
 import type { Category, Status, Transition } from '../../data/store'
 import { Checkbox, Modal, plural } from '../ui'
+import { LOOP } from './Panels'
 
 const CATS: { id: Category; label: string }[] = [{ id: 'todo', label: 'To do' }, { id: 'in-progress', label: 'In progress' }, { id: 'done', label: 'Done' }]
 
 // ── Create transition ────────────────────────────────────
 
-export interface NewTransition { name: string; from: string[] | 'any'; to: string }
+export interface NewTransition { name: string; from: string[] | 'any'; to: string | null }
 
 /** Jira's "Create transition": where the move starts (one or several statuses, or any), where it ends, and what it is called. */
 export function CreateTransitionDialog({ statuses, initial, onCreate, onClose }: {
   statuses: Status[]; initial: NewTransition; onCreate: (t: NewTransition) => void; onClose: () => void
 }) {
   const [from, setFrom] = useState<string[] | 'any'>(initial.from)
-  const [to, setTo] = useState(initial.to)
+  const [to, setTo] = useState<string | null>(initial.to)
   const [name, setName] = useState(initial.name)
   const [named, setNamed] = useState(false)   // once the person types a name, stop following the target's name
   const starts = from === 'any' ? 'any' : from.filter(f => f !== to)
   const valid = name.trim() !== '' && (starts === 'any' || starts.length > 0)
-  const nameOf = (id: string) => statuses.find(s => s.id === id)?.name ?? ''
+  const nameOf = (id: string | null) => (id === null ? '' : statuses.find(s => s.id === id)?.name ?? '')
   const submit = () => { if (valid) onCreate({ name: name.trim(), from: starts, to }) }
 
   return (
@@ -44,8 +45,9 @@ export function CreateTransitionDialog({ statuses, initial, onCreate, onClose }:
           ))}
         </fieldset>
         <label className="label" htmlFor="ct-to" style={{ marginTop: 12 }}>To status</label>
-        <select id="ct-to" className="input" value={to} onChange={e => { setTo(e.target.value); if (!named) setName(nameOf(e.target.value)) }}>
+        <select id="ct-to" className="input" value={to ?? LOOP} onChange={e => { const v = e.target.value === LOOP ? null : e.target.value; setTo(v); if (!named) setName(nameOf(v)) }}>
           {statuses.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+          <option value={LOOP}>Stays in its status (an action)</option>
         </select>
         <label className="label" htmlFor="ct-name" style={{ marginTop: 12 }}>Name</label>
         <input id="ct-name" className="input" value={name} autoFocus onChange={e => { setName(e.target.value); setNamed(true) }} />

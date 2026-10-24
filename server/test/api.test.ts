@@ -1060,6 +1060,88 @@ test('automation follows the workflow and project membership like a person would
   assert.ok((await pool.query(`select 1 from activity where issue_id = $1 and field = 'statusId' and to_value = $2`, [j.id, doing.id])).rows.length)
 })
 
+test('transition rules: who may move, what a move needs, what it does; loops; every write path follows them', { skip }, async () => {
+  const p = (await call('POST', '/api/v1/projects', { name: 'Ruled', key: 'RUL', template: 'kanban' })).body
+  const [todo, doing, done] = [p.statuses[0], p.statuses[1], p.statuses.find((s: any) => s.category === 'done')]
+  await join('RUL', 'rul.ann@x.com'); await join('RUL', 'rul.ben@x.com')
+  const id = async (w: string) => (await call('GET', '/api/v1/me', undefined, w)).body.id as string
+  const [owner, ann, ben] = [await id('owner@x.com'), await id('rul.ann@x.com'), await id('rul.ben@x.com')]
+  const [{ id: qa }] = (await pool.query(`insert into groups (display_name) values ('QA') returning id`)).rows
+  await pool.query('insert into group_members (group_id, user_id) values ($1, $2)', [qa, ben])
+  assert.deepEqual((await call('GET', '/api/v1/me', undefined, 'rul.ben@x.com')).body.groupIds, [qa])
+  const transition = async (body: object) => {
+    const r = await call('POST', '/api/v1/projects/RUL/transitions', body)
+    assert.equal(r.status, 201, JSON.stringify(r.body)); return r.body
+  }
+  // the kanban template's any-to-any moves are replaced by a ruled workflow
+  for (const t of (await call('GET', '/api/v1/projects/RUL')).body.transitions) await call('DELETE', `/api/v1/projects/RUL/transitions/${t.id}`)
+  // Start: only the assignee, or (QA and a member); Finish: needs a due date and a comment, sets resolution and clears the sprint
+  const start = await transition({ name: 'Start', fromIds: [todo.id], toId: doing.id, rules: { restrict: { op: 'any', items: [
+    { kind: 'person', who: 'assignee' }, { op: 'all', items: [{ kind: 'group', groupIds: [qa] }, { kind: 'role', roles: ['member'] }] }] } } })
+  const finish = await transition({ name: 'Finish', fromIds: [doing.id], toId: done.id, rules: {
+    validate: [{ kind: 'required', fields: ['dueDate', 'comment'] }], screen: ['dueDate', 'comment'],
+    actions: [{ kind: 'set', field: 'resolution', value: "Won't do" }, { kind: 'assign', to: 'reporter' }, { kind: 'comment', body: 'Closed by the workflow' }] } })
+  const log = await transition({ name: 'Log progress', fromIds: [doing.id], toId: null, rules: { screen: ['comment'], actions: [{ kind: 'set', field: 'startDate', value: 'today' }] } })
+  await transition({ name: 'Reopen', fromIds: [done.id], toId: todo.id, rules: { restrict: { op: 'all', items: [{ kind: 'hidden' }] } } })
+  // bad rules are refused when saved
+  assert.equal((await call('POST', '/api/v1/projects/RUL/transitions', { name: 'x', fromIds: null, toId: todo.id, rules: { restrict: { op: 'all', items: [{ kind: 'field', field: 'nonsense', op: 'empty' }] } } })).status, 400)
+  assert.equal((await call('POST', '/api/v1/projects/RUL/transitions', { name: 'x', fromIds: null, toId: todo.id, rules: { actions: [{ kind: 'set', field: 'type', value: 'bug' }] } })).status, 400)
+
+  const i = (await call('POST', '/api/v1/projects/RUL/issues', { title: 'ruled', assigneeId: ann })).body
+  // restrict: ann (assignee) and ben (QA member) may start it; the owner (admin, not QA, not assignee) may not, and doesn't see it
+  assert.deepEqual((await call('GET', `/api/v1/issues/${i.key}/transitions`)).body, [])
+  const refused = await call('PATCH', `/api/v1/issues/${i.key}`, { statusId: doing.id })
+  assert.equal(refused.status, 403); assert.match(refused.body.error, /can’t make this move/)
+  assert.equal((await call('GET', `/api/v1/issues/${i.key}/transitions`, undefined, 'rul.ben@x.com')).body[0].name, 'Start')
+  assert.equal((await call('PATCH', `/api/v1/issues/${i.key}`, { statusId: doing.id }, 'rul.ben@x.com')).status, 200)
+
+  // validate: Finish needs a due date and a comment; GET says so up front, PATCH and POST refuse with field errors
+  const avail = (await call('GET', `/api/v1/issues/${i.key}/transitions`, undefined, 'rul.ann@x.com')).body
+  assert.deepEqual(avail.map((t: any) => [t.name, t.toId]).sort(), [['Finish', done.id], ['Log progress', null]])
+  assert.deepEqual(Object.keys(avail.find((t: any) => t.name === 'Finish').problems).sort(), ['comment', 'dueDate'])
+  const missing = await call('PATCH', `/api/v1/issues/${i.key}`, { statusId: done.id }, 'rul.ann@x.com')
+  assert.equal(missing.status, 400); assert.deepEqual(Object.keys(missing.body.errors).sort(), ['comment', 'dueDate'])
+  const noComment = await call('POST', `/api/v1/issues/${i.key}/transitions`, { transitionId: finish.id, fields: { dueDate: '2026-12-01' } }, 'rul.ann@x.com')
+  assert.equal(noComment.status, 400); assert.deepEqual(Object.keys(noComment.body.errors), ['comment'])
+  assert.equal((await call('GET', `/api/v1/issues/${i.key}`)).body.dueDate, null)                       // all or nothing
+
+  // a loop: stays in its status, its screen's comment is added and its actions run
+  const looped = await call('POST', `/api/v1/issues/${i.key}/transitions`, { transitionId: log.id, comment: 'Half way' }, 'rul.ann@x.com')
+  assert.equal(looped.status, 200); assert.equal(looped.body.statusId, doing.id)
+  assert.equal(looped.body.startDate, new Date().toISOString().slice(0, 10))
+
+  // the move with its screen filled in: actions set the resolution, give it back to the reporter, and comment
+  const made = await call('POST', `/api/v1/issues/${i.key}/transitions`, { transitionId: finish.id, fields: { dueDate: '2026-12-01' }, comment: 'Shipped' }, 'rul.ann@x.com')
+  assert.equal(made.status, 200, JSON.stringify(made.body))
+  assert.deepEqual([made.body.statusId, made.body.dueDate, made.body.resolution, made.body.assigneeId], [done.id, '2026-12-01', "Won't do", owner])
+  const comments = (await call('GET', `/api/v1/issues/${i.key}/comments`)).body.items.map((c: any) => c.body)
+  assert.deepEqual(comments, ['Half way', 'Shipped', 'Closed by the workflow'])
+  const history = (await pool.query('select text from activity where issue_id = $1', [i.id])).rows.map(r => r.text)
+  assert.ok(history.includes('“Log progress”') && history.includes('“Finish” changed resolution'))
+
+  // a loop can't be started from elsewhere; a hidden transition is for automation only
+  assert.equal((await call('POST', `/api/v1/issues/${i.key}/transitions`, { transitionId: log.id }, 'rul.ann@x.com')).status, 409)
+  assert.equal((await call('POST', `/api/v1/issues/${i.key}/transitions`, { transitionId: start.id }, 'rul.ann@x.com')).status, 409)
+  assert.equal((await call('PATCH', `/api/v1/issues/${i.key}`, { statusId: todo.id })).status, 403)
+
+  // bulk edit: the same rules, all or nothing
+  const j = (await call('POST', '/api/v1/projects/RUL/issues', { title: 'mine', assigneeId: ann })).body
+  const k = (await call('POST', '/api/v1/projects/RUL/issues', { title: 'not mine', assigneeId: ben })).body
+  const bulk = await call('POST', '/api/v1/issues/bulk/edit', { issues: [j.key, k.key], patch: { statusId: doing.id } }, 'rul.ann@x.com')
+  assert.equal(bulk.status, 403)
+  assert.equal((await call('GET', `/api/v1/issues/${j.key}`)).body.statusId, todo.id)
+
+  // automation: person rules don't bind it, the hidden Reopen is its to use, validators still do
+  await call('POST', '/api/v1/projects/RUL/rules', { name: 'Reopen on assign', trigger: { kind: 'assigned' }, actions: [{ kind: 'status', value: todo.id }] })
+  await call('PATCH', `/api/v1/issues/${i.key}`, { assigneeId: ann })
+  assert.equal((await call('GET', `/api/v1/issues/${i.key}`)).body.statusId, todo.id)
+  await call('POST', '/api/v1/projects/RUL/rules', { name: 'Finish on assign', trigger: { kind: 'assigned' }, actions: [{ kind: 'status', value: done.id }] })
+  await call('PATCH', `/api/v1/issues/${k.key}`, { statusId: doing.id }, 'rul.ben@x.com')
+  await call('PATCH', `/api/v1/issues/${k.key}`, { assigneeId: owner })
+  assert.equal((await call('GET', `/api/v1/issues/${k.key}`)).body.statusId, doing.id)                 // no due date, no comment: skipped
+  assert.ok((await pool.query(`select 1 from activity where issue_id = $1 and text like 'Automation skipped a status change: %required%'`, [k.id])).rows.length)
+})
+
 test('report data: every live item and every status change in order, for people who can see the project', { skip }, async () => {
   const p = (await call('POST', '/api/v1/projects', { name: 'Reports', key: 'REP', template: 'kanban' })).body
   const [a, b, c] = p.statuses
@@ -1577,6 +1659,8 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     'DELETE /issues/{key}': ['write', `/issues/${I}`],
     'GET /issues/{key}/comments': ['read', `/issues/${I}/comments`], 'POST /issues/{key}/comments': ['viewer', `/issues/${I}/comments`, { body: 'x' }],
     'GET /issues/{key}/activity': ['read', `/issues/${I}/activity`],
+    'GET /issues/{key}/transitions': ['read', `/issues/${I}/transitions`],
+    'POST /issues/{key}/transitions': ['write', `/issues/${I}/transitions`, { transitionId: transition }],
     'POST /issues/bulk/edit': ['write', '/issues/bulk/edit', { issues: [I], patch: { title: 'x' } }],
     'POST /issues/bulk/delete': ['write', '/issues/bulk/delete', { issues: [I] }],
     'POST /issues/bulk/restore': ['write', '/issues/bulk/restore', { issues: ['MTX-2'] }],

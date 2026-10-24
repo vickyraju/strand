@@ -7,6 +7,8 @@ import { publish } from '../events.ts'
 import { audit } from '../audit.ts'
 import { getSetting } from '../settings.ts'
 import { runRules, moveAllowed } from '../rules.ts'
+import { available, ruleContext, transitionById, transitionTo, type TransitionRow } from '../transitions.ts'
+import { actionChanges, problems, type RuleCtx } from '../shared/transitionRules.ts'
 import { projectByKey } from './projects.ts'
 
 const uuid = z.string().uuid()
@@ -15,7 +17,7 @@ const type = z.enum(['epic', 'story', 'task', 'bug'])
 const priority = z.enum(['urgent', 'high', 'medium', 'low', 'none'])
 export const RESOLUTIONS = ['Done', "Won't do", 'Duplicate', 'Cannot reproduce'] as const
 
-const ISSUE = `
+export const ISSUE_ROW = `
   select i.id, p.key || '-' || i.number as key, i.project_id, i.number, i.type, i.title, i.description,
          i.status_id, i.priority, i.assignee_id, i.reporter_id, i.labels, i.estimate, i.time_estimate,
          i.due_date, i.start_date, i.sprint_id, i.release_id, i.parent_id, i.custom, i.rank, i.version,
@@ -43,8 +45,8 @@ export async function issueByKey(d: Db, req: { me: Me; method: string }, ref: st
   if (!byId && !m) throw new HttpError(404, 'Issue not found')
   const ws = req.me.workspaceId
   const [i] = byId
-    ? await d.query<any>(`${ISSUE} where i.workspace_id = $1 and i.id = $2 ${live}`, [ws, ref])
-    : await d.query<any>(`${ISSUE} where i.workspace_id = $1 and p.key = $2 and i.number = $3 ${live}`, [ws, m![1]!.toUpperCase(), Number(m![2])])
+    ? await d.query<any>(`${ISSUE_ROW} where i.workspace_id = $1 and i.id = $2 ${live}`, [ws, ref])
+    : await d.query<any>(`${ISSUE_ROW} where i.workspace_id = $1 and p.key = $2 and i.number = $3 ${live}`, [ws, m![1]!.toUpperCase(), Number(m![2])])
   const role = i ? await roleOf(d, req.me, i.projectId) : null
   if (!i || !role) throw new HttpError(404, 'Issue not found')
   need(role, min ?? minFor(req.method))
@@ -85,8 +87,26 @@ async function watchersOf(d: Db, issue: { id: string; assigneeId: string | null;
   return [...new Set([...w.map(x => x.userId), issue.assigneeId, issue.reporterId].filter((x): x is string => !!x))]
 }
 
-async function checkTransition(d: Db, projectId: string, from: string, to: string) {
-  if (!(await moveAllowed(d, projectId, from, to))) throw new HttpError(409, 'That move is not allowed by the workflow')
+/** A transition's actions, after the move, in the same transaction: field changes (recorded as made by the transition)
+ *  and comments by the mover. An assignee who isn't in the project is skipped, as automation does. */
+export async function runActions(d: Db, me: Me | null, issueId: string, t: TransitionRow, ctx: RuleCtx) {
+  if (!t.rules.actions?.length) return
+  const [now] = await d.query<any>(`${ISSUE_ROW} where i.id = $1`, [issueId])
+  const { patch, comments } = actionChanges(t.rules, ctx, now)
+  if (patch.assigneeId && !(await canJoinWork(d, now.projectId, patch.assigneeId as string))) {
+    delete patch.assigneeId
+    await d.query(`insert into activity (issue_id, actor_id, text) values ($1, $2, $3)`, [issueId, me?.id ?? null, `“${t.name}” skipped an assignment: that person is not in this project`])
+  }
+  const changed = Object.keys(patch).filter(k => JSON.stringify(patch[k] ?? null) !== JSON.stringify(now[k] ?? null))
+  if (changed.length) {
+    const w = pick(Object.fromEntries(changed.map(k => [k, patch[k]])), FIELDS, ['custom'])
+    await d.query(`update issues set ${w.cols.map((c, i) => `${c} = $${i + 2}`).join(', ')}, version = version + 1, updated_at = now() where id = $1`, [issueId, ...w.vals])
+    for (const f of changed)
+      await d.query('insert into activity (issue_id, actor_id, field, from_value, to_value, text) values ($1, $2, $3, $4, $5, $6)',
+        [issueId, me?.id ?? null, f, now[f] == null ? null : String(now[f]), patch[f] == null ? null : String(patch[f]), `“${t.name}” changed ${f.replace(/([A-Z])/g, ' $1').toLowerCase()}`])
+    if (changed.includes('assigneeId') && patch.assigneeId && me) await note(d, patch.assigneeId as string, me, issueId, 'assigned', 'assigned you a work item')
+  }
+  for (const body of comments) await d.query('insert into comments (issue_id, author_id, body) values ($1, $2, $3)', [issueId, me?.id ?? null, body])
 }
 
 const keyP = z.object({ key: z.string().describe('Issue key (PAY-12) or id (uuid)') })
@@ -147,15 +167,25 @@ async function keepRanksApart(d: Db, projectId: string, issueId: string, rank: n
 }
 
 /** One issue edit: version check, workflow check, history, notifications, automation, live event. Shared by the single and bulk edits. */
-async function applyPatch(d: Db, me: Me, cur: any, patch: z.infer<typeof patchBody>, o: { ifMatch: number | null; override: boolean; ip?: string }) {
+async function applyPatch(d: Db, me: Me, cur: any, patch: z.infer<typeof patchBody>, o: { ifMatch: number | null; override: boolean; ip?: string; transition?: TransitionRow; comment?: string }) {
   if (o.ifMatch !== null && o.ifMatch !== cur.version) throw new HttpError(409, `Edited elsewhere (current version ${cur.version})`)
   const [lead] = await d.query<{ leadId: string | null }>('select lead_id from projects where id = $1', [cur.projectId])
   const override = o.override && (await roleOf(d, me, cur.projectId)) === 'admin'
   if (patch.assigneeId && patch.assigneeId !== cur.assigneeId && !(await canJoinWork(d, cur.projectId, patch.assigneeId)))
     throw new HttpError(400, 'The assignee must be a member of this project')
-  if (patch.statusId && !override) await checkTransition(d, cur.projectId, cur.statusId, patch.statusId)
+  // A status change goes through a transition: its Restrict rules decide whether this person may use it, its Validate
+  // rules check the item as it will be after the change, and its Actions run after it
+  const moving = patch.statusId !== undefined && patch.statusId !== cur.statusId
+  let t = o.transition ?? null
+  let ctx: RuleCtx | null = null
+  if ((moving && !override) || t) {
+    ctx = await ruleContext(d, cur, me)
+    t ??= await transitionTo(d, cur, patch.statusId!, ctx)
+    const errors = problems(t?.rules, ctx, cur, { ...cur, ...patch }, o.comment)
+    if (Object.keys(errors).length) throw new HttpError(400, `“${t!.name}” needs more information`, errors)
+  }
   // a move the workflow does not allow, made by a project admin with the override, is recorded
-  if (patch.statusId && override && !(await moveAllowed(d, cur.projectId, cur.statusId, patch.statusId)))
+  if (moving && override && !(await moveAllowed(d, cur.projectId, cur.statusId, patch.statusId!)))
     await audit(d, { me, ip: o.ip }, { action: 'issue.workflow_overridden', type: 'issue', id: cur.id, name: cur.key, project: { id: cur.projectId, key: cur.key.split('-')[0] },
       before: { statusId: cur.statusId }, after: { statusId: patch.statusId } })
   if (patch.parentId === cur.id) throw new HttpError(400, 'An item cannot be its own parent')
@@ -167,30 +197,40 @@ async function applyPatch(d: Db, me: Me, cur: any, patch: z.infer<typeof patchBo
 
   const changed = Object.keys(patch).filter(k => k !== 'rank' && JSON.stringify((patch as any)[k]) !== JSON.stringify(cur[k]))
   const w = pick(patch, FIELDS, ['custom'])
-  if (!w.keys.length) return cur
-  // No row back: someone saved this item after we read it (no row at all, so nothing to destructure)
-  const updated = await d.query(
-    `update issues set ${w.cols.map((c, i) => `${c} = $${i + 3}`).join(', ')}, version = version + 1, updated_at = now()
-      where id = $1 and version = $2 returning 1 as n`, [cur.id, cur.version, ...w.vals])
-  if (!updated.length) throw new HttpError(409, 'Edited elsewhere: reload to see the latest version')
+  if (!w.keys.length && !t) return cur
+  if (w.keys.length) {
+    // No row back: someone saved this item after we read it (no row at all, so nothing to destructure)
+    const updated = await d.query(
+      `update issues set ${w.cols.map((c, i) => `${c} = $${i + 3}`).join(', ')}, version = version + 1, updated_at = now()
+        where id = $1 and version = $2 returning 1 as n`, [cur.id, cur.version, ...w.vals])
+    if (!updated.length) throw new HttpError(409, 'Edited elsewhere: reload to see the latest version')
+  }
 
   for (const f of changed) {
     const to = (patch as any)[f], from = cur[f]
     await d.query('insert into activity (issue_id, actor_id, field, from_value, to_value, text) values ($1, $2, $3, $4, $5, $6)',
       [cur.id, me.id, f, from == null ? null : String(from), to == null ? null : String(to), `Changed ${f.replace(/([A-Z])/g, ' $1').toLowerCase()}`])
   }
-  const ctx = { projectId: cur.projectId, issueId: cur.id, reporterId: cur.reporterId, leadId: lead?.leadId ?? null }
+  if (t) {
+    if (!moving) await d.query('insert into activity (issue_id, actor_id, text) values ($1, $2, $3)', [cur.id, me.id, `“${t.name}”`])   // a loop: the action itself is the history
+    if (o.comment?.trim()) {
+      await d.query('insert into comments (issue_id, author_id, body) values ($1, $2, $3)', [cur.id, me.id, o.comment])
+      for (const u of await mentionedIn(d, cur.projectId, o.comment, me.id)) await note(d, u, me, cur.id, 'mentioned', 'mentioned you in a comment')
+    }
+    await runActions(d, me, cur.id, t, ctx!)
+  }
+  const rctx = { projectId: cur.projectId, issueId: cur.id, reporterId: cur.reporterId, leadId: lead?.leadId ?? null }
   if (changed.includes('assigneeId') && patch.assigneeId) {
     await note(d, patch.assigneeId, me, cur.id, 'assigned', 'assigned you a work item')
-    await runRules(d, ctx, { kind: 'assigned' })
+    await runRules(d, rctx, { kind: 'assigned' })
   }
   if (changed.includes('statusId')) {
     for (const u of await watchersOf(d, cur)) await note(d, u, me, cur.id, 'status', 'changed the status')
-    await runRules(d, ctx, { kind: 'status', to: patch.statusId! })
+    await runRules(d, rctx, { kind: 'status', to: patch.statusId! })
   }
   if (patch.rank !== undefined && await keepRanksApart(d, cur.projectId, cur.id, patch.rank)) await publish(d, cur.projectId, { type: 'issues.reranked' })
   await publish(d, cur.projectId, { type: 'issue.updated', id: cur.id, key: cur.key, editors: await editorsOf(d, cur.id) })
-  return (await d.query<any>(`${ISSUE} where i.id = $1`, [cur.id]))[0]
+  return (await d.query<any>(`${ISSUE_ROW} where i.id = $1`, [cur.id]))[0]
 }
 
 const plugin: FastifyPluginAsyncZod = async app => {
@@ -200,7 +240,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
   app.get('/projects/:key/report-data', { schema: { tags: TAG, summary: 'All live items of a project and the full history of their status changes, for reports', params: projKeyP } }, async req => {
     const p = await projectByKey(db, req, req.params.key)
     const [issues, statusChanges] = await Promise.all([
-      db.query(`${ISSUE} where i.project_id = $1 and i.deleted_at is null order by i.rank, i.id`, [p.id]),
+      db.query(`${ISSUE_ROW} where i.project_id = $1 and i.deleted_at is null order by i.rank, i.id`, [p.id]),
       db.query(`select a.issue_id, a.from_value as from_id, a.to_value as to_id, a.created_at as at
                   from activity a join issues i on i.id = a.issue_id
                  where i.project_id = $1 and i.deleted_at is null and a.field = 'statusId' and a.to_value is not null
@@ -228,7 +268,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
       where.push(`(i.rank, i.id) > ($${args.length - 1}, $${args.length})`)
     }
     args.push(q.limit + 1)
-    const rows = await db.query<any>(`${ISSUE} where ${where.join(' and ')} order by i.rank, i.id limit $${args.length}`, args)
+    const rows = await db.query<any>(`${ISSUE_ROW} where ${where.join(' and ')} order by i.rank, i.id limit $${args.length}`, args)
     const more = rows.length > q.limit
     const items = more ? rows.slice(0, q.limit) : rows
     const last = items.at(-1)
@@ -264,7 +304,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
       if (b.assigneeId) await note(d, b.assigneeId, req.me, row!.id, 'assigned', 'assigned you a work item')
       await runRules(d, { projectId: p.id, issueId: row!.id, reporterId: req.me.id, leadId: pr!.leadId }, { kind: 'created' })
       await publish(d, p.id, { type: 'issue.created', id: row!.id })
-      const [issue] = await d.query<any>(`${ISSUE} where i.id = $1`, [row!.id])
+      const [issue] = await d.query<any>(`${ISSUE_ROW} where i.id = $1`, [row!.id])
       return issue
     })
   })
@@ -290,7 +330,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     load('activity', 'select * from activity where issue_id = $1 order by created_at desc, id desc limit 200')
     load('worklogs', 'select * from worklogs where issue_id = $1 order by date desc, created_at desc limit 200')
     load('attachments', 'select id, name, size, type, added_by, added_at from attachments where issue_id = $1 and uploaded_at is not null order by added_at')
-    load('children', `${ISSUE} where i.parent_id = $1 and i.deleted_at is null order by i.rank limit 500`)
+    load('children', `${ISSUE_ROW} where i.parent_id = $1 and i.deleted_at is null order by i.rank limit 500`)
     await Promise.all(jobs)
     return out
   })
@@ -328,6 +368,32 @@ const plugin: FastifyPluginAsyncZod = async app => {
   } }, async req => {
     const ifMatch = req.headers['if-match'] ? Number(String(req.headers['if-match']).replace(/"/g, '')) : null
     return tx(async d => applyPatch(d, req.me, await issueByKey(d, req, req.params.key), req.body, { ifMatch, override: req.headers['x-workflow-override'] === '1', ip: req.ip }))
+  })
+
+  // ── Transitions (Jira's issue transitions: what I can do from here, and doing one with its screen fields and a comment) ──
+  app.get('/issues/:key/transitions', { schema: { tags: TAG, summary: 'Transitions I can use from the item\'s current status, with the fields each asks for. Loops (toId null) leave the status as it is', params: keyP } }, async req => {
+    const i = await issueByKey(db, req, req.params.key)
+    const ctx = await ruleContext(db, i, req.me)
+    return (await available(db, i, ctx)).map(t => ({
+      id: t.id, name: t.name, toId: t.toId, screen: t.rules.screen ?? [],
+      problems: problems(t.rules, ctx, i, i),   // what would stop it if made now without filling anything in
+    }))
+  })
+  app.post('/issues/:key/transitions', { schema: {
+    tags: TAG, summary: 'Make a transition: its rules are checked, `fields` (the transition screen) are saved with it, `comment` is added, and its actions run, all or nothing',
+    params: keyP, body: z.object({
+      transitionId: uuid, fields: patchBody.omit({ statusId: true, rank: true }).partial().default({}),
+      comment: z.string().max(20000).optional(),
+    }),
+    headers: z.object({ 'if-match': z.string().optional().describe('Issue version you last read') }),
+  } }, async req => {
+    const ifMatch = req.headers['if-match'] ? Number(String(req.headers['if-match']).replace(/"/g, '')) : null
+    return tx(async d => {
+      const cur = await issueByKey(d, req, req.params.key)
+      const t = await transitionById(d, cur, req.body.transitionId, await ruleContext(d, cur, req.me))
+      const patch = t.toId ? { ...req.body.fields, statusId: t.toId } : req.body.fields
+      return applyPatch(d, req.me, cur, patch, { ifMatch, override: false, ip: req.ip, transition: t, comment: req.body.comment })
+    })
   })
 
   // ── Bulk (all or nothing: nothing changes if any issue is missing or refuses the change; size limit in System settings) ──
@@ -395,7 +461,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
       await d.query('update issues set deleted_at = null, version = version + 1 where id = $1', [i.id])
       await audit(d, req, { action: 'issue.restored', type: 'issue', id: i.id, name: i.key, project: { id: i.projectId, key: i.key.split('-')[0]! } })
       await publish(d, i.projectId, { type: 'issue.created', id: i.id })
-      return (await d.query<any>(`${ISSUE} where i.id = $1`, [i.id]))[0]
+      return (await d.query<any>(`${ISSUE_ROW} where i.id = $1`, [i.id]))[0]
     })
   })
 

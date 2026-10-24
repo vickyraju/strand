@@ -8,6 +8,7 @@ import { subscribe } from '../events.ts'
 import { audit, changes } from '../audit.ts'
 import { enqueue, kickJobs } from '../jobs.ts'
 import { backupBucket, backupSettings } from '../backups.ts'
+import { rulesSchema } from '../transitions.ts'
 
 const uuid = z.string().uuid()
 const color = z.string().regex(/^#[0-9a-fA-F]{6}$/)
@@ -38,7 +39,7 @@ async function requireProjectAdmin(_req: FastifyRequest, p: { role: ProjectRole 
 // Child collections of a project. `json` columns are stored as jsonb.
 const CHILD = {
   statuses:    { table: 'statuses',       cols: ['name', 'description', 'color', 'category', 'wipLimit', 'position'] },
-  transitions: { table: 'transitions',    cols: ['name', 'fromIds', 'toId'] },
+  transitions: { table: 'transitions',    cols: ['name', 'fromIds', 'toId', 'rules'], json: ['rules'] },
   fields:      { table: 'field_defs',     cols: ['name', 'kind', 'options', 'position'] },
   templates:   { table: 'item_templates', cols: ['name', 'type', 'title', 'description', 'priority', 'labels', 'estimate'] },
   rules:       { table: 'rules',          cols: ['name', 'enabled', 'trigger', 'actions'], json: ['trigger', 'actions'] },
@@ -48,7 +49,10 @@ type Kind = keyof typeof CHILD
 
 const childPatch = {
   statuses: z.object({ name: z.string().min(1), description: z.string().max(500), color, category, wipLimit: z.number().int().positive().nullable(), position: z.number().int() }).partial(),
-  transitions: z.object({ name: z.string().min(1), fromIds: z.array(uuid).nullable(), toId: uuid }).partial(),
+  transitions: z.object({
+    name: z.string().min(1), fromIds: z.array(uuid).nullable().describe('null: from any status'),
+    toId: uuid.nullable().describe('null: a loop, the item stays in its status'), rules: rulesSchema.describe('Restrict, validate, screen and actions'),
+  }).partial(),
   fields: z.object({ name: z.string().min(1), kind: z.enum(['text', 'number', 'select', 'date']), options: z.array(z.string()).nullable(), position: z.number().int() }).partial(),
   templates: z.object({
     name: z.string().min(1), type: z.enum(['epic', 'story', 'task', 'bug']), title: z.string(), description: z.string(),
@@ -80,7 +84,9 @@ const keyIdP = keyP.extend({ id: uuid })
 const T = { me: ['Account'], projects: ['Projects'], config: ['Project settings'], sprints: ['Sprints'] }
 
 const plugin: FastifyPluginAsyncZod = async app => {
-  app.get('/me', { schema: { tags: T.me, summary: 'Current user and role' } }, async req => req.me)
+  app.get('/me', { schema: { tags: T.me, summary: 'Current user and role' } }, async req => ({
+    ...req.me, groupIds: (await db.query<{ groupId: string }>('select group_id from group_members where user_id = $1', [req.me.id])).map(g => g.groupId),
+  }))
 
   const searchQ = z.object({
     query: z.string().max(100).optional().describe('Matches anywhere in the name (and e-mail, for users); case-insensitive'),
