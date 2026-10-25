@@ -8,6 +8,7 @@ export interface PublicSettings {
   accessTokens: { enabled: boolean; maxPerUser: number; maxExpiryDays: number; defaultExpiryDays: number }
   searchAndBulk: { exportMaxRows: number; bulkMaxItems: number; importMaxRows: number }
   testing: { finalStatusesHavePrecedence: boolean; resultImportMaxMb: number; resultImportMaxTests: number }
+  groups: { whoCanCreate: 'everyone' | 'admins' }
   dueReminders: { enabled: boolean; daysAhead: number; daysLate: number; dueSoonDays: number }
 }
 
@@ -17,6 +18,7 @@ export const DEFAULT_SETTINGS: PublicSettings = {
   accessTokens: { enabled: true, maxPerUser: 10, maxExpiryDays: 365, defaultExpiryDays: 90 },
   searchAndBulk: { exportMaxRows: 20_000, bulkMaxItems: 200, importMaxRows: 10_000 },
   testing: { finalStatusesHavePrecedence: true, resultImportMaxMb: 10, resultImportMaxTests: 2000 },
+  groups: { whoCanCreate: 'everyone' },
   dueReminders: { enabled: true, daysAhead: 1, daysLate: 3, dueSoonDays: 3 },
 }
 

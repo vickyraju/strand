@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Users, ScrollText, Archive, Download, RotateCcw, SlidersHorizontal, Link2, Bookmark } from 'lucide-react'
+import { Users, ScrollText, Archive, Download, RotateCcw, SlidersHorizontal, Link2, Bookmark, UsersRound } from 'lucide-react'
 import { api, apiEnabled, ApiError } from '../api/client'
 import { useStore, timeAgo } from '../data/store'
 import { isGlobalAdmin } from '../data/access'
@@ -8,11 +8,13 @@ import { href, navigate, type AdminSection } from '../router'
 import { formatBytes } from '../data/files'
 import { Avatar, Empty, Modal, Toggle, plural } from './ui'
 import SystemSettings from './SystemSettings'
+import GroupsView from './groups/GroupsView'
 import LinkTypesAdmin from './LinkTypesAdmin'
 import SharedViewsAdmin from './SharedViewsAdmin'
 
 const SECTIONS: { id: AdminSection; label: string; Icon: typeof Users }[] = [
   { id: 'people', label: 'People', Icon: Users },
+  { id: 'groups', label: 'Groups', Icon: UsersRound },
   { id: 'audit', label: 'Audit log', Icon: ScrollText },
   { id: 'backups', label: 'Project backups', Icon: Archive },
   { id: 'link-types', label: 'Link types', Icon: Link2 },
@@ -39,6 +41,7 @@ export default function AdminView({ section = 'people' }: { section?: AdminSecti
       </div>
       <div className="admin-body">
         {section === 'people' && <People />}
+        {section === 'groups' && <GroupsView admin />}
         {section === 'audit' && <AuditLog />}
         {section === 'backups' && <Backups />}
         {section === 'link-types' && <LinkTypesAdmin />}

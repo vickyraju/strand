@@ -67,6 +67,8 @@ export default function SystemSettings() {
         { key: 'importMaxRows', label: 'Most rows in one CSV import', type: 'number', min: 10, max: 100_000 },
       ]} />
       <EmailSection setting={of('email')} save={v => save('email', v)} />
+      <SelectSection setting={of('groups')} save={v => save('groups', v)} field="whoCanCreate" label="Who may make groups"
+        options={[['everyone', 'Everyone'], ['admins', 'System administrators only']]} />
       <SimpleSection setting={of('testing')} save={v => save('testing', v)} fields={[
         { key: 'finalStatusesHavePrecedence', label: 'A finished result outweighs a newer run that hasn’t finished', type: 'toggle', hint: 'Off: a test’s status is always its latest run’s' },
         { key: 'resultImportMaxMb', label: 'Largest CI results file (MB)', type: 'number', min: 1, max: 20 },
@@ -79,6 +81,24 @@ export default function SystemSettings() {
         { key: 'daysLate', label: 'Keep reminding for this many days after it is late', type: 'number', min: 0, max: 90 },
         { key: 'dueSoonDays', label: '“Due soon” on Your work: within this many days', type: 'number', min: 1, max: 30 },
       ]} />
+    </section>
+  )
+}
+
+/** One choice from a list (a setting with a single enum field). */
+function SelectSection({ setting, save, field, label, options }: { setting?: Setting; save: (v: object) => Promise<Record<string, string> | null>; field: string; label: string; options: [string, string][] }) {
+  if (!setting) return null
+  const value = (setting.value as Record<string, string>)[field]
+  return (
+    <section className="panel" aria-label={setting.label}>
+      <h2 className="panel-title">{setting.label}</h2>
+      <p className="muted">{setting.description}</p>
+      <label className="settings-row" style={{ marginTop: 10 }}>
+        <span className="settings-label">{label}</span>
+        <select className="input" style={{ width: 280 }} aria-label={label} value={value} onChange={e => void save({ ...(setting.value as object), [field]: e.target.value })}>
+          {options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+        </select>
+      </label>
     </section>
   )
 }

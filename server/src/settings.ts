@@ -62,6 +62,13 @@ export const SETTINGS = {
     }),
     default: { exportMaxRows: 20_000, bulkMaxItems: 200, importMaxRows: 10_000 },
   },
+  groups: {
+    label: 'Groups',
+    description: 'Who may make groups. A group’s owners decide who is in it; project admins decide what a group may do in their project.',
+    public: true,
+    schema: z.object({ whoCanCreate: z.enum(['everyone', 'admins']).describe('Who may make a group: everyone, or system administrators only') }),
+    default: { whoCanCreate: 'everyone' as 'everyone' | 'admins' },
+  },
   testing: {
     label: 'Testing',
     description: 'How test results add up (Xray’s rule: whether a finished run outweighs a newer one that hasn’t finished), and how big a CI results import can be.',

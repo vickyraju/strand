@@ -37,7 +37,9 @@ async function keepAnAdmin(d: Db, projectId: string, without: { userId?: string;
 
 const groups = (d: Db, projectId: string) => d.query(
   `select g.id as group_id, g.display_name as name, pg.role, pg.added_at,
-          (select count(*)::int from group_members gm join users u on u.id = gm.user_id where gm.group_id = g.id and u.active) as members
+          (select count(*)::int from group_members gm join users u on u.id = gm.user_id where gm.group_id = g.id and u.active) as members,
+          case when g.system_role is not null then 'system' when g.external_id is not null then 'directory' else 'strand' end as kind,
+          coalesce((select jsonb_agg(u.name order by lower(u.name)) from group_owners o join users u on u.id = o.user_id where o.group_id = g.id), '[]') as owners
      from project_group_roles pg join groups g on g.id = pg.group_id
     where pg.project_id = $1 order by lower(g.display_name), g.id`, [projectId])
 const groupP = keyP.extend({ groupId: z.string().uuid() })
@@ -102,8 +104,10 @@ const plugin: FastifyPluginAsyncZod = async app => {
   })
 
   // ── Groups: a role for a whole team from the directory ──
-  app.get('/groups/search', { schema: { tags: TAG, summary: 'Find directory groups by name (for adding a group to a project)', querystring: z.object({ query: z.string().max(100).default('') }) } }, async req =>
-    db.query(`select g.id, g.display_name as name, (select count(*)::int from group_members gm join users u on u.id = gm.user_id where gm.group_id = g.id and u.active) as members
+  app.get('/groups/search', { schema: { tags: TAG, summary: 'Find groups by name (for giving a group a role in a project), with who manages each', querystring: z.object({ query: z.string().max(100).default('') }) } }, async req =>
+    db.query(`select g.id, g.display_name as name, (select count(*)::int from group_members gm join users u on u.id = gm.user_id where gm.group_id = g.id and u.active) as members,
+                     case when g.system_role is not null then 'system' when g.external_id is not null then 'directory' else 'strand' end as kind,
+                     coalesce((select jsonb_agg(u.name order by lower(u.name)) from group_owners o join users u on u.id = o.user_id where o.group_id = g.id), '[]') as owners
                 from groups g where g.display_name ilike '%' || $1 || '%' order by lower(g.display_name), g.id limit 30`, [req.query.query.replace(/[%_\\]/g, '\\$&')]))
 
   app.get('/projects/:key/groups', { schema: { tags: TAG, summary: 'Groups given a role in the project', params: keyP } }, async req => {

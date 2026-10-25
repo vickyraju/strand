@@ -2051,6 +2051,66 @@ test('system groups: everyone is in users-access and rejoins at sign-in; system-
   assert.ok(await sys('system-admins'))
 })
 
+test('groups: anyone makes one and manages it; a project admin gives it a role; system and directory groups are protected', { skip }, async () => {
+  await call('POST', '/api/v1/projects', { name: 'Mobile', key: 'MOBX', template: 'kanban' })
+  const id = async (w: string) => (await call('GET', '/api/v1/me', undefined, w)).body.id as string
+  const [lead, dev1, dev2, other] = [await id('gr.lead@x.com'), await id('gr.dev1@x.com'), await id('gr.dev2@x.com'), await id('gr.other@x.com')]
+  // a user makes mobile-developers: they own it and are in it; names are unique, ignoring case
+  const made = await call('POST', '/api/v1/groups', { name: 'mobile-developers', description: 'Everyone building the apps' }, 'gr.lead@x.com')
+  assert.equal(made.status, 201)
+  const g = made.body
+  assert.deepEqual([g.kind, g.isOwner, g.isMember, g.canManage, g.owners.map((o: any) => o.id)], ['strand', true, true, true, [lead]])
+  assert.equal((await call('POST', '/api/v1/groups', { name: 'Mobile-Developers' }, 'gr.other@x.com')).status, 409)
+  // the owner adds people; someone else can't
+  assert.deepEqual((await call('POST', `/api/v1/groups/${g.id}/members`, { userIds: [dev1, dev2] }, 'gr.lead@x.com')).body, { added: 2 })
+  assert.equal((await call('POST', `/api/v1/groups/${g.id}/members`, { userIds: [other] }, 'gr.other@x.com')).status, 403)
+  assert.equal((await call('PATCH', `/api/v1/groups/${g.id}`, { name: 'hijacked' }, 'gr.dev1@x.com')).status, 403)
+  // a project admin gives the group Member: its people can now work there; the grant shows who manages the group
+  assert.equal((await call('POST', '/api/v1/issues', undefined, 'gr.dev1@x.com')).status, 404)
+  assert.equal((await call('GET', '/api/v1/projects/MOBX', undefined, 'gr.dev1@x.com')).status, 404)
+  const grants = (await call('POST', '/api/v1/projects/MOBX/groups', { groupId: g.id, role: 'member' })).body
+  assert.deepEqual(grants.map((x: any) => [x.name, x.kind, x.owners]), [['mobile-developers', 'strand', ['gr.lead']]])
+  assert.equal((await call('POST', '/api/v1/projects/MOBX/issues', { title: 'From the group' }, 'gr.dev1@x.com')).status, 201)
+  assert.deepEqual((await call('GET', `/api/v1/groups/${g.id}`, undefined, 'gr.dev2@x.com')).body.projects, [{ key: 'MOBX', name: 'Mobile', role: 'member' }])
+  assert.deepEqual((await call('GET', `/api/v1/groups/${g.id}`, undefined, 'gr.other@x.com')).body.projects, [])   // only projects you can see
+  // leaving: anyone may leave a group made here; and loses its access at once
+  assert.equal((await call('DELETE', `/api/v1/groups/${g.id}/members/${dev2}`, undefined, 'gr.dev2@x.com')).status, 204)
+  assert.equal((await call('GET', '/api/v1/projects/MOBX', undefined, 'gr.dev2@x.com')).status, 404)
+  // owners: more can be added; the last one can't leave (a system administrator may remove them)
+  assert.equal((await call('DELETE', `/api/v1/groups/${g.id}/owners/${lead}`, undefined, 'gr.lead@x.com')).status, 409)
+  assert.deepEqual((await call('POST', `/api/v1/groups/${g.id}/owners`, { userIds: [dev1] }, 'gr.lead@x.com')).body.owners.length, 2)
+  assert.equal((await call('DELETE', `/api/v1/groups/${g.id}/owners/${lead}`, undefined, 'gr.lead@x.com')).status, 204)
+  assert.equal((await call('PATCH', `/api/v1/groups/${g.id}`, { description: 'Apps team' }, 'gr.lead@x.com')).status, 403)   // no longer an owner
+  // a group that is a project's only admin can't be emptied or deleted
+  await call('PATCH', '/api/v1/projects/MOBX/groups/' + g.id, { role: 'admin' })
+  const [{ ownerAdmin }] = (await pool.query(`select count(*)::int as "ownerAdmin" from project_members pm join projects p on p.id = pm.project_id where p.key = 'MOBX' and pm.role = 'admin'`)).rows
+  await pool.query(`delete from project_members where project_id = (select id from projects where key = 'MOBX')`)
+  assert.equal((await call('DELETE', `/api/v1/groups/${g.id}`, undefined, 'gr.dev1@x.com')).status, 409)
+  assert.ok(ownerAdmin >= 0)
+  // System settings: only system administrators make groups
+  await call('PUT', '/api/v1/admin/settings/groups', { whoCanCreate: 'admins' })
+  assert.equal((await call('POST', '/api/v1/groups', { name: 'web-developers' }, 'gr.other@x.com')).status, 403)
+  assert.equal((await call('POST', '/api/v1/groups', { name: 'web-developers' })).status, 201)
+  await call('PUT', '/api/v1/admin/settings/groups', { whoCanCreate: 'everyone' })
+  // system groups: only system administrators change them; never deleted; never left without an administrator
+  const admins = (await call('GET', '/api/v1/groups?query=system-administrators')).body[0]
+  assert.equal(admins.kind, 'system')
+  assert.equal((await call('POST', `/api/v1/groups/${admins.id}/members`, { userIds: [other] }, 'gr.lead@x.com')).status, 403)
+  assert.equal((await call('DELETE', `/api/v1/groups/${admins.id}`)).status, 409)
+  const ownerId = await id('owner@x.com')
+  const adminIds = [ownerId, ...(await call('GET', `/api/v1/groups/${admins.id}`)).body.people.filter((p: any) => p.active && p.id !== ownerId).map((p: any) => p.id)]
+  for (const a of adminIds.slice(1)) await call('DELETE', `/api/v1/groups/${admins.id}/members/${a}`)
+  assert.match((await call('DELETE', `/api/v1/groups/${admins.id}/members/${adminIds[0]}`)).body.error, /at least one system administrator/)
+  for (const a of adminIds.slice(1)) await call('POST', `/api/v1/groups/${admins.id}/members`, { userIds: [a] })
+  // a directory group (from Entra) is read-only here
+  const [{ id: dir }] = (await pool.query(`insert into groups (display_name, external_id) values ('Entra Mobile', 'ext-mobile') returning id`)).rows
+  assert.equal((await call('POST', `/api/v1/groups/${dir}/members`, { userIds: [other] })).status, 403)
+  assert.equal((await call('GET', `/api/v1/groups/${dir}`)).body.kind, 'directory')
+  // every change is in the audit log
+  const actions = (await call('GET', '/api/v1/audit?action=group.&limit=200')).body.items.map((e: any) => e.action)
+  for (const a of ['group.created', 'group.members_added', 'group.member_removed', 'group.owners_added', 'group.owner_removed']) assert.ok(actions.includes(a), a)
+})
+
 test('report data: every live item and every status change in order, for people who can see the project', { skip }, async () => {
   const p = (await call('POST', '/api/v1/projects', { name: 'Reports', key: 'REP', template: 'kanban' })).body
   const [a, b, c] = p.statuses
@@ -2501,6 +2561,7 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
   const mset = (await call('POST', '/api/v1/projects/MTX/issues', { title: 'Matrix set', type: 'test_set' })).body.key
   await call('POST', `/api/v1/issues/${mset}/tests`, { keys: [mtest] })
   const tfolder = await make('test-folders', { name: 'Matrix folder' })
+  const mgroup = (await call('POST', '/api/v1/groups', { name: 'Matrix group' })).body.id
   const mexec = (await call('POST', `/api/v1/issues/${mset}/executions`, {})).body.key
   const mrun = (await call('GET', `/api/v1/issues/${mexec}/runs`)).body[0].id
   await call('DELETE', '/api/v1/issues/MTX-2')                                         // a deleted item, to restore
@@ -2619,6 +2680,15 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     'GET /settings/public': ['any', '/settings/public'],
     'GET /link-types': ['any', '/link-types'],
     'POST /me/sign-in': ['any', '/me/sign-in'],
+    'GET /groups': ['any', '/groups'],
+    'GET /groups/{id}': ['any', `/groups/${mgroup}`],
+    'POST /groups': ['any', '/groups', { name: 'Matrix made group' }],
+    'PATCH /groups/{id}': ['own', `/groups/${mgroup}`, { description: 'x' }],
+    'DELETE /groups/{id}': ['own', `/groups/${mgroup}`],
+    'POST /groups/{id}/members': ['own', `/groups/${mgroup}/members`, { userIds: [viewerId] }],
+    'DELETE /groups/{id}/members/{userId}': ['own', `/groups/${mgroup}/members/${ownerId}`],
+    'POST /groups/{id}/owners': ['own', `/groups/${mgroup}/owners`, { userIds: [viewerId] }],
+    'DELETE /groups/{id}/owners/{userId}': ['own', `/groups/${mgroup}/owners/${ownerId}`],
     'PUT /projects/{key}/testing': ['padmin', `/projects/${K}/testing`, { enabled: false }],
     'GET /issues/{key}/tests': ['read', `/issues/${mset}/tests`],
     'POST /issues/{key}/tests': ['write', `/issues/${mset}/tests`, { keys: [mtest] }],
@@ -2773,7 +2843,7 @@ test('system settings: admins change policies at runtime (validated, audited); e
   const { clearSettingsCache } = await import('../src/settings.ts')
   const put = (key: string, value: object, who = 'owner@x.com') => call('PUT', `/api/v1/admin/settings/${key}`, value, who)
   const all = (await call('GET', '/api/v1/admin/settings')).body
-  assert.deepEqual(all.map((s: any) => s.key), ['rateLimiting', 'attachments', 'accessTokens', 'searchAndBulk', 'testing', 'dueReminders', 'email'])
+  assert.deepEqual(all.map((s: any) => s.key), ['rateLimiting', 'attachments', 'accessTokens', 'searchAndBulk', 'groups', 'testing', 'dueReminders', 'email'])
   assert.equal(all.find((s: any) => s.key === 'rateLimiting').value.enabled, false)                  // no limit unless an admin sets one
   assert.equal((await call('GET', '/api/v1/admin/settings', undefined, 'set.member@x.com')).status, 403)
   assert.equal((await put('attachments', { enabled: true, maxSizeMb: 5 }, 'set.member@x.com')).status, 403)
@@ -2783,7 +2853,7 @@ test('system settings: admins change policies at runtime (validated, audited); e
 
   // public settings: what the web app needs, for anyone signed in (not rate limiting)
   const pub = (await call('GET', '/api/v1/settings/public', undefined, 'set.member@x.com')).body
-  assert.deepEqual(Object.keys(pub).sort(), ['accessTokens', 'attachments', 'dueReminders', 'searchAndBulk', 'testing'])
+  assert.deepEqual(Object.keys(pub).sort(), ['accessTokens', 'attachments', 'dueReminders', 'groups', 'searchAndBulk', 'testing'])
 
   // attachments: size limit and the switch
   await call('POST', '/api/v1/projects', { name: 'Settings', key: 'SET', template: 'kanban' })

@@ -123,7 +123,11 @@ function AddPeople({ project, existing, onClose, onAdded }: { project: Project; 
   )
 }
 
-/** Teams from the directory with a role in the project. Joining or leaving a team (in Entra) changes who has the role. */
+/** Who decides who is in a group: shown wherever a group is given a role, since they then decide who has it. */
+const managedBy = (g: { kind?: string; owners?: string[] }) =>
+  g.kind === 'directory' ? ' · from the directory' : g.kind === 'system' ? ' · built in' : g.owners?.length ? ` · managed by ${g.owners.join(', ')}` : ''
+
+/** Groups with a role in the project. Joining or leaving a team (in Entra) changes who has the role. */
 function Groups({ project, canManage }: { project: Project; canManage: boolean }) {
   const { toast } = useApp()
   const [groups, setGroups] = useState<ProjectGroup[] | null>(null)
@@ -138,7 +142,7 @@ function Groups({ project, canManage }: { project: Project; canManage: boolean }
       <div className="panel-title-row">
         <div>
           <h2 className="panel-title">Groups</h2>
-          <p className="muted">Everyone in a group has its role here. People join and leave groups in your organisation’s directory. If someone has a role of their own as well, the higher one counts.</p>
+          <p className="muted">Everyone in a group has its role here. Who is in a group is decided by its owners (or, for directory groups, by Entra). If someone has a role of their own as well, the higher one counts.</p>
         </div>
         {canManage && <button className="btn btn-secondary" onClick={() => setAdding(true)}><Plus size={14} />Add a group</button>}
       </div>
@@ -147,7 +151,7 @@ function Groups({ project, canManage }: { project: Project; canManage: boolean }
         {groups.map(g => (
           <div key={g.groupId} className="person">
             <span className="avatar" style={{ width: 34, height: 34, background: 'var(--sunken)', color: 'var(--text-2)' }}><Users size={16} /></span>
-            <div className="person-text"><span className="strong">{g.name}</span><span className="muted sm">{g.members} {g.members === 1 ? 'person' : 'people'}</span></div>
+            <div className="person-text"><span className="strong">{g.name}</span><span className="muted sm">{g.members} {g.members === 1 ? 'person' : 'people'}{managedBy(g)}</span></div>
             <div className="person-actions">
               <RoleSelect value={g.role} label={`Role of ${g.name}`} disabled={!canManage}
                 onChange={r => run(setGroupRole(project.key, g.groupId, r), `${g.name} is now ${r === 'admin' ? 'an admin' : `a ${r}`} group`)} />
@@ -190,9 +194,9 @@ function AddGroup({ existing, onClose, onAdd }: { existing: Set<string>; onClose
       <ul aria-label="Groups" style={{ listStyle: 'none', padding: 0, margin: '8px 0', maxHeight: 220, overflow: 'auto' }}>
         {choices.map(g => (
           <li key={g.id}><button className="picker-item" aria-selected={picked?.id === g.id} onClick={() => setPicked(g)}>
-            <Users size={16} />{g.name}<span className="picker-hint">{g.members} {g.members === 1 ? 'person' : 'people'}</span></button></li>
+            <Users size={16} />{g.name}<span className="picker-hint">{g.members} {g.members === 1 ? 'person' : 'people'}{managedBy(g)}</span></button></li>
         ))}
-        {!choices.length && <li className="picker-empty">{query ? 'No group matches.' : 'No groups to add. Groups come from your organisation’s directory.'}</li>}
+        {!choices.length && <li className="picker-empty">{query ? 'No group matches.' : 'No groups to add. Anyone can make one under Groups.'}</li>}
       </ul>
       <span className="label">Role</span>
       <RoleSelect value={role} onChange={setRole} label="Role" />

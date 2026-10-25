@@ -92,10 +92,15 @@ export const TestRun = z.object({
   comment: z.string(), defectIds: z.array(id), evidenceIds: z.array(id), version: z.number(), createdAt: ts, updatedAt: ts,
   specChanged: z.boolean().describe('The test has changed since this run was made (reset to use the new one)'),
 })
+export const GroupSummary = z.object({
+  id, name: z.string(), description: z.string(), kind: z.enum(['system', 'directory', 'strand']).describe('system (users-access, system-administrators), directory (from Entra) or strand (made here)'),
+  systemRole: nullable(z.string()), members: z.number(), owners: z.array(z.object({ id, name: z.string() })), isMember: z.boolean(), isOwner: z.boolean(),
+  canManage: z.boolean().describe('You may change it'), createdAt: ts,
+})
 export const TestFolder = z.object({ id, parentId: nullable(id), name: z.string(), position: z.number(), tests: z.number() })
 const GroupGrant = z.object({
   groupId: id, name: z.string(), role: z.enum(['admin', 'member', 'viewer']), addedAt: ts, members: z.number().describe('Active people in the group'),
-})
+  kind: z.enum(['system', 'directory', 'strand']), owners: z.array(z.string()).describe('Who manages the group (groups made in Strand)') })
 const SettingView = z.object({
   key: z.string(), label: z.string(), description: z.string(),
   value: z.record(z.string(), z.unknown()).describe('Current value'), default: z.record(z.string(), z.unknown()).describe('Value when nothing is saved'),
@@ -209,6 +214,15 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'GET /issues/:key/test-containers': z.array(z.object({ id, key: z.string(), type: z.string(), title: z.string(), projectId: id })),
   'GET /projects/:key/test-folders': z.array(TestFolder),
   'GET /test-statuses': z.array(TestStatus),
+  'GET /groups': z.array(GroupSummary),
+  'GET /groups/:id': GroupSummary.extend({
+    people: z.array(z.object({ id, name: z.string(), email: z.string(), initials: z.string(), color: z.string(), active: z.boolean() })),
+    projects: z.array(z.object({ key: z.string(), name: z.string(), role: z.string() })).describe('Projects you can see where the group has a role'),
+  }),
+  'POST /groups': GroupSummary,
+  'PATCH /groups/:id': GroupSummary,
+  'POST /groups/:id/members': z.object({ added: z.number() }),
+  'POST /groups/:id/owners': GroupSummary,
   'GET /issues/:key/coverage': z.object({
     status: z.enum(['OK', 'NOK', 'NOTRUN', 'UNKNOWN', 'UNCOVERED']).describe('With sub-requirements'), own: z.enum(['OK', 'NOK', 'NOTRUN', 'UNKNOWN', 'UNCOVERED']).describe('From its own tests only'),
     tests: z.array(z.object({ id, key: z.string(), title: z.string(), status: nullable(z.string()).describe('In the scope; null: not run there') })),
@@ -287,7 +301,7 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'GET /projects/:key/groups': z.array(GroupGrant),
   'POST /projects/:key/groups': z.array(GroupGrant),
   'PATCH /projects/:key/groups/:groupId': z.array(GroupGrant),
-  'GET /groups/search': z.array(z.object({ id, name: z.string(), members: z.number() })),
+  'GET /groups/search': z.array(z.object({ id, name: z.string(), members: z.number(), kind: z.enum(['system', 'directory', 'strand']), owners: z.array(z.string()) })),
   'GET /admin/settings': z.array(SettingView),
   'PUT /admin/settings/:key': SettingView,
   'GET /settings/public': z.record(z.string(), z.record(z.string(), z.unknown())).describe('attachments, accessTokens, searchAndBulk, dueReminders'),
