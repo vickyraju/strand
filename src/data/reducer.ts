@@ -109,6 +109,8 @@ export interface Project {
   securityLevels?: SecurityLevel[]
   /** Test management is on (Xray's work types) */
   testing?: boolean
+  /** Work types that count as requirements for coverage (unset: all but Bug and the testing types) */
+  requirementTypes?: string[]
   /** Components (Jira's): parts of the project, each with a lead and a default assignee for new work in it */
   components?: Component[]
   /** Work types (Jira's issue types); missing in a project saved before they were configurable: the built-in four */
@@ -374,7 +376,7 @@ export interface State {
 }
 
 export type ProjectPatch = Partial<Pick<Project,
-  'name' | 'description' | 'color' | 'leadId' | 'statuses' | 'transitions' | 'layout' | 'boardPrefs' | 'rules' | 'fields' | 'releases' | 'templates' | 'types' | 'components' | 'securityLevels' | 'testing'>>
+  'name' | 'description' | 'color' | 'leadId' | 'statuses' | 'transitions' | 'layout' | 'boardPrefs' | 'rules' | 'fields' | 'releases' | 'templates' | 'types' | 'components' | 'securityLevels' | 'testing' | 'requirementTypes'>>
 export type IssuePatch = Partial<Omit<Issue, 'id' | 'key' | 'projectId' | 'reporterId' | 'createdAt' | 'watcherIds' | 'links' | 'attachments' | 'rank' | 'worklogs'>>
 export type NewIssue = Pick<Issue, 'projectId' | 'title'> & Partial<Pick<Issue,
   'type' | 'description' | 'status' | 'priority' | 'assigneeId' | 'labels' | 'estimate' | 'dueDate' | 'startDate' | 'sprintId' | 'parentId' | 'custom' | 'releaseId' | 'timeEstimate' | 'componentIds' | 'affectsReleaseIds' | 'testFolderId'>>

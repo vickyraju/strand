@@ -6,6 +6,7 @@ import { useApp } from '../../appContext'
 import { canEdit } from '../../data/access'
 import { href } from '../../router'
 import { Checkbox, plural } from '../ui'
+import { ResultLozenge, useResults, useTestStatuses } from './shared'
 
 // The project's Tests tab (Xray's Test Repository): a folder tree on the left, the tests in the chosen folder on the right.
 // Tests are moved between folders by selecting them; folders can be added, renamed and removed (their contents move up).
@@ -20,6 +21,8 @@ export default function TestRepository({ project }: { project: Project }) {
   const [current, setCurrent] = useState<string | null>(null)        // null: every test; '' : not in a folder
   const [picked, setPicked] = useState<string[]>([])
   const editable = canEdit(project)
+  const statuses = useTestStatuses()
+  const results = useResults(project.key, '')
   const base = `/api/projects/${encodeURIComponent(project.key)}/test-folders`
   const load = () => api<TestFolder[]>('GET', base).then(setFolders, e => toast(message(e), { tone: 'warn' }))
   useEffect(() => { void load() }, [project.key])   // eslint-disable-line react-hooks/exhaustive-deps
@@ -91,7 +94,7 @@ export default function TestRepository({ project }: { project: Project }) {
         </div>
         {shown.length === 0 ? <p className="muted sm" style={{ padding: 16 }}>No tests here.</p> : (
           <table className="table">
-            <thead><tr>{editable && <th style={{ width: 32 }} />}<th>Key</th><th>Test</th><th>Kind</th><th>Steps</th><th>Status</th></tr></thead>
+            <thead><tr>{editable && <th style={{ width: 32 }} />}<th>Key</th><th>Test</th><th>Kind</th><th>Steps</th><th>Status</th><th>Latest result</th></tr></thead>
             <tbody>
               {shown.map(t => (
                 <tr key={t.id}>
@@ -101,6 +104,7 @@ export default function TestRepository({ project }: { project: Project }) {
                   <td className="muted">{t.testSpec?.kind === 'cucumber' ? 'Cucumber' : t.testSpec?.kind === 'generic' ? 'Generic' : 'Manual'}</td>
                   <td className="muted">{t.testSpec?.kind === 'manual' ? t.testSpec.steps.length : '–'}</td>
                   <td>{statusName(t.status)}</td>
+                  <td><ResultLozenge statuses={statuses} status={results.get(t.id)} /></td>
                 </tr>
               ))}
             </tbody>

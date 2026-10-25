@@ -419,13 +419,24 @@ const plugin: FastifyPluginAsyncZod = async app => {
 
   // ── Testing (what Xray adds): turning it on gives the project Test, Pre-Condition, Test Set, Test Plan and Test
   // Execution work types; turning it off removes them, which needs the project to have no items of those types ──
-  app.put('/projects/:key/testing', { schema: { tags: T.config, summary: 'Turn test management on or off for a project (project admins)', params: keyP,
-    body: z.object({ enabled: z.boolean() }) } }, async req => {
+  app.put('/projects/:key/testing', { schema: { tags: T.config, summary: 'Turn test management on or off for a project, and choose which work types are requirements (project admins)', params: keyP,
+    body: z.object({ enabled: z.boolean(), requirementTypes: z.array(z.string().max(40)).max(50).nullable().optional()
+      .describe('Work types that count as requirements for coverage; null: every type except the testing ones and Bug') }) } }, async req => {
     const p = await projectByKey(db, req, req.params.key)
     await requireProjectAdmin(req, p)
     return tx(async d => {
-      const [cur] = await d.query<{ testing: boolean }>('select testing from projects where id = $1 for update', [p.id])
-      if (cur!.testing === req.body.enabled) return { enabled: cur!.testing }
+      const [cur] = await d.query<{ testing: boolean; requirementTypes: string[] | null }>('select testing, requirement_types from projects where id = $1 for update', [p.id])
+      const rt = req.body.requirementTypes
+      if (rt !== undefined && JSON.stringify(rt) !== JSON.stringify(cur!.requirementTypes)) {
+        if (rt) {
+          const known = new Set((await d.query<{ key: string }>('select key from work_types where project_id = $1', [p.id])).map(r => r.key))
+          const bad = rt.filter(k => !known.has(k) || (TEST_TYPES as readonly string[]).includes(k))
+          if (bad.length) throw new HttpError(400, 'Requirements must be the project’s own non-testing work types', { requirementTypes: `Not allowed: ${bad.join(', ')}` })
+        }
+        await d.query('update projects set requirement_types = $2 where id = $1', [p.id, rt])
+        await audit(d, req, { action: 'project.requirement_types.updated', type: 'project', id: p.id, name: p.key, project: p, before: { requirementTypes: cur!.requirementTypes }, after: { requirementTypes: rt } })
+      }
+      if (cur!.testing === req.body.enabled) return { enabled: cur!.testing, requirementTypes: rt !== undefined ? rt : cur!.requirementTypes }
       if (req.body.enabled) await d.query('select seed_testing_types($1)', [p.id])
       else {
         const [{ n }] = await d.query<{ n: number }>('select count(*)::int as n from issues where project_id = $1 and type = any($2) and deleted_at is null', [p.id, TEST_TYPES]) as any
@@ -436,7 +447,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
       }
       await d.query('update projects set testing = $2 where id = $1', [p.id, req.body.enabled])
       await audit(d, req, { action: req.body.enabled ? 'project.testing.enabled' : 'project.testing.disabled', type: 'project', id: p.id, name: p.key, project: p })
-      return { enabled: req.body.enabled }
+      return { enabled: req.body.enabled, requirementTypes: rt !== undefined ? rt : cur!.requirementTypes }
     })
   })
 

@@ -483,6 +483,37 @@ test('testing: run a plan — fail step 2 of a test, raise a defect from it, and
   assert.deepEqual(o.problems, [])
 })
 
+test('coverage: a story gains a test, shows NOK for version 1.0 after a failure, then OK after a passing rerun', { skip, timeout: 90_000 }, async () => {
+  await owner('POST', '/projects', { name: 'Coverage', key: 'CVG', template: 'kanban' })
+  await owner('PUT', '/projects/CVG/testing', { enabled: true })
+  const v1 = (await owner('POST', '/projects/CVG/releases', { name: '1.0' })).body
+  const story = (await owner('POST', '/projects/CVG/issues', { title: 'Customers can check out', type: 'story' })).body
+  const t = (await owner('POST', '/projects/CVG/issues', { title: 'Checkout succeeds', type: 'test' })).body
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url(`/i/${story.key}`))
+  await o.waitForSelector('section[aria-label="Test coverage"] .test-lozenge:has-text("Uncovered")')
+  await o.click('section[aria-label="Test coverage"] button:has-text("Add a test")')
+  await o.click(`.modal button:has-text("${t.key}")`)
+  await o.waitForSelector('section[aria-label="Test coverage"] h2 .test-lozenge:has-text("Not run")', { timeout: 15_000 })
+  // a failing run for 1.0, then a passing one
+  const runOnce = async (status) => {
+    const e = (await owner('POST', '/projects/CVG/issues', { title: `Run ${status}`, type: 'test_execution', releaseId: v1.id })).body
+    await owner('POST', `/issues/${e.key}/runs`, { keys: [t.key] })
+    const [r] = (await owner('GET', `/issues/${e.key}/runs`)).body
+    await owner('PATCH', `/test-runs/${r.id}`, { status })
+  }
+  await runOnce('FAIL')
+  await o.reload()
+  await o.selectOption('section[aria-label="Test coverage"] [aria-label="Coverage scope"]', { label: 'Version 1.0' })
+  await o.waitForSelector('section[aria-label="Test coverage"] h2 .test-lozenge:has-text("NOK")')
+  await runOnce('PASS')
+  await o.reload()
+  await o.selectOption('section[aria-label="Test coverage"] [aria-label="Coverage scope"]', { label: 'Version 1.0' })
+  await o.waitForSelector('section[aria-label="Test coverage"] h2 .test-lozenge:has-text("OK")')
+  assert.equal((await owner('GET', `/issues/${story.key}/coverage?version=${v1.id}`)).body.status, 'OK')
+  assert.deepEqual(o.problems, [])
+})
+
 test('plan a sprint, start it and complete it: unfinished work goes back to the backlog', { skip, timeout: 90_000 }, async () => {
   const p = (await owner('POST', '/projects', { name: 'Sprinting', key: 'SPR', template: 'scrum' })).body
   const done = p.statuses.find(s => s.category === 'done')

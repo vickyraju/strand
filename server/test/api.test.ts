@@ -1214,7 +1214,7 @@ test('link types: Jira’s four (and test management’s Defect) to start with; 
   const types = (await call('GET', '/api/v1/link-types', undefined, 'lnk.member@x.com')).body
   assert.deepEqual(types.map((t: any) => [t.id, t.outward, t.inward]), [
     ['blocks', 'blocks', 'is blocked by'], ['clones', 'clones', 'is cloned by'], ['duplicates', 'duplicates', 'is duplicated by'], ['relates', 'relates to', 'relates to'],
-    ['defect', 'has defect', 'is a defect of']])   // test management's: a test → the defects its runs found
+    ['defect', 'has defect', 'is a defect of'], ['tests', 'tests', 'is tested by']])   // test management's: defects runs found; requirements tests cover
   // a new kind of link, used both ways; an unknown kind is refused
   const made = await call('POST', '/api/v1/admin/link-types', { name: 'Causes', outward: 'causes', inward: 'is caused by' })
   assert.equal(made.status, 201); assert.equal(made.body.id, 'causes')
@@ -1674,7 +1674,7 @@ test('testing: turning it on adds the Xray work types; Tests hold steps, Gherkin
   const types = async () => (await call('GET', '/api/v1/projects/TST')).body.types.map((t: any) => t.key)
   assert.equal((await call('POST', '/api/v1/projects/TST/issues', { title: 'x', type: 'test' })).status, 400)          // not on yet
   assert.equal((await call('PUT', '/api/v1/projects/TST/testing', { enabled: true }, 'tst.member@x.com')).status, 403)
-  assert.deepEqual((await call('PUT', '/api/v1/projects/TST/testing', { enabled: true })).body, { enabled: true })
+  assert.deepEqual((await call('PUT', '/api/v1/projects/TST/testing', { enabled: true })).body, { enabled: true, requirementTypes: null })
   assert.deepEqual(await types(), ['epic', 'story', 'task', 'bug', 'test', 'precondition', 'test_set', 'test_plan', 'test_execution'])
   assert.equal((await call('GET', '/api/v1/projects/TST')).body.testing, true)
   // a manual test with steps
@@ -1694,7 +1694,7 @@ test('testing: turning it on adds the Xray work types; Tests hold steps, Gherkin
   assert.equal((await call('PATCH', '/api/v1/projects/TST/types/test', { name: 'Test case' })).body.name, 'Test case')
   assert.equal((await call('PUT', '/api/v1/projects/TST/testing', { enabled: false })).status, 409)
   for (const i of (await call('GET', '/api/v1/projects/TST/issues')).body.items.filter((x: any) => x.type !== 'task')) await call('DELETE', `/api/v1/issues/${i.key}`)
-  assert.deepEqual((await call('PUT', '/api/v1/projects/TST/testing', { enabled: false })).body, { enabled: false })
+  assert.deepEqual((await call('PUT', '/api/v1/projects/TST/testing', { enabled: false })).body, { enabled: false, requirementTypes: null })
   assert.deepEqual(await types(), ['epic', 'story', 'task', 'bug'])
 })
 
@@ -1816,6 +1816,64 @@ test('testing: an execution runs tests; step results set the run status; finishi
   assert.equal((await call('DELETE', `/api/v1/admin/test-statuses/run/${flaky.key}`)).status, 409)
   await patch({ status: 'PASS' })
   assert.equal((await call('DELETE', `/api/v1/admin/test-statuses/run/${flaky.key}`)).status, 204)
+})
+
+test('coverage: a story is UNCOVERED, then NOK for version 1.0 after a failing run, OK after a pass; plans, environments and sub-requirements count', { skip }, async () => {
+  const p = (await call('POST', '/api/v1/projects', { name: 'Covered', key: 'COV', template: 'kanban' })).body
+  await call('PUT', '/api/v1/projects/COV/testing', { enabled: true })
+  const v1 = (await call('POST', '/api/v1/projects/COV/releases', { name: '1.0' })).body.id
+  const v2 = (await call('POST', '/api/v1/projects/COV/releases', { name: '2.0' })).body.id
+  const mk = async (title: string, type: string, extra = {}) => (await call('POST', '/api/v1/projects/COV/issues', { title, type, ...extra })).body
+  const story = await mk('Customers can pay', 'story'), sub = await mk('Pay by card', 'task', { parentId: undefined })
+  await call('PATCH', `/api/v1/issues/${sub.key}`, { parentId: story.id })
+  const [t1, t2, t3] = [await mk('Pays', 'test'), await mk('Refunds', 'test'), await mk('Card works', 'test')]
+  const cov = async (q = '') => (await call('GET', `/api/v1/issues/${story.key}/coverage${q}`)).body
+  assert.equal((await cov()).status, 'UNCOVERED')
+  // only a Test tests, and only a requirement is tested
+  assert.equal((await call('POST', `/api/v1/issues/${story.key}/links`, { type: 'tests', targetKey: t1.key })).status, 400)
+  for (const t of [t1, t2]) assert.equal((await call('POST', `/api/v1/issues/${t.key}/links`, { type: 'tests', targetKey: story.key })).status, 204)
+  await call('POST', `/api/v1/issues/${t3.key}/links`, { type: 'tests', targetKey: sub.key })
+  // covered, not run yet
+  let c = await cov()
+  assert.deepEqual([c.status, c.tests.map((t: any) => [t.key, t.status])], ['NOTRUN', [[t1.key, null], [t2.key, null]]])
+  // version 1.0: t1 fails, t2 passes → NOK
+  const run = async (exec: any, test: any, status: string) => {
+    const r = (await call('GET', `/api/v1/issues/${exec.key}/runs`)).body.find((x: any) => x.testKey === test.key)
+    await call('PATCH', `/api/v1/test-runs/${r.id}`, { status })
+  }
+  const plan = await mk('Release 1.0 plan', 'test_plan')
+  await call('POST', `/api/v1/issues/${plan.key}/tests`, { keys: [t1.key, t2.key, t3.key] })
+  const e1 = (await call('POST', `/api/v1/issues/${plan.key}/executions`, { releaseId: v1, environments: ['chrome'] })).body
+  await run(e1, t1, 'FAIL'); await run(e1, t2, 'PASS'); await run(e1, t3, 'PASS')
+  c = await cov(`?version=${v1}`)
+  assert.deepEqual([c.status, c.own, c.subRequirements.map((s: any) => s.status)], ['NOK', 'NOK', ['OK']])
+  assert.equal((await cov(`?version=${v2}`)).status, 'NOTRUN')         // nothing run for 2.0
+  // a passing rerun for 1.0 → OK (the latest finished result counts)
+  const e2 = (await call('POST', '/api/v1/projects/COV/issues', { title: 'Rerun', type: 'test_execution', releaseId: v1, testEnvironments: ['chrome'] })).body
+  await call('POST', `/api/v1/issues/${e2.key}/runs`, { keys: [t1.key] })
+  await run(e2, t1, 'PASS')
+  assert.equal((await cov(`?version=${v1}`)).status, 'OK')
+  // the plan only counts its own executions (the rerun isn't in it): still NOK there
+  assert.equal((await cov(`?plan=${plan.key}`)).status, 'NOK')
+  // a failure in another environment fails it across environments, but not in chrome alone
+  const e3 = (await call('POST', '/api/v1/projects/COV/issues', { title: 'Firefox', type: 'test_execution', releaseId: v1, testEnvironments: ['firefox'] })).body
+  await call('POST', `/api/v1/issues/${e3.key}/runs`, { keys: [t2.key] })
+  await run(e3, t2, 'FAIL')
+  assert.equal((await cov(`?version=${v1}`)).status, 'NOK')
+  assert.equal((await cov(`?version=${v1}&environment=chrome`)).status, 'OK')
+  // a sub-requirement that fails makes the parent fail
+  await run(e1, t3, 'FAIL')
+  c = await cov(`?plan=${plan.key}`)
+  assert.deepEqual([c.subRequirements[0].status, c.status], ['NOK', 'NOK'])
+  // every test's status in a scope
+  const results = (await call('GET', `/api/v1/projects/COV/test-results?version=${v1}&environment=chrome`)).body
+  assert.deepEqual(results.map((r: any) => [r.key, r.status]), [[t1.key, 'PASS'], [t2.key, 'PASS'], [t3.key, 'FAIL']])
+  assert.equal((await call('GET', `/api/v1/issues/${story.key}/coverage?plan=${story.key}`)).status, 400)
+  // requirement types: a project's choice, only its own non-testing types
+  assert.deepEqual((await call('PUT', '/api/v1/projects/COV/testing', { enabled: true, requirementTypes: ['story', 'epic'] })).body, { enabled: true, requirementTypes: ['story', 'epic'] })
+  assert.equal((await call('PUT', '/api/v1/projects/COV/testing', { enabled: true, requirementTypes: ['test'] })).status, 400)
+  assert.deepEqual((await call('GET', '/api/v1/projects/COV')).body.requirementTypes, ['story', 'epic'])
+  void p
 })
 
 test('report data: every live item and every status change in order, for people who can see the project', { skip }, async () => {
@@ -2396,6 +2454,8 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     'PATCH /projects/{key}/test-folders/{folderId}': ['write', `/projects/${K}/test-folders/${tfolder}`, { name: 'Matrix folder 3' }],
     'DELETE /projects/{key}/test-folders/{folderId}': ['write', `/projects/${K}/test-folders/${tfolder}`],
     'GET /test-statuses': ['any', '/test-statuses'],
+    'GET /issues/{key}/coverage': ['read', `/issues/${K}-1/coverage`],
+    'GET /projects/{key}/test-results': ['read', `/projects/${K}/test-results`],
     'POST /admin/test-statuses': ['gadmin', '/admin/test-statuses', { kind: 'run', name: 'Matrix status', color: '#123456', mapsTo: 'unknown' }],
     'PATCH /admin/test-statuses/{kind}/{key}': ['gadmin', '/admin/test-statuses/run/PASS', { color: '#16A34A' }],
     'DELETE /admin/test-statuses/{kind}/{key}': ['gadmin', '/admin/test-statuses/run/c-nothinghere'],

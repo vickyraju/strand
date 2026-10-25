@@ -1280,6 +1280,14 @@
                       "type": "boolean",
                       "description": "Test management is on"
                     },
+                    "requirementTypes": {
+                      "nullable": true,
+                      "description": "Work types counted as requirements (null: all but testing types and Bug)",
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
                     "boardPrefs": {
                       "type": "object",
                       "additionalProperties": {}
@@ -1866,6 +1874,7 @@
                     "archivedAt",
                     "nextNumber",
                     "testing",
+                    "requirementTypes",
                     "boardPrefs",
                     "layout",
                     "sample",
@@ -2279,6 +2288,14 @@
                       "type": "boolean",
                       "description": "Test management is on"
                     },
+                    "requirementTypes": {
+                      "nullable": true,
+                      "description": "Work types counted as requirements (null: all but testing types and Bug)",
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
                     "boardPrefs": {
                       "type": "object",
                       "additionalProperties": {}
@@ -2865,6 +2882,7 @@
                     "archivedAt",
                     "nextNumber",
                     "testing",
+                    "requirementTypes",
                     "boardPrefs",
                     "layout",
                     "sample",
@@ -3040,6 +3058,14 @@
                       "type": "boolean",
                       "description": "Test management is on"
                     },
+                    "requirementTypes": {
+                      "nullable": true,
+                      "description": "Work types counted as requirements (null: all but testing types and Bug)",
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
                     "boardPrefs": {
                       "type": "object",
                       "additionalProperties": {}
@@ -3626,6 +3652,7 @@
                     "archivedAt",
                     "nextNumber",
                     "testing",
+                    "requirementTypes",
                     "boardPrefs",
                     "layout",
                     "sample",
@@ -3801,6 +3828,14 @@
                       "type": "boolean",
                       "description": "Test management is on"
                     },
+                    "requirementTypes": {
+                      "nullable": true,
+                      "description": "Work types counted as requirements (null: all but testing types and Bug)",
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
                     "boardPrefs": {
                       "type": "object",
                       "additionalProperties": {}
@@ -4387,6 +4422,7 @@
                     "archivedAt",
                     "nextNumber",
                     "testing",
+                    "requirementTypes",
                     "boardPrefs",
                     "layout",
                     "sample",
@@ -4598,6 +4634,14 @@
                       "type": "boolean",
                       "description": "Test management is on"
                     },
+                    "requirementTypes": {
+                      "nullable": true,
+                      "description": "Work types counted as requirements (null: all but testing types and Bug)",
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
                     "boardPrefs": {
                       "type": "object",
                       "additionalProperties": {}
@@ -5184,6 +5228,7 @@
                     "archivedAt",
                     "nextNumber",
                     "testing",
+                    "requirementTypes",
                     "boardPrefs",
                     "layout",
                     "sample",
@@ -10805,7 +10850,7 @@
     },
     "/api/v1/projects/{key}/testing": {
       "put": {
-        "summary": "Turn test management on or off for a project (project admins)",
+        "summary": "Turn test management on or off for a project, and choose which work types are requirements (project admins)",
         "tags": [
           "Project settings"
         ],
@@ -10818,6 +10863,16 @@
                 "properties": {
                   "enabled": {
                     "type": "boolean"
+                  },
+                  "requirementTypes": {
+                    "description": "Work types that count as requirements for coverage; null: every type except the testing ones and Bug",
+                    "nullable": true,
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 40
+                    }
                   }
                 },
                 "required": [
@@ -10848,10 +10903,18 @@
                   "properties": {
                     "enabled": {
                       "type": "boolean"
+                    },
+                    "requirementTypes": {
+                      "nullable": true,
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
                     }
                   },
                   "required": [
-                    "enabled"
+                    "enabled",
+                    "requirementTypes"
                   ],
                   "additionalProperties": false
                 }
@@ -34768,6 +34831,410 @@
                     "specChanged"
                   ],
                   "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/issues/{key}/coverage": {
+      "get": {
+        "summary": "How a requirement is tested (Xray’s coverage): OK, NOK, NOTRUN, UNKNOWN or UNCOVERED, with its tests and sub-requirements, in a scope (latest, a version or a plan; optionally one environment)",
+        "tags": [
+          "Testing"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "query",
+            "name": "version",
+            "required": false,
+            "description": "Only executions for this fix version"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 40
+            },
+            "in": "query",
+            "name": "plan",
+            "required": false,
+            "description": "Only this Test Plan’s executions"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "in": "query",
+            "name": "environment",
+            "required": false,
+            "description": "Only runs in this environment"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "key",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "OK",
+                        "NOK",
+                        "NOTRUN",
+                        "UNKNOWN",
+                        "UNCOVERED"
+                      ],
+                      "description": "With sub-requirements"
+                    },
+                    "own": {
+                      "type": "string",
+                      "enum": [
+                        "OK",
+                        "NOK",
+                        "NOTRUN",
+                        "UNKNOWN",
+                        "UNCOVERED"
+                      ],
+                      "description": "From its own tests only"
+                    },
+                    "tests": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "description": "uuid"
+                          },
+                          "key": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "nullable": true,
+                            "description": "In the scope; null: not run there",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "key",
+                          "title",
+                          "status"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "subRequirements": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "description": "uuid"
+                          },
+                          "key": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "OK",
+                              "NOK",
+                              "NOTRUN",
+                              "UNKNOWN",
+                              "UNCOVERED"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "key",
+                          "title",
+                          "status"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "own",
+                    "tests",
+                    "subRequirements"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{key}/test-results": {
+      "get": {
+        "summary": "Every test in the project with its status in a scope (latest, a version or a plan; optionally one environment). Null: no run there",
+        "tags": [
+          "Testing"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "query",
+            "name": "version",
+            "required": false,
+            "description": "Only executions for this fix version"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 40
+            },
+            "in": "query",
+            "name": "plan",
+            "required": false,
+            "description": "Only this Test Plan’s executions"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "in": "query",
+            "name": "environment",
+            "required": false,
+            "description": "Only runs in this environment"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "key",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "testId": {
+                        "type": "string",
+                        "description": "uuid"
+                      },
+                      "key": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "nullable": true,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "testId",
+                      "key",
+                      "status"
+                    ],
+                    "additionalProperties": false
+                  }
                 }
               }
             }

@@ -1412,3 +1412,8 @@ h2.empty-title, h2.section-title, h2.side-title { margin: 0 }
 .run-spec-other { margin-top: 12px }
 .run-spec-other pre { white-space: pre-wrap; margin: 0; padding: 10px; background: var(--sunken); border-radius: var(--radius) }
 @media (max-width: 760px) { .run-step { grid-template-columns: 24px 1fr } .run-step-result { grid-column: 2 } .exec-meta { grid-template-columns: 1fr } .run-head { flex-wrap: wrap } }
+
+.test-lozenge-none { background: var(--sunken); color: var(--text-2) }
+.check-grid { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 6px }
+.link-btn { text-align: left; width: 100%; padding: 0; background: none; border: 0; color: inherit; cursor: pointer }
+.link-btn:hover { color: var(--accent) }

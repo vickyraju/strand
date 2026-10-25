@@ -56,6 +56,20 @@ export function useItems(ids: string[]) {
   return (id: string) => state.issues.find(i => i.id === id) ?? loaded[id]
 }
 
+/** Each test's status in a scope (query: '' latest, 'plan=KEY', 'version=ID'); null query: none wanted. */
+export function useResults(projectKey: string, query: string | null) {
+  const [map, setMap] = useState(new Map<string, string | null>())
+  useEffect(() => {
+    if (query === null) return
+    api<{ testId: string; status: string | null }[]>('GET', `/api/projects/${enc(projectKey)}/test-results${query ? `?${query}` : ''}`)
+      .then(r => setMap(new Map(r.map(x => [x.testId, x.status]))), () => {})
+  }, [projectKey, query])
+  return map
+}
+export function ResultLozenge({ statuses, status }: { statuses: TestStatus[]; status: string | null | undefined }) {
+  return status ? <StatusLozenge statuses={statuses} status={status} /> : <span className="test-lozenge test-lozenge-none">Not run</span>
+}
+
 export function useProgress(key: string, deps: unknown[] = []) {
   const [p, setP] = useState<{ total: number; byStatus: Record<string, number> } | null>(null)
   useEffect(() => { api<{ total: number; byStatus: Record<string, number> }>('GET', `/api/issues/${enc(key)}/test-progress`).then(setP, () => {}) }, [key, ...deps])   // eslint-disable-line react-hooks/exhaustive-deps
