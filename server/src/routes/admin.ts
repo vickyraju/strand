@@ -18,7 +18,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
   app.get('/admin/users', { schema: { tags: TAG, summary: 'Everyone in the workspace, with role, status and how many projects they are in (global admins)' } }, async req => {
     requireAdmin(req)
     return db.query(
-      `select u.id, u.name, u.email, u.initials, u.color, u.title, u.active, m.role, u.created_at,
+      `select u.id, u.name, u.email, u.initials, u.color, u.title, u.active, case when m.role = 'owner' then 'owner' when is_system_admin(u.id) then 'admin' else 'member' end as role, u.created_at,
               (select count(*)::int from project_access pm join projects p on p.id = pm.project_id
                 where pm.user_id = u.id and p.workspace_id = $1 and p.deleting_at is null) as projects
          from memberships m join users u on u.id = m.user_id

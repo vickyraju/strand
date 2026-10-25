@@ -33,7 +33,10 @@ export async function loadProjectByKey(key: string) {
 /** Loads who you are, the people, and the projects you are likely to use: starred ones, recently opened ones, and any
  *  already on screen (`keep`). Every other project is fetched when opened, or found with the project search.
  *  ponytail: users still load as one list (first 1000 by name). At tens of thousands of users the pickers need to search. */
+let signedIn = false
 export async function loadWorkspace(keep: string[] = []): Promise<State> {
+  // once per app start: the server puts me back in the default group (and system-administrators, with Entra's admin role)
+  if (!signedIn) { signedIn = true; await api('POST', '/api/me/sign-in').catch(() => {}) }
   const [me, users, starredPage, views, notifications, linkTypes] = await Promise.all([
     api<any>('GET', '/api/me'),
     api<any[]>('GET', '/api/users'),

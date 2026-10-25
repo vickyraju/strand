@@ -85,7 +85,7 @@ export async function stop() {
 }
 
 /** A browser tab signed in as `email`, showing the app. Collects page errors in `page.problems`. */
-export async function signIn(email) {
+export async function signIn(email, roles = []) {
   const ctx = await browser.newContext({ viewport: { width: 1400, height: 900 }, acceptDownloads: true })
   await ctx.addInitScript(([login]) => { sessionStorage.setItem('strand:dev-login', JSON.stringify(login)) }, [{ email, secret: SECRET }])
   const page = await ctx.newPage()
