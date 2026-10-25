@@ -231,6 +231,7 @@ export const DEFAULT_LINK_TYPES: LinkType[] = [
   { id: 'clones', name: 'Cloners', outward: 'clones', inward: 'is cloned by', builtin: true },
   { id: 'duplicates', name: 'Duplicate', outward: 'duplicates', inward: 'is duplicated by' },
   { id: 'relates', name: 'Relates', outward: 'relates to', inward: 'relates to' },
+  { id: 'defect', name: 'Defect', outward: 'has defect', inward: 'is a defect of', builtin: true },
 ]
 /** How a link reads from one end: `out` from the item it starts at, otherwise from its target. */
 export const linkWords = (s: Pick<State, 'linkTypes'>, type: string, out: boolean) => {
@@ -275,6 +276,9 @@ export interface Issue {
   testSpec?: TestSpec
   /** Test repository folder (Tests) */
   testFolderId?: string
+  /** Test Executions: what it ran against, and the build */
+  testEnvironments?: string[]
+  revision?: string
   /** Remaining estimate in minutes (Jira's): starts at the original estimate, counts down as work is logged. */
   timeRemaining?: number
   /** Components of the project it belongs to (Jira's). */

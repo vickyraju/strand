@@ -20,7 +20,7 @@ export const RESOLUTIONS = ['Done', "Won't do", 'Duplicate', 'Cannot reproduce']
 
 export const ISSUE_ROW = `
   select i.id, p.key || '-' || i.number as key, i.project_id, i.number, i.type, i.title, i.description,
-         i.status_id, i.priority, i.assignee_id, i.reporter_id, i.labels, i.estimate, i.time_estimate, i.time_remaining, i.component_ids, i.affects_release_ids, i.security_level_id, i.test_spec, i.test_folder_id,
+         i.status_id, i.priority, i.assignee_id, i.reporter_id, i.labels, i.estimate, i.time_estimate, i.time_remaining, i.component_ids, i.affects_release_ids, i.security_level_id, i.test_spec, i.test_folder_id, i.test_environments, i.revision,
          i.due_date, i.start_date, i.sprint_id, i.release_id, i.parent_id, i.custom, i.rank, i.version,
          i.resolution, i.resolved_at, i.created_at, i.updated_at
     from issues i join projects p on p.id = i.project_id`
@@ -47,6 +47,7 @@ const patchBody = z.object({
   componentIds: z.array(uuid).max(50).describe('Components of the project'), affectsReleaseIds: z.array(uuid).max(50).describe('Affects versions: releases of the project where it was found'),
   custom: z.record(z.string(), z.union([z.string(), z.number()])), rank: z.number(), testSpec: testSpec.nullable(),
   testFolderId: uuid.nullable().describe('Test repository folder (Tests only; null: the top)'),
+  testEnvironments: z.array(z.string().trim().min(1).max(100)).max(20).describe('What a Test Execution ran against (Test Executions only)'), revision: z.string().max(200).describe('Build or revision a Test Execution ran against'),
   resolution: z.enum(RESOLUTIONS).nullable().describe('How a finished item ended. Only for items in a Done status; reaching Done sets "Done" unless you say otherwise (null: the default)'),
 }).partial()
 const FIELDS = Object.keys(patchBody.shape)
@@ -223,6 +224,7 @@ async function applyPatch(d: Db, me: Me, cur: any, patch: z.infer<typeof patchBo
     await checkLevel(d, me, cur.projectId, patch.securityLevelId, cur.reporterId, patch.assigneeId !== undefined ? patch.assigneeId : cur.assigneeId)
   if (patch.custom) await checkCustom(d, cur.projectId, patch.custom, cur.custom)
   checkSpec(patch.type ?? cur.type, patch.testSpec)
+  if ((patch.testEnvironments?.length || patch.revision) && (patch.type ?? cur.type) !== 'test_execution') throw new HttpError(400, 'Only Test Executions have environments and a revision')
   await checkFolder(d, cur.projectId, patch.type ?? cur.type, patch.testFolderId)
   if (patch.resolution) {
     const [st] = await d.query<{ category: string }>('select category from statuses where id = $1', [patch.statusId ?? cur.statusId])

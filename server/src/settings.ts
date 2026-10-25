@@ -62,6 +62,15 @@ export const SETTINGS = {
     }),
     default: { exportMaxRows: 20_000, bulkMaxItems: 200, importMaxRows: 10_000 },
   },
+  testing: {
+    label: 'Testing',
+    description: 'How test results add up (Xray’s rule): whether a finished run outweighs a newer one that hasn’t finished.',
+    public: true,
+    schema: z.object({
+      finalStatusesHavePrecedence: z.boolean().describe('A test’s status is its latest finished result; a newer run still to do or under way doesn’t replace it. Off: the latest run counts, whatever its status'),
+    }),
+    default: { finalStatusesHavePrecedence: true },
+  },
   dueReminders: {
     label: 'Due dates',
     description: 'When people are reminded about work assigned to them that is due, and what counts as “due soon”.',

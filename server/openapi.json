@@ -15324,6 +15324,17 @@
                             "description": "Test repository folder",
                             "type": "string"
                           },
+                          "testEnvironments": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            },
+                            "description": "Test Executions: what it ran against"
+                          },
+                          "revision": {
+                            "type": "string",
+                            "description": "Test Executions: build or revision"
+                          },
                           "dueDate": {
                             "nullable": true,
                             "type": "string",
@@ -15415,6 +15426,8 @@
                           "securityLevelId",
                           "testSpec",
                           "testFolderId",
+                          "testEnvironments",
+                          "revision",
                           "dueDate",
                           "startDate",
                           "sprintId",
@@ -15776,6 +15789,17 @@
                             "description": "Test repository folder",
                             "type": "string"
                           },
+                          "testEnvironments": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            },
+                            "description": "Test Executions: what it ran against"
+                          },
+                          "revision": {
+                            "type": "string",
+                            "description": "Test Executions: build or revision"
+                          },
                           "dueDate": {
                             "nullable": true,
                             "type": "string",
@@ -15867,6 +15891,8 @@
                           "securityLevelId",
                           "testSpec",
                           "testFolderId",
+                          "testEnvironments",
+                          "revision",
                           "dueDate",
                           "startDate",
                           "sprintId",
@@ -16234,6 +16260,21 @@
                     "format": "uuid",
                     "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                   },
+                  "testEnvironments": {
+                    "maxItems": 20,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 100
+                    },
+                    "description": "What a Test Execution ran against (Test Executions only)"
+                  },
+                  "revision": {
+                    "type": "string",
+                    "maxLength": 200,
+                    "description": "Build or revision a Test Execution ran against"
+                  },
                   "resolution": {
                     "nullable": true,
                     "description": "How a finished item ended. Only for items in a Done status; reaching Done sets \"Done\" unless you say otherwise (null: the default)",
@@ -16373,6 +16414,17 @@
                       "description": "Test repository folder",
                       "type": "string"
                     },
+                    "testEnvironments": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "Test Executions: what it ran against"
+                    },
+                    "revision": {
+                      "type": "string",
+                      "description": "Test Executions: build or revision"
+                    },
                     "dueDate": {
                       "nullable": true,
                       "type": "string",
@@ -16464,6 +16516,8 @@
                     "securityLevelId",
                     "testSpec",
                     "testFolderId",
+                    "testEnvironments",
+                    "revision",
                     "dueDate",
                     "startDate",
                     "sprintId",
@@ -16734,6 +16788,17 @@
                       "description": "Test repository folder",
                       "type": "string"
                     },
+                    "testEnvironments": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "Test Executions: what it ran against"
+                    },
+                    "revision": {
+                      "type": "string",
+                      "description": "Test Executions: build or revision"
+                    },
                     "dueDate": {
                       "nullable": true,
                       "type": "string",
@@ -16825,6 +16890,8 @@
                     "securityLevelId",
                     "testSpec",
                     "testFolderId",
+                    "testEnvironments",
+                    "revision",
                     "dueDate",
                     "startDate",
                     "sprintId",
@@ -17056,6 +17123,17 @@
                       "nullable": true,
                       "description": "Test repository folder",
                       "type": "string"
+                    },
+                    "testEnvironments": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "Test Executions: what it ran against"
+                    },
+                    "revision": {
+                      "type": "string",
+                      "description": "Test Executions: build or revision"
                     },
                     "dueDate": {
                       "nullable": true,
@@ -17473,6 +17551,17 @@
                             "description": "Test repository folder",
                             "type": "string"
                           },
+                          "testEnvironments": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            },
+                            "description": "Test Executions: what it ran against"
+                          },
+                          "revision": {
+                            "type": "string",
+                            "description": "Test Executions: build or revision"
+                          },
                           "dueDate": {
                             "nullable": true,
                             "type": "string",
@@ -17564,6 +17653,8 @@
                           "securityLevelId",
                           "testSpec",
                           "testFolderId",
+                          "testEnvironments",
+                          "revision",
                           "dueDate",
                           "startDate",
                           "sprintId",
@@ -17602,6 +17693,8 @@
                     "securityLevelId",
                     "testSpec",
                     "testFolderId",
+                    "testEnvironments",
+                    "revision",
                     "dueDate",
                     "startDate",
                     "sprintId",
@@ -17957,6 +18050,21 @@
                     "format": "uuid",
                     "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                   },
+                  "testEnvironments": {
+                    "maxItems": 20,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 100
+                    },
+                    "description": "What a Test Execution ran against (Test Executions only)"
+                  },
+                  "revision": {
+                    "type": "string",
+                    "maxLength": 200,
+                    "description": "Build or revision a Test Execution ran against"
+                  },
                   "resolution": {
                     "nullable": true,
                     "description": "How a finished item ended. Only for items in a Done status; reaching Done sets \"Done\" unless you say otherwise (null: the default)",
@@ -18105,6 +18213,17 @@
                       "description": "Test repository folder",
                       "type": "string"
                     },
+                    "testEnvironments": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "Test Executions: what it ran against"
+                    },
+                    "revision": {
+                      "type": "string",
+                      "description": "Test Executions: build or revision"
+                    },
                     "dueDate": {
                       "nullable": true,
                       "type": "string",
@@ -18196,6 +18315,8 @@
                     "securityLevelId",
                     "testSpec",
                     "testFolderId",
+                    "testEnvironments",
+                    "revision",
                     "dueDate",
                     "startDate",
                     "sprintId",
@@ -19460,6 +19581,21 @@
                         "format": "uuid",
                         "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                       },
+                      "testEnvironments": {
+                        "maxItems": 20,
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 100
+                        },
+                        "description": "What a Test Execution ran against (Test Executions only)"
+                      },
+                      "revision": {
+                        "type": "string",
+                        "maxLength": 200,
+                        "description": "Build or revision a Test Execution ran against"
+                      },
                       "resolution": {
                         "nullable": true,
                         "description": "How a finished item ended. Only for items in a Done status; reaching Done sets \"Done\" unless you say otherwise (null: the default)",
@@ -19608,6 +19744,17 @@
                       "description": "Test repository folder",
                       "type": "string"
                     },
+                    "testEnvironments": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "Test Executions: what it ran against"
+                    },
+                    "revision": {
+                      "type": "string",
+                      "description": "Test Executions: build or revision"
+                    },
                     "dueDate": {
                       "nullable": true,
                       "type": "string",
@@ -19699,6 +19846,8 @@
                     "securityLevelId",
                     "testSpec",
                     "testFolderId",
+                    "testEnvironments",
+                    "revision",
                     "dueDate",
                     "startDate",
                     "sprintId",
@@ -20068,6 +20217,21 @@
                         "format": "uuid",
                         "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                       },
+                      "testEnvironments": {
+                        "maxItems": 20,
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 100
+                        },
+                        "description": "What a Test Execution ran against (Test Executions only)"
+                      },
+                      "revision": {
+                        "type": "string",
+                        "maxLength": 200,
+                        "description": "Build or revision a Test Execution ran against"
+                      },
                       "resolution": {
                         "nullable": true,
                         "description": "How a finished item ended. Only for items in a Done status; reaching Done sets \"Done\" unless you say otherwise (null: the default)",
@@ -20201,6 +20365,17 @@
                             "description": "Test repository folder",
                             "type": "string"
                           },
+                          "testEnvironments": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            },
+                            "description": "Test Executions: what it ran against"
+                          },
+                          "revision": {
+                            "type": "string",
+                            "description": "Test Executions: build or revision"
+                          },
                           "dueDate": {
                             "nullable": true,
                             "type": "string",
@@ -20292,6 +20467,8 @@
                           "securityLevelId",
                           "testSpec",
                           "testFolderId",
+                          "testEnvironments",
+                          "revision",
                           "dueDate",
                           "startDate",
                           "sprintId",
@@ -20896,6 +21073,17 @@
                       "description": "Test repository folder",
                       "type": "string"
                     },
+                    "testEnvironments": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "Test Executions: what it ran against"
+                    },
+                    "revision": {
+                      "type": "string",
+                      "description": "Test Executions: build or revision"
+                    },
                     "dueDate": {
                       "nullable": true,
                       "type": "string",
@@ -20987,6 +21175,8 @@
                     "securityLevelId",
                     "testSpec",
                     "testFolderId",
+                    "testEnvironments",
+                    "revision",
                     "dueDate",
                     "startDate",
                     "sprintId",
@@ -27683,7 +27873,7 @@
             "in": "path",
             "name": "key",
             "required": true,
-            "description": "One of: rateLimiting, attachments, accessTokens, searchAndBulk, dueReminders, email"
+            "description": "One of: rateLimiting, attachments, accessTokens, searchAndBulk, testing, dueReminders, email"
           }
         ],
         "responses": {
@@ -29464,6 +29654,17 @@
                         "description": "Test repository folder",
                         "type": "string"
                       },
+                      "testEnvironments": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        },
+                        "description": "Test Executions: what it ran against"
+                      },
+                      "revision": {
+                        "type": "string",
+                        "description": "Test Executions: build or revision"
+                      },
                       "dueDate": {
                         "nullable": true,
                         "type": "string",
@@ -29562,6 +29763,8 @@
                       "securityLevelId",
                       "testSpec",
                       "testFolderId",
+                      "testEnvironments",
+                      "revision",
                       "dueDate",
                       "startDate",
                       "sprintId",
@@ -29825,6 +30028,17 @@
                             "description": "Test repository folder",
                             "type": "string"
                           },
+                          "testEnvironments": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            },
+                            "description": "Test Executions: what it ran against"
+                          },
+                          "revision": {
+                            "type": "string",
+                            "description": "Test Executions: build or revision"
+                          },
                           "dueDate": {
                             "nullable": true,
                             "type": "string",
@@ -29923,6 +30137,8 @@
                           "securityLevelId",
                           "testSpec",
                           "testFolderId",
+                          "testEnvironments",
+                          "revision",
                           "dueDate",
                           "startDate",
                           "sprintId",
@@ -30185,6 +30401,17 @@
                         "description": "Test repository folder",
                         "type": "string"
                       },
+                      "testEnvironments": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        },
+                        "description": "Test Executions: what it ran against"
+                      },
+                      "revision": {
+                        "type": "string",
+                        "description": "Test Executions: build or revision"
+                      },
                       "dueDate": {
                         "nullable": true,
                         "type": "string",
@@ -30283,6 +30510,8 @@
                       "securityLevelId",
                       "testSpec",
                       "testFolderId",
+                      "testEnvironments",
+                      "revision",
                       "dueDate",
                       "startDate",
                       "sprintId",
@@ -30550,6 +30779,3998 @@
                     ],
                     "additionalProperties": false
                   }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/test-statuses": {
+      "get": {
+        "summary": "Statuses a test run or a step can have",
+        "tags": [
+          "Testing"
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "run",
+                          "step"
+                        ]
+                      },
+                      "key": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "type": "string"
+                      },
+                      "color": {
+                        "type": "string"
+                      },
+                      "final": {
+                        "type": "boolean"
+                      },
+                      "mapsTo": {
+                        "type": "string"
+                      },
+                      "rank": {
+                        "type": "number"
+                      },
+                      "builtin": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "key",
+                      "name",
+                      "description",
+                      "color",
+                      "final",
+                      "mapsTo",
+                      "rank",
+                      "builtin"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/test-statuses": {
+      "post": {
+        "summary": "Add a test run or step status (global admins)",
+        "tags": [
+          "Testing"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "run",
+                      "step"
+                    ]
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "description": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "color": {
+                    "type": "string",
+                    "pattern": "^#[0-9a-fA-F]{6}$"
+                  },
+                  "final": {
+                    "default": true,
+                    "type": "boolean"
+                  },
+                  "mapsTo": {
+                    "type": "string",
+                    "maxLength": 40,
+                    "description": "Run status: ok, nok, notrun or unknown (what it means for a requirement). Step status: a run status key"
+                  },
+                  "rank": {
+                    "default": 5,
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1000
+                  }
+                },
+                "required": [
+                  "kind",
+                  "name",
+                  "color",
+                  "mapsTo"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "run",
+                        "step"
+                      ]
+                    },
+                    "key": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "color": {
+                      "type": "string"
+                    },
+                    "final": {
+                      "type": "boolean"
+                    },
+                    "mapsTo": {
+                      "type": "string"
+                    },
+                    "rank": {
+                      "type": "number"
+                    },
+                    "builtin": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "key",
+                    "name",
+                    "description",
+                    "color",
+                    "final",
+                    "mapsTo",
+                    "rank",
+                    "builtin"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/test-statuses/{kind}/{key}": {
+      "patch": {
+        "summary": "Change a test status (global admins). Built-in ones keep what they mean: only their name, colour, description and rank change",
+        "tags": [
+          "Testing"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "description": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "color": {
+                    "type": "string",
+                    "pattern": "^#[0-9a-fA-F]{6}$"
+                  },
+                  "final": {
+                    "default": true,
+                    "type": "boolean"
+                  },
+                  "mapsTo": {
+                    "type": "string",
+                    "maxLength": 40,
+                    "description": "Run status: ok, nok, notrun or unknown (what it means for a requirement). Step status: a run status key"
+                  },
+                  "rank": {
+                    "default": 5,
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1000
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "run",
+                "step"
+              ]
+            },
+            "in": "path",
+            "name": "kind",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 40
+            },
+            "in": "path",
+            "name": "key",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "run",
+                        "step"
+                      ]
+                    },
+                    "key": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "color": {
+                      "type": "string"
+                    },
+                    "final": {
+                      "type": "boolean"
+                    },
+                    "mapsTo": {
+                      "type": "string"
+                    },
+                    "rank": {
+                      "type": "number"
+                    },
+                    "builtin": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "key",
+                    "name",
+                    "description",
+                    "color",
+                    "final",
+                    "mapsTo",
+                    "rank",
+                    "builtin"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Remove a status you added (global admins); not one that runs or steps use",
+        "tags": [
+          "Testing"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "run",
+                "step"
+              ]
+            },
+            "in": "path",
+            "name": "kind",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 40
+            },
+            "in": "path",
+            "name": "key",
+            "required": true
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/issues/{key}/runs": {
+      "get": {
+        "summary": "A Test Execution’s runs, or a Test’s runs in every execution (those you can see)",
+        "tags": [
+          "Testing"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "key",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "description": "uuid"
+                      },
+                      "executionId": {
+                        "type": "string",
+                        "description": "uuid"
+                      },
+                      "executionKey": {
+                        "type": "string"
+                      },
+                      "executionTitle": {
+                        "type": "string"
+                      },
+                      "environments": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "testId": {
+                        "type": "string",
+                        "description": "uuid"
+                      },
+                      "testKey": {
+                        "type": "string"
+                      },
+                      "testTitle": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string"
+                      },
+                      "assigneeId": {
+                        "nullable": true,
+                        "type": "string",
+                        "description": "uuid"
+                      },
+                      "executedBy": {
+                        "nullable": true,
+                        "type": "string",
+                        "description": "uuid"
+                      },
+                      "startedAt": {
+                        "nullable": true,
+                        "type": "string",
+                        "description": "ISO 8601 timestamp"
+                      },
+                      "finishedAt": {
+                        "nullable": true,
+                        "type": "string",
+                        "description": "ISO 8601 timestamp"
+                      },
+                      "spec": {
+                        "nullable": true,
+                        "description": "The test as it was when the run was made"
+                      },
+                      "steps": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "status": {
+                              "type": "string"
+                            },
+                            "actual": {
+                              "type": "string"
+                            },
+                            "comment": {
+                              "type": "string"
+                            },
+                            "defectIds": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "description": "uuid"
+                              }
+                            },
+                            "evidenceIds": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "description": "uuid"
+                              }
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "status",
+                            "actual",
+                            "comment",
+                            "defectIds",
+                            "evidenceIds"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "comment": {
+                        "type": "string"
+                      },
+                      "defectIds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "description": "uuid"
+                        }
+                      },
+                      "evidenceIds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "description": "uuid"
+                        }
+                      },
+                      "version": {
+                        "type": "number"
+                      },
+                      "createdAt": {
+                        "type": "string",
+                        "description": "ISO 8601 timestamp"
+                      },
+                      "updatedAt": {
+                        "type": "string",
+                        "description": "ISO 8601 timestamp"
+                      },
+                      "specChanged": {
+                        "type": "boolean",
+                        "description": "The test has changed since this run was made (reset to use the new one)"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "executionId",
+                      "executionKey",
+                      "executionTitle",
+                      "environments",
+                      "testId",
+                      "testKey",
+                      "testTitle",
+                      "status",
+                      "assigneeId",
+                      "executedBy",
+                      "startedAt",
+                      "finishedAt",
+                      "spec",
+                      "steps",
+                      "comment",
+                      "defectIds",
+                      "evidenceIds",
+                      "version",
+                      "createdAt",
+                      "updatedAt",
+                      "specChanged"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Add tests to a Test Execution (by key, JQL, or all of a Test Set or Test Plan); each gets a run",
+        "tags": [
+          "Testing"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "keys": {
+                    "maxItems": 5000,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 40
+                    }
+                  },
+                  "jql": {
+                    "type": "string",
+                    "maxLength": 5000
+                  },
+                  "from": {
+                    "description": "A Test Set or Test Plan: run all its tests",
+                    "type": "string",
+                    "maxLength": 40
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "key",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "added": {
+                      "type": "number"
+                    },
+                    "already": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "added",
+                    "already"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/issues/{key}/runs/{test}": {
+      "delete": {
+        "summary": "Take a test (and its run) out of a Test Execution",
+        "tags": [
+          "Testing"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "key",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "test",
+            "required": true
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/issues/{key}/executions": {
+      "get": {
+        "summary": "A Test Plan’s Test Executions (those you can see)",
+        "tags": [
+          "Testing"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "key",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "description": "uuid"
+                      },
+                      "key": {
+                        "type": "string",
+                        "description": "e.g. PAY-12"
+                      },
+                      "projectId": {
+                        "type": "string",
+                        "description": "uuid"
+                      },
+                      "number": {
+                        "type": "number"
+                      },
+                      "type": {
+                        "type": "string",
+                        "description": "Work type key"
+                      },
+                      "title": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "type": "string"
+                      },
+                      "statusId": {
+                        "type": "string",
+                        "description": "uuid"
+                      },
+                      "priority": {
+                        "type": "string",
+                        "enum": [
+                          "urgent",
+                          "high",
+                          "medium",
+                          "low",
+                          "none"
+                        ]
+                      },
+                      "assigneeId": {
+                        "nullable": true,
+                        "type": "string",
+                        "description": "uuid"
+                      },
+                      "reporterId": {
+                        "nullable": true,
+                        "type": "string",
+                        "description": "uuid"
+                      },
+                      "labels": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "estimate": {
+                        "nullable": true,
+                        "type": "number"
+                      },
+                      "timeEstimate": {
+                        "nullable": true,
+                        "type": "number"
+                      },
+                      "timeRemaining": {
+                        "nullable": true,
+                        "type": "number"
+                      },
+                      "componentIds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "description": "uuid"
+                        }
+                      },
+                      "affectsReleaseIds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "description": "uuid"
+                        }
+                      },
+                      "securityLevelId": {
+                        "nullable": true,
+                        "type": "string",
+                        "description": "uuid"
+                      },
+                      "testSpec": {
+                        "nullable": true,
+                        "description": "Test steps, Gherkin or definition (Tests and Pre-Conditions)"
+                      },
+                      "testFolderId": {
+                        "nullable": true,
+                        "description": "Test repository folder",
+                        "type": "string"
+                      },
+                      "testEnvironments": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        },
+                        "description": "Test Executions: what it ran against"
+                      },
+                      "revision": {
+                        "type": "string",
+                        "description": "Test Executions: build or revision"
+                      },
+                      "dueDate": {
+                        "nullable": true,
+                        "type": "string",
+                        "description": "YYYY-MM-DD"
+                      },
+                      "startDate": {
+                        "nullable": true,
+                        "type": "string",
+                        "description": "YYYY-MM-DD"
+                      },
+                      "sprintId": {
+                        "nullable": true,
+                        "type": "string",
+                        "description": "uuid"
+                      },
+                      "releaseId": {
+                        "nullable": true,
+                        "type": "string",
+                        "description": "uuid"
+                      },
+                      "parentId": {
+                        "nullable": true,
+                        "type": "string",
+                        "description": "uuid"
+                      },
+                      "custom": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        }
+                      },
+                      "rank": {
+                        "type": "number"
+                      },
+                      "version": {
+                        "type": "number",
+                        "description": "Send as If-Match to reject stale edits"
+                      },
+                      "resolution": {
+                        "nullable": true,
+                        "description": "Set while the item is in a Done status",
+                        "type": "string",
+                        "enum": [
+                          "Done",
+                          "Won't do",
+                          "Duplicate",
+                          "Cannot reproduce"
+                        ]
+                      },
+                      "resolvedAt": {
+                        "nullable": true,
+                        "description": "When the item last reached a Done status",
+                        "type": "string"
+                      },
+                      "createdAt": {
+                        "type": "string",
+                        "description": "ISO 8601 timestamp"
+                      },
+                      "updatedAt": {
+                        "type": "string",
+                        "description": "ISO 8601 timestamp"
+                      },
+                      "folder": {
+                        "type": "string",
+                        "description": "Folder within a Test Plan (\"\" at the top)"
+                      },
+                      "itemPosition": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "key",
+                      "projectId",
+                      "number",
+                      "type",
+                      "title",
+                      "description",
+                      "statusId",
+                      "priority",
+                      "assigneeId",
+                      "reporterId",
+                      "labels",
+                      "estimate",
+                      "timeEstimate",
+                      "timeRemaining",
+                      "componentIds",
+                      "affectsReleaseIds",
+                      "securityLevelId",
+                      "testSpec",
+                      "testFolderId",
+                      "testEnvironments",
+                      "revision",
+                      "dueDate",
+                      "startDate",
+                      "sprintId",
+                      "releaseId",
+                      "parentId",
+                      "custom",
+                      "rank",
+                      "version",
+                      "resolution",
+                      "resolvedAt",
+                      "createdAt",
+                      "updatedAt",
+                      "folder",
+                      "itemPosition"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Make a Test Execution for a Test Plan or Test Set with its tests (or add an existing execution to a plan, with `key`)",
+        "tags": [
+          "Testing"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "key": {
+                    "type": "string",
+                    "maxLength": 40
+                  },
+                  "title": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 500
+                  },
+                  "environments": {
+                    "maxItems": 20,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 100
+                    }
+                  },
+                  "releaseId": {
+                    "nullable": true,
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  "revision": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "assigneeId": {
+                    "nullable": true,
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "key",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "key": {
+                      "type": "string",
+                      "description": "e.g. PAY-12"
+                    },
+                    "projectId": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "number": {
+                      "type": "number"
+                    },
+                    "type": {
+                      "type": "string",
+                      "description": "Work type key"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "statusId": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "priority": {
+                      "type": "string",
+                      "enum": [
+                        "urgent",
+                        "high",
+                        "medium",
+                        "low",
+                        "none"
+                      ]
+                    },
+                    "assigneeId": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "reporterId": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "labels": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "estimate": {
+                      "nullable": true,
+                      "type": "number"
+                    },
+                    "timeEstimate": {
+                      "nullable": true,
+                      "type": "number"
+                    },
+                    "timeRemaining": {
+                      "nullable": true,
+                      "type": "number"
+                    },
+                    "componentIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "description": "uuid"
+                      }
+                    },
+                    "affectsReleaseIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "description": "uuid"
+                      }
+                    },
+                    "securityLevelId": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "testSpec": {
+                      "nullable": true,
+                      "description": "Test steps, Gherkin or definition (Tests and Pre-Conditions)"
+                    },
+                    "testFolderId": {
+                      "nullable": true,
+                      "description": "Test repository folder",
+                      "type": "string"
+                    },
+                    "testEnvironments": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "Test Executions: what it ran against"
+                    },
+                    "revision": {
+                      "type": "string",
+                      "description": "Test Executions: build or revision"
+                    },
+                    "dueDate": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "YYYY-MM-DD"
+                    },
+                    "startDate": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "YYYY-MM-DD"
+                    },
+                    "sprintId": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "releaseId": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "parentId": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "custom": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ]
+                      }
+                    },
+                    "rank": {
+                      "type": "number"
+                    },
+                    "version": {
+                      "type": "number",
+                      "description": "Send as If-Match to reject stale edits"
+                    },
+                    "resolution": {
+                      "nullable": true,
+                      "description": "Set while the item is in a Done status",
+                      "type": "string",
+                      "enum": [
+                        "Done",
+                        "Won't do",
+                        "Duplicate",
+                        "Cannot reproduce"
+                      ]
+                    },
+                    "resolvedAt": {
+                      "nullable": true,
+                      "description": "When the item last reached a Done status",
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "description": "ISO 8601 timestamp"
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "description": "ISO 8601 timestamp"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "key",
+                    "projectId",
+                    "number",
+                    "type",
+                    "title",
+                    "description",
+                    "statusId",
+                    "priority",
+                    "assigneeId",
+                    "reporterId",
+                    "labels",
+                    "estimate",
+                    "timeEstimate",
+                    "timeRemaining",
+                    "componentIds",
+                    "affectsReleaseIds",
+                    "securityLevelId",
+                    "testSpec",
+                    "testFolderId",
+                    "testEnvironments",
+                    "revision",
+                    "dueDate",
+                    "startDate",
+                    "sprintId",
+                    "releaseId",
+                    "parentId",
+                    "custom",
+                    "rank",
+                    "version",
+                    "resolution",
+                    "resolvedAt",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/issues/{key}/test-progress": {
+      "get": {
+        "summary": "How far a Test Execution or Test Plan has got: tests by status",
+        "tags": [
+          "Testing"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "key",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "total": {
+                      "type": "number"
+                    },
+                    "byStatus": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "number"
+                      }
+                    }
+                  },
+                  "required": [
+                    "total",
+                    "byStatus"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/test-runs/{id}": {
+      "get": {
+        "summary": "One test run: the test as it was, each step’s result, defects and evidence",
+        "tags": [
+          "Testing"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "executionId": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "executionKey": {
+                      "type": "string"
+                    },
+                    "executionTitle": {
+                      "type": "string"
+                    },
+                    "environments": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "testId": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "testKey": {
+                      "type": "string"
+                    },
+                    "testTitle": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "assigneeId": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "executedBy": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "startedAt": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "ISO 8601 timestamp"
+                    },
+                    "finishedAt": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "ISO 8601 timestamp"
+                    },
+                    "spec": {
+                      "nullable": true,
+                      "description": "The test as it was when the run was made"
+                    },
+                    "steps": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "actual": {
+                            "type": "string"
+                          },
+                          "comment": {
+                            "type": "string"
+                          },
+                          "defectIds": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "description": "uuid"
+                            }
+                          },
+                          "evidenceIds": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "description": "uuid"
+                            }
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "status",
+                          "actual",
+                          "comment",
+                          "defectIds",
+                          "evidenceIds"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "comment": {
+                      "type": "string"
+                    },
+                    "defectIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "description": "uuid"
+                      }
+                    },
+                    "evidenceIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "description": "uuid"
+                      }
+                    },
+                    "version": {
+                      "type": "number"
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "description": "ISO 8601 timestamp"
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "description": "ISO 8601 timestamp"
+                    },
+                    "specChanged": {
+                      "type": "boolean",
+                      "description": "The test has changed since this run was made (reset to use the new one)"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "executionId",
+                    "executionKey",
+                    "executionTitle",
+                    "environments",
+                    "testId",
+                    "testKey",
+                    "testTitle",
+                    "status",
+                    "assigneeId",
+                    "executedBy",
+                    "startedAt",
+                    "finishedAt",
+                    "spec",
+                    "steps",
+                    "comment",
+                    "defectIds",
+                    "evidenceIds",
+                    "version",
+                    "createdAt",
+                    "updatedAt",
+                    "specChanged"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "Record results. Step results set the run’s status (Xray’s rules) unless you give one; reaching a final status records who finished it and when",
+        "tags": [
+          "Testing"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "maxLength": 40
+                  },
+                  "assigneeId": {
+                    "nullable": true,
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  "comment": {
+                    "type": "string",
+                    "maxLength": 20000
+                  },
+                  "steps": {
+                    "maxItems": 200,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "maxLength": 40
+                        },
+                        "status": {
+                          "type": "string",
+                          "maxLength": 40
+                        },
+                        "actual": {
+                          "type": "string",
+                          "maxLength": 10000
+                        },
+                        "comment": {
+                          "type": "string",
+                          "maxLength": 10000
+                        }
+                      },
+                      "required": [
+                        "id"
+                      ]
+                    }
+                  },
+                  "version": {
+                    "description": "The version you last saw: an older one is refused (409)",
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "executionId": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "executionKey": {
+                      "type": "string"
+                    },
+                    "executionTitle": {
+                      "type": "string"
+                    },
+                    "environments": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "testId": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "testKey": {
+                      "type": "string"
+                    },
+                    "testTitle": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "assigneeId": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "executedBy": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "startedAt": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "ISO 8601 timestamp"
+                    },
+                    "finishedAt": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "ISO 8601 timestamp"
+                    },
+                    "spec": {
+                      "nullable": true,
+                      "description": "The test as it was when the run was made"
+                    },
+                    "steps": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "actual": {
+                            "type": "string"
+                          },
+                          "comment": {
+                            "type": "string"
+                          },
+                          "defectIds": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "description": "uuid"
+                            }
+                          },
+                          "evidenceIds": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "description": "uuid"
+                            }
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "status",
+                          "actual",
+                          "comment",
+                          "defectIds",
+                          "evidenceIds"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "comment": {
+                      "type": "string"
+                    },
+                    "defectIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "description": "uuid"
+                      }
+                    },
+                    "evidenceIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "description": "uuid"
+                      }
+                    },
+                    "version": {
+                      "type": "number"
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "description": "ISO 8601 timestamp"
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "description": "ISO 8601 timestamp"
+                    },
+                    "specChanged": {
+                      "type": "boolean",
+                      "description": "The test has changed since this run was made (reset to use the new one)"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "executionId",
+                    "executionKey",
+                    "executionTitle",
+                    "environments",
+                    "testId",
+                    "testKey",
+                    "testTitle",
+                    "status",
+                    "assigneeId",
+                    "executedBy",
+                    "startedAt",
+                    "finishedAt",
+                    "spec",
+                    "steps",
+                    "comment",
+                    "defectIds",
+                    "evidenceIds",
+                    "version",
+                    "createdAt",
+                    "updatedAt",
+                    "specChanged"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/test-runs/{id}/reset": {
+      "post": {
+        "summary": "Start a run again from the test as it is now (its results are cleared)",
+        "tags": [
+          "Testing"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "executionId": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "executionKey": {
+                      "type": "string"
+                    },
+                    "executionTitle": {
+                      "type": "string"
+                    },
+                    "environments": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "testId": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "testKey": {
+                      "type": "string"
+                    },
+                    "testTitle": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "assigneeId": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "executedBy": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "startedAt": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "ISO 8601 timestamp"
+                    },
+                    "finishedAt": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "ISO 8601 timestamp"
+                    },
+                    "spec": {
+                      "nullable": true,
+                      "description": "The test as it was when the run was made"
+                    },
+                    "steps": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "actual": {
+                            "type": "string"
+                          },
+                          "comment": {
+                            "type": "string"
+                          },
+                          "defectIds": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "description": "uuid"
+                            }
+                          },
+                          "evidenceIds": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "description": "uuid"
+                            }
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "status",
+                          "actual",
+                          "comment",
+                          "defectIds",
+                          "evidenceIds"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "comment": {
+                      "type": "string"
+                    },
+                    "defectIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "description": "uuid"
+                      }
+                    },
+                    "evidenceIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "description": "uuid"
+                      }
+                    },
+                    "version": {
+                      "type": "number"
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "description": "ISO 8601 timestamp"
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "description": "ISO 8601 timestamp"
+                    },
+                    "specChanged": {
+                      "type": "boolean",
+                      "description": "The test has changed since this run was made (reset to use the new one)"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "executionId",
+                    "executionKey",
+                    "executionTitle",
+                    "environments",
+                    "testId",
+                    "testKey",
+                    "testTitle",
+                    "status",
+                    "assigneeId",
+                    "executedBy",
+                    "startedAt",
+                    "finishedAt",
+                    "spec",
+                    "steps",
+                    "comment",
+                    "defectIds",
+                    "evidenceIds",
+                    "version",
+                    "createdAt",
+                    "updatedAt",
+                    "specChanged"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/test-runs/{id}/defects": {
+      "post": {
+        "summary": "Raise a defect from a run (a new bug, or an existing item by key), for the run or one step; it is linked to the test",
+        "tags": [
+          "Testing"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "stepId": {
+                    "type": "string",
+                    "maxLength": 40
+                  },
+                  "key": {
+                    "type": "string",
+                    "maxLength": 40
+                  },
+                  "title": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 500
+                  },
+                  "description": {
+                    "type": "string",
+                    "maxLength": 20000
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "defect": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "description": "uuid"
+                        },
+                        "key": {
+                          "type": "string",
+                          "description": "e.g. PAY-12"
+                        },
+                        "projectId": {
+                          "type": "string",
+                          "description": "uuid"
+                        },
+                        "number": {
+                          "type": "number"
+                        },
+                        "type": {
+                          "type": "string",
+                          "description": "Work type key"
+                        },
+                        "title": {
+                          "type": "string"
+                        },
+                        "description": {
+                          "type": "string"
+                        },
+                        "statusId": {
+                          "type": "string",
+                          "description": "uuid"
+                        },
+                        "priority": {
+                          "type": "string",
+                          "enum": [
+                            "urgent",
+                            "high",
+                            "medium",
+                            "low",
+                            "none"
+                          ]
+                        },
+                        "assigneeId": {
+                          "nullable": true,
+                          "type": "string",
+                          "description": "uuid"
+                        },
+                        "reporterId": {
+                          "nullable": true,
+                          "type": "string",
+                          "description": "uuid"
+                        },
+                        "labels": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "estimate": {
+                          "nullable": true,
+                          "type": "number"
+                        },
+                        "timeEstimate": {
+                          "nullable": true,
+                          "type": "number"
+                        },
+                        "timeRemaining": {
+                          "nullable": true,
+                          "type": "number"
+                        },
+                        "componentIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "description": "uuid"
+                          }
+                        },
+                        "affectsReleaseIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "description": "uuid"
+                          }
+                        },
+                        "securityLevelId": {
+                          "nullable": true,
+                          "type": "string",
+                          "description": "uuid"
+                        },
+                        "testSpec": {
+                          "nullable": true,
+                          "description": "Test steps, Gherkin or definition (Tests and Pre-Conditions)"
+                        },
+                        "testFolderId": {
+                          "nullable": true,
+                          "description": "Test repository folder",
+                          "type": "string"
+                        },
+                        "testEnvironments": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "description": "Test Executions: what it ran against"
+                        },
+                        "revision": {
+                          "type": "string",
+                          "description": "Test Executions: build or revision"
+                        },
+                        "dueDate": {
+                          "nullable": true,
+                          "type": "string",
+                          "description": "YYYY-MM-DD"
+                        },
+                        "startDate": {
+                          "nullable": true,
+                          "type": "string",
+                          "description": "YYYY-MM-DD"
+                        },
+                        "sprintId": {
+                          "nullable": true,
+                          "type": "string",
+                          "description": "uuid"
+                        },
+                        "releaseId": {
+                          "nullable": true,
+                          "type": "string",
+                          "description": "uuid"
+                        },
+                        "parentId": {
+                          "nullable": true,
+                          "type": "string",
+                          "description": "uuid"
+                        },
+                        "custom": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "number"
+                              }
+                            ]
+                          }
+                        },
+                        "rank": {
+                          "type": "number"
+                        },
+                        "version": {
+                          "type": "number",
+                          "description": "Send as If-Match to reject stale edits"
+                        },
+                        "resolution": {
+                          "nullable": true,
+                          "description": "Set while the item is in a Done status",
+                          "type": "string",
+                          "enum": [
+                            "Done",
+                            "Won't do",
+                            "Duplicate",
+                            "Cannot reproduce"
+                          ]
+                        },
+                        "resolvedAt": {
+                          "nullable": true,
+                          "description": "When the item last reached a Done status",
+                          "type": "string"
+                        },
+                        "createdAt": {
+                          "type": "string",
+                          "description": "ISO 8601 timestamp"
+                        },
+                        "updatedAt": {
+                          "type": "string",
+                          "description": "ISO 8601 timestamp"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "key",
+                        "projectId",
+                        "number",
+                        "type",
+                        "title",
+                        "description",
+                        "statusId",
+                        "priority",
+                        "assigneeId",
+                        "reporterId",
+                        "labels",
+                        "estimate",
+                        "timeEstimate",
+                        "timeRemaining",
+                        "componentIds",
+                        "affectsReleaseIds",
+                        "securityLevelId",
+                        "testSpec",
+                        "testFolderId",
+                        "testEnvironments",
+                        "revision",
+                        "dueDate",
+                        "startDate",
+                        "sprintId",
+                        "releaseId",
+                        "parentId",
+                        "custom",
+                        "rank",
+                        "version",
+                        "resolution",
+                        "resolvedAt",
+                        "createdAt",
+                        "updatedAt"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "run": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "description": "uuid"
+                        },
+                        "executionId": {
+                          "type": "string",
+                          "description": "uuid"
+                        },
+                        "executionKey": {
+                          "type": "string"
+                        },
+                        "executionTitle": {
+                          "type": "string"
+                        },
+                        "environments": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "testId": {
+                          "type": "string",
+                          "description": "uuid"
+                        },
+                        "testKey": {
+                          "type": "string"
+                        },
+                        "testTitle": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "string"
+                        },
+                        "assigneeId": {
+                          "nullable": true,
+                          "type": "string",
+                          "description": "uuid"
+                        },
+                        "executedBy": {
+                          "nullable": true,
+                          "type": "string",
+                          "description": "uuid"
+                        },
+                        "startedAt": {
+                          "nullable": true,
+                          "type": "string",
+                          "description": "ISO 8601 timestamp"
+                        },
+                        "finishedAt": {
+                          "nullable": true,
+                          "type": "string",
+                          "description": "ISO 8601 timestamp"
+                        },
+                        "spec": {
+                          "nullable": true,
+                          "description": "The test as it was when the run was made"
+                        },
+                        "steps": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "status": {
+                                "type": "string"
+                              },
+                              "actual": {
+                                "type": "string"
+                              },
+                              "comment": {
+                                "type": "string"
+                              },
+                              "defectIds": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "description": "uuid"
+                                }
+                              },
+                              "evidenceIds": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "description": "uuid"
+                                }
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "status",
+                              "actual",
+                              "comment",
+                              "defectIds",
+                              "evidenceIds"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        "comment": {
+                          "type": "string"
+                        },
+                        "defectIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "description": "uuid"
+                          }
+                        },
+                        "evidenceIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "description": "uuid"
+                          }
+                        },
+                        "version": {
+                          "type": "number"
+                        },
+                        "createdAt": {
+                          "type": "string",
+                          "description": "ISO 8601 timestamp"
+                        },
+                        "updatedAt": {
+                          "type": "string",
+                          "description": "ISO 8601 timestamp"
+                        },
+                        "specChanged": {
+                          "type": "boolean",
+                          "description": "The test has changed since this run was made (reset to use the new one)"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "executionId",
+                        "executionKey",
+                        "executionTitle",
+                        "environments",
+                        "testId",
+                        "testKey",
+                        "testTitle",
+                        "status",
+                        "assigneeId",
+                        "executedBy",
+                        "startedAt",
+                        "finishedAt",
+                        "spec",
+                        "steps",
+                        "comment",
+                        "defectIds",
+                        "evidenceIds",
+                        "version",
+                        "createdAt",
+                        "updatedAt",
+                        "specChanged"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "defect",
+                    "run"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/test-runs/{id}/defects/{defect}": {
+      "delete": {
+        "summary": "Take a defect off a run (the item itself stays)",
+        "tags": [
+          "Testing"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "path",
+            "name": "defect",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "executionId": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "executionKey": {
+                      "type": "string"
+                    },
+                    "executionTitle": {
+                      "type": "string"
+                    },
+                    "environments": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "testId": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "testKey": {
+                      "type": "string"
+                    },
+                    "testTitle": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "assigneeId": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "executedBy": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "startedAt": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "ISO 8601 timestamp"
+                    },
+                    "finishedAt": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "ISO 8601 timestamp"
+                    },
+                    "spec": {
+                      "nullable": true,
+                      "description": "The test as it was when the run was made"
+                    },
+                    "steps": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "actual": {
+                            "type": "string"
+                          },
+                          "comment": {
+                            "type": "string"
+                          },
+                          "defectIds": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "description": "uuid"
+                            }
+                          },
+                          "evidenceIds": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "description": "uuid"
+                            }
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "status",
+                          "actual",
+                          "comment",
+                          "defectIds",
+                          "evidenceIds"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "comment": {
+                      "type": "string"
+                    },
+                    "defectIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "description": "uuid"
+                      }
+                    },
+                    "evidenceIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "description": "uuid"
+                      }
+                    },
+                    "version": {
+                      "type": "number"
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "description": "ISO 8601 timestamp"
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "description": "ISO 8601 timestamp"
+                    },
+                    "specChanged": {
+                      "type": "boolean",
+                      "description": "The test has changed since this run was made (reset to use the new one)"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "executionId",
+                    "executionKey",
+                    "executionTitle",
+                    "environments",
+                    "testId",
+                    "testKey",
+                    "testTitle",
+                    "status",
+                    "assigneeId",
+                    "executedBy",
+                    "startedAt",
+                    "finishedAt",
+                    "spec",
+                    "steps",
+                    "comment",
+                    "defectIds",
+                    "evidenceIds",
+                    "version",
+                    "createdAt",
+                    "updatedAt",
+                    "specChanged"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/test-runs/{id}/evidence": {
+      "post": {
+        "summary": "Record a file attached to the execution as evidence for the run or one step",
+        "tags": [
+          "Testing"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "attachmentId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  "stepId": {
+                    "type": "string",
+                    "maxLength": 40
+                  }
+                },
+                "required": [
+                  "attachmentId"
+                ]
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "executionId": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "executionKey": {
+                      "type": "string"
+                    },
+                    "executionTitle": {
+                      "type": "string"
+                    },
+                    "environments": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "testId": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "testKey": {
+                      "type": "string"
+                    },
+                    "testTitle": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "assigneeId": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "executedBy": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "startedAt": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "ISO 8601 timestamp"
+                    },
+                    "finishedAt": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "ISO 8601 timestamp"
+                    },
+                    "spec": {
+                      "nullable": true,
+                      "description": "The test as it was when the run was made"
+                    },
+                    "steps": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "actual": {
+                            "type": "string"
+                          },
+                          "comment": {
+                            "type": "string"
+                          },
+                          "defectIds": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "description": "uuid"
+                            }
+                          },
+                          "evidenceIds": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "description": "uuid"
+                            }
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "status",
+                          "actual",
+                          "comment",
+                          "defectIds",
+                          "evidenceIds"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "comment": {
+                      "type": "string"
+                    },
+                    "defectIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "description": "uuid"
+                      }
+                    },
+                    "evidenceIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "description": "uuid"
+                      }
+                    },
+                    "version": {
+                      "type": "number"
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "description": "ISO 8601 timestamp"
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "description": "ISO 8601 timestamp"
+                    },
+                    "specChanged": {
+                      "type": "boolean",
+                      "description": "The test has changed since this run was made (reset to use the new one)"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "executionId",
+                    "executionKey",
+                    "executionTitle",
+                    "environments",
+                    "testId",
+                    "testKey",
+                    "testTitle",
+                    "status",
+                    "assigneeId",
+                    "executedBy",
+                    "startedAt",
+                    "finishedAt",
+                    "spec",
+                    "steps",
+                    "comment",
+                    "defectIds",
+                    "evidenceIds",
+                    "version",
+                    "createdAt",
+                    "updatedAt",
+                    "specChanged"
+                  ],
+                  "additionalProperties": false
                 }
               }
             }

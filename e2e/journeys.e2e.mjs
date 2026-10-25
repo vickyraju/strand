@@ -449,6 +449,40 @@ test('testing: tests go into a set and a plan folder; the Tests tab files them i
   assert.deepEqual(o.problems, [])
 })
 
+test('testing: run a plan — fail step 2 of a test, raise a defect from it, and see the plan’s progress', { skip, timeout: 90_000 }, async () => {
+  await owner('POST', '/projects', { name: 'Exec', key: 'EXE', template: 'kanban' })
+  await owner('PUT', '/projects/EXE/testing', { enabled: true })
+  const steps = [{ id: 's1', action: 'Open the basket' }, { id: 's2', action: 'Pay with a card', expected: 'Payment accepted' }, { id: 's3', action: 'See the receipt' }]
+  const t = (await owner('POST', '/projects/EXE/issues', { title: 'Card checkout', type: 'test', testSpec: { kind: 'manual', steps } })).body
+  const plan = (await owner('POST', '/projects/EXE/issues', { title: 'Release 4', type: 'test_plan' })).body
+  await owner('POST', `/issues/${plan.key}/tests`, { keys: [t.key] })
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url(`/i/${plan.key}`))
+  await o.click('section[aria-label="Test executions"] button:has-text("Create execution")')
+  await o.fill('#ex-envs', 'chrome')
+  await o.click('.modal button:has-text("Create")')
+  await o.waitForSelector('section[aria-label="Test runs"]')
+  await o.click(`section[aria-label="Test runs"] [aria-label="Run ${t.key}"]`)
+  await o.waitForSelector('.modal [aria-label="Step 2 status"]')
+  await o.selectOption('.modal [aria-label="Step 1 status"]', 'PASS')
+  await o.waitForSelector('.modal .test-lozenge:has-text("Executing")')
+  await o.selectOption('.modal [aria-label="Step 2 status"]', 'FAIL')
+  await o.waitForSelector('.modal .test-lozenge:has-text("Failed")')
+  await o.fill('.modal [aria-label="Step 2 actual result"]', 'Card declined')
+  await o.click('.modal .run-step:nth-child(2) button:has-text("Defect")')
+  await o.fill('.modal [aria-label="Defect title"]', 'Valid cards are declined')
+  await o.click('.modal button:has-text("Raise bug")')
+  await o.waitForSelector('text=Raised EXE-')
+  const exec = (await owner('GET', `/issues/${plan.key}/executions`)).body[0]
+  const [run] = (await owner('GET', `/issues/${exec.key}/runs`)).body
+  assert.deepEqual([run.status, run.steps[1].status, run.steps[1].actual, run.steps[1].defectIds.length], ['FAIL', 'FAIL', 'Card declined', 1])
+  assert.deepEqual(exec.testEnvironments, ['chrome'])
+  await o.keyboard.press('Escape')
+  await o.goto(url(`/i/${plan.key}`))
+  await o.waitForSelector('section[aria-label="Test executions"] .test-progress-bar[aria-label="1 Failed"]')
+  assert.deepEqual(o.problems, [])
+})
+
 test('plan a sprint, start it and complete it: unfinished work goes back to the backlog', { skip, timeout: 90_000 }, async () => {
   const p = (await owner('POST', '/projects', { name: 'Sprinting', key: 'SPR', template: 'scrum' })).body
   const done = p.statuses.find(s => s.category === 'done')
