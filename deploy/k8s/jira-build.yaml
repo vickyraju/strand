@@ -11,7 +11,7 @@ metadata:
   name: jira-build-api
   namespace: jira-build
   annotations:
-    eks.amazonaws.com/role-arn: ${API_ROLE_ARN}          # IRSA: S3 access to the attachments bucket, nothing else
+    eks.amazonaws.com/role-arn: ${API_ROLE_ARN}          # IRSA: S3 access to the attachments bucket, and ses:SendEmail for notification emails
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -26,6 +26,7 @@ data:
   ENTRA_CLIENT_ID: "${ENTRA_API_CLIENT_ID}"
   S3_BUCKET: "${ATTACHMENTS_BUCKET}"
   AWS_REGION: "${AWS_REGION}"
+  EMAIL_TRANSPORT: ses                                   # notification emails go out through Amazon SES (sent only once an admin turns email on)
 ---
 apiVersion: apps/v1
 kind: Deployment

@@ -42,7 +42,7 @@ curl -H "Authorization: Bearer jbp_..." https://<site>/api/v1/me
 
 - a Secret `jira-build-api` with `DATABASE_URL` (RDS Proxy), `DATABASE_DIRECT_URL` (Aurora writer), `SCIM_TOKEN`, `GITHUB_WEBHOOK_SECRET`;
 - an image pull secret `artifactory-pull` for the registry that holds the image;
-- these variables when applying: `IMAGE`, `API_ROLE_ARN` (IAM role for the service account, S3 access only), `ENTRA_TENANT_ID`, `ENTRA_API_CLIENT_ID`, `ATTACHMENTS_BUCKET`, `AWS_REGION`, `ALB_SECURITY_GROUP_ID`, `ALB_CERTIFICATE_ARN`; the migration Job also needs `BUILD_TAG_SAFE` (a unique suffix).
+- these variables when applying: `IMAGE`, `API_ROLE_ARN` (IAM role for the service account: S3 access, and `ses:SendEmail` from a verified sender for notification emails), `ENTRA_TENANT_ID`, `ENTRA_API_CLIENT_ID`, `ATTACHMENTS_BUCKET`, `AWS_REGION`, `ALB_SECURITY_GROUP_ID`, `ALB_CERTIFICATE_ARN`; the migration Job also needs `BUILD_TAG_SAFE` (a unique suffix).
 
 ```bash
 envsubst < deploy/k8s/migrate-job.yaml | kubectl apply -f - && kubectl -n jira-build wait --for=condition=complete job --all --timeout=300s
@@ -86,4 +86,10 @@ End-to-end journeys run the real web app and API in Google Chrome (installed; no
 E2E_DATABASE_URL=postgres://user@host/scratch npm run e2e     # CHROME_PATH=… to use another Chromium
 ```
 
-They cover creating a project and giving a teammate read-only access, @mentions reaching the Inbox, the workflow deciding which moves are offered, a sprint from start to completion, and losing access while the project is open.
+They cover creating a project and giving a teammate read-only access, @mentions reaching the Inbox, the workflow and its rules, work types, workflow versions, time tracking, components, sharing views, JQL, automation, CSV import, notification settings, issue security, a sprint from start to completion, and losing access while the project is open.
+
+Performance at volume: seeds a throwaway database (wiped; its name must say perf, scratch or test) with a large workspace and times the main reads against budgets, exiting 1 if one is missed:
+
+```bash
+cd server && DATABASE_URL=postgres://user@host/perf PERF_ITEMS=100000 node scripts/perf.ts    # PERF_PROJECTS, PERF_PEOPLE, PERF_RUNS
+```
