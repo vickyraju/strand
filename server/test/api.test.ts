@@ -1718,6 +1718,17 @@ test('testing: an execution runs tests; step results set the run status; finishi
   assert.match(dr.defect.description, new RegExp(`Found running ${t1.key}.*step 2`))
   assert.deepEqual([dr.run.defectIds, dr.run.steps[1].defectIds], [[dr.defect.id], [dr.defect.id]])
   assert.ok((await pool.query(`select 1 from issue_links where issue_id = $1 and target_id = $2 and type = 'defect'`, [t1.id, dr.defect.id])).rowCount)
+  // a tester who can't edit the test (another project, viewer there) records the defect on the run, but adds no link to the test
+  await call('POST', '/api/v1/projects', { name: 'Elsewhere', key: 'ELS', template: 'kanban' })
+  await call('PUT', '/api/v1/projects/ELS/testing', { enabled: true })
+  await join('ELS', 'run.tester@x.com', 'viewer')
+  const foreign = (await call('POST', '/api/v1/projects/ELS/issues', { title: 'Foreign test', type: 'test' })).body
+  const exec3 = (await call('POST', '/api/v1/projects/RUN/issues', { title: 'Cross-project', type: 'test_execution' })).body
+  await call('POST', `/api/v1/issues/${exec3.key}/runs`, { keys: [foreign.key] })
+  const frun = (await call('GET', `/api/v1/issues/${exec3.key}/runs`)).body[0]
+  const fd = await call('POST', `/api/v1/test-runs/${frun.id}/defects`, { title: 'Seen elsewhere' }, 'run.tester@x.com')
+  assert.equal(fd.status, 201); assert.deepEqual(fd.body.run.defectIds, [fd.body.defect.id])
+  assert.equal((await pool.query(`select 1 from issue_links where issue_id = $1`, [foreign.id])).rowCount, 0)
   // a status given directly wins; back to a non-final status clears the finish
   r = (await patch({ status: 'PASS' })).body
   assert.equal(r.status, 'PASS')
