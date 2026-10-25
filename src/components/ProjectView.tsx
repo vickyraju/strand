@@ -3,7 +3,8 @@ import WorkTypesPanel from './WorkTypesPanel'
 import ComponentsPanel from './ComponentsPanel'
 import SecurityLevelsPanel from './SecurityLevelsPanel'
 import TestingPanel from './testing/TestingPanel'
-import { Plus, Star, FolderPlus, Columns2, List, ListChecks, Settings, Gauge, BarChart3, GanttChart, CalendarDays, Rocket, Check, GitBranch, Info, Zap, Users } from 'lucide-react'
+const TestRepository = lazy(() => import('./testing/TestRepository'))
+import { Plus, Star, FolderPlus, Columns2, List, ListChecks, Settings, Gauge, BarChart3, GanttChart, CalendarDays, Rocket, Check, GitBranch, Info, Zap, Users, FlaskConical } from 'lucide-react'
 import { useStore, userOf, isDone, timeAgo, PROJECT_COLORS, type Project, type ProjectPatch } from '../data/store'
 import { useApp } from '../appContext'
 import { canAdmin, isGlobalAdmin } from '../data/access'
@@ -30,7 +31,7 @@ const AutomationView  = lazy(() => import('./AutomationView'))
 const ProjectPeople   = lazy(() => import('./ProjectPeople'))
 
 export const TAB_LABEL: Record<ProjectTab, string> = {
-  summary: 'Summary', backlog: 'Backlog', board: 'Board', list: 'List', timeline: 'Timeline', calendar: 'Calendar', releases: 'Releases', reports: 'Reports', settings: 'Settings',
+  summary: 'Summary', backlog: 'Backlog', board: 'Board', list: 'List', timeline: 'Timeline', calendar: 'Calendar', releases: 'Releases', reports: 'Reports', tests: 'Tests', settings: 'Settings',
 }
 
 // ── Shared bits ────────────────────────────────────────────
@@ -209,6 +210,7 @@ export function ProjectView({ project, tab, sub }: { project: Project; tab: Proj
     { id: 'calendar', Icon: CalendarDays },
     { id: 'releases', Icon: Rocket },
     { id: 'reports',  Icon: BarChart3 },
+    ...(project.testing ? [{ id: 'tests' as const, Icon: FlaskConical }] : []),
     { id: 'settings', Icon: Settings },
   ]
   const members = [...new Set([project.leadId, ...state.issues.filter(i => i.projectId === project.id).map(i => i.assigneeId)])]
@@ -249,6 +251,7 @@ export function ProjectView({ project, tab, sub }: { project: Project; tab: Proj
       {tab === 'calendar' && <CalendarView project={project} />}
       {tab === 'releases' && <ReleasesView project={project} releaseId={sub} />}
       {tab === 'reports'  && <ReportsView project={project} report={sub} />}
+      {tab === 'tests'    && (project.testing ? <TestRepository project={project} /> : <Empty icon={<FlaskConical size={22} />} title="Testing is off" body="A project admin can turn it on in Project settings › Testing." />)}
       {tab === 'settings' && (!canAdmin(project) ? <ProjectPeople project={project} /> : sub === 'workflow' ? <WorkflowBuilder project={project} /> : sub === 'automation' ? <AutomationView project={project} /> : sub === 'people' ? <ProjectPeople project={project} /> : <ProjectSettings project={project} />)}
       </Suspense>
     </div>

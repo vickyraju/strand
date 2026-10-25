@@ -60,6 +60,7 @@ export default function CreateIssueModal({ defaults, onClose }: {
         dueDate: dueDate || undefined, startDate: defaults.startDate, sprintId, parentId: type === 'epic' ? undefined : parentId,
         estimate: estimate === '' ? undefined : Math.max(0, Number(estimate)),
         labels: labels.split(',').map(l => l.trim()).filter(Boolean),
+        ...(type === 'test' && defaults.testFolderId ? { testFolderId: defaults.testFolderId } : {}),
       },
     })
     toast(`Created ${key}`, { issueId: id })

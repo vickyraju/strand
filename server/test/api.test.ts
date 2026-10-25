@@ -1697,6 +1697,49 @@ test('testing: turning it on adds the Xray work types; Tests hold steps, Gherkin
   assert.deepEqual(await types(), ['epic', 'story', 'task', 'bug'])
 })
 
+test('testing: sets, plans and pre-conditions hold tests (by key or JQL); plans have folders; the repository has a folder tree', { skip }, async () => {
+  await call('POST', '/api/v1/projects', { name: 'Suites', key: 'SUI', template: 'kanban' })
+  await call('PUT', '/api/v1/projects/SUI/testing', { enabled: true })
+  await join('SUI', 'sui.member@x.com'); await join('SUI', 'sui.viewer@x.com', 'viewer')
+  const mk = async (title: string, type: string, extra = {}) => (await call('POST', '/api/v1/projects/SUI/issues', { title, type, labels: ['smoke'], ...extra })).body
+  const [t1, t2, t3] = [await mk('Sign in', 'test'), await mk('Sign out', 'test'), await mk('Reset password', 'test', { labels: [] })]
+  const story = await mk('A story', 'story')
+  const set = await mk('Smoke suite', 'test_set'), plan = await mk('Release 1.0', 'test_plan'), pre = await mk('A signed-in user', 'precondition')
+  const keys = (r: any) => (r.items ?? r).map((i: any) => i.key)
+  // by key; by JQL (only Tests are taken); twice adds nothing
+  assert.deepEqual(keys((await call('POST', `/api/v1/issues/${set.key}/tests`, { keys: [t1.key, t2.key] }, 'sui.member@x.com')).body), [t1.key, t2.key])
+  assert.equal((await call('POST', `/api/v1/issues/${set.key}/tests`, { keys: [story.key] })).body.errors?.keys, 'Only Tests can be added')
+  assert.equal((await call('POST', `/api/v1/issues/${set.key}/tests`, { keys: ['SUI-999'] })).status, 400)
+  const byJql = (await call('POST', `/api/v1/issues/${plan.key}/tests`, { jql: 'project = SUI AND labels = smoke', folder: 'Smoke' })).body
+  assert.deepEqual([byJql.added, keys(byJql)], [2, [t1.key, t2.key]])
+  assert.equal((await call('POST', `/api/v1/issues/${plan.key}/tests`, { keys: [t1.key, t3.key] })).body.added, 1)
+  assert.deepEqual((await call('GET', `/api/v1/issues/${plan.key}/tests`)).body.map((i: any) => [i.key, i.folder]), [[t3.key, ''], [t1.key, 'Smoke'], [t2.key, 'Smoke']])
+  // plan folders; a pre-condition holds tests too
+  assert.deepEqual((await call('PATCH', `/api/v1/issues/${plan.key}/tests/${t3.key}`, { folder: ' Regression / Accounts ' })).body.find((i: any) => i.key === t3.key).folder, 'Regression/Accounts')
+  await call('POST', `/api/v1/issues/${pre.key}/tests`, { keys: [t1.key] })
+  assert.deepEqual((await call('GET', `/api/v1/issues/${t1.key}/test-containers`)).body.map((c: any) => c.key).sort(), [set.key, plan.key, pre.key].sort())
+  // only containers hold tests; viewers can't change them; removing
+  assert.equal((await call('POST', `/api/v1/issues/${story.key}/tests`, { keys: [t1.key] })).status, 400)
+  assert.equal((await call('POST', `/api/v1/issues/${set.key}/tests`, { keys: [t3.key] }, 'sui.viewer@x.com')).status, 403)
+  assert.equal((await call('DELETE', `/api/v1/issues/${set.key}/tests/${t2.key}`)).status, 204)
+  assert.equal((await call('DELETE', `/api/v1/issues/${set.key}/tests/${t2.key}`)).status, 404)
+  assert.deepEqual(keys((await call('GET', `/api/v1/issues/${set.key}/tests`, undefined, 'sui.viewer@x.com')).body), [t1.key])
+  // a test the reader can't see (security level) is left out of the list
+  const lvl = (await call('POST', '/api/v1/projects/SUI/security-levels', { name: 'Admins', members: [{ kind: 'role', role: 'admin' }] })).body
+  await call('PATCH', `/api/v1/issues/${t1.key}`, { securityLevelId: lvl.id })
+  assert.deepEqual(keys((await call('GET', `/api/v1/issues/${set.key}/tests`, undefined, 'sui.viewer@x.com')).body), [])
+  // repository folders: a tree; names unique among siblings; no loops; removing moves its tests up
+  const f = (path: string, body?: unknown, method = 'POST') => call(method, `/api/v1/projects/SUI/test-folders${path}`, body, 'sui.member@x.com')
+  const web = (await f('', { name: 'Web' })).body, auth = (await f('', { name: 'Auth', parentId: web.id })).body
+  assert.equal((await f('', { name: 'auth', parentId: web.id })).status, 409)
+  assert.equal((await f(`/${web.id}`, { parentId: auth.id }, 'PATCH')).body.errors?.parentId, 'Inside itself')
+  assert.equal((await call('PATCH', `/api/v1/issues/${t2.key}`, { testFolderId: auth.id }, 'sui.member@x.com')).body.testFolderId, auth.id)
+  assert.equal((await call('PATCH', `/api/v1/issues/${story.key}`, { testFolderId: auth.id })).body.errors?.testFolderId, 'Not a Test')
+  assert.equal((await f('', undefined, 'GET')).body.find((x: any) => x.id === auth.id).tests, 1)
+  assert.equal((await f(`/${auth.id}`, undefined, 'DELETE')).status, 204)
+  assert.equal((await call('GET', `/api/v1/issues/${t2.key}`)).body.testFolderId, web.id)
+})
+
 test('report data: every live item and every status change in order, for people who can see the project', { skip }, async () => {
   const p = (await call('POST', '/api/v1/projects', { name: 'Reports', key: 'REP', template: 'kanban' })).body
   const [a, b, c] = p.statuses
@@ -2142,6 +2185,11 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
   const level = await make('security-levels', { name: 'Matrix fixture level', members: [{ kind: 'role', role: 'admin' }] })
   const sprint = await make('sprints', { name: 'Sprint' })
   for (const t of ['one', 'two', 'three']) await call('POST', '/api/v1/projects/MTX/issues', { title: t })
+  await call('PUT', '/api/v1/projects/MTX/testing', { enabled: true })
+  const mtest = (await call('POST', '/api/v1/projects/MTX/issues', { title: 'Matrix test', type: 'test' })).body.key
+  const mset = (await call('POST', '/api/v1/projects/MTX/issues', { title: 'Matrix set', type: 'test_set' })).body.key
+  await call('POST', `/api/v1/issues/${mset}/tests`, { keys: [mtest] })
+  const tfolder = await make('test-folders', { name: 'Matrix folder' })
   await call('DELETE', '/api/v1/issues/MTX-2')                                         // a deleted item, to restore
   const comment = (await call('POST', '/api/v1/issues/MTX-1/comments', { body: 'mine' })).body.id
   const worklog = (await call('POST', '/api/v1/issues/MTX-1/worklogs', { minutes: 5, date: '2026-10-01' })).body.id
@@ -2258,6 +2306,15 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     'GET /settings/public': ['any', '/settings/public'],
     'GET /link-types': ['any', '/link-types'],
     'PUT /projects/{key}/testing': ['padmin', `/projects/${K}/testing`, { enabled: false }],
+    'GET /issues/{key}/tests': ['read', `/issues/${mset}/tests`],
+    'POST /issues/{key}/tests': ['write', `/issues/${mset}/tests`, { keys: [mtest] }],
+    'PATCH /issues/{key}/tests/{test}': ['write', `/issues/${mset}/tests/${mtest}`, { folder: 'x' }],
+    'DELETE /issues/{key}/tests/{test}': ['write', `/issues/${mset}/tests/${mtest}`],
+    'GET /issues/{key}/test-containers': ['read', `/issues/${mtest}/test-containers`],
+    'GET /projects/{key}/test-folders': ['read', `/projects/${K}/test-folders`],
+    'POST /projects/{key}/test-folders': ['write', `/projects/${K}/test-folders`, { name: 'Matrix folder 2' }],
+    'PATCH /projects/{key}/test-folders/{folderId}': ['write', `/projects/${K}/test-folders/${tfolder}`, { name: 'Matrix folder 3' }],
+    'DELETE /projects/{key}/test-folders/{folderId}': ['write', `/projects/${K}/test-folders/${tfolder}`],
     'GET /projects/{key}/security-levels': ['read', `/projects/${K}/security-levels`],
     'POST /projects/{key}/security-levels': ['padmin', `/projects/${K}/security-levels`, { name: 'Matrix level', members: [{ kind: 'role', role: 'admin' }] }],
     'PATCH /projects/{key}/security-levels/{levelId}': ['padmin', `/projects/${K}/security-levels/${level}`, { description: 'x' }],

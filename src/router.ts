@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react'
 
-export type ProjectTab = 'summary' | 'board' | 'backlog' | 'list' | 'timeline' | 'calendar' | 'releases' | 'reports' | 'settings'
+export type ProjectTab = 'summary' | 'board' | 'backlog' | 'list' | 'timeline' | 'calendar' | 'releases' | 'reports' | 'tests' | 'settings'
 
 export type AdminSection = 'people' | 'audit' | 'backups' | 'settings' | 'link-types' | 'views'
 const ADMIN: AdminSection[] = ['people', 'audit', 'backups', 'settings', 'link-types', 'views']
@@ -16,7 +16,7 @@ export type Route =
   | { name: 'issue'; key: string }
   | { name: 'not-found' }
 
-const TABS: ProjectTab[] = ['summary', 'board', 'backlog', 'list', 'timeline', 'calendar', 'releases', 'reports', 'settings']
+const TABS: ProjectTab[] = ['summary', 'board', 'backlog', 'list', 'timeline', 'calendar', 'releases', 'reports', 'tests', 'settings']
 
 export function parse(pathname: string, search: string): { route: Route; peek?: string } {
   const parts = pathname.split('/').filter(Boolean).map(decodeURIComponent)

@@ -26,6 +26,7 @@ import { apiEnabled } from '../api/client'
 import IssueRow from './IssueRow'
 import Attachments from './Attachments'
 import TestSpecEditor from './TestSpecEditor'
+import { TestsPanel, TestContainers } from './testing/TestsPanel'
 import { CustomFieldInput } from './CustomFields'
 import { TimeField } from './TimeTracking'
 import { TemplateDialog, blankTemplate } from './TemplatesImport'
@@ -234,6 +235,8 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
           </section>
 
           {(issue.type === 'test' || issue.type === 'precondition') && <TestSpecEditor issue={issue} readOnly={readOnly} onSave={testSpec => set({ testSpec })} />}
+          {apiEnabled && ['test_set', 'test_plan', 'precondition'].includes(issue.type) && <TestsPanel issue={issue} project={project} readOnly={readOnly} />}
+          {apiEnabled && issue.type === 'test' && <TestContainers issue={issue} />}
 
           <Attachments issue={issue} pickRef={attachRef} />
 

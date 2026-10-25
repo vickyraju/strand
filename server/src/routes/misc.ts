@@ -35,7 +35,7 @@ type SearchFilters = { q: string; project?: string; assignee?: string; type?: st
 
 /** The SQL conditions for a search, limited to projects I can see (the parameters go into `args`), and its JQL ORDER BY.
  *  With JQL, the query replaces the simple filters, as switching to JQL does in Jira. */
-async function searchWhere(me: Me, q: SearchFilters, args: unknown[]): Promise<{ where: string[]; order: string | null }> {
+export async function searchWhere(me: Me, q: SearchFilters, args: unknown[]): Promise<{ where: string[]; order: string | null }> {
   args.push(me.workspaceId)
   const where = [`i.workspace_id = $${args.length}`, 'i.deleted_at is null', visible(me, 'i.project_id', args)]
   args.push(me.id)

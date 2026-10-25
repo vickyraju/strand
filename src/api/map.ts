@@ -94,6 +94,7 @@ export const mapIssue = (i: Row): Issue => ({
   ...(i.componentIds?.length ? { componentIds: i.componentIds } : {}),
   ...(i.securityLevelId ? { securityLevelId: i.securityLevelId } : {}),
   ...(i.testSpec ? { testSpec: i.testSpec } : {}),
+  ...(i.testFolderId ? { testFolderId: i.testFolderId } : {}),
   ...(i.affectsReleaseIds?.length ? { affectsReleaseIds: i.affectsReleaseIds } : {}),
   ...(i.dueDate ? { dueDate: i.dueDate } : {}), ...(i.startDate ? { startDate: i.startDate } : {}),
   ...(i.sprintId ? { sprintId: i.sprintId } : {}), ...(i.releaseId ? { releaseId: i.releaseId } : {}),
