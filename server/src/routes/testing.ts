@@ -124,11 +124,14 @@ export async function importBatch(d: Db, req: any, batch: Batch, q: z.infer<type
       if (r.testKey) throw new HttpError(400, `${k} isn’t a Test`, { testKey: 'Not a Test' })
     }
     const i = r.info!
+    // only tests the importer can see (a security level may hide some): a hidden one is never matched; a new test is made instead
     const match = i.kind === 'generic'
       ? await d.query<{ id: string; key: string }>(`select i.id, p.key || '-' || i.number as key from issues i join projects p on p.id = i.project_id
-          where i.project_id = $1 and i.type = 'test' and i.deleted_at is null and i.test_spec->>'kind' = 'generic' and i.test_spec->>'definition' = $2 order by i.number limit 1`, [project.id, i.definition ?? i.summary])
+          where i.project_id = $1 and i.type = 'test' and i.deleted_at is null and i.test_spec->>'kind' = 'generic' and i.test_spec->>'definition' = $2 and ${levelOk(me, 3)}
+          order by i.number limit 1`, [project.id, i.definition ?? i.summary, me.id])
       : await d.query<{ id: string; key: string }>(`select i.id, p.key || '-' || i.number as key from issues i join projects p on p.id = i.project_id
-          where i.project_id = $1 and i.type = 'test' and i.deleted_at is null and lower(i.title) = lower($2) and coalesce(i.test_spec->>'kind', 'manual') = $3 order by i.number limit 1`, [project.id, i.summary, i.kind])
+          where i.project_id = $1 and i.type = 'test' and i.deleted_at is null and lower(i.title) = lower($2) and coalesce(i.test_spec->>'kind', 'manual') = $3 and ${levelOk(me, 4)}
+          order by i.number limit 1`, [project.id, i.summary, i.kind, me.id])
     if (match[0]) return { ...match[0], mine: false }
     const sig = `${i.kind}:${i.kind === 'generic' ? i.definition ?? i.summary : i.summary.toLowerCase()}`
     if (madeHere.has(sig)) { const id = madeHere.get(sig)!; return { id, key: created[[...madeHere.keys()].indexOf(sig)]!, mine: true } }
