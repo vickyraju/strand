@@ -1,8 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
-import {
-  Bookmark, Bug, SquareCheck, Zap, ChevronsUp, ChevronUp, Equal, ChevronDown, Minus, Check, UserRound, X,
-  Flag, Star, Wrench, BookOpen, Shield, Lightbulb, Rocket, Circle,
-} from 'lucide-react'
+import { Bookmark, Bug, SquareCheck, Zap, ChevronsUp, ChevronUp, Equal, ChevronDown, Minus, Check, UserRound, X, Flag, Star, Wrench, BookOpen, Shield, Lightbulb, Rocket, Circle, FlaskConical, ClipboardList, Layers, Map as MapIcon, PlayCircle } from 'lucide-react'
 import type { RuleCtx } from '../data/transitionRules'
 import { useStore, transitionsFrom, typesOf, BUILTIN_TYPES, type IssueType, type Priority, type Project, type Status, type User } from '../data/store'
 
@@ -12,6 +9,7 @@ import { useStore, transitionsFrom, typesOf, BUILTIN_TYPES, type IssueType, type
 export const TYPE_ICONS: Record<string, typeof Bug> = {
   zap: Zap, bookmark: Bookmark, check: SquareCheck, bug: Bug, flag: Flag, star: Star, wrench: Wrench, book: BookOpen,
   shield: Shield, lightbulb: Lightbulb, rocket: Rocket, circle: Circle,
+  flask: FlaskConical, clipboard: ClipboardList, layers: Layers, map: MapIcon, play: PlayCircle,
 }
 
 /** How a work type looks, from its project (renamed built-ins, added types) or, without one, any loaded project's. */

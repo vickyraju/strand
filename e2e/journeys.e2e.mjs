@@ -379,6 +379,40 @@ test('issue security: an item given a level vanishes for people outside it, on t
   assert.deepEqual([...o.problems, ...m.problems], [])
 })
 
+test('testing: an admin turns it on; a member writes a manual test with three steps and switches one to Gherkin', { skip, timeout: 90_000 }, async () => {
+  await owner('POST', '/projects', { name: 'Quality', key: 'QA', template: 'kanban' })
+  await owner('POST', '/projects/QA/members', { userIds: [await idOf('maya@e2e.test')], role: 'member' })
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url('/project/QA/settings'))
+  await o.click('section[aria-label="Testing"] [role="switch"]')
+  await o.waitForSelector('section[aria-label="Work types"] td:has-text("Test Execution")')
+  const t = (await owner('POST', '/projects/QA/issues', { title: 'Sign in works', type: 'test' })).body
+  const m = await signIn('maya@e2e.test')
+  await m.goto(url(`/i/${t.key}`))
+  await m.waitForSelector('section[aria-label="Test details"]')
+  for (const [i, action] of ['Open the sign-in page', 'Enter a valid email and password', 'Press Sign in'].entries()) {
+    await m.click('section[aria-label="Test details"] button:has-text("Add step")')
+    await m.fill(`[aria-label="Step ${i + 1} action"]`, action)
+  }
+  await m.fill('[aria-label="Step 3 expected result"]', 'The home page shows')
+  await m.click('section[aria-label="Test details"] button:has-text("Save")')
+  await m.waitForFunction(() => !document.querySelector('section[aria-label="Test details"] .row-actions'))
+  await m.waitForTimeout(1200)
+  const saved = (await owner('GET', `/issues/${t.key}`)).body.testSpec
+  assert.deepEqual(saved.steps.map(s => s.action), ['Open the sign-in page', 'Enter a valid email and password', 'Press Sign in'])
+  assert.equal(saved.steps[2].expected, 'The home page shows')
+  await m.click('[aria-label="Move step 3 up"]')
+  await m.click('section[aria-label="Test details"] button:has-text("Save")')
+  await m.waitForTimeout(1200)
+  assert.equal((await owner('GET', `/issues/${t.key}`)).body.testSpec.steps[1].action, 'Press Sign in')
+  await m.click('section[aria-label="Test details"] [role="radio"]:has-text("Cucumber")')
+  await m.fill('[aria-label="Gherkin scenario"]', 'Scenario: sign in\n  Given a user\n  When they sign in\n  Then they see home')
+  await m.click('section[aria-label="Test details"] button:has-text("Save")')
+  await m.waitForTimeout(1200)
+  assert.equal((await owner('GET', `/issues/${t.key}`)).body.testSpec.kind, 'cucumber')
+  assert.deepEqual([...o.problems, ...m.problems], [])
+})
+
 test('plan a sprint, start it and complete it: unfinished work goes back to the backlog', { skip, timeout: 90_000 }, async () => {
   const p = (await owner('POST', '/projects', { name: 'Sprinting', key: 'SPR', template: 'scrum' })).body
   const done = p.statuses.find(s => s.category === 'done')
