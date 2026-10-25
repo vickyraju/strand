@@ -585,9 +585,14 @@ test('long pages scroll: Administration and the Tests tab reach their last secti
 
 test('system groups: a newcomer is in users-access and sees no Administration; someone with Entra’s admin role does', { skip, timeout: 60_000 }, async () => {
   const n = await signIn('sam@e2e.test')
-  await n.waitForSelector('nav')
-  await n.waitForTimeout(800)
+  await n.waitForSelector('nav :text("Configuration")')                     // not an admin: the area is Configuration, with only Groups
   assert.equal(await n.locator('nav :text("Administration")').count(), 0)
+  assert.equal(await n.locator('nav :text("Settings")').count(), 0)          // Settings lives in the profile menu
+  await n.click('nav :text("Configuration")')
+  await n.waitForSelector('.tabs[aria-label="Configuration"] [role="tab"]')
+  assert.deepEqual(await n.$$eval('.tabs[aria-label="Configuration"] [role="tab"]', t => t.map(x => x.textContent.trim())), ['Groups'])
+  await n.goto(url('/admin/settings'))
+  await n.waitForSelector('section[aria-label="Groups"], .groups')            // an admin-only section falls back to Groups
   const me = (await as('sam@e2e.test')('GET', '/me')).body
   const groups = (await as('owner@e2e.test')('GET', '/admin/users')).status
   assert.equal(groups, 200)
@@ -603,7 +608,7 @@ test('groups: a member makes mobile-developers and adds a colleague; a project a
   await owner('POST', '/projects', { name: 'Phone app', key: 'APP', template: 'kanban' })
   const vicId = await idOf('vic@e2e.test')
   const m = await signIn('maya@e2e.test')
-  await m.click('nav :text("Groups")')
+  await m.click('nav :text("Configuration")')                                 // not an admin: Configuration, with Groups
   await m.click('button:has-text("New group")')
   await m.fill('#gr-name', 'mobile-developers')
   await m.click('.modal button:has-text("Make group")')
