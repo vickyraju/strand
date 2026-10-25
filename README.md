@@ -31,3 +31,11 @@ Who can see and change a project is set per project (Project settings → People
 ## Deploying
 
 Vercel serves the static build; `vercel.json` rewrites every path to `index.html` so deep links work.
+
+## Performance check
+
+Seeds a throwaway database (wiped; its name must say perf, scratch or test) with a large workspace and times the main API reads against budgets, exiting 1 if one is missed:
+
+```bash
+cd server && DATABASE_URL=postgres://user@host/perf PERF_ITEMS=100000 node scripts/perf.ts    # PERF_PROJECTS, PERF_PEOPLE, PERF_RUNS
+```
