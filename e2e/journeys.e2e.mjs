@@ -1,7 +1,7 @@
 // The main journeys, end to end in a real browser. Each one checks what a person sees and what the server keeps.
 import { test, before, after } from 'node:test'
 import assert from 'node:assert/strict'
-import { start, stop, skip, signIn, as, url, PEOPLE } from './harness.mjs'
+import { start, stop, skip, signIn, as, url, PEOPLE, postRaw } from './harness.mjs'
 
 const owner = as('owner@e2e.test'), maya = as('maya@e2e.test'), vic = as('vic@e2e.test')
 const idOf = async email => (await as(email)('GET', '/me')).body.id
@@ -511,6 +511,24 @@ test('coverage: a story gains a test, shows NOK for version 1.0 after a failure,
   await o.selectOption('section[aria-label="Test coverage"] [aria-label="Coverage scope"]', { label: 'Version 1.0' })
   await o.waitForSelector('section[aria-label="Test coverage"] h2 .test-lozenge:has-text("OK")')
   assert.equal((await owner('GET', `/issues/${story.key}/coverage?version=${v1.id}`)).body.status, 'OK')
+  assert.deepEqual(o.problems, [])
+})
+
+test('CI results: a JUnit report sent to Xray’s address with an access token becomes an execution the team sees', { skip, timeout: 90_000 }, async () => {
+  await owner('POST', '/projects', { name: 'Pipeline', key: 'PIPE', template: 'kanban' })
+  await owner('PUT', '/projects/PIPE/testing', { enabled: true })
+  const { token } = (await owner('POST', '/me/tokens', { name: 'ci' })).body
+  const junit = '<testsuite name="api"><testcase classname="api.Health" name="answers"/><testcase classname="api.Health" name="isFast"><failure message="took 3s"/></testcase></testsuite>'
+  const r = await postRaw('/rest/raven/1.0/import/execution/junit?projectKey=PIPE&testEnvironments=staging', junit, 'text/xml', token)
+  assert.equal(r.status, 200, JSON.stringify(r.body))
+  const key = r.body.testExecIssue.key
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url(`/i/${key}`))
+  await o.waitForSelector('section[aria-label="Test runs"] td:has-text("answers")')
+  await o.waitForSelector('section[aria-label="Test runs"] .test-progress-bar[aria-label="1 Passed, 1 Failed"]')
+  assert.equal(await o.inputValue('[aria-label="Test environments"]'), 'staging')
+  await o.goto(url('/project/PIPE/tests'))
+  await o.waitForSelector('.repo-list td:has-text("isFast")')
   assert.deepEqual(o.problems, [])
 })
 

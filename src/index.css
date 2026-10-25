@@ -1417,3 +1417,4 @@ h2.empty-title, h2.section-title, h2.side-title { margin: 0 }
 .check-grid { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 6px }
 .link-btn { text-align: left; width: 100%; padding: 0; background: none; border: 0; color: inherit; cursor: pointer }
 .link-btn:hover { color: var(--accent) }
+.ci-hint { white-space: pre-wrap; font-size: 11px; padding: 10px; background: var(--sunken); border-radius: var(--radius); margin-top: 6px; overflow-x: auto }

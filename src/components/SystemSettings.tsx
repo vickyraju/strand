@@ -69,6 +69,8 @@ export default function SystemSettings() {
       <EmailSection setting={of('email')} save={v => save('email', v)} />
       <SimpleSection setting={of('testing')} save={v => save('testing', v)} fields={[
         { key: 'finalStatusesHavePrecedence', label: 'A finished result outweighs a newer run that hasn’t finished', type: 'toggle', hint: 'Off: a test’s status is always its latest run’s' },
+        { key: 'resultImportMaxMb', label: 'Largest CI results file (MB)', type: 'number', min: 1, max: 20 },
+        { key: 'resultImportMaxTests', label: 'Most test results in one import', type: 'number', min: 10, max: 20000 },
       ]} />
       <TestStatusesAdmin />
       <SimpleSection setting={of('dueReminders')} save={v => save('dueReminders', v)} fields={[

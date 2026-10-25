@@ -23,6 +23,7 @@ import scim from './routes/scim.ts'
 import development from './routes/development.ts'
 import tokens from './routes/tokens.ts'
 import testing from './routes/testing.ts'
+import raven from './routes/raven.ts'
 import { githubWebhook } from './routes/github.ts'
 
 export async function build() {
@@ -112,22 +113,27 @@ export async function build() {
       reply.headers(v.headers)
       if (!v.allowed) { await noteLimited(req.me.workspaceId, req.me.id); throw tooMany(p) }
     })
-    await api.register(projects)
-    await api.register(members)
-    await api.register(issues)
-    await api.register(misc)
-    await api.register(files)
-    await api.register(development)
-    await api.register(tokens)
-    await api.register(imports)
-    await api.register(auditLog)
-    await api.register(admin)
-    await api.register(testing)
+    const routes: FastifyPluginAsync = async v1 => {
+      await v1.register(projects)
+      await v1.register(members)
+      await v1.register(issues)
+      await v1.register(misc)
+      await v1.register(files)
+      await v1.register(development)
+      await v1.register(tokens)
+      await v1.register(imports)
+      await v1.register(auditLog)
+      await v1.register(admin)
+      await v1.register(testing)
+    }
+    await api.register(routes, { prefix: '/api/v1' })
+    // ponytail: the unversioned /api is kept as a hidden alias so clients built before /api/v1 keep working;
+    // remove it once the web app calls /api/v1 everywhere (see API_PREFIX in src/api/client.ts).
+    await api.register(routes, { prefix: '/api' })   // hidden from the docs in the swagger transform below
+    // Xray's addresses for importing CI results: same sign-in and rate limits as the API
+    await api.register(raven, { prefix: '/rest/raven/1.0' })
   }
-  await app.register(resources, { prefix: '/api/v1' })
-  // ponytail: the unversioned /api is kept as a hidden alias so clients built before /api/v1 keep working;
-  // remove it once the web app calls /api/v1 everywhere (see API_PREFIX in src/api/client.ts).
-  await app.register(resources, { prefix: '/api' })   // hidden from the docs in the swagger transform below
+  await app.register(resources)
 
   await startListener()
   const stopJobs = startJobWorker(app.log)
