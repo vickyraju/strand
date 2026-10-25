@@ -413,6 +413,42 @@ test('testing: an admin turns it on; a member writes a manual test with three st
   assert.deepEqual([...o.problems, ...m.problems], [])
 })
 
+test('testing: tests go into a set and a plan folder; the Tests tab files them into folders', { skip, timeout: 90_000 }, async () => {
+  await owner('POST', '/projects', { name: 'Suites', key: 'STE', template: 'kanban' })
+  await owner('PUT', '/projects/STE/testing', { enabled: true })
+  const [a, b] = [(await owner('POST', '/projects/STE/issues', { title: 'Checkout works', type: 'test' })).body, (await owner('POST', '/projects/STE/issues', { title: 'Refund works', type: 'test' })).body]
+  const plan = (await owner('POST', '/projects/STE/issues', { title: 'Release 2.0', type: 'test_plan' })).body
+  const o = await signIn('owner@e2e.test')
+  // add both tests to the plan, into a folder
+  await o.goto(url(`/i/${plan.key}`))
+  await o.click('section[aria-label="Tests"] button:has-text("Add tests")')
+  await o.click(`.modal label:has-text("${a.key}") input`)
+  await o.click(`.modal label:has-text("${b.key}") input`)
+  await o.fill('.modal [aria-label="Folder"]', 'Payments')
+  await o.click('.modal button:has-text("Add 2 tests")')
+  await o.waitForSelector('section[aria-label="Tests"] .test-folder-label:has-text("Payments")')
+  assert.deepEqual((await owner('GET', `/issues/${plan.key}/tests`)).body.map(t => [t.key, t.folder]), [[a.key, 'Payments'], [b.key, 'Payments']])
+  // the test shows what holds it
+  await o.goto(url(`/i/${a.key}`))
+  await o.waitForSelector(`section[aria-label="Used in"] a:has-text("${plan.key}")`)
+  // the Tests tab: a folder, and a test moved into it
+  await o.goto(url('/project/STE/tests'))
+  await o.waitForSelector(`.repo-list a:has-text("${a.key}")`)
+  o.once('dialog', d => d.accept('Billing'))
+  await o.click('.repo-tree button:has-text("New folder")')
+  await o.waitForSelector('.repo-tree button:has-text("Billing")')
+  await o.click('.repo-tree button.repo-all:has-text("All tests")')
+  await o.click(`[aria-label="Select ${b.key}"]`)
+  await o.selectOption('[aria-label="Move to folder"]', { label: 'Billing' })
+  await o.waitForTimeout(1200)
+  const folder = (await owner('GET', '/projects/STE/test-folders')).body.find(f => f.name === 'Billing')
+  assert.equal((await owner('GET', `/issues/${b.key}`)).body.testFolderId, folder.id)
+  await o.click('.repo-tree button:has-text("Billing")')
+  await o.waitForSelector(`.repo-list a:has-text("${b.key}")`)
+  assert.equal(await o.locator(`.repo-list a:has-text("${a.key}")`).count(), 0)
+  assert.deepEqual(o.problems, [])
+})
+
 test('plan a sprint, start it and complete it: unfinished work goes back to the backlog', { skip, timeout: 90_000 }, async () => {
   const p = (await owner('POST', '/projects', { name: 'Sprinting', key: 'SPR', template: 'scrum' })).body
   const done = p.statuses.find(s => s.category === 'done')

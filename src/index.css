@@ -1364,3 +1364,28 @@ h2.empty-title, h2.section-title, h2.side-title { margin: 0 }
 .test-step-field textarea { resize: vertical; min-height: 32px }
 .test-step-tools { display: flex; flex-direction: column; gap: 2px; padding-top: 18px }
 @media (max-width: 720px) { .test-step-fields { grid-template-columns: 1fr } }
+
+/* Tests held by a Test Set, Test Plan or Pre-Condition */
+.test-members { list-style: none; margin: 4px 0 8px; padding: 0; display: grid; gap: 2px }
+.test-member { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: var(--radius) }
+.test-member:hover { background: var(--sunken) }
+.test-member-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.test-member-folder { width: 160px }
+.test-folder-label { display: flex; align-items: center; gap: 6px; margin: 10px 0 2px; font-size: 12px; font-weight: 600; color: var(--text-2) }
+.pick-list { list-style: none; margin: 8px 0 0; padding: 0; max-height: 300px; overflow: auto; border: 1px solid var(--border); border-radius: var(--radius) }
+.pick-list li { padding: 6px 10px; border-bottom: 1px solid var(--border) }
+.pick-list li:last-child { border-bottom: 0 }
+.pick-list label { display: flex; gap: 8px; align-items: center; cursor: pointer }
+
+/* Tests tab (test repository) */
+.repo { display: grid; grid-template-columns: 260px 1fr; gap: 16px; padding: 16px 24px; align-items: start }
+.repo-tree { display: grid; gap: 2px; position: sticky; top: 0 }
+.repo-folder { display: flex; align-items: center; border-radius: var(--radius) }
+.repo-folder.is-active, .repo-folder-name.is-active { background: var(--sunken) }
+.repo-folder-name { flex: 1; display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-radius: var(--radius); text-align: left; font-size: 13px }
+.repo-folder-name .muted { margin-left: auto }
+.repo-folder-tools { display: none; gap: 2px }
+.repo-folder:hover .repo-folder-tools { display: flex }
+.repo-all { font-weight: 500 }
+.repo-bar { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; min-height: 32px }
+@media (max-width: 760px) { .repo { grid-template-columns: 1fr; padding: 12px 16px } .repo-tree { position: static } }

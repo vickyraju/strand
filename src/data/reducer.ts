@@ -273,6 +273,8 @@ export interface Issue {
   securityLevelId?: string
   /** What a Test or Pre-Condition says to do (Xray's test kinds) */
   testSpec?: TestSpec
+  /** Test repository folder (Tests) */
+  testFolderId?: string
   /** Remaining estimate in minutes (Jira's): starts at the original estimate, counts down as work is logged. */
   timeRemaining?: number
   /** Components of the project it belongs to (Jira's). */
@@ -371,7 +373,7 @@ export type ProjectPatch = Partial<Pick<Project,
   'name' | 'description' | 'color' | 'leadId' | 'statuses' | 'transitions' | 'layout' | 'boardPrefs' | 'rules' | 'fields' | 'releases' | 'templates' | 'types' | 'components' | 'securityLevels' | 'testing'>>
 export type IssuePatch = Partial<Omit<Issue, 'id' | 'key' | 'projectId' | 'reporterId' | 'createdAt' | 'watcherIds' | 'links' | 'attachments' | 'rank' | 'worklogs'>>
 export type NewIssue = Pick<Issue, 'projectId' | 'title'> & Partial<Pick<Issue,
-  'type' | 'description' | 'status' | 'priority' | 'assigneeId' | 'labels' | 'estimate' | 'dueDate' | 'startDate' | 'sprintId' | 'parentId' | 'custom' | 'releaseId' | 'timeEstimate' | 'componentIds' | 'affectsReleaseIds'>>
+  'type' | 'description' | 'status' | 'priority' | 'assigneeId' | 'labels' | 'estimate' | 'dueDate' | 'startDate' | 'sprintId' | 'parentId' | 'custom' | 'releaseId' | 'timeEstimate' | 'componentIds' | 'affectsReleaseIds' | 'testFolderId'>>
 
 export type Action =
   | { type: 'setOwner'; name: string; workspaceName?: string }

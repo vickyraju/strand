@@ -42,8 +42,10 @@ const TABLES: [table: string, where: string][] = [
   ['project_members', 'project_id = $1'],
   ['project_group_roles', 'project_id = $1'],
   ['stars', 'project_id = $1'],
+  ['test_folders', 'project_id = $1'],
   ['issues', 'project_id = $1'],
   ['issue_links', 'issue_id in (select id from issues where project_id = $1) or target_id in (select id from issues where project_id = $1)'],
+  ['test_items', 'container_id in (select id from issues where project_id = $1) or member_id in (select id from issues where project_id = $1)'],
   ['issue_watchers', 'issue_id in (select id from issues where project_id = $1)'],
   ['comments', 'issue_id in (select id from issues where project_id = $1)'],
   ['activity', 'issue_id in (select id from issues where project_id = $1)'],
@@ -125,6 +127,7 @@ function checkBackup(doc: BackupDoc, b: { project_id: string; project_key: strin
   for (const table of ['issue_watchers', 'comments', 'activity', 'worklogs', 'attachments'])
     for (const r of t[table] ?? []) if (!items.has(r.issue_id)) fail(table)
   for (const l of t.issue_links ?? []) if (!items.has(l.issue_id) && !items.has(l.target_id)) fail('issue_links')
+  for (const l of t.test_items ?? []) if (!items.has(l.container_id) && !items.has(l.member_id)) fail('test_items')
   for (const a of t.attachments ?? []) if (!String(a.object_key).startsWith(`${b.workspace_id}/`) || String(a.object_key).includes('..')) fail('attachment')
 }
 
@@ -154,7 +157,7 @@ async function restoreProject(p: { backupId: string; actorId: string | null; act
     const people = new Set((await c.query('select id from users')).rows.map(r => r.id as string))
     const issueIds = new Set((doc.tables.issues ?? []).map(r => r.id as string))
     const existing = new Set((await c.query('select id from issues where id = any($1::uuid[])',
-      [[...new Set((doc.tables.issue_links ?? []).flatMap(l => [l.issue_id, l.target_id]))]])).rows.map(r => r.id as string))
+      [[...new Set([...(doc.tables.issue_links ?? []).flatMap(l => [l.issue_id, l.target_id]), ...(doc.tables.test_items ?? []).flatMap(l => [l.container_id, l.member_id])])]])).rows.map(r => r.id as string))
     for (const [table] of TABLES) {
       const rows = doc.tables[table] ?? []
       if (!rows.length) continue
@@ -168,17 +171,19 @@ async function restoreProject(p: { backupId: string; actorId: string | null; act
       for (const r0 of rows) {
         const r = { ...r0 }
         if (table === 'projects') r.deleting_at = null
-        if (table === 'issues') r.parent_id = null                     // set below, once every item exists
+        if (table === 'issues' || table === 'test_folders') r.parent_id = null   // set below, once every row exists
         if (NEEDS_PERSON.has(table) && !people.has(String(r.user_id))) continue
         if (groups && !groups.has(String(r.group_id))) continue        // a group removed from the directory since
         for (const k of PERSON) if (r[k] != null && !people.has(String(r[k]))) r[k] = null
         if (table === 'issue_links' && !(issueIds.has(String(r.issue_id)) || existing.has(String(r.issue_id))) ||
             table === 'issue_links' && !(issueIds.has(String(r.target_id)) || existing.has(String(r.target_id)))) continue
+        if (table === 'test_items' && ![r.container_id, r.member_id].every(x => issueIds.has(String(x)) || existing.has(String(x)))) continue
         const use = names.filter(n => n in r)
         await c.query(`insert into ${table} (${use.join(', ')}) values (${use.map((_, i) => `$${i + 1}`).join(', ')}) on conflict do nothing`,
           use.map(n => (json.has(n) && r[n] != null ? JSON.stringify(r[n]) : r[n])))
       }
     }
+    for (const f of doc.tables.test_folders ?? []) if (f.parent_id) await c.query('update test_folders set parent_id = $2 where id = $1', [f.id, f.parent_id])
     for (const i of doc.tables.issues ?? []) if (i.parent_id && issueIds.has(String(i.parent_id)))
       await c.query('update issues set parent_id = $2 where id = $1', [i.id, i.parent_id])
     // the restored files must not be removed by deletions queued when the project was deleted

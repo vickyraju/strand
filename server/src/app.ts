@@ -22,6 +22,7 @@ import admin from './routes/admin.ts'
 import scim from './routes/scim.ts'
 import development from './routes/development.ts'
 import tokens from './routes/tokens.ts'
+import testing from './routes/testing.ts'
 import { githubWebhook } from './routes/github.ts'
 
 export async function build() {
@@ -121,6 +122,7 @@ export async function build() {
     await api.register(imports)
     await api.register(auditLog)
     await api.register(admin)
+    await api.register(testing)
   }
   await app.register(resources, { prefix: '/api/v1' })
   // ponytail: the unversioned /api is kept as a hidden alias so clients built before /api/v1 keep working;

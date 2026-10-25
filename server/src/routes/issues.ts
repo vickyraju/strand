@@ -20,7 +20,7 @@ export const RESOLUTIONS = ['Done', "Won't do", 'Duplicate', 'Cannot reproduce']
 
 export const ISSUE_ROW = `
   select i.id, p.key || '-' || i.number as key, i.project_id, i.number, i.type, i.title, i.description,
-         i.status_id, i.priority, i.assignee_id, i.reporter_id, i.labels, i.estimate, i.time_estimate, i.time_remaining, i.component_ids, i.affects_release_ids, i.security_level_id, i.test_spec,
+         i.status_id, i.priority, i.assignee_id, i.reporter_id, i.labels, i.estimate, i.time_estimate, i.time_remaining, i.component_ids, i.affects_release_ids, i.security_level_id, i.test_spec, i.test_folder_id,
          i.due_date, i.start_date, i.sprint_id, i.release_id, i.parent_id, i.custom, i.rank, i.version,
          i.resolution, i.resolved_at, i.created_at, i.updated_at
     from issues i join projects p on p.id = i.project_id`
@@ -46,6 +46,7 @@ const patchBody = z.object({
   securityLevelId: uuid.nullable().describe('Security level: only its members see the item (null: everyone in the project)'),
   componentIds: z.array(uuid).max(50).describe('Components of the project'), affectsReleaseIds: z.array(uuid).max(50).describe('Affects versions: releases of the project where it was found'),
   custom: z.record(z.string(), z.union([z.string(), z.number()])), rank: z.number(), testSpec: testSpec.nullable(),
+  testFolderId: uuid.nullable().describe('Test repository folder (Tests only; null: the top)'),
   resolution: z.enum(RESOLUTIONS).nullable().describe('How a finished item ended. Only for items in a Done status; reaching Done sets "Done" unless you say otherwise (null: the default)'),
 }).partial()
 const FIELDS = Object.keys(patchBody.shape)
@@ -222,6 +223,7 @@ async function applyPatch(d: Db, me: Me, cur: any, patch: z.infer<typeof patchBo
     await checkLevel(d, me, cur.projectId, patch.securityLevelId, cur.reporterId, patch.assigneeId !== undefined ? patch.assigneeId : cur.assigneeId)
   if (patch.custom) await checkCustom(d, cur.projectId, patch.custom, cur.custom)
   checkSpec(patch.type ?? cur.type, patch.testSpec)
+  await checkFolder(d, cur.projectId, patch.type ?? cur.type, patch.testFolderId)
   if (patch.resolution) {
     const [st] = await d.query<{ category: string }>('select category from statuses where id = $1', [patch.statusId ?? cur.statusId])
     if (st?.category !== 'done') throw new HttpError(400, 'Only a finished item has a resolution', { resolution: 'Move the item to a Done status first' })
@@ -301,6 +303,14 @@ function checkSpec(type: string, spec: unknown) {
   if (spec != null && type !== 'test' && type !== 'precondition') throw new HttpError(400, 'Only Tests and Pre-Conditions have test steps', { testSpec: 'Not a Test' })
 }
 
+/** A test repository folder: one of the project's, and only for Tests. */
+async function checkFolder(d: Db, projectId: string, type: string, folderId: string | null | undefined) {
+  if (!folderId) return
+  if (type !== 'test') throw new HttpError(400, 'Only Tests go in test repository folders', { testFolderId: 'Not a Test' })
+  if (!(await d.query('select 1 from test_folders where id = $1 and project_id = $2', [folderId, projectId])).length)
+    throw new HttpError(400, 'No such folder in this project', { testFolderId: 'Unknown folder' })
+}
+
 /** Is this one of the project's work types? (400 otherwise) */
 async function checkType(d: Db, projectId: string, type: string | undefined) {
   if (type === undefined) return
@@ -316,6 +326,7 @@ export async function insertIssue(d: Db, me: Me, projectId: string, b: Record<st
   if (b.custom) await checkCustom(d, projectId, b.custom)
   await checkType(d, projectId, b.type)
   checkSpec(b.type ?? 'task', b.testSpec)
+  await checkFolder(d, projectId, b.type ?? 'task', b.testFolderId)
   await checkParts(d, projectId, b)
   await checkLevel(d, me, projectId, b.securityLevelId, me.id, b.assigneeId ?? null)
   if (b.assigneeId === undefined && b.componentIds?.length) { const who = await defaultAssignee(d, projectId, b.componentIds); if (who) b = { ...b, assigneeId: who } }

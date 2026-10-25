@@ -72,7 +72,7 @@ const issueFields = {
   id, key: z.string().describe('e.g. PAY-12'), projectId: id, number: z.number(), type: z.string().describe('Work type key'),
   title: z.string(), description: z.string(), statusId: id, priority: z.enum(['urgent', 'high', 'medium', 'low', 'none']),
   assigneeId: nullable(id), reporterId: nullable(id), labels: z.array(z.string()), estimate: nullable(z.number()), timeEstimate: nullable(z.number()), timeRemaining: nullable(z.number()), componentIds: z.array(id), affectsReleaseIds: z.array(id), securityLevelId: nullable(id),
-  testSpec: nullable(z.unknown()).describe('Test steps, Gherkin or definition (Tests and Pre-Conditions)'),
+  testSpec: nullable(z.unknown()).describe('Test steps, Gherkin or definition (Tests and Pre-Conditions)'), testFolderId: nullable(id).describe('Test repository folder'),
   dueDate: nullable(day), startDate: nullable(day), sprintId: nullable(id), releaseId: nullable(id), parentId: nullable(id),
   custom: z.record(z.string(), z.union([z.string(), z.number()])), rank: z.number(), version: z.number().describe('Send as If-Match to reject stale edits'),
   resolution: nullable(z.enum(['Done', "Won't do", 'Duplicate', 'Cannot reproduce'])).describe('Set while the item is in a Done status'),
@@ -80,6 +80,8 @@ const issueFields = {
   createdAt: ts, updatedAt: ts,
 }
 export const IssueRow = z.object(issueFields)
+export const TestMember = IssueRow.extend({ folder: z.string().describe('Folder within a Test Plan ("" at the top)'), itemPosition: z.number() })
+export const TestFolder = z.object({ id, parentId: nullable(id), name: z.string(), position: z.number(), tests: z.number() })
 const GroupGrant = z.object({
   groupId: id, name: z.string(), role: z.enum(['admin', 'member', 'viewer']), addedAt: ts, members: z.number().describe('Active people in the group'),
 })
@@ -190,6 +192,13 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'POST /issues/:key/clone': IssueRow,
   'GET /link-types': z.array(LinkType),
   'PUT /projects/:key/testing': z.object({ enabled: z.boolean() }),
+  'GET /issues/:key/tests': z.array(TestMember),
+  'POST /issues/:key/tests': z.object({ added: z.number(), already: z.number().describe('Already in it'), items: z.array(TestMember) }),
+  'PATCH /issues/:key/tests/:test': z.array(TestMember),
+  'GET /issues/:key/test-containers': z.array(z.object({ id, key: z.string(), type: z.string(), title: z.string(), projectId: id })),
+  'GET /projects/:key/test-folders': z.array(TestFolder),
+  'POST /projects/:key/test-folders': TestFolder,
+  'PATCH /projects/:key/test-folders/:folderId': TestFolder,
   'GET /projects/:key/security-levels': z.array(SecurityLevel),
   'POST /projects/:key/security-levels': SecurityLevel,
   'PATCH /projects/:key/security-levels/:levelId': SecurityLevel,
