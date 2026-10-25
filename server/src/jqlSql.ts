@@ -40,9 +40,81 @@ async function checkFieldNames(d: Db, me: Me, n: Node | null) {
   if (missing.length) throw new HttpError(400, `JQL: there is no field called “${missing[0]}”`, { jql: `Unknown field ${missing[0]}` })
 }
 
+// ── Xray's test functions: issue in requirementTests("REQ-1", …), testRequirements("TEST-1", …), testSetTests("SET-1"),
+// testPlanTests("PLAN-1"[, status…]) (each test's status in the plan, by Xray's rules), testExecutionTests("EXEC-1"[, status…]).
+// The items named must be ones the searcher can see (a hidden one is "not found", like a missing one). ──
+const TEST_FNS = new Set(['requirementtests', 'testrequirements', 'testsettests', 'testplantests', 'testexecutiontests'])
+const fnKey = (v: Extract<Value, { kind: 'fn' }>) => `${v.name}(${(v.args ?? (v.arg ? [v.arg] : [])).join('\u0000')})`
+async function prepareTestFns(d: Db, me: Me, n: Node | null): Promise<Map<string, string[]>> {
+  const fns: Extract<Value, { kind: 'fn' }>[] = []
+  const walk = (x: Node) => { if (x.kind === 'clause') { for (const v of x.values) if (v.kind === 'fn' && TEST_FNS.has(v.name)) fns.push(v) } else if (x.kind === 'not') walk(x.item); else x.items.forEach(walk) }
+  if (n) walk(n)
+  const out = new Map<string, string[]>()
+  if (!fns.length) return out
+  const { levelOk, visibleAs } = await import('./access.ts')
+  const items = async (keys: string[]) => {
+    if (!keys.length) throw new HttpError(400, 'JQL: name at least one work item, such as testPlanTests("PAY-9")', { jql: 'Missing work item' })
+    const rows = await d.query<{ id: string; key: string; type: string }>(
+      `select i.id, p.key || '-' || i.number as key, i.type from issues i join projects p on p.id = i.project_id
+        where i.workspace_id = $1 and (p.key || '-' || i.number) = any($2::text[]) and i.deleted_at is null and ${visibleAs(me, 'i.project_id', 3)} and ${levelOk(me, 3)}`,
+      [me.workspaceId, keys.map(k => k.toUpperCase()), me.id])
+    const missing = keys.find(k => !rows.some(r => r.key === k.toUpperCase()))
+    if (missing) throw new HttpError(400, `JQL: there is no work item ${missing}`, { jql: `Unknown work item ${missing}` })
+    return rows
+  }
+  const statusKeys = async (names: string[]) => {
+    const rows = await d.query<{ key: string; name: string }>(`select key, name from test_statuses where workspace_id = $1 and kind = 'run'`, [me.workspaceId])
+    return names.map(n => {
+      const hit = rows.find(r => r.key.toUpperCase() === n.toUpperCase() || r.name.toUpperCase() === n.toUpperCase())
+      if (!hit) throw new HttpError(400, `JQL: there is no test status “${n}”`, { jql: `Unknown test status ${n}` })
+      return hit.key
+    })
+  }
+  const one = (rows: { type: string; key: string }[], type: string, what: string) => {
+    const bad = rows.find(r => r.type !== type)
+    if (bad) throw new HttpError(400, `JQL: ${bad.key} isn’t a ${what}`, { jql: `Not a ${what}` })
+  }
+  for (const v of fns) {
+    const key = fnKey(v)
+    if (out.has(key)) continue
+    const args = v.args ?? (v.arg ? [v.arg] : [])
+    let ids: string[]
+    if (v.name === 'requirementtests' || v.name === 'testrequirements') {
+      const its = await items(args)
+      const [from, to] = v.name === 'requirementtests' ? ['target_id', 'issue_id'] : ['issue_id', 'target_id']
+      ids = (await d.query<{ id: string }>(`select distinct ${to} as id from issue_links where type = 'tests' and ${from} = any($1::uuid[])`, [its.map(i => i.id)])).map(r => r.id)
+    } else if (v.name === 'testsettests') {
+      const its = await items(args); one(its, 'test_set', 'Test Set')
+      ids = (await d.query<{ id: string }>(`select member_id as id from test_items ti join issues t on t.id = ti.member_id where container_id = any($1::uuid[]) and t.type = 'test'`, [its.map(i => i.id)])).map(r => r.id)
+    } else if (v.name === 'testexecutiontests') {
+      const [exec] = await items(args.slice(0, 1)); one([exec!], 'test_execution', 'Test Execution')
+      const st = args.length > 1 ? await statusKeys(args.slice(1)) : null
+      ids = (await d.query<{ id: string }>(`select test_id as id from test_runs where execution_id = $1 ${st ? 'and status = any($2::text[])' : ''}`, st ? [exec!.id, st] : [exec!.id])).map(r => r.id)
+    } else {
+      const [plan] = await items(args.slice(0, 1)); one([plan!], 'test_plan', 'Test Plan')
+      const tests = (await d.query<{ id: string }>(`select member_id as id from test_items ti join issues t on t.id = ti.member_id where container_id = $1 and t.type = 'test'`, [plan!.id])).map(r => r.id)
+      if (args.length > 1) {
+        const want = new Set(await statusKeys(args.slice(1)))
+        const { testStatus } = await import('./shared/testStatus.ts')
+        const { getSetting } = await import('./settings.ts')
+        const runs = await d.query<any>(
+          `select r.test_id, r.status, r.finished_at, r.created_at, e.test_environments as environments from test_runs r join issues e on e.id = r.execution_id
+            where r.execution_id in (select member_id from test_items where container_id = $1) and e.deleted_at is null and ${visibleAs(me, 'e.project_id', 2)} and ${levelOk(me, 2, 'e')}`, [plan!.id, me.id])
+        const st = await d.query<any>(`select key, final, maps_to, rank from test_statuses where workspace_id = $1 and kind = 'run'`, [me.workspaceId])
+        const { finalStatusesHavePrecedence } = await getSetting(me.workspaceId, 'testing')
+        const iso = (x: any) => (x ? new Date(x).toISOString() : null)
+        ids = tests.filter(t => want.has(testStatus(runs.filter(r => r.testId === t).map(r => ({ status: r.status, finishedAt: iso(r.finishedAt), createdAt: iso(r.createdAt)!, environments: r.environments })), st, finalStatusesHavePrecedence) ?? 'TODO'))
+      } else ids = tests
+    }
+    out.set(key, ids)
+  }
+  return out
+}
+
 /** The SQL condition for a JQL query (null: no condition) and its ORDER BY (null: the caller's default). */
 export async function jqlToSql(d: Db, me: Me, q: Query, args: unknown[]): Promise<{ where: string | null; order: string | null }> {
   await checkFieldNames(d, me, q.where)
+  const testFnIds = await prepareTestFns(d, me, q.where)
   const put = (v: unknown) => { args.push(v); return `$${args.length}` }
   const text = (v: Value, field: string): string => {
     if (v.kind === 'text') return v.text
@@ -76,6 +148,7 @@ export async function jqlToSql(d: Db, me: Me, q: Query, args: unknown[]): Promis
   }
   /** The condition for "field = one value". */
   const eq = (c: Clause, v: Value): string => {
+    if (c.field === 'key' && v.kind === 'fn' && TEST_FNS.has(v.name)) return testFn(v)
     switch (c.field) {
       case 'project': { const t = put(text(v, 'project')); return `(p.key = upper(${t}) or lower(p.name) = lower(${t}))` }
       case 'key': return `(p.key || '-' || i.number) = upper(${put(text(v, 'key'))})`
@@ -151,6 +224,12 @@ export async function jqlToSql(d: Db, me: Me, q: Query, args: unknown[]): Promis
     const any = c.values.map(v => eq(c, v))
     const cond = any.length === 1 ? any[0]! : `(${any.join(' or ')})`
     return c.op === '=' || c.op === 'in' ? cond : `not ${cond.startsWith('(') ? cond : `(${cond})`}`   // as in Jira, an empty field matches neither = nor !=
+  }
+  /** Xray's test functions (issue in testPlanTests("PAY-9", "FAIL")…), each worked out here into the items it means. */
+  const testFn = (v: Extract<Value, { kind: 'fn' }>): string => {
+    const r = testFnIds.get(fnKey(v))
+    if (!r) throw new HttpError(500, 'JQL: test function not prepared')
+    return `i.id = any(${put(r)}::uuid[])`
   }
   const node = (n: Node): string => n.kind === 'clause' ? clause(n) : n.kind === 'not' ? `not (${node(n.item)})`
     : `(${n.items.map(node).join(n.kind === 'and' ? ' and ' : ' or ')})`

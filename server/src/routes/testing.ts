@@ -686,6 +686,64 @@ const plugin: FastifyPluginAsyncZod = async app => {
     return tests.map(t => ({ testId: t.id, key: t.key, status: results.get(t.id) ?? null }))
   })
 
+  // ── Reports (stage 6): traceability (requirements → tests → results → defects) and test runs, in a scope ──
+  // ponytail: worked out in memory per request, up to the export limit in System settings; precompute coverage if
+  // projects outgrow tens of thousands of requirements.
+  app.get('/projects/:key/reports/traceability', { schema: {
+    tags: T, summary: 'Traceability (Xray’s report): each requirement with its coverage, its tests and their results in the scope, and the defects found by those tests',
+    params: keyP, querystring: scopeQ,
+  } }, async req => {
+    const p = await projectByKey(db, req, req.params.key)
+    const [pr] = await db.query<{ requirementTypes: string[] | null }>('select requirement_types from projects where id = $1', [p.id])
+    const types = pr!.requirementTypes ?? (await db.query<{ key: string }>('select key from work_types where project_id = $1', [p.id])).map(t => t.key).filter(k => k !== 'bug' && !(TEST_TYPES as readonly string[]).includes(k))
+    const { exportMaxRows } = await getSetting(req.me.workspaceId, 'searchAndBulk')
+    const reqs = await db.query<{ id: string; key: string; title: string; type: string; parentId: string | null }>(
+      `select i.id, pr.key || '-' || i.number as key, i.title, i.type, i.parent_id from issues i join projects pr on pr.id = i.project_id
+        where i.project_id = $1 and i.type = any($2::text[]) and i.deleted_at is null and ${levelOk(req.me, 3)} order by i.rank, i.number limit $4`,
+      [p.id, types, req.me.id, exportMaxRows + 1])
+    if (reqs.length > exportMaxRows) throw new HttpError(400, `More than ${exportMaxRows} requirements (the export limit in System settings)`)
+    const children = await db.query<{ id: string; parentId: string }>(
+      `select i.id, i.parent_id from issues i where i.parent_id = any($1::uuid[]) and i.deleted_at is null and ${levelOk(req.me, 2)}`, [reqs.map(r => r.id), req.me.id])
+    const ids = [...new Set([...reqs.map(r => r.id), ...children.map(c => c.id)])]
+    const links = await db.query<{ reqId: string; testId: string; key: string; title: string }>(
+      `select l.target_id as req_id, t.id as test_id, tp.key || '-' || t.number as key, t.title from issue_links l
+         join issues t on t.id = l.issue_id join projects tp on tp.id = t.project_id
+        where l.type = 'tests' and l.target_id = any($1::uuid[]) and t.deleted_at is null and ${visibleAs(req.me, 't.project_id', 2)} and ${levelOk(req.me, 2, 't')}
+        order by t.number`, [ids, req.me.id])
+    const testIds = [...new Set(links.map(l => l.testId))]
+    const defects = await db.query<{ testId: string; id: string; key: string; title: string; done: boolean }>(
+      `select l.issue_id as test_id, b.id, bp.key || '-' || b.number as key, b.title, st.category = 'done' as done from issue_links l
+         join issues b on b.id = l.target_id join projects bp on bp.id = b.project_id join statuses st on st.id = b.status_id
+        where l.type = 'defect' and l.issue_id = any($1::uuid[]) and b.deleted_at is null and ${visibleAs(req.me, 'b.project_id', 2)} and ${levelOk(req.me, 2, 'b')}
+        order by b.number`, [testIds, req.me.id])
+    const results = await resultsFor(db, req, testIds, req.query)
+    const st = await statusesOf(db, req.me.workspaceId)
+    const own = (id: string) => requirementStatus(links.filter(l => l.reqId === id).map(l => results.get(l.testId) ?? null), st.run)
+    return reqs.map(r => ({
+      id: r.id, key: r.key, title: r.title, type: r.type,
+      status: withSubRequirements(own(r.id), children.filter(c => c.parentId === r.id).map(c => own(c.id))),
+      tests: links.filter(l => l.reqId === r.id).map(l => ({
+        id: l.testId, key: l.key, title: l.title, status: results.get(l.testId) ?? null,
+        defects: defects.filter(dd => dd.testId === l.testId).map(dd => ({ id: dd.id, key: dd.key, title: dd.title, done: dd.done })),
+      })),
+    }))
+  })
+
+  app.get('/projects/:key/reports/test-runs', { schema: {
+    tags: T, summary: 'Test runs (Xray’s report): runs in the project’s executions, in a scope, optionally with one status; newest first',
+    params: keyP, querystring: scopeQ.extend({ status: z.string().max(40).optional() }),
+  } }, async req => {
+    const p = await projectByKey(db, req, req.params.key)
+    const args: unknown[] = [p.id, req.me.id]
+    const extra = await scopeOf(db, req, req.query, args)
+    if (req.query.environment) { args.push(req.query.environment); extra.push(`$${args.length} = any(e.test_environments)`) }
+    if (req.query.status) { args.push(req.query.status); extra.push(`r.status = $${args.length}`) }
+    const { exportMaxRows } = await getSetting(req.me.workspaceId, 'searchAndBulk')
+    args.push(exportMaxRows)
+    return db.query(`${RUN_ROW} where e.project_id = $1 and ${runVisible(req.me, 2)} ${extra.map(w => `and ${w}`).join(' ')}
+                     order by coalesce(r.finished_at, r.created_at) desc limit $${args.length}`, args)
+  })
+
   // ── CI results (Xray's import), here and at Xray's own addresses (routes/raven.ts) ──
   app.register((async imp => {
     acceptReports(imp)

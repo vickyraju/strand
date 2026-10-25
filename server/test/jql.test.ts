@@ -41,3 +41,12 @@ test('jql: simple filters become the same JQL', () => {
     'project = PAY AND assignee = currentUser() AND priority = high AND statusCategory != Done AND text ~ "login page"')
   assert.equal(filtersToJql({ assignee: '', label: 'ui', resolution: 'all' }), 'assignee is empty AND labels = ui')
 })
+
+test('jql: a function that stands for a list (issue in testPlanTests("PAY-9", "FAIL"), sprint in openSprints())', () => {
+  const q = parseJql('issue in testPlanTests("PAY-9", "FAIL", PASS) AND sprint in openSprints() AND key not in requirementTests(PAY-1)')
+  assert.deepEqual(q.where, { kind: 'and', items: [
+    { kind: 'clause', field: 'key', op: 'in', values: [{ kind: 'fn', name: 'testplantests', arg: 'PAY-9', args: ['PAY-9', 'FAIL', 'PASS'] }] },
+    { kind: 'clause', field: 'sprint', op: 'in', values: [{ kind: 'fn', name: 'opensprints' }] },
+    { kind: 'clause', field: 'key', op: 'not in', values: [{ kind: 'fn', name: 'requirementtests', arg: 'PAY-1' }] },
+  ] })
+})

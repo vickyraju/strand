@@ -1,22 +1,27 @@
 import { createContext, useContext, useState } from 'react'
-import { TrendingDown, BarChart3, Layers, ArrowLeftRight, Timer, Users } from 'lucide-react'
+import { TrendingDown, BarChart3, Layers, ArrowLeftRight, Timer, Users, ShieldCheck, GitMerge, ListChecks } from 'lucide-react'
 import { userOf, isDone, CATEGORY_COLOR, type Project } from '../data/store'
 import { burndown, velocity, cumulativeFlow, createdVsResolved, cycleTimes, dayLabel } from '../data/analytics'
 import { useApp } from '../appContext'
 import { useReportState } from '../api/reports'
+import { apiEnabled } from '../api/client'
+import { CoverageReport, TraceabilityReport, TestRunsReport } from './testing/TestReports'
 import type { State } from '../data/reducer'
 import { LineChart, ColumnChart, Legend, Scatter, HBars } from './charts'
 import { Avatar, Empty, Picker, typeMeta, typeList, plural } from './ui'
 
-type ReportId = 'burndown' | 'velocity' | 'cfd' | 'created' | 'cycle' | 'workload'
+type ReportId = 'burndown' | 'velocity' | 'cfd' | 'created' | 'cycle' | 'workload' | 'test-coverage' | 'traceability' | 'test-runs'
 
-const REPORTS: { id: ReportId; name: string; desc: string; Icon: typeof Layers; scrum?: boolean }[] = [
+const REPORTS: { id: ReportId; name: string; desc: string; Icon: typeof Layers; scrum?: boolean; testing?: boolean }[] = [
   { id: 'burndown', name: 'Sprint burndown', desc: 'Work remaining in a sprint against the ideal pace.', Icon: TrendingDown, scrum: true },
   { id: 'velocity', name: 'Velocity',        desc: 'Points committed vs completed per sprint.',         Icon: BarChart3, scrum: true },
   { id: 'cfd',      name: 'Cumulative flow', desc: 'Work in each stage over time. Widening bands mean bottlenecks.', Icon: Layers },
   { id: 'created',  name: 'Created vs resolved', desc: 'Is the backlog growing or shrinking?',          Icon: ArrowLeftRight },
   { id: 'cycle',    name: 'Cycle time',      desc: 'How long items take from start to done.',           Icon: Timer },
   { id: 'workload', name: 'Workload',        desc: 'Open items and points per person.',                 Icon: Users },
+  { id: 'test-coverage', name: 'Requirement coverage', desc: 'Which requirements are tested, and how they are doing.', Icon: ShieldCheck, testing: true },
+  { id: 'traceability', name: 'Traceability', desc: 'Each requirement, its tests, their results and the defects found.', Icon: GitMerge, testing: true },
+  { id: 'test-runs', name: 'Test runs', desc: 'Every run in a scope, newest first.', Icon: ListChecks, testing: true },
 ]
 
 /** The state the reports read: complete items and history for the project (see useReportState). */
@@ -26,7 +31,7 @@ const useReport = () => ({ state: useContext(ReportState)! })
 export default function ReportsView({ project, report }: { project: Project; report?: string }) {
   const { openProject } = useApp()
   const data = useReportState(project)
-  const available = REPORTS.filter(r => !r.scrum || project.template === 'scrum')
+  const available = REPORTS.filter(r => (!r.scrum || project.template === 'scrum') && (!r.testing || (project.testing && apiEnabled)))
   const current = available.find(r => r.id === report) ?? available[0]
 
   return (
@@ -46,7 +51,10 @@ export default function ReportsView({ project, report }: { project: Project; rep
       <section className="report">
         <h2 className="report-title">{current.name}</h2>
         <p className="muted">{current.desc}</p>
-        {data.error ? <p className="hint error" role="alert">{data.error}</p>
+        {current.id === 'test-coverage' ? <CoverageReport project={project} />
+          : current.id === 'traceability' ? <TraceabilityReport project={project} />
+          : current.id === 'test-runs' ? <TestRunsReport project={project} />
+          : data.error ? <p className="hint error" role="alert">{data.error}</p>
           : !data.state ? <p className="muted" role="status">Loading the project's history…</p>
           : <ReportState.Provider value={data.state}>
         {current.id === 'burndown' && <Burndown project={project} />}

@@ -532,6 +532,36 @@ test('CI results: a JUnit report sent to Xray’s address with an access token b
   assert.deepEqual(o.problems, [])
 })
 
+test('testing reports: traceability shows a requirement, its failing test and the defect; JQL finds a plan’s failed tests', { skip, timeout: 90_000 }, async () => {
+  await owner('POST', '/projects', { name: 'Trace', key: 'TRA', template: 'kanban' })
+  await owner('PUT', '/projects/TRA/testing', { enabled: true })
+  const story = (await owner('POST', '/projects/TRA/issues', { title: 'Customers get receipts', type: 'story' })).body
+  const [t1, t2] = [(await owner('POST', '/projects/TRA/issues', { title: 'Receipt is emailed', type: 'test' })).body, (await owner('POST', '/projects/TRA/issues', { title: 'Receipt is printable', type: 'test' })).body]
+  for (const t of [t1, t2]) await owner('POST', `/issues/${t.key}/links`, { type: 'tests', targetKey: story.key })
+  const plan = (await owner('POST', '/projects/TRA/issues', { title: 'Sprint 9', type: 'test_plan' })).body
+  await owner('POST', `/issues/${plan.key}/tests`, { keys: [t1.key, t2.key] })
+  const exec = (await owner('POST', `/issues/${plan.key}/executions`, {})).body
+  const runs = (await owner('GET', `/issues/${exec.key}/runs`)).body
+  await owner('PATCH', `/test-runs/${runs[0].id}`, { status: 'FAIL' }); await owner('PATCH', `/test-runs/${runs[1].id}`, { status: 'PASS' })
+  const bug = (await owner('POST', `/test-runs/${runs[0].id}/defects`, { title: 'Email never arrives' })).body.defect
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url('/project/TRA/reports/traceability'))
+  await o.waitForSelector(`.trace-table a:has-text("${bug.key}")`)
+  const row = await o.locator(`.trace-table tr:has(a:has-text("${t1.key}"))`).innerText()
+  assert.match(row, /Failed/)
+  assert.match(await o.locator(`.trace-table tr:has(a:has-text("${story.key}"))`).innerText(), /NOK/)
+  await o.goto(url('/project/TRA/reports/test-coverage'))
+  await o.waitForSelector('.coverage-bar[aria-label="1 NOK"]')
+  // JQL with Xray's function
+  await o.goto(url('/search?q='))
+  await o.click('button:has-text("Switch to JQL")')
+  await o.fill('textarea[aria-label="JQL query"]', `issue in testPlanTests("${plan.key}", "FAIL")`)
+  await o.press('textarea[aria-label="JQL query"]', 'Enter')
+  await o.waitForSelector(`text=${t1.key}`)
+  await o.waitForSelector('text=1 result')
+  assert.deepEqual(o.problems, [])
+})
+
 test('plan a sprint, start it and complete it: unfinished work goes back to the backlog', { skip, timeout: 90_000 }, async () => {
   const p = (await owner('POST', '/projects', { name: 'Sprinting', key: 'SPR', template: 'scrum' })).body
   const done = p.statuses.find(s => s.category === 'done')

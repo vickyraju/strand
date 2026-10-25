@@ -23,6 +23,7 @@ export default function JqlBox({ value, onRun, serverError }: { value: string; o
             <p><b>Fields</b>: project, type, status, statusCategory, priority, assignee, reporter, labels, component, fixVersion, affectedVersion, sprint, parent, resolution, summary, description, text, created, updated, resolved, due, start, estimate, and any custom field by its name (in quotes if it has spaces).</p>
             <p><b>Operators</b>: = != in (…) not in (…) ~ (contains) !~ &gt; &gt;= &lt; &lt;= is empty, is not empty.</p>
             <p><b>Values</b>: words, "quoted text", numbers, dates (2026-10-01), relative dates (-7d, 2w), currentUser(), now(), startOfDay(), endOfDay(), startOfWeek(), openSprints(), membersOf("Group").</p>
+            <p><b>Tests</b>: issue in requirementTests("PAY-1"), testRequirements("PAY-7"), testSetTests("PAY-3"), testPlanTests("PAY-9", "FAIL"), testExecutionTests("PAY-12", PASS).</p>
             <p>Join with AND, OR, NOT and (parentheses). Sort with ORDER BY created DESC, priority.</p>
           </div>
         </Popover>
