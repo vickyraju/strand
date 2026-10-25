@@ -34,6 +34,12 @@ export const BUILTIN_TYPES: WorkType[] = [
   { key: 'task', name: 'Task', color: '#2563EB', icon: 'check' }, { key: 'bug', name: 'Bug', color: '#DC2626', icon: 'bug' },
 ]
 export const isBuiltinType = (k: string): k is BuiltinType => k === 'epic' || k === 'story' || k === 'task' || k === 'bug'
+/** Work types a project gets with testing turned on (Xray's issue types); their keys are their roles */
+export const TEST_TYPES = ['test', 'precondition', 'test_set', 'test_plan', 'test_execution'] as const
+/** Built in: renamed and recoloured, never removed */
+export const isFixedType = (k: string) => isBuiltinType(k) || (TEST_TYPES as readonly string[]).includes(k)
+export interface TestStep { id: string; action: string; data: string; expected: string; attachmentIds: string[] }
+export type TestSpec = { kind: 'manual'; steps: TestStep[] } | { kind: 'cucumber'; gherkin: string } | { kind: 'generic'; definition: string }
 /** A project's work types (the built-in ones for a project saved before types were configurable). */
 export const typesOf = (p: Pick<Project, 'types'> | undefined) => (p?.types?.length ? p.types : BUILTIN_TYPES)
 export type Priority  = 'urgent' | 'high' | 'medium' | 'low' | 'none'
@@ -101,6 +107,8 @@ export interface Project {
   templates:   ItemTemplate[]
   /** Security levels (Jira's issue security), from the server */
   securityLevels?: SecurityLevel[]
+  /** Test management is on (Xray's work types) */
+  testing?: boolean
   /** Components (Jira's): parts of the project, each with a lead and a default assignee for new work in it */
   components?: Component[]
   /** Work types (Jira's issue types); missing in a project saved before they were configurable: the built-in four */
@@ -263,6 +271,8 @@ export interface Issue {
   timeEstimate?: number
   /** Security level (Jira's issue security): only its members see the item */
   securityLevelId?: string
+  /** What a Test or Pre-Condition says to do (Xray's test kinds) */
+  testSpec?: TestSpec
   /** Remaining estimate in minutes (Jira's): starts at the original estimate, counts down as work is logged. */
   timeRemaining?: number
   /** Components of the project it belongs to (Jira's). */
@@ -358,7 +368,7 @@ export interface State {
 }
 
 export type ProjectPatch = Partial<Pick<Project,
-  'name' | 'description' | 'color' | 'leadId' | 'statuses' | 'transitions' | 'layout' | 'boardPrefs' | 'rules' | 'fields' | 'releases' | 'templates' | 'types' | 'components' | 'securityLevels'>>
+  'name' | 'description' | 'color' | 'leadId' | 'statuses' | 'transitions' | 'layout' | 'boardPrefs' | 'rules' | 'fields' | 'releases' | 'templates' | 'types' | 'components' | 'securityLevels' | 'testing'>>
 export type IssuePatch = Partial<Omit<Issue, 'id' | 'key' | 'projectId' | 'reporterId' | 'createdAt' | 'watcherIds' | 'links' | 'attachments' | 'rank' | 'worklogs'>>
 export type NewIssue = Pick<Issue, 'projectId' | 'title'> & Partial<Pick<Issue,
   'type' | 'description' | 'status' | 'priority' | 'assigneeId' | 'labels' | 'estimate' | 'dueDate' | 'startDate' | 'sprintId' | 'parentId' | 'custom' | 'releaseId' | 'timeEstimate' | 'componentIds' | 'affectsReleaseIds'>>

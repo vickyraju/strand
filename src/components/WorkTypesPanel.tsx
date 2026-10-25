@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
-import { useStore, typesOf, isBuiltinType, type Project, type WorkType } from '../data/store'
+import { useStore, typesOf, isFixedType, type Project, type WorkType } from '../data/store'
 import { api, apiEnabled, ApiError } from '../api/client'
 import { issueSync } from '../api/sync'
 import { sprintDeps } from '../api/sprints'
@@ -67,10 +67,10 @@ export default function WorkTypesPanel({ project }: { project: Project }) {
           <tbody>
             {types.map(t => (
               <tr key={t.key} style={{ cursor: 'pointer' }} onClick={() => setEditing(t)}>
-                <td><span className="cell-flex"><TypeIcon type={t.key} project={project} />{t.name}{isBuiltinType(t.key) && <span className="muted sm">built in</span>}</span></td>
+                <td><span className="cell-flex"><TypeIcon type={t.key} project={project} />{t.name}{isFixedType(t.key) && <span className="muted sm">built in</span>}</span></td>
                 <td className="col-num">{count(t.key)}</td>
                 <td style={{ textAlign: 'right' }}>
-                  {!isBuiltinType(t.key) && <button className="icon-btn sm" aria-label={`Remove ${t.name}`} title="Remove" onClick={e => { e.stopPropagation(); setRemoving(t) }}><Trash2 size={14} /></button>}
+                  {!isFixedType(t.key) && <button className="icon-btn sm" aria-label={`Remove ${t.name}`} title="Remove" onClick={e => { e.stopPropagation(); setRemoving(t) }}><Trash2 size={14} /></button>}
                 </td>
               </tr>
             ))}

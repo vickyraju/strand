@@ -1354,3 +1354,13 @@ h2.empty-title, h2.section-title, h2.side-title { margin: 0 }
 .jql-help p { margin: 0 0 8px; font-size: 12.5px; line-height: 1.5 }
 
 .dry-run { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); display: grid; gap: 6px }
+
+/* Test steps (Tests and Pre-Conditions) */
+.test-steps { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 8px }
+.test-step { display: grid; grid-template-columns: 24px 1fr auto; gap: 8px; align-items: start; padding: 8px; border: 1px solid var(--border); border-radius: var(--radius) }
+.test-step-n { font-weight: 600; color: var(--text-3); padding-top: 22px; text-align: center }
+.test-step-fields { display: grid; grid-template-columns: 2fr 1fr 2fr; gap: 8px }
+.test-step-field { display: grid; gap: 2px }
+.test-step-field textarea { resize: vertical; min-height: 32px }
+.test-step-tools { display: flex; flex-direction: column; gap: 2px; padding-top: 18px }
+@media (max-width: 720px) { .test-step-fields { grid-template-columns: 1fr } }

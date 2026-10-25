@@ -25,6 +25,7 @@ import CloneDialog from './CloneDialog'
 import { apiEnabled } from '../api/client'
 import IssueRow from './IssueRow'
 import Attachments from './Attachments'
+import TestSpecEditor from './TestSpecEditor'
 import { CustomFieldInput } from './CustomFields'
 import { TimeField } from './TimeTracking'
 import { TemplateDialog, blankTemplate } from './TemplatesImport'
@@ -231,6 +232,8 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
               </div>
             )}
           </section>
+
+          {(issue.type === 'test' || issue.type === 'precondition') && <TestSpecEditor issue={issue} readOnly={readOnly} onSave={testSpec => set({ testSpec })} />}
 
           <Attachments issue={issue} pickRef={attachRef} />
 

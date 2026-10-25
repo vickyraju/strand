@@ -1611,6 +1611,36 @@ test('issue security: an item with a level is invisible everywhere to people out
   assert.equal((await call('GET', `/api/v1/issues/${hidden.key}`, undefined, 'sec.viewer@x.com')).status, 200)
 })
 
+test('testing: turning it on adds the Xray work types; Tests hold steps, Gherkin or a definition; it turns off only when unused', { skip }, async () => {
+  await call('POST', '/api/v1/projects', { name: 'Tested', key: 'TST', template: 'kanban' })
+  await join('TST', 'tst.member@x.com')
+  const types = async () => (await call('GET', '/api/v1/projects/TST')).body.types.map((t: any) => t.key)
+  assert.equal((await call('POST', '/api/v1/projects/TST/issues', { title: 'x', type: 'test' })).status, 400)          // not on yet
+  assert.equal((await call('PUT', '/api/v1/projects/TST/testing', { enabled: true }, 'tst.member@x.com')).status, 403)
+  assert.deepEqual((await call('PUT', '/api/v1/projects/TST/testing', { enabled: true })).body, { enabled: true })
+  assert.deepEqual(await types(), ['epic', 'story', 'task', 'bug', 'test', 'precondition', 'test_set', 'test_plan', 'test_execution'])
+  assert.equal((await call('GET', '/api/v1/projects/TST')).body.testing, true)
+  // a manual test with steps
+  const steps = [{ id: 's1', action: 'Open the login page', expected: 'The form shows' }, { id: 's2', action: 'Sign in', data: 'ann / secret', expected: 'Home page' }]
+  const t = (await call('POST', '/api/v1/projects/TST/issues', { title: 'Sign in works', type: 'test', testSpec: { kind: 'manual', steps } }, 'tst.member@x.com')).body
+  assert.deepEqual(t.testSpec.steps.map((s: any) => [s.action, s.data, s.expected]), [['Open the login page', '', 'The form shows'], ['Sign in', 'ann / secret', 'Home page']])
+  const r = await call('PATCH', `/api/v1/issues/${t.key}`, { testSpec: { kind: 'cucumber', gherkin: 'Scenario: sign in\n  Given a user\n  When they sign in\n  Then they see home' } }, 'tst.member@x.com')
+  assert.equal(r.body.testSpec.kind, 'cucumber')
+  assert.ok((await call('GET', `/api/v1/issues/${t.key}/activity`)).body.items.some((a: any) => a.text === 'Changed the test steps'))
+  // only Tests and Pre-Conditions; shapes are checked
+  const task = (await call('POST', '/api/v1/projects/TST/issues', { title: 'A task' })).body
+  assert.equal((await call('PATCH', `/api/v1/issues/${task.key}`, { testSpec: { kind: 'generic', definition: 'x' } })).body.errors?.testSpec, 'Not a Test')
+  assert.equal((await call('PATCH', `/api/v1/issues/${t.key}`, { testSpec: { kind: 'manual', steps: [{ id: 's1' }] } })).status, 400)
+  assert.equal((await call('POST', '/api/v1/projects/TST/issues', { title: 'Logged in', type: 'precondition', testSpec: { kind: 'generic', definition: 'A signed-in user' } })).status, 201)
+  // built in: renamed, not removed; off only when no testing items remain
+  assert.equal((await call('DELETE', '/api/v1/projects/TST/types/test')).status, 409)
+  assert.equal((await call('PATCH', '/api/v1/projects/TST/types/test', { name: 'Test case' })).body.name, 'Test case')
+  assert.equal((await call('PUT', '/api/v1/projects/TST/testing', { enabled: false })).status, 409)
+  for (const i of (await call('GET', '/api/v1/projects/TST/issues')).body.items.filter((x: any) => x.type !== 'task')) await call('DELETE', `/api/v1/issues/${i.key}`)
+  assert.deepEqual((await call('PUT', '/api/v1/projects/TST/testing', { enabled: false })).body, { enabled: false })
+  assert.deepEqual(await types(), ['epic', 'story', 'task', 'bug'])
+})
+
 test('report data: every live item and every status change in order, for people who can see the project', { skip }, async () => {
   const p = (await call('POST', '/api/v1/projects', { name: 'Reports', key: 'REP', template: 'kanban' })).body
   const [a, b, c] = p.statuses
@@ -2171,6 +2201,7 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     'GET /admin/rate-limits/limited': ['gadmin', '/admin/rate-limits/limited'],
     'GET /settings/public': ['any', '/settings/public'],
     'GET /link-types': ['any', '/link-types'],
+    'PUT /projects/{key}/testing': ['padmin', `/projects/${K}/testing`, { enabled: false }],
     'GET /projects/{key}/security-levels': ['read', `/projects/${K}/security-levels`],
     'POST /projects/{key}/security-levels': ['padmin', `/projects/${K}/security-levels`, { name: 'Matrix level', members: [{ kind: 'role', role: 'admin' }] }],
     'PATCH /projects/{key}/security-levels/{levelId}': ['padmin', `/projects/${K}/security-levels/${level}`, { description: 'x' }],

@@ -10,6 +10,7 @@ import { enqueue, kickJobs } from '../jobs.ts'
 import { backupBucket, backupSettings } from '../backups.ts'
 import { rulesSchema } from '../transitions.ts'
 import { dryRun } from '../rules.ts'
+import { TEST_TYPES } from './issues.ts'
 import { checkImport } from '../csvImport.ts'
 import { getSetting } from '../settings.ts'
 
@@ -416,9 +417,32 @@ const plugin: FastifyPluginAsyncZod = async app => {
     reply.code(204).send()
   })
 
+  // ── Testing (what Xray adds): turning it on gives the project Test, Pre-Condition, Test Set, Test Plan and Test
+  // Execution work types; turning it off removes them, which needs the project to have no items of those types ──
+  app.put('/projects/:key/testing', { schema: { tags: T.config, summary: 'Turn test management on or off for a project (project admins)', params: keyP,
+    body: z.object({ enabled: z.boolean() }) } }, async req => {
+    const p = await projectByKey(db, req, req.params.key)
+    await requireProjectAdmin(req, p)
+    return tx(async d => {
+      const [cur] = await d.query<{ testing: boolean }>('select testing from projects where id = $1 for update', [p.id])
+      if (cur!.testing === req.body.enabled) return { enabled: cur!.testing }
+      if (req.body.enabled) await d.query('select seed_testing_types($1)', [p.id])
+      else {
+        const [{ n }] = await d.query<{ n: number }>('select count(*)::int as n from issues where project_id = $1 and type = any($2) and deleted_at is null', [p.id, TEST_TYPES]) as any
+        if (n) throw new HttpError(409, `${n} work items are Tests, Test Plans or other testing types: move or delete them first`)
+        await d.query('delete from issues where project_id = $1 and type = any($2)', [p.id, TEST_TYPES])                    // in the trash only
+        await d.query(`update transitions set type_keys = nullif(array(select unnest(type_keys) except select unnest($2::text[])), '{}') where project_id = $1 and type_keys && $2`, [p.id, TEST_TYPES])
+        await d.query('delete from work_types where project_id = $1 and key = any($2)', [p.id, TEST_TYPES])
+      }
+      await d.query('update projects set testing = $2 where id = $1', [p.id, req.body.enabled])
+      await audit(d, req, { action: req.body.enabled ? 'project.testing.enabled' : 'project.testing.disabled', type: 'project', id: p.id, name: p.key, project: p })
+      return { enabled: req.body.enabled }
+    })
+  })
+
   // ── Work types (Jira's issue types): the built-in four can be renamed and recoloured; a project can add its own,
   // and removing one moves its items to another type ──
-  const ICONS = ['zap', 'bookmark', 'check', 'bug', 'flag', 'star', 'wrench', 'book', 'shield', 'lightbulb', 'rocket', 'circle'] as const
+  const ICONS = ['zap', 'bookmark', 'check', 'bug', 'flag', 'star', 'wrench', 'book', 'shield', 'lightbulb', 'rocket', 'circle', 'flask', 'clipboard', 'layers', 'map', 'play'] as const
   const typeBody = z.object({ name: z.string().trim().min(1).max(40), color, icon: z.enum(ICONS) })
   const typeP = keyP.extend({ typeKey: z.string().max(40) })
   app.post('/projects/:key/types', { schema: { tags: T.config, summary: 'Add a work type (project admins)', params: keyP, body: typeBody } }, async (req, reply) => {
@@ -459,7 +483,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     await tx(async d => {
       const [t] = await d.query<any>('select * from work_types where project_id = $1 and key = $2 for update', [p.id, req.params.typeKey])
       if (!t) throw new HttpError(404, 'No such work type')
-      if (['epic', 'story', 'task', 'bug'].includes(t.key)) throw new HttpError(409, `${t.name} is built in: rename it instead`)
+      if (['epic', 'story', 'task', 'bug', ...TEST_TYPES].includes(t.key)) throw new HttpError(409, `${t.name} is built in: rename it instead`)
       const [{ n }] = await d.query<{ n: number }>('select count(*)::int as n from issues where project_id = $1 and type = $2', [p.id, t.key]) as any
       const moveTo = req.query.moveTo
       if (n && !moveTo) throw new HttpError(409, `${n} work items are of this type: choose a type to move them to`)

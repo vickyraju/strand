@@ -20,10 +20,22 @@ export const RESOLUTIONS = ['Done', "Won't do", 'Duplicate', 'Cannot reproduce']
 
 export const ISSUE_ROW = `
   select i.id, p.key || '-' || i.number as key, i.project_id, i.number, i.type, i.title, i.description,
-         i.status_id, i.priority, i.assignee_id, i.reporter_id, i.labels, i.estimate, i.time_estimate, i.time_remaining, i.component_ids, i.affects_release_ids, i.security_level_id,
+         i.status_id, i.priority, i.assignee_id, i.reporter_id, i.labels, i.estimate, i.time_estimate, i.time_remaining, i.component_ids, i.affects_release_ids, i.security_level_id, i.test_spec,
          i.due_date, i.start_date, i.sprint_id, i.release_id, i.parent_id, i.custom, i.rank, i.version,
          i.resolution, i.resolved_at, i.created_at, i.updated_at
     from issues i join projects p on p.id = i.project_id`
+
+// What a Test or Pre-Condition says to do (Xray's three kinds of test)
+const testStep = z.object({
+  id: z.string().min(1).max(40), action: z.string().max(5000), data: z.string().max(5000).default(''), expected: z.string().max(5000).default(''),
+  attachmentIds: z.array(uuid).max(20).default([]),
+})
+export const testSpec = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('manual'), steps: z.array(testStep).max(200) }),
+  z.object({ kind: z.literal('cucumber'), gherkin: z.string().max(50_000) }),
+  z.object({ kind: z.literal('generic'), definition: z.string().max(5000) }),
+]).describe('Test steps (manual), a Gherkin scenario (cucumber) or a definition (generic, for automated tests). Tests and Pre-Conditions only')
+export const TEST_TYPES = ['test', 'precondition', 'test_set', 'test_plan', 'test_execution'] as const
 
 const patchBody = z.object({
   title: z.string().min(1).max(500), description: z.string(), type, priority, statusId: uuid,
@@ -33,7 +45,7 @@ const patchBody = z.object({
   sprintId: uuid.nullable(), releaseId: uuid.nullable().describe('Fix version'), parentId: uuid.nullable(),
   securityLevelId: uuid.nullable().describe('Security level: only its members see the item (null: everyone in the project)'),
   componentIds: z.array(uuid).max(50).describe('Components of the project'), affectsReleaseIds: z.array(uuid).max(50).describe('Affects versions: releases of the project where it was found'),
-  custom: z.record(z.string(), z.union([z.string(), z.number()])), rank: z.number(),
+  custom: z.record(z.string(), z.union([z.string(), z.number()])), rank: z.number(), testSpec: testSpec.nullable(),
   resolution: z.enum(RESOLUTIONS).nullable().describe('How a finished item ended. Only for items in a Done status; reaching Done sets "Done" unless you say otherwise (null: the default)'),
 }).partial()
 const FIELDS = Object.keys(patchBody.shape)
@@ -209,13 +221,14 @@ async function applyPatch(d: Db, me: Me, cur: any, patch: z.infer<typeof patchBo
   if (patch.securityLevelId !== undefined && patch.securityLevelId !== cur.securityLevelId)
     await checkLevel(d, me, cur.projectId, patch.securityLevelId, cur.reporterId, patch.assigneeId !== undefined ? patch.assigneeId : cur.assigneeId)
   if (patch.custom) await checkCustom(d, cur.projectId, patch.custom, cur.custom)
+  checkSpec(patch.type ?? cur.type, patch.testSpec)
   if (patch.resolution) {
     const [st] = await d.query<{ category: string }>('select category from statuses where id = $1', [patch.statusId ?? cur.statusId])
     if (st?.category !== 'done') throw new HttpError(400, 'Only a finished item has a resolution', { resolution: 'Move the item to a Done status first' })
   }
 
   const changed = Object.keys(patch).filter(k => k !== 'rank' && JSON.stringify((patch as any)[k]) !== JSON.stringify(cur[k]))
-  const w = pick(patch, FIELDS, ['custom'])
+  const w = pick(patch, FIELDS, ['custom', 'testSpec'])
   if (!w.keys.length && !t) return cur
   if (w.keys.length) {
     // No row back: someone saved this item after we read it (no row at all, so nothing to destructure)
@@ -227,6 +240,7 @@ async function applyPatch(d: Db, me: Me, cur: any, patch: z.infer<typeof patchBo
 
   for (const f of changed) {
     const to = (patch as any)[f], from = cur[f]
+    if (f === 'testSpec') { await d.query('insert into activity (issue_id, actor_id, field, text) values ($1, $2, $3, $4)', [cur.id, me.id, f, 'Changed the test steps']); continue }
     await d.query('insert into activity (issue_id, actor_id, field, from_value, to_value, text) values ($1, $2, $3, $4, $5, $6)',
       [cur.id, me.id, f, from == null ? null : String(from), to == null ? null : String(to), `Changed ${f.replace(/([A-Z])/g, ' $1').toLowerCase()}`])
   }
@@ -282,6 +296,11 @@ async function checkLevel(d: Db, me: Me, projectId: string, levelId: string | nu
   if (!ok.ok) throw new HttpError(400, 'You can only choose a security level you are in', { securityLevelId: 'You aren’t in this level' })
 }
 
+/** Only Tests and Pre-Conditions say what to do. */
+function checkSpec(type: string, spec: unknown) {
+  if (spec != null && type !== 'test' && type !== 'precondition') throw new HttpError(400, 'Only Tests and Pre-Conditions have test steps', { testSpec: 'Not a Test' })
+}
+
 /** Is this one of the project's work types? (400 otherwise) */
 async function checkType(d: Db, projectId: string, type: string | undefined) {
   if (type === undefined) return
@@ -296,6 +315,7 @@ export async function insertIssue(d: Db, me: Me, projectId: string, b: Record<st
   if (b.assigneeId && !(await canJoinWork(d, projectId, b.assigneeId))) throw new HttpError(400, 'The assignee must be a member of this project')
   if (b.custom) await checkCustom(d, projectId, b.custom)
   await checkType(d, projectId, b.type)
+  checkSpec(b.type ?? 'task', b.testSpec)
   await checkParts(d, projectId, b)
   await checkLevel(d, me, projectId, b.securityLevelId, me.id, b.assigneeId ?? null)
   if (b.assigneeId === undefined && b.componentIds?.length) { const who = await defaultAssignee(d, projectId, b.componentIds); if (who) b = { ...b, assigneeId: who } }
@@ -309,7 +329,7 @@ export async function insertIssue(d: Db, me: Me, projectId: string, b: Record<st
   const [{ rank }] = await d.query<{ rank: number }>(
     'select coalesce(max(rank), 0) + 1000 as rank from issues where project_id = $1', [projectId]) as any
   const timeRemaining = b.timeRemaining !== undefined ? b.timeRemaining : remainingWhenEstimated(null, b.timeEstimate)
-  const w = pick({ ...b, statusId, rank: b.rank ?? rank, ...(timeRemaining !== null ? { timeRemaining } : {}) }, FIELDS, ['custom'])
+  const w = pick({ ...b, statusId, rank: b.rank ?? rank, ...(timeRemaining !== null ? { timeRemaining } : {}) }, FIELDS, ['custom', 'testSpec'])
   const cols = ['workspace_id', 'project_id', 'number', 'reporter_id', ...(b.id ? ['id'] : []), ...w.cols]
   const vals = [me.workspaceId, projectId, number, me.id, ...(b.id ? [b.id] : []), ...w.vals]
   const [row] = await d.query<{ id: string }>(

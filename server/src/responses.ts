@@ -62,7 +62,7 @@ export const ProjectPage = z.object({ items: z.array(ProjectListItem), next: nul
 export const UserPage = z.object({ items: z.array(User), next: nullable(z.string()) })
 export const ProjectDetail = z.object({
   id, workspaceId: id, key: z.string(), name: z.string(), description: z.string(), color: z.string(), template: z.enum(['kanban', 'scrum']),
-  leadId: nullable(id), archivedAt: nullable(ts), nextNumber: z.number(), boardPrefs: z.record(z.string(), z.unknown()), layout: z.record(z.string(), z.unknown()),
+  leadId: nullable(id), archivedAt: nullable(ts), nextNumber: z.number(), testing: z.boolean().describe('Test management is on'), boardPrefs: z.record(z.string(), z.unknown()), layout: z.record(z.string(), z.unknown()),
   sample: z.boolean(), createdAt: ts, role: z.enum(['admin', 'member', 'viewer']).describe('My role in this project'),
   statuses: z.array(Status), transitions: z.array(Transition), types: z.array(WorkType), components: z.array(Component), securityLevels: z.array(SecurityLevel.omit({ items: true })), fields: z.array(Field), templates: z.array(Template),
   rules: z.array(Rule), releases: z.array(Release), sprints: z.array(Sprint),
@@ -72,6 +72,7 @@ const issueFields = {
   id, key: z.string().describe('e.g. PAY-12'), projectId: id, number: z.number(), type: z.string().describe('Work type key'),
   title: z.string(), description: z.string(), statusId: id, priority: z.enum(['urgent', 'high', 'medium', 'low', 'none']),
   assigneeId: nullable(id), reporterId: nullable(id), labels: z.array(z.string()), estimate: nullable(z.number()), timeEstimate: nullable(z.number()), timeRemaining: nullable(z.number()), componentIds: z.array(id), affectsReleaseIds: z.array(id), securityLevelId: nullable(id),
+  testSpec: nullable(z.unknown()).describe('Test steps, Gherkin or definition (Tests and Pre-Conditions)'),
   dueDate: nullable(day), startDate: nullable(day), sprintId: nullable(id), releaseId: nullable(id), parentId: nullable(id),
   custom: z.record(z.string(), z.union([z.string(), z.number()])), rank: z.number(), version: z.number().describe('Send as If-Match to reject stale edits'),
   resolution: nullable(z.enum(['Done', "Won't do", 'Duplicate', 'Cannot reproduce'])).describe('Set while the item is in a Done status'),
@@ -188,6 +189,7 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'PATCH /issues/:key': IssueRow,
   'POST /issues/:key/clone': IssueRow,
   'GET /link-types': z.array(LinkType),
+  'PUT /projects/:key/testing': z.object({ enabled: z.boolean() }),
   'GET /projects/:key/security-levels': z.array(SecurityLevel),
   'POST /projects/:key/security-levels': SecurityLevel,
   'PATCH /projects/:key/security-levels/:levelId': SecurityLevel,

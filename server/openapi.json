@@ -1279,6 +1279,10 @@
                     "nextNumber": {
                       "type": "number"
                     },
+                    "testing": {
+                      "type": "boolean",
+                      "description": "Test management is on"
+                    },
                     "boardPrefs": {
                       "type": "object",
                       "additionalProperties": {}
@@ -1864,6 +1868,7 @@
                     "leadId",
                     "archivedAt",
                     "nextNumber",
+                    "testing",
                     "boardPrefs",
                     "layout",
                     "sample",
@@ -2273,6 +2278,10 @@
                     "nextNumber": {
                       "type": "number"
                     },
+                    "testing": {
+                      "type": "boolean",
+                      "description": "Test management is on"
+                    },
                     "boardPrefs": {
                       "type": "object",
                       "additionalProperties": {}
@@ -2858,6 +2867,7 @@
                     "leadId",
                     "archivedAt",
                     "nextNumber",
+                    "testing",
                     "boardPrefs",
                     "layout",
                     "sample",
@@ -3029,6 +3039,10 @@
                     "nextNumber": {
                       "type": "number"
                     },
+                    "testing": {
+                      "type": "boolean",
+                      "description": "Test management is on"
+                    },
                     "boardPrefs": {
                       "type": "object",
                       "additionalProperties": {}
@@ -3614,6 +3628,7 @@
                     "leadId",
                     "archivedAt",
                     "nextNumber",
+                    "testing",
                     "boardPrefs",
                     "layout",
                     "sample",
@@ -3785,6 +3800,10 @@
                     "nextNumber": {
                       "type": "number"
                     },
+                    "testing": {
+                      "type": "boolean",
+                      "description": "Test management is on"
+                    },
                     "boardPrefs": {
                       "type": "object",
                       "additionalProperties": {}
@@ -4370,6 +4389,7 @@
                     "leadId",
                     "archivedAt",
                     "nextNumber",
+                    "testing",
                     "boardPrefs",
                     "layout",
                     "sample",
@@ -4577,6 +4597,10 @@
                     "nextNumber": {
                       "type": "number"
                     },
+                    "testing": {
+                      "type": "boolean",
+                      "description": "Test management is on"
+                    },
                     "boardPrefs": {
                       "type": "object",
                       "additionalProperties": {}
@@ -5162,6 +5186,7 @@
                     "leadId",
                     "archivedAt",
                     "nextNumber",
+                    "testing",
                     "boardPrefs",
                     "layout",
                     "sample",
@@ -10781,6 +10806,146 @@
         }
       }
     },
+    "/api/v1/projects/{key}/testing": {
+      "put": {
+        "summary": "Turn test management on or off for a project (project admins)",
+        "tags": [
+          "Project settings"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "enabled"
+                ]
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "description": "Project key (PAY) or id (uuid)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "enabled"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/projects/{key}/types": {
       "post": {
         "summary": "Add a work type (project admins)",
@@ -10817,7 +10982,12 @@
                       "shield",
                       "lightbulb",
                       "rocket",
-                      "circle"
+                      "circle",
+                      "flask",
+                      "clipboard",
+                      "layers",
+                      "map",
+                      "play"
                     ]
                   }
                 },
@@ -11009,7 +11179,12 @@
                       "shield",
                       "lightbulb",
                       "rocket",
-                      "circle"
+                      "circle",
+                      "flask",
+                      "clipboard",
+                      "layers",
+                      "map",
+                      "play"
                     ]
                   }
                 }
@@ -15140,6 +15315,10 @@
                             "type": "string",
                             "description": "uuid"
                           },
+                          "testSpec": {
+                            "nullable": true,
+                            "description": "Test steps, Gherkin or definition (Tests and Pre-Conditions)"
+                          },
                           "dueDate": {
                             "nullable": true,
                             "type": "string",
@@ -15229,6 +15408,7 @@
                           "componentIds",
                           "affectsReleaseIds",
                           "securityLevelId",
+                          "testSpec",
                           "dueDate",
                           "startDate",
                           "sprintId",
@@ -15581,6 +15761,10 @@
                             "type": "string",
                             "description": "uuid"
                           },
+                          "testSpec": {
+                            "nullable": true,
+                            "description": "Test steps, Gherkin or definition (Tests and Pre-Conditions)"
+                          },
                           "dueDate": {
                             "nullable": true,
                             "type": "string",
@@ -15670,6 +15854,7 @@
                           "componentIds",
                           "affectsReleaseIds",
                           "securityLevelId",
+                          "testSpec",
                           "dueDate",
                           "startDate",
                           "sprintId",
@@ -15929,6 +16114,107 @@
                   "rank": {
                     "type": "number"
                   },
+                  "testSpec": {
+                    "nullable": true,
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "manual"
+                            ]
+                          },
+                          "steps": {
+                            "maxItems": 200,
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 40
+                                },
+                                "action": {
+                                  "type": "string",
+                                  "maxLength": 5000
+                                },
+                                "data": {
+                                  "default": "",
+                                  "type": "string",
+                                  "maxLength": 5000
+                                },
+                                "expected": {
+                                  "default": "",
+                                  "type": "string",
+                                  "maxLength": 5000
+                                },
+                                "attachmentIds": {
+                                  "default": [],
+                                  "maxItems": 20,
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string",
+                                    "format": "uuid",
+                                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                                  }
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "action"
+                              ]
+                            }
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "steps"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "cucumber"
+                            ]
+                          },
+                          "gherkin": {
+                            "type": "string",
+                            "maxLength": 50000
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "gherkin"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "generic"
+                            ]
+                          },
+                          "definition": {
+                            "type": "string",
+                            "maxLength": 5000
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "definition"
+                        ]
+                      }
+                    ],
+                    "description": "Test steps (manual), a Gherkin scenario (cucumber) or a definition (generic, for automated tests). Tests and Pre-Conditions only"
+                  },
                   "resolution": {
                     "nullable": true,
                     "description": "How a finished item ended. Only for items in a Done status; reaching Done sets \"Done\" unless you say otherwise (null: the default)",
@@ -16059,6 +16345,10 @@
                       "type": "string",
                       "description": "uuid"
                     },
+                    "testSpec": {
+                      "nullable": true,
+                      "description": "Test steps, Gherkin or definition (Tests and Pre-Conditions)"
+                    },
                     "dueDate": {
                       "nullable": true,
                       "type": "string",
@@ -16148,6 +16438,7 @@
                     "componentIds",
                     "affectsReleaseIds",
                     "securityLevelId",
+                    "testSpec",
                     "dueDate",
                     "startDate",
                     "sprintId",
@@ -16409,6 +16700,10 @@
                       "type": "string",
                       "description": "uuid"
                     },
+                    "testSpec": {
+                      "nullable": true,
+                      "description": "Test steps, Gherkin or definition (Tests and Pre-Conditions)"
+                    },
                     "dueDate": {
                       "nullable": true,
                       "type": "string",
@@ -16498,6 +16793,7 @@
                     "componentIds",
                     "affectsReleaseIds",
                     "securityLevelId",
+                    "testSpec",
                     "dueDate",
                     "startDate",
                     "sprintId",
@@ -16720,6 +17016,10 @@
                       "nullable": true,
                       "type": "string",
                       "description": "uuid"
+                    },
+                    "testSpec": {
+                      "nullable": true,
+                      "description": "Test steps, Gherkin or definition (Tests and Pre-Conditions)"
                     },
                     "dueDate": {
                       "nullable": true,
@@ -17128,6 +17428,10 @@
                             "type": "string",
                             "description": "uuid"
                           },
+                          "testSpec": {
+                            "nullable": true,
+                            "description": "Test steps, Gherkin or definition (Tests and Pre-Conditions)"
+                          },
                           "dueDate": {
                             "nullable": true,
                             "type": "string",
@@ -17217,6 +17521,7 @@
                           "componentIds",
                           "affectsReleaseIds",
                           "securityLevelId",
+                          "testSpec",
                           "dueDate",
                           "startDate",
                           "sprintId",
@@ -17253,6 +17558,7 @@
                     "componentIds",
                     "affectsReleaseIds",
                     "securityLevelId",
+                    "testSpec",
                     "dueDate",
                     "startDate",
                     "sprintId",
@@ -17500,6 +17806,107 @@
                   "rank": {
                     "type": "number"
                   },
+                  "testSpec": {
+                    "nullable": true,
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "manual"
+                            ]
+                          },
+                          "steps": {
+                            "maxItems": 200,
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 40
+                                },
+                                "action": {
+                                  "type": "string",
+                                  "maxLength": 5000
+                                },
+                                "data": {
+                                  "default": "",
+                                  "type": "string",
+                                  "maxLength": 5000
+                                },
+                                "expected": {
+                                  "default": "",
+                                  "type": "string",
+                                  "maxLength": 5000
+                                },
+                                "attachmentIds": {
+                                  "default": [],
+                                  "maxItems": 20,
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string",
+                                    "format": "uuid",
+                                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                                  }
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "action"
+                              ]
+                            }
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "steps"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "cucumber"
+                            ]
+                          },
+                          "gherkin": {
+                            "type": "string",
+                            "maxLength": 50000
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "gherkin"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "generic"
+                            ]
+                          },
+                          "definition": {
+                            "type": "string",
+                            "maxLength": 5000
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "definition"
+                        ]
+                      }
+                    ],
+                    "description": "Test steps (manual), a Gherkin scenario (cucumber) or a definition (generic, for automated tests). Tests and Pre-Conditions only"
+                  },
                   "resolution": {
                     "nullable": true,
                     "description": "How a finished item ended. Only for items in a Done status; reaching Done sets \"Done\" unless you say otherwise (null: the default)",
@@ -17639,6 +18046,10 @@
                       "type": "string",
                       "description": "uuid"
                     },
+                    "testSpec": {
+                      "nullable": true,
+                      "description": "Test steps, Gherkin or definition (Tests and Pre-Conditions)"
+                    },
                     "dueDate": {
                       "nullable": true,
                       "type": "string",
@@ -17728,6 +18139,7 @@
                     "componentIds",
                     "affectsReleaseIds",
                     "securityLevelId",
+                    "testSpec",
                     "dueDate",
                     "startDate",
                     "sprintId",
@@ -18884,6 +19296,107 @@
                           ]
                         }
                       },
+                      "testSpec": {
+                        "nullable": true,
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "enum": [
+                                  "manual"
+                                ]
+                              },
+                              "steps": {
+                                "maxItems": 200,
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "id": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 40
+                                    },
+                                    "action": {
+                                      "type": "string",
+                                      "maxLength": 5000
+                                    },
+                                    "data": {
+                                      "default": "",
+                                      "type": "string",
+                                      "maxLength": 5000
+                                    },
+                                    "expected": {
+                                      "default": "",
+                                      "type": "string",
+                                      "maxLength": 5000
+                                    },
+                                    "attachmentIds": {
+                                      "default": [],
+                                      "maxItems": 20,
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string",
+                                        "format": "uuid",
+                                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                                      }
+                                    }
+                                  },
+                                  "required": [
+                                    "id",
+                                    "action"
+                                  ]
+                                }
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "steps"
+                            ]
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "enum": [
+                                  "cucumber"
+                                ]
+                              },
+                              "gherkin": {
+                                "type": "string",
+                                "maxLength": 50000
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "gherkin"
+                            ]
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "enum": [
+                                  "generic"
+                                ]
+                              },
+                              "definition": {
+                                "type": "string",
+                                "maxLength": 5000
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "definition"
+                            ]
+                          }
+                        ],
+                        "description": "Test steps (manual), a Gherkin scenario (cucumber) or a definition (generic, for automated tests). Tests and Pre-Conditions only"
+                      },
                       "resolution": {
                         "nullable": true,
                         "description": "How a finished item ended. Only for items in a Done status; reaching Done sets \"Done\" unless you say otherwise (null: the default)",
@@ -19023,6 +19536,10 @@
                       "type": "string",
                       "description": "uuid"
                     },
+                    "testSpec": {
+                      "nullable": true,
+                      "description": "Test steps, Gherkin or definition (Tests and Pre-Conditions)"
+                    },
                     "dueDate": {
                       "nullable": true,
                       "type": "string",
@@ -19112,6 +19629,7 @@
                     "componentIds",
                     "affectsReleaseIds",
                     "securityLevelId",
+                    "testSpec",
                     "dueDate",
                     "startDate",
                     "sprintId",
@@ -19373,6 +19891,107 @@
                       "rank": {
                         "type": "number"
                       },
+                      "testSpec": {
+                        "nullable": true,
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "enum": [
+                                  "manual"
+                                ]
+                              },
+                              "steps": {
+                                "maxItems": 200,
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "id": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 40
+                                    },
+                                    "action": {
+                                      "type": "string",
+                                      "maxLength": 5000
+                                    },
+                                    "data": {
+                                      "default": "",
+                                      "type": "string",
+                                      "maxLength": 5000
+                                    },
+                                    "expected": {
+                                      "default": "",
+                                      "type": "string",
+                                      "maxLength": 5000
+                                    },
+                                    "attachmentIds": {
+                                      "default": [],
+                                      "maxItems": 20,
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string",
+                                        "format": "uuid",
+                                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                                      }
+                                    }
+                                  },
+                                  "required": [
+                                    "id",
+                                    "action"
+                                  ]
+                                }
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "steps"
+                            ]
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "enum": [
+                                  "cucumber"
+                                ]
+                              },
+                              "gherkin": {
+                                "type": "string",
+                                "maxLength": 50000
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "gherkin"
+                            ]
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "enum": [
+                                  "generic"
+                                ]
+                              },
+                              "definition": {
+                                "type": "string",
+                                "maxLength": 5000
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "definition"
+                            ]
+                          }
+                        ],
+                        "description": "Test steps (manual), a Gherkin scenario (cucumber) or a definition (generic, for automated tests). Tests and Pre-Conditions only"
+                      },
                       "resolution": {
                         "nullable": true,
                         "description": "How a finished item ended. Only for items in a Done status; reaching Done sets \"Done\" unless you say otherwise (null: the default)",
@@ -19497,6 +20116,10 @@
                             "type": "string",
                             "description": "uuid"
                           },
+                          "testSpec": {
+                            "nullable": true,
+                            "description": "Test steps, Gherkin or definition (Tests and Pre-Conditions)"
+                          },
                           "dueDate": {
                             "nullable": true,
                             "type": "string",
@@ -19586,6 +20209,7 @@
                           "componentIds",
                           "affectsReleaseIds",
                           "securityLevelId",
+                          "testSpec",
                           "dueDate",
                           "startDate",
                           "sprintId",
@@ -20181,6 +20805,10 @@
                       "type": "string",
                       "description": "uuid"
                     },
+                    "testSpec": {
+                      "nullable": true,
+                      "description": "Test steps, Gherkin or definition (Tests and Pre-Conditions)"
+                    },
                     "dueDate": {
                       "nullable": true,
                       "type": "string",
@@ -20270,6 +20898,7 @@
                     "componentIds",
                     "affectsReleaseIds",
                     "securityLevelId",
+                    "testSpec",
                     "dueDate",
                     "startDate",
                     "sprintId",
