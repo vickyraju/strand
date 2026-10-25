@@ -693,12 +693,12 @@ test('login: only a valid Entra token gets in; forged, expired, mis-addressed an
   assert.equal(JSON.parse(ok.body).email, 'owner@x.com')
 })
 
-test('login: the Entra admin role claim decides admin rights, and an email cannot be taken over by another oid', { skip }, async () => {
+test('login: the Entra admin role puts a new person in system-administrators, and an email cannot be taken over by another oid', { skip }, async () => {
   await call('GET', '/api/v1/me', undefined, 'first.person@x.com')                       // someone else may already be the owner
   const boss = await app.inject({ method: 'GET', url: '/api/v1/me', headers: await bearer('boss@x.com', { roles: ['Strand.Admin'] }) })
-  assert.equal(JSON.parse(boss.body).role, 'admin')
-  const demoted = await app.inject({ method: 'GET', url: '/api/v1/me', headers: await bearer('boss@x.com') })   // claim removed in Entra
-  assert.equal(JSON.parse(demoted.body).role, 'member')
+  assert.equal(JSON.parse(boss.body).role, 'admin')                                  // new, with the role: in system-administrators at once
+  // admin rights are the group's: without the claim they stay until someone takes them out of the group
+  assert.equal(JSON.parse((await app.inject({ method: 'GET', url: '/api/v1/me', headers: await bearer('boss@x.com') })).body).role, 'admin')
   const thief = await app.inject({ method: 'GET', url: '/api/v1/me', headers: await bearer('boss@x.com', { oid: uuidOf('someone else') }) })
   assert.equal(thief.statusCode, 403)
 })
@@ -1134,7 +1134,7 @@ test('transition rules: who may move, what a move needs, what it does; loops; ev
   const [owner, ann, ben] = [await id('owner@x.com'), await id('rul.ann@x.com'), await id('rul.ben@x.com')]
   const [{ id: qa }] = (await pool.query(`insert into groups (display_name) values ('QA') returning id`)).rows
   await pool.query('insert into group_members (group_id, user_id) values ($1, $2)', [qa, ben])
-  assert.deepEqual((await call('GET', '/api/v1/me', undefined, 'rul.ben@x.com')).body.groupIds, [qa])
+  assert.ok((await call('GET', '/api/v1/me', undefined, 'rul.ben@x.com')).body.groupIds.includes(qa))
   const transition = async (body: object) => {
     const r = await call('POST', '/api/v1/projects/RUL/transitions', body)
     assert.equal(r.status, 201, JSON.stringify(r.body)); return r.body
@@ -2008,6 +2008,49 @@ test('testing JQL and reports: Xray’s functions find tests by requirement, set
   assert.equal((await call('GET', '/api/v1/projects/TRC/reports/test-runs')).body.length, 3)
 })
 
+test('system groups: everyone is in users-access and rejoins at sign-in; system-administrators decides admin rights; the Entra role brings admins back', { skip }, async () => {
+  const sys = async (role: string) => (await pool.query('select id, display_name from groups where system_role = $1', [role])).rows[0]
+  const [users, admins] = [await sys('default-users'), await sys('system-admins')]
+  assert.deepEqual([users.display_name, admins.display_name], ['users-access', 'system-administrators'])
+  const inGroup = async (g: string, email: string) => (await pool.query('select 1 from group_members gm join users u on u.id = gm.user_id where gm.group_id = $1 and u.email = $2', [g, email])).rowCount === 1
+  // someone new is in users-access from their first request
+  await call('GET', '/api/v1/me', undefined, 'sg.newcomer@x.com')
+  assert.ok(await inGroup(users.id, 'sg.newcomer@x.com'))
+  // taken out, they stay out until their next sign-in (a script's token doesn't count)
+  await pool.query(`delete from group_members where group_id = $1 and user_id = (select id from users where email = 'sg.newcomer@x.com')`, [users.id])
+  await call('GET', '/api/v1/me', undefined, 'sg.newcomer@x.com')
+  assert.equal(await inGroup(users.id, 'sg.newcomer@x.com'), false)
+  const token = (await call('POST', '/api/v1/me/tokens', { name: 'script' }, 'sg.newcomer@x.com')).body.token
+  const viaPat = await app.inject({ method: 'POST', url: '/api/v1/me/sign-in', headers: { authorization: `Bearer ${token}` } })
+  assert.equal(viaPat.statusCode, 400)
+  assert.equal(await inGroup(users.id, 'sg.newcomer@x.com'), false)
+  assert.equal((await call('POST', '/api/v1/me/sign-in', undefined, 'sg.newcomer@x.com')).status, 204)
+  assert.ok(await inGroup(users.id, 'sg.newcomer@x.com'))
+  assert.ok((await pool.query(`select last_sign_in_at from users where email = 'sg.newcomer@x.com'`)).rows[0].last_sign_in_at)
+  // admin rights come from system-administrators: in it, Administration answers; out of it, it doesn't
+  assert.equal((await call('GET', '/api/v1/admin/users', undefined, 'sg.newcomer@x.com')).status, 403)
+  const uid = (await call('GET', '/api/v1/me', undefined, 'sg.newcomer@x.com')).body.id
+  await pool.query('insert into group_members (group_id, user_id) values ($1, $2)', [admins.id, uid])
+  const me = (await call('GET', '/api/v1/me', undefined, 'sg.newcomer@x.com')).body
+  assert.deepEqual([me.admin, me.role], [true, 'admin'])
+  assert.equal((await call('GET', '/api/v1/admin/users', undefined, 'sg.newcomer@x.com')).status, 200)
+  assert.equal((await viaToken(token, 'GET', '/api/v1/admin/users')).status, 200)            // tokens act with the same rights
+  await pool.query('delete from group_members where group_id = $1 and user_id = $2', [admins.id, uid])
+  assert.equal((await call('GET', '/api/v1/admin/users', undefined, 'sg.newcomer@x.com')).status, 403)
+  assert.equal((await viaToken(token, 'GET', '/api/v1/admin/users')).status, 403)
+  // with Entra's Strand.Admin role, a sign-in puts them back in system-administrators
+  const headers = await bearer('sg.newcomer@x.com', { roles: ['Strand.Admin'] })
+  assert.equal((await app.inject({ method: 'GET', url: '/api/v1/admin/users', headers })).statusCode, 403)   // not before signing in
+  assert.equal((await app.inject({ method: 'POST', url: '/api/v1/me/sign-in', headers })).statusCode, 204)
+  assert.ok(await inGroup(admins.id, 'sg.newcomer@x.com'))
+  assert.equal((await app.inject({ method: 'GET', url: '/api/v1/admin/users', headers })).statusCode, 200)
+  // directory provisioning (SCIM) can't see or change the system groups
+  const scim = await app.inject({ method: 'GET', url: '/scim/v2/Groups', headers: { authorization: `Bearer ${process.env.SCIM_TOKEN}` } })
+  assert.ok(!JSON.parse(scim.body).Resources.some((g: any) => g.id === admins.id || g.id === users.id))
+  assert.equal((await app.inject({ method: 'DELETE', url: `/scim/v2/Groups/${admins.id}`, headers: { authorization: `Bearer ${process.env.SCIM_TOKEN}` } })).statusCode, 204)
+  assert.ok(await sys('system-admins'))
+})
+
 test('report data: every live item and every status change in order, for people who can see the project', { skip }, async () => {
   const p = (await call('POST', '/api/v1/projects', { name: 'Reports', key: 'REP', template: 'kanban' })).body
   const [a, b, c] = p.statuses
@@ -2575,6 +2618,7 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     'GET /admin/rate-limits/limited': ['gadmin', '/admin/rate-limits/limited'],
     'GET /settings/public': ['any', '/settings/public'],
     'GET /link-types': ['any', '/link-types'],
+    'POST /me/sign-in': ['any', '/me/sign-in'],
     'PUT /projects/{key}/testing': ['padmin', `/projects/${K}/testing`, { enabled: false }],
     'GET /issues/{key}/tests': ['read', `/issues/${mset}/tests`],
     'POST /issues/{key}/tests': ['write', `/issues/${mset}/tests`, { keys: [mtest] }],

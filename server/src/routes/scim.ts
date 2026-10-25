@@ -159,7 +159,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     const count = Math.min(200, Math.max(0, Number(req.query.count ?? 100)))
     const f = /^displayName eq "([^"]+)"$/i.exec(req.query.filter ?? '')
     const rows = await db.query<any>(
-      `select *, count(*) over ()::int as total from groups where ($1::text is null or display_name = $1) order by created_at limit $2 offset $3`,
+      `select *, count(*) over ()::int as total from groups where system_role is null and ($1::text is null or display_name = $1) order by created_at limit $2 offset $3`,
       [f?.[1] ?? null, count, start - 1])
     const members = !/members/i.test(req.query.excludedAttributes ?? '')
     return { schemas: ['urn:ietf:params:scim:api:messages:2.0:ListResponse'], totalResults: rows[0]?.total ?? 0, startIndex: start, itemsPerPage: rows.length,
@@ -167,7 +167,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
   })
 
   app.get('/Groups/:id', { schema: { tags: TAG, summary: 'Get a group with its members', security: sec, params: idP } }, async req => {
-    const [g] = await db.query<any>('select * from groups where id = $1', [req.params.id])
+    const [g] = await db.query<any>('select * from groups where id = $1 and system_role is null', [req.params.id])
     if (!g) throw new HttpError(404, 'Not found')
     return groupOut(g)
   })
@@ -187,7 +187,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     tags: TAG, summary: 'Change a group: add or remove members, rename', security: sec, params: idP,
     body: z.object({ Operations: z.array(z.object({ op: z.string(), path: z.string().optional(), value: z.unknown().optional() })) }),
   } }, async (req, reply) => {
-    const [g] = await db.query<any>('select * from groups where id = $1', [req.params.id])
+    const [g] = await db.query<any>('select * from groups where id = $1 and system_role is null', [req.params.id])
     if (!g) throw new HttpError(404, 'Not found')
     let added = 0, removed = 0
     for (const o of req.body.Operations) {
@@ -214,7 +214,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
   })
 
   app.delete('/Groups/:id', { schema: { tags: TAG, summary: 'Delete a group: everyone loses the roles it gave them', security: sec, params: idP } }, async (req, reply) => {
-    const [g] = await db.query<any>('delete from groups where id = $1 returning *', [req.params.id])
+    const [g] = await db.query<any>('delete from groups where id = $1 and system_role is null returning *', [req.params.id])
     if (g) await logGroup(req.ip, 'group.deleted', g)
     reply.code(204).send()
   })

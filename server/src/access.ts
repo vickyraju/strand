@@ -38,8 +38,7 @@ export function visible(me: Me, col: string, args: unknown[]): string {
 export async function canJoinWork(d: Db, projectId: string, userId: string): Promise<boolean> {
   const rows = await d.query(
     `select 1 from project_access where project_id = $1 and user_id = $2
-     union all select 1 from memberships m join projects p on p.workspace_id = m.workspace_id
-      where p.id = $1 and m.user_id = $2 and m.role in ('owner', 'admin') limit 1`, [projectId, userId])
+     union all select 1 where is_system_admin($2) limit 1`, [projectId, userId])
   return rows.length > 0
 }
 

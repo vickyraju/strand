@@ -34,10 +34,10 @@ const uuidOf = s => { const h = createHash('sha1').update(s).digest('hex'); retu
 const b64 = o => Buffer.from(JSON.stringify(o)).toString('base64url')
 
 /** An access token for `email`, signed like Entra would sign it. */
-export function tokenFor(email) {
+export function tokenFor(email, roles = []) {
   const now = Math.floor(Date.now() / 1000)
   const head = b64({ alg: 'RS256', kid: 'e2e', typ: 'JWT' })
-  const body = b64({ oid: uuidOf(email), preferred_username: email, name: PEOPLE[email] ?? email, roles: [], iss: `${authority}/${TENANT}/v2.0`, aud: CLIENT, tid: TENANT, iat: now, nbf: now, exp: now + 3600 })
+  const body = b64({ oid: uuidOf(email), preferred_username: email, name: PEOPLE[email] ?? email, roles, iss: `${authority}/${TENANT}/v2.0`, aud: CLIENT, tid: TENANT, iat: now, nbf: now, exp: now + 3600 })
   return `${head}.${body}.${sign('RSA-SHA256', Buffer.from(`${head}.${body}`), privateKey).toString('base64url')}`
 }
 
@@ -98,11 +98,11 @@ export async function stop() {
 }
 
 /** A browser tab signed in as `email`, showing the app. Collects page errors in `page.problems`. */
-export async function signIn(email) {
+export async function signIn(email, roles = []) {
   const ctx = await browser.newContext({ viewport: { width: 1400, height: 900 }, acceptDownloads: true })
   await ctx.addInitScript(([token]) => {
     sessionStorage.setItem('jira-build:session', JSON.stringify({ access: token, expiresAt: Date.now() + 3_600_000 }))
-  }, [tokenFor(email)])
+  }, [tokenFor(email, roles)])
   const page = await ctx.newPage()
   page.problems = []
   page.on('pageerror', e => page.problems.push(e.message))

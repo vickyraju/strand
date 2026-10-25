@@ -2,11 +2,18 @@ import { createRemoteJWKSet, jwtVerify } from 'jose'
 import type { FastifyRequest } from 'fastify'
 import { createHash } from 'node:crypto'
 import { getSetting } from './settings.ts'
-import { db, tx } from './db.ts'
+import { db, tx, type Db } from './db.ts'
 
 export type Role = 'owner' | 'admin' | 'member'
 /** `via` is how this request signed in: an Entra session (the web app) or a personal access token (scripts). */
-export interface Me { id: string; email: string; name: string; workspaceId: string; role: Role; /** Workspace owner or admin: sees and administers every project. */ admin: boolean; via: 'entra' | 'pat' }
+export interface Me {
+  id: string; email: string; name: string; workspaceId: string; role: Role
+  /** In the system-administrators group: sees and administers every project, Administration and System settings. */
+  admin: boolean
+  via: 'entra' | 'pat'
+  /** The sign-in carries Entra's Strand.Admin app role (puts the person back in system-administrators at sign-in) */
+  adminClaim?: boolean
+}
 
 // Personal access tokens look like jbp_<43 url-safe characters>. The prefix lets secret scanners recognise a leaked one.
 export const PAT_PREFIX = 'jbp_'
@@ -94,17 +101,15 @@ export async function authenticate(req: FastifyRequest) {
       ;[ws] = await oldest()
       if (!ws) { ;[ws] = await d.query<{ id: string }>(`insert into workspaces (name) values ('Strand') returning id`); first = true }
     }
-    const want: Role = first ? 'owner' : who.admin ? 'admin' : 'member'
-    const [m] = await d.query<{ role: Role }>(
+    const [m] = await d.query<{ role: Role; isNew: boolean }>(
       `insert into memberships (workspace_id, user_id, role) values ($1, $2, $3)
-       on conflict (workspace_id, user_id) do update set role = case
-         when memberships.role = 'owner' then 'owner'
-         when $4 then 'admin'
-         when memberships.role = 'admin' then 'member'   -- the Entra claim is the source of truth
-         else memberships.role end
-       returning role`,
-      [ws!.id, u!.id, want, who.admin])
-    return { id: u!.id, email: who.email, name: who.name, workspaceId: ws!.id, role: m!.role, admin: m!.role !== 'member', via: 'entra' as const }
+       on conflict (workspace_id, user_id) do update set role = memberships.role returning role, (xmax = 0) as is_new`,
+      [ws!.id, u!.id, first ? 'owner' : 'member'])
+    // someone new is in the default group from their first request; the very first person administers Strand
+    if (m!.isNew) await joinSystemGroup(d, u!.id, 'default-users')
+    if (first || (m!.isNew && who.admin)) await joinSystemGroup(d, u!.id, 'system-admins')
+    const [{ admin }] = await d.query<{ admin: boolean }>('select is_system_admin($1) as admin', [u!.id]) as any
+    return { id: u!.id, email: who.email, name: who.name, workspaceId: ws!.id, role: roleOf(m!.role, admin), admin, via: 'entra' as const, adminClaim: who.admin }
   })
 }
 
@@ -112,8 +117,8 @@ export async function authenticate(req: FastifyRequest) {
  *  unknown tokens are all just "Invalid token"; a deactivated owner is refused like on an Entra login. */
 async function authenticateToken(token: string): Promise<Me> {
   if (!PAT_FORMAT.test(token)) throw new HttpError(401, 'Invalid token')
-  const [t] = await db.query<{ id: string; lastUsedAt: string | null; userId: string; email: string; name: string; active: boolean; workspaceId: string; role: Role }>(
-    `select t.id, t.last_used_at, u.id as user_id, u.email, u.name, u.active, m.workspace_id, m.role
+  const [t] = await db.query<{ id: string; lastUsedAt: string | null; userId: string; email: string; name: string; active: boolean; workspaceId: string; role: Role; admin: boolean }>(
+    `select t.id, t.last_used_at, u.id as user_id, u.email, u.name, u.active, m.workspace_id, m.role, is_system_admin(u.id) as admin
        from personal_access_tokens t
        join users u on u.id = t.user_id
        join memberships m on m.user_id = u.id
@@ -125,15 +130,29 @@ async function authenticateToken(token: string): Promise<Me> {
   if (!(await getSetting(t.workspaceId, 'accessTokens')).enabled) throw new HttpError(401, 'Personal access tokens are turned off')
   // "last used" is written at most once a minute per token, so a busy script does not turn every call into a write
   await db.query(`update personal_access_tokens set last_used_at = now() where id = $1 and (last_used_at is null or last_used_at < now() - interval '1 minute')`, [t.id])
-  return { id: t.userId, email: t.email, name: t.name, workspaceId: t.workspaceId, role: t.role, admin: t.role !== 'member', via: 'pat' }
+  return { id: t.userId, email: t.email, name: t.name, workspaceId: t.workspaceId, role: roleOf(t.role, t.admin), admin: t.admin, via: 'pat' }
 }
 
 export const isAdmin = (r: Role) => r === 'owner' || r === 'admin'
+/** The role shown for a person: the workspace's owner stays owner; otherwise admin when in system-administrators. */
+const roleOf = (r: Role, admin: boolean): Role => (r === 'owner' ? 'owner' : admin ? 'admin' : 'member')
+
+/** Put someone in a system group (users-access, system-administrators) if they aren't in it. */
+export const joinSystemGroup = (d: Db, userId: string, role: 'default-users' | 'system-admins') => d.query(
+  `insert into group_members (group_id, user_id) select id, $1 from groups where system_role = $2 on conflict do nothing`, [userId, role])
+
+/** A sign-in (the app starting after Entra sign-in; not a script's token): back into the default group if removed, back
+ *  into system-administrators with Entra's Strand.Admin role, and the time recorded. */
+export async function signedIn(d: Db, me: Me) {
+  await joinSystemGroup(d, me.id, 'default-users')
+  if (me.adminClaim) await joinSystemGroup(d, me.id, 'system-admins')
+  await d.query('update users set last_sign_in_at = now() where id = $1', [me.id])
+}
 
 /** Managing tokens needs a real sign-in: a token (possibly leaked) must not be able to mint more of itself. */
 export function requireSignIn(req: FastifyRequest) {
   if (req.me.via !== 'entra') throw new HttpError(403, 'Sign in with your account to manage access tokens')
 }
 export function requireAdmin(req: FastifyRequest) {
-  if (!isAdmin(req.me.role)) throw new HttpError(403, 'Admin only')
+  if (!req.me.admin) throw new HttpError(403, 'Admin only')
 }

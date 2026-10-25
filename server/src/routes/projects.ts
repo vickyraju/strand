@@ -2,7 +2,7 @@ import type { FastifyRequest } from 'fastify'
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
 import { db, tx, pick, type Db } from '../db.ts'
-import { HttpError, requireAdmin, type Me } from '../auth.ts'
+import { HttpError, requireAdmin, signedIn, type Me } from '../auth.ts'
 import { minFor, need, roleOf, visible, type ProjectRole } from '../access.ts'
 import { publish, subscribe } from '../events.ts'
 import { audit, changes } from '../audit.ts'
@@ -121,6 +121,13 @@ async function moveOffStatus(d: Db, req: { me: Me; ip?: string }, p: { id: strin
 }
 
 const plugin: FastifyPluginAsyncZod = async app => {
+  // A sign-in: the app calls this once when it starts. Puts the person back in users-access (and, with Entra's Strand.Admin
+  // role, system-administrators) and records the time. Scripts' tokens aren't sign-ins.
+  app.post('/me/sign-in', { schema: { tags: T.me, summary: 'Record a sign-in (the web app calls this when it starts): rejoins the default group, and system-administrators with Entra’s Strand.Admin role' } }, async (req, reply) => {
+    if (req.me.via === 'pat') throw new HttpError(400, 'A personal access token isn’t a sign-in')
+    await tx(d => signedIn(d, req.me))
+    reply.code(204).send()
+  })
   app.get('/me', { schema: { tags: T.me, summary: 'Current user and role' } }, async req => ({
     ...req.me, groupIds: (await db.query<{ groupId: string }>('select group_id from group_members where user_id = $1', [req.me.id])).map(g => g.groupId),
   }))
@@ -150,7 +157,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     if (req.query.project) {
       const p = await projectByKey(db, req, req.query.project, 'viewer')
       args.push(p.id)
-      where.push(`(m.role in ('owner', 'admin') or exists (select 1 from project_access pa where pa.project_id = $${args.length} and pa.user_id = u.id))`)
+      where.push(`(is_system_admin(u.id) or exists (select 1 from project_access pa where pa.project_id = $${args.length} and pa.user_id = u.id))`)
     }
     if (query) { args.push(like(query)); where.push(`(u.name ilike $${args.length} or u.email ilike $${args.length})`) }
     if (cur) { args.push(cur[0].toLowerCase(), cur[1]); where.push(`(lower(u.name), u.id) > ($${args.length - 1}, $${args.length}::uuid)`) }

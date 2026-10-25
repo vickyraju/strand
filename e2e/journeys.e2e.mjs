@@ -583,6 +583,22 @@ test('long pages scroll: Administration and the Tests tab reach their last secti
   assert.deepEqual(o.problems, [])
 })
 
+test('system groups: a newcomer is in users-access and sees no Administration; someone with Entra’s admin role does', { skip, timeout: 60_000 }, async () => {
+  const n = await signIn('sam@e2e.test')
+  await n.waitForSelector('nav')
+  await n.waitForTimeout(800)
+  assert.equal(await n.locator('nav :text("Administration")').count(), 0)
+  const me = (await as('sam@e2e.test')('GET', '/me')).body
+  const groups = (await as('owner@e2e.test')('GET', '/admin/users')).status
+  assert.equal(groups, 200)
+  assert.equal(me.admin, false)
+  const boss = await signIn('boss@e2e.test', ['Strand.Admin'])
+  await boss.waitForSelector('nav :text("Administration")')
+  await boss.click('nav :text("Administration")')
+  await boss.waitForSelector('.admin-body')
+  assert.deepEqual([...n.problems, ...boss.problems], [])
+})
+
 test('plan a sprint, start it and complete it: unfinished work goes back to the backlog', { skip, timeout: 90_000 }, async () => {
   const p = (await owner('POST', '/projects', { name: 'Sprinting', key: 'SPR', template: 'scrum' })).body
   const done = p.statuses.find(s => s.category === 'done')

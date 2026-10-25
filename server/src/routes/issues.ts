@@ -79,9 +79,8 @@ const note = (d: Db, to: string, me: Me, issueId: string, kind: string, text: st
     `insert into notifications (user_id, actor_id, issue_id, kind, text)
      select $1, $2, i.id, $4, $5 from issues i
       where i.id = $3 and (exists (select 1 from project_access pm where pm.project_id = i.project_id and pm.user_id = $1)
-                        or exists (select 1 from memberships m where m.user_id = $1 and m.workspace_id = i.workspace_id and m.role in ('owner', 'admin')))
-        and issue_visible(i.security_level_id, i.reporter_id, i.assignee_id, i.project_id, $1,
-                          exists (select 1 from memberships m where m.user_id = $1 and m.workspace_id = i.workspace_id and m.role in ('owner', 'admin')))`,
+                        or is_system_admin($1))
+        and issue_visible(i.security_level_id, i.reporter_id, i.assignee_id, i.project_id, $1, is_system_admin($1))`,
     [to, me.id, issueId, kind, text])
 
 /** True when `@name` appears in the text as a whole name (`@Ann` does not match inside `@Anna`). */
@@ -100,7 +99,7 @@ export async function mentionedIn(d: Db, projectId: string, text: string, author
     `select u.id, u.name from users u
       where u.active and u.id <> $3 and position('@' || u.name in $2) > 0
         and (exists (select 1 from project_access pm where pm.project_id = $1 and pm.user_id = u.id)
-          or exists (select 1 from memberships m join projects p on p.workspace_id = m.workspace_id where p.id = $1 and m.user_id = u.id and m.role in ('owner', 'admin')))`, [projectId, text, authorId])
+          or is_system_admin(u.id))`, [projectId, text, authorId])
   return candidates.filter(c => mentions(text, c.name)).map(c => c.id)
 }
 
@@ -661,7 +660,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     const rows = await d.query<{ id: string }>(v.kind === 'group'
       ? 'select user_id as id from group_members where group_id = $2 and user_id = any($1::uuid[])'
       : `select u.id from unnest($1::uuid[]) u(id) where exists (select 1 from project_access pa where pa.project_id = $2 and pa.user_id = u.id and pa.role = $3)
-           or ($3 = 'admin' and exists (select 1 from memberships m join projects p on p.workspace_id = m.workspace_id where p.id = $2 and m.user_id = u.id and m.role in ('owner', 'admin')))`,
+           or ($3 = 'admin' and is_system_admin(u.id))`,
       v.kind === 'group' ? [people, v.id] : [people, projectId, v.role])
     const ok = new Set(rows.map(r => r.id))
     return people.filter(p => ok.has(p))
