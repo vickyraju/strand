@@ -23,17 +23,22 @@ const SECTIONS: { id: AdminSection; label: string; Icon: typeof Users }[] = [
 ]
 const message = (e: unknown) => (e instanceof ApiError ? e.message : 'Could not reach the server.')
 
-/** Workspace administration, for workspace owners and admins: who is here, what changed, and deleted projects' backups. */
+/** Administration (system administrators: people, groups, audit, backups, settings…). For everyone else the same
+ *  area is Configuration, with only what they may manage there: groups. */
 export default function AdminView({ section = 'people' }: { section?: AdminSection }) {
   const { state } = useStore()
-  if (!apiEnabled || !isGlobalAdmin(state))
-    return <div className="page-col"><Empty icon={<Users size={22} strokeWidth={1.5} />} title="Administration is for workspace admins"
-      body={apiEnabled ? 'Ask a workspace admin if you need something changed.' : 'Administration needs Strand to be connected to a server.'} /></div>
+  if (!apiEnabled)
+    return <div className="page-col"><Empty icon={<Users size={22} strokeWidth={1.5} />} title="Administration needs a server"
+      body="Administration needs Strand to be connected to a server." /></div>
+  // system administrators see everything; everyone else sees Configuration with what they may manage: groups
+  const admin = isGlobalAdmin(state)
+  const sections = admin ? SECTIONS : SECTIONS.filter(s => s.id === 'groups')
+  if (!sections.some(s => s.id === section)) section = 'groups'
   return (
     <div className="page-col">
-      <div className="page-hdr"><h1 className="page-title">Administration</h1></div>
-      <div className="tabs" role="tablist" aria-label="Administration">
-        {SECTIONS.map(({ id, label, Icon }) => (
+      <div className="page-hdr"><h1 className="page-title">{admin ? 'Administration' : 'Configuration'}</h1></div>
+      <div className="tabs" role="tablist" aria-label={admin ? 'Administration' : 'Configuration'}>
+        {sections.map(({ id, label, Icon }) => (
           <button key={id} role="tab" aria-selected={section === id} className={`tab${section === id ? ' active' : ''}`} onClick={() => navigate(href({ name: 'admin', section: id }))}>
             <Icon size={15} strokeWidth={1.75} />{label}
           </button>
@@ -41,7 +46,7 @@ export default function AdminView({ section = 'people' }: { section?: AdminSecti
       </div>
       <div className="admin-body">
         {section === 'people' && <People />}
-        {section === 'groups' && <GroupsView admin />}
+        {section === 'groups' && <GroupsView admin={admin} />}
         {section === 'audit' && <AuditLog />}
         {section === 'backups' && <Backups />}
         {section === 'link-types' && <LinkTypesAdmin />}
