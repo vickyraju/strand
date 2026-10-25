@@ -599,6 +599,33 @@ test('system groups: a newcomer is in users-access and sees no Administration; a
   assert.deepEqual([...n.problems, ...boss.problems], [])
 })
 
+test('groups: a member makes mobile-developers and adds a colleague; a project admin gives it Member; the colleague can then work there', { skip, timeout: 90_000 }, async () => {
+  await owner('POST', '/projects', { name: 'Phone app', key: 'APP', template: 'kanban' })
+  const vicId = await idOf('vic@e2e.test')
+  const m = await signIn('maya@e2e.test')
+  await m.click('nav :text("Groups")')
+  await m.click('button:has-text("New group")')
+  await m.fill('#gr-name', 'mobile-developers')
+  await m.click('.modal button:has-text("Make group")')
+  await m.waitForSelector('section[aria-label="Group mobile-developers"]')
+  await m.click('section[aria-label="Group mobile-developers"] button:has-text("Add people")')
+  await m.selectOption('.modal [aria-label="Person"]', vicId)
+  await m.click('.modal button:has-text("Add 1 person")')
+  await m.waitForSelector('section[aria-label="Group mobile-developers"] .person:has-text("Vic Viewer")')
+  // Vic can't see the project yet; the project admin adds the group as Member, and sees who manages it
+  assert.equal((await as('vic@e2e.test')('GET', '/projects/APP')).status, 404)
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url('/project/APP/settings/people'))
+  await o.click('button:has-text("Add a group")')
+  await o.fill('#pg-search', 'mobile')
+  await o.click('.modal .picker-item:has-text("mobile-developers")')
+  assert.match(await o.locator('.modal .picker-item:has-text("mobile-developers")').innerText(), /managed by Maya Member/)
+  await o.click('.modal button:has-text("Add")')
+  await o.waitForSelector('.person:has-text("mobile-developers")')
+  assert.equal((await as('vic@e2e.test')('POST', '/projects/APP/issues', { title: 'Through the group' })).status, 201)
+  assert.deepEqual([...m.problems, ...o.problems], [])
+})
+
 test('plan a sprint, start it and complete it: unfinished work goes back to the backlog', { skip, timeout: 90_000 }, async () => {
   const p = (await owner('POST', '/projects', { name: 'Sprinting', key: 'SPR', template: 'scrum' })).body
   const done = p.statuses.find(s => s.category === 'done')

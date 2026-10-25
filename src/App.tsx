@@ -8,6 +8,7 @@ import SearchView from './components/SearchView'
 import YourWork from './components/YourWork'
 import InboxView from './components/InboxView'
 import SettingsView from './components/SettingsView'
+import GroupsView from './components/groups/GroupsView'
 const AdminView = lazy(() => import('./components/AdminView'))   // only admins open it
 import WorkItemDetail from './components/WorkItemDetail'
 import Welcome from './components/Welcome'
@@ -212,7 +213,7 @@ function Shell() {
       fullIssue ? [`${fullIssue.key} ${fullIssue.title}`]
       : project ? [project.name]
       : route.name === 'inbox' ? ['Inbox'] : route.name === 'search' ? ['Search'] : route.name === 'projects' ? ['Projects']
-      : route.name === 'settings' ? ['Settings'] : route.name === 'admin' ? ['Administration'] : route.name === 'home' ? ['Your work'] : []
+      : route.name === 'settings' ? ['Settings'] : route.name === 'groups' ? ['Groups'] : route.name === 'admin' ? ['Administration'] : route.name === 'home' ? ['Your work'] : []
     document.title = [...parts, state.workspaceName || 'Forge'].join(' · ')
   }, [route, fullIssue, project, state.workspaceName])
 
@@ -268,6 +269,7 @@ function Shell() {
             {route.name === 'search'   && <SearchView query={route.q} viewId={route.view} />}
             {route.name === 'projects' && <ProjectsView onCreate={() => setCreateProjectOpen(true)} />}
             {route.name === 'settings' && <SettingsView />}
+            {route.name === 'groups' && <div className="page-col"><div className="page-hdr"><h1 className="page-title">Groups</h1></div><GroupsView /></div>}
             {route.name === 'admin' && <Suspense fallback={<div className="loading" role="status">Loading…</div>}><AdminView section={route.section} /></Suspense>}
             {route.name === 'project'  && (project
               ? issuesLoad.status === 'loading' ? <div className="loading" role="status">Loading work items…</div>

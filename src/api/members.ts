@@ -18,8 +18,8 @@ export const setMemberRole = (key: string, userId: string, role: ProjectRole) =>
 export const removeMember = (key: string, userId: string) => api<void>('DELETE', `${base(key)}/${userId}`)
 
 // Groups from the organisation's directory: a role given to a group reaches everyone in it.
-export interface ProjectGroup { groupId: string; name: string; role: ProjectRole; addedAt: string; members: number }
-export interface GroupHit { id: string; name: string; members: number }
+export interface ProjectGroup { groupId: string; name: string; role: ProjectRole; addedAt: string; members: number; kind?: 'system' | 'directory' | 'strand'; owners?: string[] }
+export interface GroupHit { id: string; name: string; members: number; kind?: 'system' | 'directory' | 'strand'; owners?: string[] }
 
 const groupsOf = (key: string) => `/api/projects/${encodeURIComponent(key)}/groups`
 export const listGroups = (key: string) => api<ProjectGroup[]>('GET', groupsOf(key))

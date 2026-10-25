@@ -2,8 +2,8 @@ import { useSyncExternalStore } from 'react'
 
 export type ProjectTab = 'summary' | 'board' | 'backlog' | 'list' | 'timeline' | 'calendar' | 'releases' | 'reports' | 'tests' | 'settings'
 
-export type AdminSection = 'people' | 'audit' | 'backups' | 'settings' | 'link-types' | 'views'
-const ADMIN: AdminSection[] = ['people', 'audit', 'backups', 'settings', 'link-types', 'views']
+export type AdminSection = 'people' | 'groups' | 'audit' | 'backups' | 'settings' | 'link-types' | 'views'
+const ADMIN: AdminSection[] = ['people', 'groups', 'audit', 'backups', 'settings', 'link-types', 'views']
 
 export type Route =
   | { name: 'home' }
@@ -11,6 +11,7 @@ export type Route =
   | { name: 'search'; q: string; view?: string }
   | { name: 'projects' }
   | { name: 'settings' }
+  | { name: 'groups' }
   | { name: 'admin'; section?: AdminSection }
   | { name: 'project'; key: string; tab?: ProjectTab; sub?: string }
   | { name: 'issue'; key: string }
@@ -31,6 +32,7 @@ export function parse(pathname: string, search: string): { route: Route; peek?: 
   else if (a === 'dashboards')    route = { name: 'home' }   // old bookmarks: the Dashboards page is gone, a project's Summary replaces it
   else if (a === 'projects' && !b) route = { name: 'projects' }
   else if (a === 'settings')      route = { name: 'settings' }
+  else if (a === 'groups')        route = { name: 'groups' }
   else if (a === 'admin' && (!b || (ADMIN as string[]).includes(b))) route = { name: 'admin', section: b as AdminSection | undefined }
   else if (a === 'i' && b)        route = { name: 'issue', key: b.toUpperCase() }
   else if ((a === 'project' || a === 'p') && b &&(!c || (TABS as string[]).includes(c)))
@@ -53,6 +55,7 @@ export function href(route: Route, peek?: string): string {
     }
     case 'projects':  return `/projects${q}`
     case 'settings':  return `/settings${q}`
+    case 'groups':    return `/groups${q}`
     case 'admin':     return `/admin${route.section ? `/${route.section}` : ''}`
     case 'issue':     return `/i/${route.key}`
     case 'project':   return `/project/${route.key}${route.tab ? `/${route.tab}` : ''}${route.sub ? `/${route.sub}` : ''}${q}`
