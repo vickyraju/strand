@@ -562,6 +562,27 @@ test('testing reports: traceability shows a requirement, its failing test and th
   assert.deepEqual(o.problems, [])
 })
 
+test('long pages scroll: Administration and the Tests tab reach their last section on a short window', { skip, timeout: 60_000 }, async () => {
+  await owner('POST', '/projects', { name: 'Scrolls', key: 'SCR', template: 'kanban' })
+  await owner('PUT', '/projects/SCR/testing', { enabled: true })
+  for (let n = 0; n < 40; n++) await owner('POST', '/projects/SCR/issues', { title: `Scroll test ${n}`, type: 'test' })
+  const o = await signIn('owner@e2e.test')
+  await o.setViewportSize({ width: 1200, height: 500 })
+  // the scrolling area must be able to bring the last thing on the page into view
+  const reachesEnd = async (scroller, last) => {
+    await o.waitForSelector(last)
+    await o.locator(scroller).evaluate(el => { el.scrollTop = el.scrollHeight })
+    return o.locator(last).last().evaluate(el => el.getBoundingClientRect().bottom <= window.innerHeight + 1)   // its end is on screen, not cut off
+  }
+  for (const section of ['settings', 'people', 'audit']) {
+    await o.goto(url(`/admin/${section}`))
+    assert.ok(await reachesEnd('.admin-body', '.admin-body :is(.panel, tr, li):not(:has(.panel, tr, li))'), `Administration › ${section} scrolls to its end`)
+  }
+  await o.goto(url('/project/SCR/tests'))
+  assert.ok(await reachesEnd('.repo', '.repo-list tr'), 'the Tests tab scrolls to its last test')
+  assert.deepEqual(o.problems, [])
+})
+
 test('plan a sprint, start it and complete it: unfinished work goes back to the backlog', { skip, timeout: 90_000 }, async () => {
   const p = (await owner('POST', '/projects', { name: 'Sprinting', key: 'SPR', template: 'scrum' })).body
   const done = p.statuses.find(s => s.category === 'done')
