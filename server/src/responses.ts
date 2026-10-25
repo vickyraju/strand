@@ -31,6 +31,10 @@ export const LinkType = z.object({
   builtin: z.boolean().describe('Built in (the app relies on it): can be renamed, not removed'), position: z.number(), uses: z.number().describe('Links of this type'),
 })
 export const Component = z.object({ id, projectId: id, name: z.string(), description: z.string(), leadId: nullable(id), defaultAssignee: z.enum(['none', 'component_lead', 'project_lead']) })
+export const NotificationPrefs = z.object({
+  prefs: z.array(z.object({ kind: z.enum(['assigned', 'mentioned', 'commented', 'status', 'due', 'automation']), inbox: z.boolean(), email: z.boolean() })),
+  emailEnabled: z.boolean().describe('The workspace sends email (System settings)'),
+})
 export const AvailableTransition = z.object({
   id, name: z.string(), toId: nullable(id), screen: z.array(z.string()).describe('Fields to fill in (and "comment")'),
   problems: z.record(z.string(), z.string()).describe('What would stop the move if made now, by field'),
@@ -179,6 +183,8 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'PATCH /issues/:key': IssueRow,
   'POST /issues/:key/clone': IssueRow,
   'GET /link-types': z.array(LinkType),
+  'GET /me/notification-prefs': NotificationPrefs,
+  'PUT /me/notification-prefs': NotificationPrefs,
   'POST /projects/:key/import': z.object({
     columns: z.array(z.string()), rows: z.number(), ready: z.number().describe('Rows that will become work items'), skipped: z.number().describe('Rows left out (no title…)'),
     report: z.array(z.object({ row: z.number().describe('As a spreadsheet numbers it'), title: z.string(), ok: z.boolean(), errors: z.array(z.string()), warnings: z.array(z.string()) })),

@@ -1513,6 +1513,46 @@ test('CSV import: a dry run checks every row; the import runs as a job; running 
   assert.equal((await call('POST', '/api/v1/projects/CSV/import', { csv, mapping }, 'imp.viewer@x.com')).status, 403)
 })
 
+test('notification settings: each kind in the Inbox and/or by email; email only once an admin turns it on', { skip }, async () => {
+  process.env.EMAIL_TRANSPORT = 'memory'
+  const { sentEmails } = await import('../src/email.ts')
+  const { runJobs } = await import('../src/jobs.ts')
+  await call('POST', '/api/v1/projects', { name: 'Mailed', key: 'MAL', template: 'kanban' })
+  await join('MAL', 'mal.ann@x.com')
+  const ann = (await call('GET', '/api/v1/me', undefined, 'mal.ann@x.com')).body.id
+  const prefs = (await call('GET', '/api/v1/me/notification-prefs', undefined, 'mal.ann@x.com')).body
+  assert.equal(prefs.emailEnabled, false)
+  assert.ok(prefs.prefs.every((p: any) => p.inbox && p.email))
+  const assign = async (title: string) => { const i = (await call('POST', '/api/v1/projects/MAL/issues', { title, assigneeId: ann })).body; await runJobs(); return i }
+  const inbox = async () => (await call('GET', '/api/v1/notifications', undefined, 'mal.ann@x.com')).body.map((n: any) => n.issueKey)
+  // email off for the workspace: Inbox only
+  const a = await assign('First')
+  assert.deepEqual([await inbox(), sentEmails.length], [[a.key], 0])
+  // an admin turns email on: Ann gets both
+  assert.equal((await call('PUT', '/api/v1/admin/settings/email', { enabled: true, from: '', appUrl: '' })).status, 400)   // needs a sender
+  await call('PUT', '/api/v1/admin/settings/email', { enabled: true, from: 'Strand <strand@example.com>', appUrl: 'https://strand.example.com' })
+  const b = await assign('Second')
+  assert.equal(sentEmails.length, 1)
+  assert.deepEqual([sentEmails[0]!.to, sentEmails[0]!.from, sentEmails[0]!.subject], ['mal.ann@x.com', 'Strand <strand@example.com>', `[${b.key}] Second`])
+  assert.match(sentEmails[0]!.text, /assigned you a work item/); assert.match(sentEmails[0]!.html, new RegExp(`https://strand.example.com/i/${b.key}`))
+  // Ann: assignments by email only, not in the Inbox
+  await call('PUT', '/api/v1/me/notification-prefs', { prefs: [{ kind: 'assigned', inbox: false, email: true }] }, 'mal.ann@x.com')
+  const c = await assign('Third')
+  assert.ok(!(await inbox()).includes(c.key)); assert.equal(sentEmails.at(-1)!.subject, `[${c.key}] Third`)
+  // …then neither
+  await call('PUT', '/api/v1/me/notification-prefs', { prefs: [{ kind: 'assigned', inbox: false, email: false }] }, 'mal.ann@x.com')
+  const n = sentEmails.length
+  await assign('Fourth')
+  assert.equal(sentEmails.length, n)
+  assert.deepEqual((await call('GET', '/api/v1/me/notification-prefs', undefined, 'mal.ann@x.com')).body.prefs.find((p: any) => p.kind === 'assigned'), { kind: 'assigned', inbox: false, email: false })
+  // no way to send: the email waits as a failed job, nothing is lost silently
+  await call('PUT', '/api/v1/me/notification-prefs', { prefs: [{ kind: 'assigned', inbox: true, email: true }] }, 'mal.ann@x.com')
+  delete process.env.EMAIL_TRANSPORT
+  await call('POST', '/api/v1/projects/MAL/issues', { title: 'Fifth', assigneeId: ann }); await runJobs()
+  assert.match((await pool.query(`select last_error from jobs where kind = 'email.notification' order by created_at desc limit 1`)).rows[0].last_error, /No email transport/)
+  await call('PUT', '/api/v1/admin/settings/email', { enabled: false, from: '', appUrl: '' })
+})
+
 test('report data: every live item and every status change in order, for people who can see the project', { skip }, async () => {
   const p = (await call('POST', '/api/v1/projects', { name: 'Reports', key: 'REP', template: 'kanban' })).body
   const [a, b, c] = p.statuses
@@ -2072,6 +2112,8 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     'GET /admin/rate-limits/limited': ['gadmin', '/admin/rate-limits/limited'],
     'GET /settings/public': ['any', '/settings/public'],
     'GET /link-types': ['any', '/link-types'],
+    'GET /me/notification-prefs': ['any', '/me/notification-prefs'],
+    'PUT /me/notification-prefs': ['any', '/me/notification-prefs', { prefs: [] }],
     'POST /projects/{key}/import': ['write', `/projects/${K}/import`, { csv: 'Title\nx', mapping: { title: 0 } }],
     'GET /projects/{key}/automation/runs': ['padmin', `/projects/${K}/automation/runs`],
     'POST /projects/{key}/automation/dry-run': ['padmin', `/projects/${K}/automation/dry-run`, { issue: I, actions: [] }],
@@ -2190,7 +2232,7 @@ test('system settings: admins change policies at runtime (validated, audited); e
   const { clearSettingsCache } = await import('../src/settings.ts')
   const put = (key: string, value: object, who = 'owner@x.com') => call('PUT', `/api/v1/admin/settings/${key}`, value, who)
   const all = (await call('GET', '/api/v1/admin/settings')).body
-  assert.deepEqual(all.map((s: any) => s.key), ['rateLimiting', 'attachments', 'accessTokens', 'searchAndBulk', 'dueReminders'])
+  assert.deepEqual(all.map((s: any) => s.key), ['rateLimiting', 'attachments', 'accessTokens', 'searchAndBulk', 'dueReminders', 'email'])
   assert.equal(all.find((s: any) => s.key === 'rateLimiting').value.enabled, false)                  // no limit unless an admin sets one
   assert.equal((await call('GET', '/api/v1/admin/settings', undefined, 'set.member@x.com')).status, 403)
   assert.equal((await put('attachments', { enabled: true, maxSizeMb: 5 }, 'set.member@x.com')).status, 403)

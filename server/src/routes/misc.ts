@@ -8,6 +8,7 @@ import { audit } from '../audit.ts'
 import { getSetting } from '../settings.ts'
 import { jqlToSql, parseOr400 } from '../jqlSql.ts'
 import { csvCell } from '../shared/csv.ts'
+import '../email.ts'   // sends notification emails (a background job)
 export { csvCell }
 
 const uuid = z.string().uuid()
@@ -263,6 +264,26 @@ const plugin: FastifyPluginAsyncZod = async app => {
   app.post('/notifications/read-all', { schema: { tags: ['Notifications'], summary: 'Mark all my notifications read' } }, async (req, reply) => {
     await db.query('update notifications set read = true where user_id = $1 and not read', [req.me.id])
     reply.code(204).send()
+  })
+
+  // What I hear about, and how (Jira's notification settings): each kind in the Inbox and/or by email
+  const KINDS = ['assigned', 'mentioned', 'commented', 'status', 'due', 'automation'] as const
+  const prefsOf = async (userId: string) => {
+    const rows = new Map((await db.query<{ kind: string; inbox: boolean; email: boolean }>('select kind, inbox, email from notification_prefs where user_id = $1', [userId])).map(r => [r.kind, r]))
+    return KINDS.map(kind => ({ kind, inbox: rows.get(kind)?.inbox ?? true, email: rows.get(kind)?.email ?? true }))
+  }
+  app.get('/me/notification-prefs', { schema: { tags: ['Notifications'], summary: 'For each kind of notification: whether I get it in my Inbox, and by email (when the workspace sends email)' } }, async req => ({
+    prefs: await prefsOf(req.me.id), emailEnabled: (await getSetting(req.me.workspaceId, 'email')).enabled,
+  }))
+  app.put('/me/notification-prefs', { schema: { tags: ['Notifications'], summary: 'Change what I get, and how', body: z.object({
+    prefs: z.array(z.object({ kind: z.enum(KINDS), inbox: z.boolean(), email: z.boolean() })).max(KINDS.length),
+  }) } }, async req => {
+    await tx(async d => {
+      for (const p of req.body.prefs)
+        await d.query(`insert into notification_prefs (user_id, kind, inbox, email) values ($1, $2, $3, $4)
+                       on conflict (user_id, kind) do update set inbox = excluded.inbox, email = excluded.email`, [req.me.id, p.kind, p.inbox, p.email])
+    })
+    return { prefs: await prefsOf(req.me.id), emailEnabled: (await getSetting(req.me.workspaceId, 'email')).enabled }
   })
 
   // ── Saved views (owner edits; shared views visible to all) ──
