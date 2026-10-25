@@ -6,6 +6,7 @@ import { searchUsers } from '../api/users'
 import { useApp } from '../appContext'
 import { timeAgo, type User } from '../data/store'
 import { Avatar, Toggle } from './ui'
+import TestStatusesAdmin from './testing/TestStatusesAdmin'
 
 // Administration › System settings: the policies a workspace admin controls (like Jira's Administration › System).
 // Each section edits one setting as a whole and saves it in one go; the server checks it and records the change in the audit log.
@@ -66,6 +67,10 @@ export default function SystemSettings() {
         { key: 'importMaxRows', label: 'Most rows in one CSV import', type: 'number', min: 10, max: 100_000 },
       ]} />
       <EmailSection setting={of('email')} save={v => save('email', v)} />
+      <SimpleSection setting={of('testing')} save={v => save('testing', v)} fields={[
+        { key: 'finalStatusesHavePrecedence', label: 'A finished result outweighs a newer run that hasn’t finished', type: 'toggle', hint: 'Off: a test’s status is always its latest run’s' },
+      ]} />
+      <TestStatusesAdmin />
       <SimpleSection setting={of('dueReminders')} save={v => save('dueReminders', v)} fields={[
         { key: 'enabled', label: 'Send “due” notifications', type: 'toggle' },
         { key: 'daysAhead', label: 'Remind this many days before the due date', type: 'number', min: 0, max: 30, hint: '0: on the day it is due' },

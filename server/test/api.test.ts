@@ -1208,12 +1208,13 @@ test('transition rules: who may move, what a move needs, what it does; loops; ev
   assert.ok((await pool.query(`select 1 from activity where issue_id = $1 and text like 'Automation skipped a status change: %required%'`, [k.id])).rows.length)
 })
 
-test('link types: Jira’s four to start with; admins add, rename and remove them; links in use move or go; built-ins stay', { skip }, async () => {
+test('link types: Jira’s four (and test management’s Defect) to start with; admins add, rename and remove them; links in use move or go; built-ins stay', { skip }, async () => {
   await call('POST', '/api/v1/projects', { name: 'Linked', key: 'LNK', template: 'kanban' })
   for (let n = 0; n < 3; n++) await call('POST', '/api/v1/projects/LNK/issues', { title: `l${n}` })
   const types = (await call('GET', '/api/v1/link-types', undefined, 'lnk.member@x.com')).body
   assert.deepEqual(types.map((t: any) => [t.id, t.outward, t.inward]), [
-    ['blocks', 'blocks', 'is blocked by'], ['clones', 'clones', 'is cloned by'], ['duplicates', 'duplicates', 'is duplicated by'], ['relates', 'relates to', 'relates to']])
+    ['blocks', 'blocks', 'is blocked by'], ['clones', 'clones', 'is cloned by'], ['duplicates', 'duplicates', 'is duplicated by'], ['relates', 'relates to', 'relates to'],
+    ['defect', 'has defect', 'is a defect of']])   // test management's: a test → the defects its runs found
   // a new kind of link, used both ways; an unknown kind is refused
   const made = await call('POST', '/api/v1/admin/link-types', { name: 'Causes', outward: 'causes', inward: 'is caused by' })
   assert.equal(made.status, 201); assert.equal(made.body.id, 'causes')
@@ -1740,6 +1741,72 @@ test('testing: sets, plans and pre-conditions hold tests (by key or JQL); plans 
   assert.equal((await call('GET', `/api/v1/issues/${t2.key}`)).body.testFolderId, web.id)
 })
 
+test('testing: an execution runs tests; step results set the run status; finishing records who and when; defects link to the test', { skip }, async () => {
+  await call('POST', '/api/v1/projects', { name: 'Runs', key: 'RUN', template: 'kanban' })
+  await call('PUT', '/api/v1/projects/RUN/testing', { enabled: true })
+  await join('RUN', 'run.tester@x.com'); await join('RUN', 'run.viewer@x.com', 'viewer')
+  const tester = (await call('GET', '/api/v1/me', undefined, 'run.tester@x.com')).body.id
+  const steps = [{ id: 'a', action: 'Open' }, { id: 'b', action: 'Pay' }, { id: 'c', action: 'See receipt' }]
+  const t1 = (await call('POST', '/api/v1/projects/RUN/issues', { title: 'Checkout', type: 'test', testSpec: { kind: 'manual', steps } })).body
+  const t2 = (await call('POST', '/api/v1/projects/RUN/issues', { title: 'Refund', type: 'test', testSpec: { kind: 'generic', definition: 'RefundTest' } })).body
+  const plan = (await call('POST', '/api/v1/projects/RUN/issues', { title: 'Release 3', type: 'test_plan' })).body
+  await call('POST', `/api/v1/issues/${plan.key}/tests`, { keys: [t1.key, t2.key] })
+  // an execution made from the plan runs its tests, and belongs to it
+  const exec = (await call('POST', `/api/v1/issues/${plan.key}/executions`, { environments: ['chrome'], revision: 'build 42' }, 'run.tester@x.com')).body
+  assert.deepEqual([exec.type, exec.testEnvironments, exec.revision], ['test_execution', ['chrome'], 'build 42'])
+  assert.deepEqual((await call('GET', `/api/v1/issues/${plan.key}/executions`)).body.map((e: any) => e.key), [exec.key])
+  const runs = (await call('GET', `/api/v1/issues/${exec.key}/runs`)).body
+  assert.deepEqual(runs.map((r: any) => [r.testKey, r.status, r.steps.length]), [[t1.key, 'TODO', 3], [t2.key, 'TODO', 0]])
+  const run = runs[0]
+  // step results drive the run: one done → EXECUTING (started); a failure → FAIL (finished, by whom)
+  const patch = (body: object, who = 'run.tester@x.com') => call('PATCH', `/api/v1/test-runs/${run.id}`, body, who)
+  let r = (await patch({ steps: [{ id: 'a', status: 'PASS' }] })).body
+  assert.deepEqual([r.status, !!r.startedAt, r.finishedAt], ['EXECUTING', true, null])
+  r = (await patch({ steps: [{ id: 'b', status: 'FAIL', actual: 'Card declined' }], version: r.version })).body
+  assert.deepEqual([r.status, !!r.finishedAt, r.executedBy, r.steps[1].actual], ['FAIL', true, tester, 'Card declined'])
+  assert.equal((await patch({ comment: 'stale', version: 1 })).status, 409)
+  assert.equal((await patch({ steps: [{ id: 'zz', status: 'PASS' }] })).status, 400)
+  assert.equal((await patch({ steps: [{ id: 'a', status: 'NOPE' }] })).status, 400)
+  assert.equal((await patch({ comment: 'x' }, 'run.viewer@x.com')).status, 403)
+  // a defect from step b: a new bug, linked to the test
+  const dr = (await call('POST', `/api/v1/test-runs/${run.id}/defects`, { stepId: 'b', title: 'Payment declined for valid cards' }, 'run.tester@x.com')).body
+  assert.equal(dr.defect.type, 'bug')
+  assert.match(dr.defect.description, new RegExp(`Found running ${t1.key}.*step 2`))
+  assert.deepEqual([dr.run.defectIds, dr.run.steps[1].defectIds], [[dr.defect.id], [dr.defect.id]])
+  assert.ok((await pool.query(`select 1 from issue_links where issue_id = $1 and target_id = $2 and type = 'defect'`, [t1.id, dr.defect.id])).rowCount)
+  // a status given directly wins; back to a non-final status clears the finish
+  r = (await patch({ status: 'PASS' })).body
+  assert.equal(r.status, 'PASS')
+  r = (await patch({ status: 'EXECUTING' })).body
+  assert.deepEqual([r.status, r.finishedAt], ['EXECUTING', null])
+  // generic tests take a status directly; progress counts both
+  const r2 = (await call('GET', `/api/v1/issues/${exec.key}/runs`)).body[1]
+  await call('PATCH', `/api/v1/test-runs/${r2.id}`, { status: 'PASS' })
+  assert.deepEqual((await call('GET', `/api/v1/issues/${exec.key}/test-progress`)).body, { total: 2, byStatus: { EXECUTING: 1, PASS: 1 } })
+  // the plan: each test's status across its executions; a finished result outweighs a newer run still to do (setting on)
+  await patch({ status: 'FAIL' })
+  const exec2 = (await call('POST', `/api/v1/issues/${plan.key}/executions`, { title: 'Rerun', environments: ['chrome'] })).body
+  assert.deepEqual((await call('GET', `/api/v1/issues/${plan.key}/test-progress`)).body, { total: 2, byStatus: { FAIL: 1, PASS: 1 } })
+  await call('PUT', '/api/v1/admin/settings/testing', { finalStatusesHavePrecedence: false })
+  assert.deepEqual((await call('GET', `/api/v1/issues/${plan.key}/test-progress`)).body, { total: 2, byStatus: { TODO: 2 } })
+  await call('PUT', '/api/v1/admin/settings/testing', { finalStatusesHavePrecedence: true })
+  // the test changed after the run was made: the run says so, and a reset takes the new version
+  await call('PATCH', `/api/v1/issues/${t1.key}`, { testSpec: { kind: 'manual', steps: [...steps, { id: 'd', action: 'Log out' }] } })
+  assert.equal((await call('GET', `/api/v1/test-runs/${run.id}`)).body.specChanged, true)
+  r = (await call('POST', `/api/v1/test-runs/${run.id}/reset`, undefined, 'run.tester@x.com')).body
+  assert.deepEqual([r.status, r.steps.length, r.specChanged, r.finishedAt], ['TODO', 4, false, null])
+  // a test's runs in every execution
+  assert.deepEqual((await call('GET', `/api/v1/issues/${t1.key}/runs`)).body.map((x: any) => x.executionKey).sort(), [exec.key, exec2.key].sort())
+  // statuses: admins add one; built-in ones keep their meaning; one in use can't go
+  const flaky = (await call('POST', '/api/v1/admin/test-statuses', { kind: 'run', name: 'Flaky', color: '#9333EA', final: false, mapsTo: 'unknown' })).body
+  assert.match(flaky.key, /^c-/)
+  assert.equal((await call('PATCH', '/api/v1/admin/test-statuses/run/PASS', { mapsTo: 'nok' })).status, 400)
+  await patch({ status: flaky.key })
+  assert.equal((await call('DELETE', `/api/v1/admin/test-statuses/run/${flaky.key}`)).status, 409)
+  await patch({ status: 'PASS' })
+  assert.equal((await call('DELETE', `/api/v1/admin/test-statuses/run/${flaky.key}`)).status, 204)
+})
+
 test('report data: every live item and every status change in order, for people who can see the project', { skip }, async () => {
   const p = (await call('POST', '/api/v1/projects', { name: 'Reports', key: 'REP', template: 'kanban' })).body
   const [a, b, c] = p.statuses
@@ -2190,6 +2257,8 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
   const mset = (await call('POST', '/api/v1/projects/MTX/issues', { title: 'Matrix set', type: 'test_set' })).body.key
   await call('POST', `/api/v1/issues/${mset}/tests`, { keys: [mtest] })
   const tfolder = await make('test-folders', { name: 'Matrix folder' })
+  const mexec = (await call('POST', `/api/v1/issues/${mset}/executions`, {})).body.key
+  const mrun = (await call('GET', `/api/v1/issues/${mexec}/runs`)).body[0].id
   await call('DELETE', '/api/v1/issues/MTX-2')                                         // a deleted item, to restore
   const comment = (await call('POST', '/api/v1/issues/MTX-1/comments', { body: 'mine' })).body.id
   const worklog = (await call('POST', '/api/v1/issues/MTX-1/worklogs', { minutes: 5, date: '2026-10-01' })).body.id
@@ -2315,6 +2384,22 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     'POST /projects/{key}/test-folders': ['write', `/projects/${K}/test-folders`, { name: 'Matrix folder 2' }],
     'PATCH /projects/{key}/test-folders/{folderId}': ['write', `/projects/${K}/test-folders/${tfolder}`, { name: 'Matrix folder 3' }],
     'DELETE /projects/{key}/test-folders/{folderId}': ['write', `/projects/${K}/test-folders/${tfolder}`],
+    'GET /test-statuses': ['any', '/test-statuses'],
+    'POST /admin/test-statuses': ['gadmin', '/admin/test-statuses', { kind: 'run', name: 'Matrix status', color: '#123456', mapsTo: 'unknown' }],
+    'PATCH /admin/test-statuses/{kind}/{key}': ['gadmin', '/admin/test-statuses/run/PASS', { color: '#16A34A' }],
+    'DELETE /admin/test-statuses/{kind}/{key}': ['gadmin', '/admin/test-statuses/run/c-nothinghere'],
+    'GET /issues/{key}/runs': ['read', `/issues/${mexec}/runs`],
+    'POST /issues/{key}/runs': ['write', `/issues/${mexec}/runs`, { keys: [mtest] }],
+    'DELETE /issues/{key}/runs/{test}': ['write', `/issues/${mexec}/runs/${mtest}`],
+    'GET /issues/{key}/executions': ['read', `/issues/${mset}/executions`],
+    'POST /issues/{key}/executions': ['write', `/issues/${mset}/executions`, {}],
+    'GET /issues/{key}/test-progress': ['read', `/issues/${mexec}/test-progress`],
+    'GET /test-runs/{id}': ['read', `/test-runs/${mrun}`],
+    'PATCH /test-runs/{id}': ['write', `/test-runs/${mrun}`, { comment: 'x' }],
+    'POST /test-runs/{id}/reset': ['write', `/test-runs/${mrun}/reset`],
+    'POST /test-runs/{id}/defects': ['write', `/test-runs/${mrun}/defects`, { title: 'Matrix defect' }],
+    'DELETE /test-runs/{id}/defects/{defect}': ['write', `/test-runs/${mrun}/defects/00000000-0000-4000-8000-000000000000`],
+    'POST /test-runs/{id}/evidence': ['write', `/test-runs/${mrun}/evidence`, { attachmentId: '00000000-0000-4000-8000-000000000000' }],
     'GET /projects/{key}/security-levels': ['read', `/projects/${K}/security-levels`],
     'POST /projects/{key}/security-levels': ['padmin', `/projects/${K}/security-levels`, { name: 'Matrix level', members: [{ kind: 'role', role: 'admin' }] }],
     'PATCH /projects/{key}/security-levels/{levelId}': ['padmin', `/projects/${K}/security-levels/${level}`, { description: 'x' }],
@@ -2438,7 +2523,7 @@ test('system settings: admins change policies at runtime (validated, audited); e
   const { clearSettingsCache } = await import('../src/settings.ts')
   const put = (key: string, value: object, who = 'owner@x.com') => call('PUT', `/api/v1/admin/settings/${key}`, value, who)
   const all = (await call('GET', '/api/v1/admin/settings')).body
-  assert.deepEqual(all.map((s: any) => s.key), ['rateLimiting', 'attachments', 'accessTokens', 'searchAndBulk', 'dueReminders', 'email'])
+  assert.deepEqual(all.map((s: any) => s.key), ['rateLimiting', 'attachments', 'accessTokens', 'searchAndBulk', 'testing', 'dueReminders', 'email'])
   assert.equal(all.find((s: any) => s.key === 'rateLimiting').value.enabled, false)                  // no limit unless an admin sets one
   assert.equal((await call('GET', '/api/v1/admin/settings', undefined, 'set.member@x.com')).status, 403)
   assert.equal((await put('attachments', { enabled: true, maxSizeMb: 5 }, 'set.member@x.com')).status, 403)
@@ -2448,7 +2533,7 @@ test('system settings: admins change policies at runtime (validated, audited); e
 
   // public settings: what the web app needs, for anyone signed in (not rate limiting)
   const pub = (await call('GET', '/api/v1/settings/public', undefined, 'set.member@x.com')).body
-  assert.deepEqual(Object.keys(pub).sort(), ['accessTokens', 'attachments', 'dueReminders', 'searchAndBulk'])
+  assert.deepEqual(Object.keys(pub).sort(), ['accessTokens', 'attachments', 'dueReminders', 'searchAndBulk', 'testing'])
 
   // attachments: size limit and the switch
   await call('POST', '/api/v1/projects', { name: 'Settings', key: 'SET', template: 'kanban' })

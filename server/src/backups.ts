@@ -46,6 +46,7 @@ const TABLES: [table: string, where: string][] = [
   ['issues', 'project_id = $1'],
   ['issue_links', 'issue_id in (select id from issues where project_id = $1) or target_id in (select id from issues where project_id = $1)'],
   ['test_items', 'container_id in (select id from issues where project_id = $1) or member_id in (select id from issues where project_id = $1)'],
+  ['test_runs', 'execution_id in (select id from issues where project_id = $1) or test_id in (select id from issues where project_id = $1)'],
   ['issue_watchers', 'issue_id in (select id from issues where project_id = $1)'],
   ['comments', 'issue_id in (select id from issues where project_id = $1)'],
   ['activity', 'issue_id in (select id from issues where project_id = $1)'],
@@ -54,7 +55,7 @@ const TABLES: [table: string, where: string][] = [
 ]
 
 /** Columns that name a person. On restore, a person who no longer exists is left out rather than failing the restore. */
-const PERSON = ['lead_id', 'assignee_id', 'reporter_id', 'author_id', 'actor_id', 'added_by', 'created_by', 'published_by']
+const PERSON = ['lead_id', 'assignee_id', 'reporter_id', 'author_id', 'actor_id', 'added_by', 'created_by', 'published_by', 'executed_by']
 /** Rows that only mean something with their person (a membership, a watcher, a star). */
 const NEEDS_PERSON = new Set(['project_members', 'issue_watchers', 'stars'])
 
@@ -128,6 +129,7 @@ function checkBackup(doc: BackupDoc, b: { project_id: string; project_key: strin
     for (const r of t[table] ?? []) if (!items.has(r.issue_id)) fail(table)
   for (const l of t.issue_links ?? []) if (!items.has(l.issue_id) && !items.has(l.target_id)) fail('issue_links')
   for (const l of t.test_items ?? []) if (!items.has(l.container_id) && !items.has(l.member_id)) fail('test_items')
+  for (const l of t.test_runs ?? []) if (!items.has(l.execution_id) && !items.has(l.test_id)) fail('test_runs')
   for (const a of t.attachments ?? []) if (!String(a.object_key).startsWith(`${b.workspace_id}/`) || String(a.object_key).includes('..')) fail('attachment')
 }
 
@@ -157,7 +159,7 @@ async function restoreProject(p: { backupId: string; actorId: string | null; act
     const people = new Set((await c.query('select id from users')).rows.map(r => r.id as string))
     const issueIds = new Set((doc.tables.issues ?? []).map(r => r.id as string))
     const existing = new Set((await c.query('select id from issues where id = any($1::uuid[])',
-      [[...new Set([...(doc.tables.issue_links ?? []).flatMap(l => [l.issue_id, l.target_id]), ...(doc.tables.test_items ?? []).flatMap(l => [l.container_id, l.member_id])])]])).rows.map(r => r.id as string))
+      [[...new Set([...(doc.tables.issue_links ?? []).flatMap(l => [l.issue_id, l.target_id]), ...(doc.tables.test_items ?? []).flatMap(l => [l.container_id, l.member_id]), ...(doc.tables.test_runs ?? []).flatMap(l => [l.execution_id, l.test_id])])]])).rows.map(r => r.id as string))
     for (const [table] of TABLES) {
       const rows = doc.tables[table] ?? []
       if (!rows.length) continue
@@ -178,6 +180,7 @@ async function restoreProject(p: { backupId: string; actorId: string | null; act
         if (table === 'issue_links' && !(issueIds.has(String(r.issue_id)) || existing.has(String(r.issue_id))) ||
             table === 'issue_links' && !(issueIds.has(String(r.target_id)) || existing.has(String(r.target_id)))) continue
         if (table === 'test_items' && ![r.container_id, r.member_id].every(x => issueIds.has(String(x)) || existing.has(String(x)))) continue
+        if (table === 'test_runs' && ![r.execution_id, r.test_id].every(x => issueIds.has(String(x)) || existing.has(String(x)))) continue
         const use = names.filter(n => n in r)
         await c.query(`insert into ${table} (${use.join(', ')}) values (${use.map((_, i) => `$${i + 1}`).join(', ')}) on conflict do nothing`,
           use.map(n => (json.has(n) && r[n] != null ? JSON.stringify(r[n]) : r[n])))

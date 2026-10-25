@@ -73,6 +73,7 @@ const issueFields = {
   title: z.string(), description: z.string(), statusId: id, priority: z.enum(['urgent', 'high', 'medium', 'low', 'none']),
   assigneeId: nullable(id), reporterId: nullable(id), labels: z.array(z.string()), estimate: nullable(z.number()), timeEstimate: nullable(z.number()), timeRemaining: nullable(z.number()), componentIds: z.array(id), affectsReleaseIds: z.array(id), securityLevelId: nullable(id),
   testSpec: nullable(z.unknown()).describe('Test steps, Gherkin or definition (Tests and Pre-Conditions)'), testFolderId: nullable(id).describe('Test repository folder'),
+  testEnvironments: z.array(z.string()).describe('Test Executions: what it ran against'), revision: z.string().describe('Test Executions: build or revision'),
   dueDate: nullable(day), startDate: nullable(day), sprintId: nullable(id), releaseId: nullable(id), parentId: nullable(id),
   custom: z.record(z.string(), z.union([z.string(), z.number()])), rank: z.number(), version: z.number().describe('Send as If-Match to reject stale edits'),
   resolution: nullable(z.enum(['Done', "Won't do", 'Duplicate', 'Cannot reproduce'])).describe('Set while the item is in a Done status'),
@@ -81,6 +82,16 @@ const issueFields = {
 }
 export const IssueRow = z.object(issueFields)
 export const TestMember = IssueRow.extend({ folder: z.string().describe('Folder within a Test Plan ("" at the top)'), itemPosition: z.number() })
+export const TestStatus = z.object({ kind: z.enum(['run', 'step']), key: z.string(), name: z.string(), description: z.string(), color: z.string(),
+  final: z.boolean(), mapsTo: z.string(), rank: z.number(), builtin: z.boolean() })
+export const TestRun = z.object({
+  id, executionId: id, executionKey: z.string(), executionTitle: z.string(), environments: z.array(z.string()),
+  testId: id, testKey: z.string(), testTitle: z.string(), status: z.string(), assigneeId: nullable(id), executedBy: nullable(id),
+  startedAt: nullable(ts), finishedAt: nullable(ts), spec: nullable(z.unknown()).describe('The test as it was when the run was made'),
+  steps: z.array(z.object({ id: z.string(), status: z.string(), actual: z.string(), comment: z.string(), defectIds: z.array(id), evidenceIds: z.array(id) })),
+  comment: z.string(), defectIds: z.array(id), evidenceIds: z.array(id), version: z.number(), createdAt: ts, updatedAt: ts,
+  specChanged: z.boolean().describe('The test has changed since this run was made (reset to use the new one)'),
+})
 export const TestFolder = z.object({ id, parentId: nullable(id), name: z.string(), position: z.number(), tests: z.number() })
 const GroupGrant = z.object({
   groupId: id, name: z.string(), role: z.enum(['admin', 'member', 'viewer']), addedAt: ts, members: z.number().describe('Active people in the group'),
@@ -197,6 +208,20 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'PATCH /issues/:key/tests/:test': z.array(TestMember),
   'GET /issues/:key/test-containers': z.array(z.object({ id, key: z.string(), type: z.string(), title: z.string(), projectId: id })),
   'GET /projects/:key/test-folders': z.array(TestFolder),
+  'GET /test-statuses': z.array(TestStatus),
+  'POST /admin/test-statuses': TestStatus,
+  'PATCH /admin/test-statuses/:kind/:key': TestStatus,
+  'GET /issues/:key/runs': z.array(TestRun),
+  'POST /issues/:key/runs': z.object({ added: z.number(), already: z.number() }),
+  'GET /issues/:key/executions': z.array(TestMember),
+  'POST /issues/:key/executions': IssueRow,
+  'GET /issues/:key/test-progress': z.object({ total: z.number(), byStatus: z.record(z.string(), z.number()) }),
+  'GET /test-runs/:id': TestRun,
+  'PATCH /test-runs/:id': TestRun,
+  'POST /test-runs/:id/reset': TestRun,
+  'POST /test-runs/:id/defects': z.object({ defect: IssueRow, run: TestRun }),
+  'DELETE /test-runs/:id/defects/:defect': TestRun,
+  'POST /test-runs/:id/evidence': TestRun,
   'POST /projects/:key/test-folders': TestFolder,
   'PATCH /projects/:key/test-folders/:folderId': TestFolder,
   'GET /projects/:key/security-levels': z.array(SecurityLevel),
