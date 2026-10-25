@@ -1889,6 +1889,14 @@ test('CI results: JUnit, Cucumber and Xray JSON at Xray’s own addresses, with 
   assert.equal((await call('POST', '/api/v1/testing/import/xray?projectKey=CI', { tests: [{ testKey: mr.testKey, status: 'PASS' }] }, 'ci.viewer@x.com')).status, 403)
   assert.equal((await raven('/import/execution/junit?projectKey=CI', '<testsuite><testcase name="x">', 'text/xml')).statusCode, 400)
   assert.equal((await raven('/import/execution', { tests: [] }, 'application/json', 'jbp_' + 'x'.repeat(43))).statusCode, 401)
+  // a test the importer can't see (security level) is never matched by name: a new one is made, the hidden one is untouched
+  const lvl = (await call('POST', '/api/v1/projects/CI/security-levels', { name: 'Owners only', members: [{ kind: 'user', id: (await call('GET', '/api/v1/me')).body.id }] })).body
+  const hidden = (await call('POST', '/api/v1/projects/CI/issues', { title: 'Secret flow', type: 'test', securityLevelId: lvl.id, testSpec: { kind: 'generic', definition: 'secret.Flow.works' } })).body
+  const h = await raven('/import/execution/junit?projectKey=CI', '<testsuite><testcase classname="secret.Flow" name="works"/></testsuite>', 'text/xml')
+  assert.equal(h.statusCode, 200, h.body)
+  assert.equal(JSON.parse(h.body).createdTests.length, 1)
+  assert.notEqual(JSON.parse(h.body).testIssues.success[0].key, hidden.key)
+  assert.equal((await call('GET', `/api/v1/issues/${hidden.key}/runs`)).body.length, 0)
   // the size and count limits are System settings
   await call('PUT', '/api/v1/admin/settings/testing', { finalStatusesHavePrecedence: true, resultImportMaxMb: 1, resultImportMaxTests: 10 })
   const many = { info: { project: 'CI' }, tests: Array.from({ length: 11 }, (_, n) => ({ testInfo: { summary: `t${n}`, testType: 'Generic' }, status: 'PASS' })) }
