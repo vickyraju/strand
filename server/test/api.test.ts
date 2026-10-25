@@ -1905,6 +1905,53 @@ test('CI results: JUnit, Cucumber and Xray JSON at Xray’s own addresses, with 
   await call('PUT', '/api/v1/admin/settings/testing', { finalStatusesHavePrecedence: true, resultImportMaxMb: 10, resultImportMaxTests: 2000 })
 })
 
+test('testing JQL and reports: Xray’s functions find tests by requirement, set, plan (with status) and execution; traceability and test runs', { skip }, async () => {
+  await call('POST', '/api/v1/projects', { name: 'Traced', key: 'TRC', template: 'kanban' })
+  await call('PUT', '/api/v1/projects/TRC/testing', { enabled: true })
+  await join('TRC', 'trc.viewer@x.com', 'viewer')
+  const mk = async (title: string, type: string, extra = {}) => (await call('POST', '/api/v1/projects/TRC/issues', { title, type, ...extra })).body
+  const [story, other] = [await mk('Pay', 'story'), await mk('Ship', 'story')]
+  const [t1, t2, t3] = [await mk('Pays by card', 'test'), await mk('Pays by bank', 'test'), await mk('Ships', 'test')]
+  for (const [t, r] of [[t1, story], [t2, story], [t3, other]] as const) await call('POST', `/api/v1/issues/${t.key}/links`, { type: 'tests', targetKey: r.key })
+  const set = await mk('Payments', 'test_set'), plan = await mk('Release', 'test_plan')
+  await call('POST', `/api/v1/issues/${set.key}/tests`, { keys: [t1.key, t2.key] })
+  await call('POST', `/api/v1/issues/${plan.key}/tests`, { keys: [t1.key, t2.key, t3.key] })
+  const exec = (await call('POST', `/api/v1/issues/${plan.key}/executions`, {})).body
+  const runs = (await call('GET', `/api/v1/issues/${exec.key}/runs`)).body
+  await call('PATCH', `/api/v1/test-runs/${runs.find((r: any) => r.testKey === t1.key).id}`, { status: 'FAIL' })
+  await call('PATCH', `/api/v1/test-runs/${runs.find((r: any) => r.testKey === t2.key).id}`, { status: 'PASS' })
+  const bug = (await call('POST', `/api/v1/test-runs/${runs.find((r: any) => r.testKey === t1.key).id}/defects`, { title: 'Card declined' })).body.defect
+  const jql = async (q: string, who = 'owner@x.com') => {
+    const r = await call('GET', `/api/v1/search?resolution=all&jql=${encodeURIComponent(q)}`, undefined, who)
+    return r.status === 200 ? r.body.items.map((i: any) => i.key).sort() : r
+  }
+  const keys = (...xs: any[]) => xs.map(x => x.key).sort()
+  assert.deepEqual(await jql(`issue in requirementTests("${story.key}")`), keys(t1, t2))
+  assert.deepEqual(await jql(`issue in testRequirements("${t3.key}", "${t1.key}")`), keys(story, other))
+  assert.deepEqual(await jql(`issue in testSetTests("${set.key}")`), keys(t1, t2))
+  assert.deepEqual(await jql(`issue in testPlanTests("${plan.key}")`), keys(t1, t2, t3))
+  assert.deepEqual(await jql(`issue in testPlanTests("${plan.key}", "FAIL", "To do")`), keys(t1, t3))     // keys or names; a test not run is to do
+  assert.deepEqual(await jql(`issue in testExecutionTests("${exec.key}", PASS)`), keys(t2))
+  assert.deepEqual(await jql(`project = TRC AND issue not in testPlanTests("${plan.key}") AND type = test`), [])
+  // mistakes, and items the searcher can't see, say so the same way
+  assert.match((await jql(`issue in testSetTests("${plan.key}")`)).body.error, /isn’t a Test Set/)
+  assert.match((await jql(`issue in testPlanTests("${plan.key}", "SOMETIMES")`)).body.error, /no test status/)
+  const lvl = (await call('POST', '/api/v1/projects/TRC/security-levels', { name: 'Admins', members: [{ kind: 'role', role: 'admin' }] })).body
+  await call('PATCH', `/api/v1/issues/${set.key}`, { securityLevelId: lvl.id })
+  assert.match((await jql(`issue in testSetTests("${set.key}")`, 'trc.viewer@x.com')).body.error, new RegExp(`no work item ${set.key}`))
+  assert.match((await jql('issue in testSetTests("TRC-999")', 'trc.viewer@x.com')).body.error, /no work item TRC-999/)
+  // traceability: each requirement, its coverage, its tests' results in the scope, their defects
+  const tr = (await call('GET', `/api/v1/projects/TRC/reports/traceability?plan=${plan.key}`)).body
+  const pay = tr.find((r: any) => r.key === story.key)
+  assert.deepEqual([pay.status, pay.tests.map((t: any) => [t.key, t.status, t.defects.map((x: any) => x.key)])], ['NOK', [[t1.key, 'FAIL', [bug.key]], [t2.key, 'PASS', []]]])
+  assert.deepEqual(tr.find((r: any) => r.key === other.key).status, 'NOTRUN')
+  assert.ok(!tr.some((r: any) => r.key === bug.key || r.key === t1.key))          // bugs and tests aren't requirements
+  // test runs: newest first; by status
+  const tr2 = (await call('GET', `/api/v1/projects/TRC/reports/test-runs?plan=${plan.key}&status=FAIL`)).body
+  assert.deepEqual(tr2.map((r: any) => r.testKey), [t1.key])
+  assert.equal((await call('GET', '/api/v1/projects/TRC/reports/test-runs')).body.length, 3)
+})
+
 test('report data: every live item and every status change in order, for people who can see the project', { skip }, async () => {
   const p = (await call('POST', '/api/v1/projects', { name: 'Reports', key: 'REP', template: 'kanban' })).body
   const [a, b, c] = p.statuses
@@ -2485,6 +2532,8 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     'GET /test-statuses': ['any', '/test-statuses'],
     'GET /issues/{key}/coverage': ['read', `/issues/${K}-1/coverage`],
     'GET /projects/{key}/test-results': ['read', `/projects/${K}/test-results`],
+    'GET /projects/{key}/reports/traceability': ['read', `/projects/${K}/reports/traceability`],
+    'GET /projects/{key}/reports/test-runs': ['read', `/projects/${K}/reports/test-runs`],
     'POST /testing/import/{format}': ['write', `/testing/import/xray?projectKey=${K}`, { tests: [{ testKey: mtest, status: 'PASS' }] }],
     'POST /admin/test-statuses': ['gadmin', '/admin/test-statuses', { kind: 'run', name: 'Matrix status', color: '#123456', mapsTo: 'unknown' }],
     'PATCH /admin/test-statuses/{kind}/{key}': ['gadmin', '/admin/test-statuses/run/PASS', { color: '#16A34A' }],

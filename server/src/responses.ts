@@ -215,6 +215,12 @@ export const RESPONSES: Record<string, z.ZodType> = {
     subRequirements: z.array(z.object({ id, key: z.string(), title: z.string(), status: z.enum(['OK', 'NOK', 'NOTRUN', 'UNKNOWN', 'UNCOVERED']) })),
   }),
   'GET /projects/:key/test-results': z.array(z.object({ testId: id, key: z.string(), status: nullable(z.string()) })),
+  'GET /projects/:key/reports/traceability': z.array(z.object({
+    id, key: z.string(), title: z.string(), type: z.string(), status: z.enum(['OK', 'NOK', 'NOTRUN', 'UNKNOWN', 'UNCOVERED']),
+    tests: z.array(z.object({ id, key: z.string(), title: z.string(), status: nullable(z.string()),
+      defects: z.array(z.object({ id, key: z.string(), title: z.string(), done: z.boolean() })) })),
+  })),
+  'GET /projects/:key/reports/test-runs': z.array(TestRun),
   'POST /admin/test-statuses': TestStatus,
   'PATCH /admin/test-statuses/:kind/:key': TestStatus,
   'GET /issues/:key/runs': z.array(TestRun),

@@ -1418,3 +1418,11 @@ h2.empty-title, h2.section-title, h2.side-title { margin: 0 }
 .link-btn { text-align: left; width: 100%; padding: 0; background: none; border: 0; color: inherit; cursor: pointer }
 .link-btn:hover { color: var(--accent) }
 .ci-hint { white-space: pre-wrap; font-size: 11px; padding: 10px; background: var(--sunken); border-radius: var(--radius); margin-top: 6px; overflow-x: auto }
+
+/* Testing reports */
+.report-scope { max-width: 520px; margin-bottom: 10px }
+.coverage-bar { height: 12px; margin: 6px 0 }
+.coverage-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 6px 0; font-size: 13px; align-items: center }
+.trace-table .trace-cont td { border-top: 0 }
+.trace-defect { margin-right: 6px }
+.trace-defect.is-done { text-decoration: line-through; color: var(--text-3) }

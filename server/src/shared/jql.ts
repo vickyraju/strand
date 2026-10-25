@@ -2,11 +2,12 @@
 //   project = PAY AND (status = "In progress" OR priority in (high, urgent)) AND assignee = currentUser() ORDER BY created DESC
 // Clauses: field op value. Ops: = != in, not in, ~ !~ (text contains), > >= < <= (numbers and dates), is empty, is not empty.
 // Values: words, "quoted text", numbers, dates (2026-10-01), relative dates (-7d, 2w, 1h), and functions: currentUser(),
-// now(), startOfDay(), endOfDay(), startOfWeek(), openSprints(), closedSprints(), membersOf("group").
+// now(), startOfDay(), endOfDay(), startOfWeek(), openSprints(), closedSprints(), membersOf("group"), and Xray's test functions:
+// issue in requirementTests("PAY-1"), testRequirements(…), testSetTests(…), testPlanTests("PAY-9", "FAIL"), testExecutionTests(…).
 // Combine with AND, OR, NOT and parentheses; sort with ORDER BY field [ASC|DESC], …  Pure: parsed here, run elsewhere.
 
 export type Op = '=' | '!=' | 'in' | 'not in' | '~' | '!~' | '>' | '>=' | '<' | '<=' | 'is empty' | 'is not empty'
-export type Value = { kind: 'text'; text: string } | { kind: 'fn'; name: string; arg?: string }
+export type Value = { kind: 'text'; text: string } | { kind: 'fn'; name: string; arg?: string; args?: string[] }
 export interface Clause { kind: 'clause'; field: string; op: Op; values: Value[] }
 export interface Not { kind: 'not'; item: Node }
 export interface Group { kind: 'and' | 'or'; items: Node[] }
@@ -21,7 +22,7 @@ export class JqlError extends Error {
 
 /** The fields JQL knows (with Jira's other names for them). Anything else is read as a custom field's name. */
 export const FIELDS: Record<string, string> = {
-  project: 'project', key: 'key', issuekey: 'key', id: 'key',
+  project: 'project', key: 'key', issuekey: 'key', id: 'key', issue: 'key',
   type: 'type', issuetype: 'type', status: 'status', statuscategory: 'statusCategory', priority: 'priority',
   assignee: 'assignee', reporter: 'reporter', labels: 'labels', label: 'labels', component: 'component', components: 'component',
   fixversion: 'fixVersion', release: 'fixVersion', affectedversion: 'affectedVersion', affectsversion: 'affectedVersion',
@@ -74,11 +75,16 @@ export function parseJql(src: string): Query {
     p++
     if (t.t === 'word' && peek()?.t === '(') {                       // a function: name(…)
       p++
-      let arg: string | undefined
-      if (peek()?.t === 'word' || peek()?.t === 'str') arg = toks[p++]!.v
+      const args: string[] = []
+      while (peek()?.t === 'word' || peek()?.t === 'str') {
+        args.push(toks[p++]!.v)
+        if (peek()?.t === ',') p++
+        else break
+      }
       if (peek()?.t !== ')') fail('Expected “)” to close the function')
       p++
-      return arg === undefined ? { kind: 'fn', name: t.v.toLowerCase() } : { kind: 'fn', name: t.v.toLowerCase(), arg }
+      const name = t.v.toLowerCase()
+      return !args.length ? { kind: 'fn', name } : args.length === 1 ? { kind: 'fn', name, arg: args[0] } : { kind: 'fn', name, arg: args[0], args }
     }
     return { kind: 'text', text: t.v }
   }
@@ -107,6 +113,8 @@ export function parseJql(src: string): Query {
     else if (kw('is') && (kw('null', 1) || kw('not', 1) && kw('null', 2))) { const neg = kw('not', 1); p += neg ? 3 : 2; return { kind: 'clause', field, op: neg ? 'is not empty' : 'is empty', values: [] } }
     else return fail(`Expected an operator after ${f.v}: =, !=, in, ~, >, <, is empty…`)
     if (op === 'in' || op === 'not in') {
+      // a function that stands for a list, as in Jira: issue in testPlanTests("PAY-9"), sprint in openSprints()
+      if (peek()?.t === 'word' && peek(1)?.t === '(') return { kind: 'clause', field, op, values: [value()] }
       if (peek()?.t !== '(') fail('Expected “(” and a list, such as (high, urgent)')
       p++
       const values = [value()]
