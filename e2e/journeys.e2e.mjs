@@ -354,6 +354,31 @@ test('notification settings: turning off Inbox for assignments stops them reachi
   assert.deepEqual(m.problems, [])
 })
 
+test('issue security: an item given a level vanishes for people outside it, on the board and in search', { skip, timeout: 60_000 }, async () => {
+  await owner('POST', '/projects', { name: 'Vault', key: 'VLT', template: 'kanban' })
+  await owner('POST', '/projects/VLT/members', { userIds: [await idOf('maya@e2e.test')], role: 'member' })
+  await owner('POST', '/projects/VLT/issues', { title: 'Ordinary task' })
+  const secret = (await owner('POST', '/projects/VLT/issues', { title: 'Embargoed fix' })).body
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url('/project/VLT/settings'))
+  await o.click('section[aria-label="Security levels"] button:has-text("Add level")')
+  await o.fill('#sl-name', 'Security team')
+  await o.click('.modal button:has-text("Save")')
+  await o.waitForSelector('section[aria-label="Security levels"] >> text=Security team')
+  await o.goto(url(`/i/${secret.key}`))
+  await o.click('.detail [title="Security level"]')
+  await o.click('.picker-menu .picker-item:has-text("Security team")')
+  await o.waitForTimeout(1200)
+  assert.ok((await owner('GET', `/issues/${secret.key}`)).body.securityLevelId)
+  const m = await signIn('maya@e2e.test')
+  await m.goto(url('/project/VLT/board'))
+  await m.waitForSelector('text=Ordinary task')
+  assert.equal(await m.locator('text=Embargoed fix').count(), 0)
+  await m.goto(url(`/search?q=${encodeURIComponent('Embargoed')}`))
+  await m.waitForSelector('text=0 results')
+  assert.deepEqual([...o.problems, ...m.problems], [])
+})
+
 test('plan a sprint, start it and complete it: unfinished work goes back to the backlog', { skip, timeout: 90_000 }, async () => {
   const p = (await owner('POST', '/projects', { name: 'Sprinting', key: 'SPR', template: 'scrum' })).body
   const done = p.statuses.find(s => s.category === 'done')

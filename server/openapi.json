@@ -1493,6 +1493,65 @@
                         "additionalProperties": false
                       }
                     },
+                    "securityLevels": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "description": "uuid"
+                          },
+                          "projectId": {
+                            "type": "string",
+                            "description": "uuid"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "members": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "enum": [
+                                    "role",
+                                    "group",
+                                    "user",
+                                    "reporter",
+                                    "assignee"
+                                  ]
+                                },
+                                "role": {
+                                  "type": "string"
+                                },
+                                "id": {
+                                  "type": "string",
+                                  "description": "uuid"
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ],
+                              "additionalProperties": false
+                            }
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "projectId",
+                          "name",
+                          "description",
+                          "members"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
                     "fields": {
                       "type": "array",
                       "items": {
@@ -1811,6 +1870,7 @@
                     "transitions",
                     "types",
                     "components",
+                    "securityLevels",
                     "fields",
                     "templates",
                     "rules",
@@ -2427,6 +2487,65 @@
                         "additionalProperties": false
                       }
                     },
+                    "securityLevels": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "description": "uuid"
+                          },
+                          "projectId": {
+                            "type": "string",
+                            "description": "uuid"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "members": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "enum": [
+                                    "role",
+                                    "group",
+                                    "user",
+                                    "reporter",
+                                    "assignee"
+                                  ]
+                                },
+                                "role": {
+                                  "type": "string"
+                                },
+                                "id": {
+                                  "type": "string",
+                                  "description": "uuid"
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ],
+                              "additionalProperties": false
+                            }
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "projectId",
+                          "name",
+                          "description",
+                          "members"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
                     "fields": {
                       "type": "array",
                       "items": {
@@ -2745,6 +2864,7 @@
                     "transitions",
                     "types",
                     "components",
+                    "securityLevels",
                     "fields",
                     "templates",
                     "rules",
@@ -3123,6 +3243,65 @@
                         "additionalProperties": false
                       }
                     },
+                    "securityLevels": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "description": "uuid"
+                          },
+                          "projectId": {
+                            "type": "string",
+                            "description": "uuid"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "members": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "enum": [
+                                    "role",
+                                    "group",
+                                    "user",
+                                    "reporter",
+                                    "assignee"
+                                  ]
+                                },
+                                "role": {
+                                  "type": "string"
+                                },
+                                "id": {
+                                  "type": "string",
+                                  "description": "uuid"
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ],
+                              "additionalProperties": false
+                            }
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "projectId",
+                          "name",
+                          "description",
+                          "members"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
                     "fields": {
                       "type": "array",
                       "items": {
@@ -3441,6 +3620,7 @@
                     "transitions",
                     "types",
                     "components",
+                    "securityLevels",
                     "fields",
                     "templates",
                     "rules",
@@ -3819,6 +3999,65 @@
                         "additionalProperties": false
                       }
                     },
+                    "securityLevels": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "description": "uuid"
+                          },
+                          "projectId": {
+                            "type": "string",
+                            "description": "uuid"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "members": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "enum": [
+                                    "role",
+                                    "group",
+                                    "user",
+                                    "reporter",
+                                    "assignee"
+                                  ]
+                                },
+                                "role": {
+                                  "type": "string"
+                                },
+                                "id": {
+                                  "type": "string",
+                                  "description": "uuid"
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ],
+                              "additionalProperties": false
+                            }
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "projectId",
+                          "name",
+                          "description",
+                          "members"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
                     "fields": {
                       "type": "array",
                       "items": {
@@ -4137,6 +4376,7 @@
                     "transitions",
                     "types",
                     "components",
+                    "securityLevels",
                     "fields",
                     "templates",
                     "rules",
@@ -4551,6 +4791,65 @@
                         "additionalProperties": false
                       }
                     },
+                    "securityLevels": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "description": "uuid"
+                          },
+                          "projectId": {
+                            "type": "string",
+                            "description": "uuid"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "members": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "enum": [
+                                    "role",
+                                    "group",
+                                    "user",
+                                    "reporter",
+                                    "assignee"
+                                  ]
+                                },
+                                "role": {
+                                  "type": "string"
+                                },
+                                "id": {
+                                  "type": "string",
+                                  "description": "uuid"
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ],
+                              "additionalProperties": false
+                            }
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "projectId",
+                          "name",
+                          "description",
+                          "members"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
                     "fields": {
                       "type": "array",
                       "items": {
@@ -4869,6 +5168,7 @@
                     "transitions",
                     "types",
                     "components",
+                    "securityLevels",
                     "fields",
                     "templates",
                     "rules",
@@ -9578,6 +9878,906 @@
         }
       }
     },
+    "/api/v1/projects/{key}/security-levels": {
+      "get": {
+        "summary": "The project's security levels, with who is in each",
+        "tags": [
+          "Project settings"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "description": "Project key (PAY) or id (uuid)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "description": "uuid"
+                      },
+                      "projectId": {
+                        "type": "string",
+                        "description": "uuid"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "type": "string"
+                      },
+                      "items": {
+                        "type": "number"
+                      },
+                      "members": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": [
+                                "role",
+                                "group",
+                                "user",
+                                "reporter",
+                                "assignee"
+                              ]
+                            },
+                            "role": {
+                              "type": "string"
+                            },
+                            "id": {
+                              "type": "string",
+                              "description": "uuid"
+                            }
+                          },
+                          "required": [
+                            "kind"
+                          ],
+                          "additionalProperties": false
+                        }
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "projectId",
+                      "name",
+                      "description",
+                      "items",
+                      "members"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Add a security level (project admins)",
+        "tags": [
+          "Project settings"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 60
+                  },
+                  "description": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 500
+                  },
+                  "members": {
+                    "minItems": 1,
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "oneOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": [
+                                "role"
+                              ]
+                            },
+                            "role": {
+                              "type": "string",
+                              "enum": [
+                                "admin",
+                                "member",
+                                "viewer"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "role"
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": [
+                                "group"
+                              ]
+                            },
+                            "id": {
+                              "type": "string",
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "id"
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": [
+                                "user"
+                              ]
+                            },
+                            "id": {
+                              "type": "string",
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "id"
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": [
+                                "reporter"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "kind"
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": [
+                                "assignee"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "kind"
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "name",
+                  "members"
+                ]
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "description": "Project key (PAY) or id (uuid)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "projectId": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "items": {
+                      "type": "number"
+                    },
+                    "members": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "role",
+                              "group",
+                              "user",
+                              "reporter",
+                              "assignee"
+                            ]
+                          },
+                          "role": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string",
+                            "description": "uuid"
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "projectId",
+                    "name",
+                    "description",
+                    "items",
+                    "members"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{key}/security-levels/{levelId}": {
+      "patch": {
+        "summary": "Change a security level and who is in it (project admins)",
+        "tags": [
+          "Project settings"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 60
+                  },
+                  "description": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 500
+                  },
+                  "members": {
+                    "minItems": 1,
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "oneOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": [
+                                "role"
+                              ]
+                            },
+                            "role": {
+                              "type": "string",
+                              "enum": [
+                                "admin",
+                                "member",
+                                "viewer"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "role"
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": [
+                                "group"
+                              ]
+                            },
+                            "id": {
+                              "type": "string",
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "id"
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": [
+                                "user"
+                              ]
+                            },
+                            "id": {
+                              "type": "string",
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "id"
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": [
+                                "reporter"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "kind"
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": [
+                                "assignee"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "kind"
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "description": "Project key (PAY) or id (uuid)"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "path",
+            "name": "levelId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "projectId": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "items": {
+                      "type": "number"
+                    },
+                    "members": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "role",
+                              "group",
+                              "user",
+                              "reporter",
+                              "assignee"
+                            ]
+                          },
+                          "role": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string",
+                            "description": "uuid"
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "projectId",
+                    "name",
+                    "description",
+                    "items",
+                    "members"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Remove a security level (project admins). Items with it move to `moveTo`, or to no level with `moveTo=none`; one in use needs either",
+        "tags": [
+          "Project settings"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                },
+                {
+                  "type": "string",
+                  "enum": [
+                    "none"
+                  ]
+                }
+              ]
+            },
+            "in": "query",
+            "name": "moveTo",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "description": "Project key (PAY) or id (uuid)"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "path",
+            "name": "levelId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/projects/{key}/types": {
       "post": {
         "summary": "Add a work type (project admins)",
@@ -13932,6 +15132,11 @@
                               "description": "uuid"
                             }
                           },
+                          "securityLevelId": {
+                            "nullable": true,
+                            "type": "string",
+                            "description": "uuid"
+                          },
                           "dueDate": {
                             "nullable": true,
                             "type": "string",
@@ -14020,6 +15225,7 @@
                           "timeRemaining",
                           "componentIds",
                           "affectsReleaseIds",
+                          "securityLevelId",
                           "dueDate",
                           "startDate",
                           "sprintId",
@@ -14367,6 +15573,11 @@
                               "description": "uuid"
                             }
                           },
+                          "securityLevelId": {
+                            "nullable": true,
+                            "type": "string",
+                            "description": "uuid"
+                          },
                           "dueDate": {
                             "nullable": true,
                             "type": "string",
@@ -14455,6 +15666,7 @@
                           "timeRemaining",
                           "componentIds",
                           "affectsReleaseIds",
+                          "securityLevelId",
                           "dueDate",
                           "startDate",
                           "sprintId",
@@ -14671,6 +15883,13 @@
                     "format": "uuid",
                     "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                   },
+                  "securityLevelId": {
+                    "nullable": true,
+                    "description": "Security level: only its members see the item (null: everyone in the project)",
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
                   "componentIds": {
                     "maxItems": 50,
                     "type": "array",
@@ -14832,6 +16051,11 @@
                         "description": "uuid"
                       }
                     },
+                    "securityLevelId": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "uuid"
+                    },
                     "dueDate": {
                       "nullable": true,
                       "type": "string",
@@ -14920,6 +16144,7 @@
                     "timeRemaining",
                     "componentIds",
                     "affectsReleaseIds",
+                    "securityLevelId",
                     "dueDate",
                     "startDate",
                     "sprintId",
@@ -15176,6 +16401,11 @@
                         "description": "uuid"
                       }
                     },
+                    "securityLevelId": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "uuid"
+                    },
                     "dueDate": {
                       "nullable": true,
                       "type": "string",
@@ -15264,6 +16494,7 @@
                     "timeRemaining",
                     "componentIds",
                     "affectsReleaseIds",
+                    "securityLevelId",
                     "dueDate",
                     "startDate",
                     "sprintId",
@@ -15482,6 +16713,11 @@
                         "description": "uuid"
                       }
                     },
+                    "securityLevelId": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "uuid"
+                    },
                     "dueDate": {
                       "nullable": true,
                       "type": "string",
@@ -15624,6 +16860,31 @@
                             "nullable": true,
                             "type": "string",
                             "description": "ISO 8601 timestamp"
+                          },
+                          "visibility": {
+                            "nullable": true,
+                            "description": "Who can read it; null: everyone who sees the item",
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "enum": [
+                                  "role",
+                                  "group"
+                                ]
+                              },
+                              "role": {
+                                "type": "string"
+                              },
+                              "id": {
+                                "type": "string",
+                                "description": "uuid"
+                              }
+                            },
+                            "required": [
+                              "kind"
+                            ],
+                            "additionalProperties": false
                           }
                         },
                         "required": [
@@ -15632,7 +16893,8 @@
                           "authorId",
                           "body",
                           "createdAt",
-                          "editedAt"
+                          "editedAt",
+                          "visibility"
                         ],
                         "additionalProperties": false
                       }
@@ -15858,6 +17120,11 @@
                               "description": "uuid"
                             }
                           },
+                          "securityLevelId": {
+                            "nullable": true,
+                            "type": "string",
+                            "description": "uuid"
+                          },
                           "dueDate": {
                             "nullable": true,
                             "type": "string",
@@ -15946,6 +17213,7 @@
                           "timeRemaining",
                           "componentIds",
                           "affectsReleaseIds",
+                          "securityLevelId",
                           "dueDate",
                           "startDate",
                           "sprintId",
@@ -15981,6 +17249,7 @@
                     "timeRemaining",
                     "componentIds",
                     "affectsReleaseIds",
+                    "securityLevelId",
                     "dueDate",
                     "startDate",
                     "sprintId",
@@ -16185,6 +17454,13 @@
                     "format": "uuid",
                     "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                   },
+                  "securityLevelId": {
+                    "nullable": true,
+                    "description": "Security level: only its members see the item (null: everyone in the project)",
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
                   "componentIds": {
                     "maxItems": 50,
                     "type": "array",
@@ -16355,6 +17631,11 @@
                         "description": "uuid"
                       }
                     },
+                    "securityLevelId": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "uuid"
+                    },
                     "dueDate": {
                       "nullable": true,
                       "type": "string",
@@ -16443,6 +17724,7 @@
                     "timeRemaining",
                     "componentIds",
                     "affectsReleaseIds",
+                    "securityLevelId",
                     "dueDate",
                     "startDate",
                     "sprintId",
@@ -16721,6 +18003,31 @@
                             "nullable": true,
                             "type": "string",
                             "description": "ISO 8601 timestamp"
+                          },
+                          "visibility": {
+                            "nullable": true,
+                            "description": "Who can read it; null: everyone who sees the item",
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "enum": [
+                                  "role",
+                                  "group"
+                                ]
+                              },
+                              "role": {
+                                "type": "string"
+                              },
+                              "id": {
+                                "type": "string",
+                                "description": "uuid"
+                              }
+                            },
+                            "required": [
+                              "kind"
+                            ],
+                            "additionalProperties": false
                           }
                         },
                         "required": [
@@ -16729,7 +18036,8 @@
                           "authorId",
                           "body",
                           "createdAt",
-                          "editedAt"
+                          "editedAt",
+                          "visibility"
                         ],
                         "additionalProperties": false
                       }
@@ -16833,7 +18141,7 @@
         }
       },
       "post": {
-        "summary": "Add a comment (notifies watchers)",
+        "summary": "Add a comment (notifies watchers who may read it)",
         "tags": [
           "Comments & work logs"
         ],
@@ -16854,6 +18162,55 @@
                     "type": "string",
                     "format": "uuid",
                     "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  "visibility": {
+                    "nullable": true,
+                    "description": "Who can read it (Jira's comment visibility): a project role or a group; null or left out: everyone who sees the item",
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "role"
+                            ]
+                          },
+                          "role": {
+                            "type": "string",
+                            "enum": [
+                              "admin",
+                              "member",
+                              "viewer"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "role"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "group"
+                            ]
+                          },
+                          "id": {
+                            "type": "string",
+                            "format": "uuid",
+                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "id"
+                        ]
+                      }
+                    ]
                   }
                 },
                 "required": [
@@ -16906,6 +18263,31 @@
                       "nullable": true,
                       "type": "string",
                       "description": "ISO 8601 timestamp"
+                    },
+                    "visibility": {
+                      "nullable": true,
+                      "description": "Who can read it; null: everyone who sees the item",
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "role",
+                            "group"
+                          ]
+                        },
+                        "role": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string",
+                          "description": "uuid"
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ],
+                      "additionalProperties": false
                     }
                   },
                   "required": [
@@ -16914,7 +18296,8 @@
                     "authorId",
                     "body",
                     "createdAt",
-                    "editedAt"
+                    "editedAt",
+                    "visibility"
                   ],
                   "additionalProperties": false
                 }
@@ -17458,6 +18841,13 @@
                         "format": "uuid",
                         "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                       },
+                      "securityLevelId": {
+                        "nullable": true,
+                        "description": "Security level: only its members see the item (null: everyone in the project)",
+                        "type": "string",
+                        "format": "uuid",
+                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                      },
                       "componentIds": {
                         "maxItems": 50,
                         "type": "array",
@@ -17625,6 +19015,11 @@
                         "description": "uuid"
                       }
                     },
+                    "securityLevelId": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "uuid"
+                    },
                     "dueDate": {
                       "nullable": true,
                       "type": "string",
@@ -17713,6 +19108,7 @@
                     "timeRemaining",
                     "componentIds",
                     "affectsReleaseIds",
+                    "securityLevelId",
                     "dueDate",
                     "startDate",
                     "sprintId",
@@ -17931,6 +19327,13 @@
                         "format": "uuid",
                         "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                       },
+                      "securityLevelId": {
+                        "nullable": true,
+                        "description": "Security level: only its members see the item (null: everyone in the project)",
+                        "type": "string",
+                        "format": "uuid",
+                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                      },
                       "componentIds": {
                         "maxItems": 50,
                         "type": "array",
@@ -18086,6 +19489,11 @@
                               "description": "uuid"
                             }
                           },
+                          "securityLevelId": {
+                            "nullable": true,
+                            "type": "string",
+                            "description": "uuid"
+                          },
                           "dueDate": {
                             "nullable": true,
                             "type": "string",
@@ -18174,6 +19582,7 @@
                           "timeRemaining",
                           "componentIds",
                           "affectsReleaseIds",
+                          "securityLevelId",
                           "dueDate",
                           "startDate",
                           "sprintId",
@@ -18764,6 +20173,11 @@
                         "description": "uuid"
                       }
                     },
+                    "securityLevelId": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "uuid"
+                    },
                     "dueDate": {
                       "nullable": true,
                       "type": "string",
@@ -18852,6 +20266,7 @@
                     "timeRemaining",
                     "componentIds",
                     "affectsReleaseIds",
+                    "securityLevelId",
                     "dueDate",
                     "startDate",
                     "sprintId",
@@ -19680,6 +21095,31 @@
                       "nullable": true,
                       "type": "string",
                       "description": "ISO 8601 timestamp"
+                    },
+                    "visibility": {
+                      "nullable": true,
+                      "description": "Who can read it; null: everyone who sees the item",
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "role",
+                            "group"
+                          ]
+                        },
+                        "role": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string",
+                          "description": "uuid"
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ],
+                      "additionalProperties": false
                     }
                   },
                   "required": [
@@ -19688,7 +21128,8 @@
                     "authorId",
                     "body",
                     "createdAt",
-                    "editedAt"
+                    "editedAt",
+                    "visibility"
                   ],
                   "additionalProperties": false
                 }

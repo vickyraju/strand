@@ -30,6 +30,7 @@ const TABLES: [table: string, where: string][] = [
   ['projects', 'id = $1'],
   ['statuses', 'project_id = $1'],
   ['work_types', 'project_id = $1'],
+  ['security_levels', 'project_id = $1'],
   ['transitions', 'project_id = $1'],
   ['field_defs', 'project_id = $1'],
   ['releases', 'project_id = $1'],

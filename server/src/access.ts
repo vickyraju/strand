@@ -43,6 +43,20 @@ export async function canJoinWork(d: Db, projectId: string, userId: string): Pro
   return rows.length > 0
 }
 
+/** An SQL condition: the item aliased `i` passes its security level for me (`userParam` is the parameter holding my id).
+ *  Goes with a project condition (visible/visibleAs): the level narrows who sees an item, never widens it. */
+export const levelOk = (me: Me, userParam: number, alias = 'i'): string =>
+  `(${alias}.security_level_id is null or issue_visible(${alias}.security_level_id, ${alias}.reporter_id, ${alias}.assignee_id, ${alias}.project_id, $${userParam}::uuid, ${me.admin}))`
+
+/** An SQL condition: comment `c` is shown to me. A comment limited to a project role or a group (Jira's comment
+ *  visibility) is shown to that role's or group's people, and to its author. */
+export const commentShown = (me: Me, projectId: string, userParam: number): string => {
+  const pid = projectId.replace(/[^0-9a-f-]/gi, '')                    // a uuid from the database, inlined as a literal
+  return `(c.visibility is null or c.author_id = $${userParam}::uuid
+    or (c.visibility->>'kind' = 'role' and (${me.admin ? `c.visibility->>'role' = 'admin' or ` : ''}exists (select 1 from project_access pa where pa.project_id = '${pid}' and pa.user_id = $${userParam}::uuid and pa.role = c.visibility->>'role')))
+    or (c.visibility->>'kind' = 'group' and exists (select 1 from group_members g where g.group_id = (c.visibility->>'id')::uuid and g.user_id = $${userParam}::uuid)))`
+}
+
 /** Like `visible`, for a query that already passes my user id as parameter number `userParam` (so no new parameter is needed). */
 export const visibleAs = (me: Me, col: string, userParam: number): string =>
   me.admin ? `${col} in (${LIVE})` : `${col} in (select project_id from project_access where user_id = $${userParam} and project_id in (${LIVE}))`
