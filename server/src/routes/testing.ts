@@ -407,7 +407,9 @@ const plugin: FastifyPluginAsyncZod = async app => {
         const type = (await d.query('select 1 from work_types where project_id = $1 and key = $2', [e.projectId, 'bug'])).length ? 'bug' : 'task'
         defectId = await insertIssue(d, req.me, e.projectId, { type, title: b.title, description: [b.description?.trim(), context].filter(Boolean).join('\n\n') }, `Raised from a test run (${r.testKey})`)
       }
-      await d.query(`insert into issue_links (issue_id, target_id, type) values ($1, $2, 'defect') on conflict do nothing`, [r.testId, defectId])
+      // the link goes on the test, so it needs edit rights there, as any link does; without them the run still records it
+      const canEditTest = await issueByKey(d, { me: req.me, method: 'PATCH' }, r.testId).then(() => true, (err: any) => { if (err?.status === 403) return false; throw err })
+      if (canEditTest) await d.query(`insert into issue_links (issue_id, target_id, type) values ($1, $2, 'defect') on conflict do nothing`, [r.testId, defectId])
       const steps = (r.steps as any[]).map(s => (s.id === b.stepId && !s.defectIds.includes(defectId) ? { ...s, defectIds: [...s.defectIds, defectId] } : s))
       await d.query(`update test_runs set steps = $2, defect_ids = case when $3::uuid = any(defect_ids) then defect_ids else defect_ids || $3::uuid end,
                      version = version + 1, updated_at = now() where id = $1`, [r.id, JSON.stringify(steps), defectId])
