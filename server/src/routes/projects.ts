@@ -357,6 +357,65 @@ const plugin: FastifyPluginAsyncZod = async app => {
     })
   }
 
+  // ── Security levels (Jira's issue security): who can see an item given a level; project admins manage them ──
+  const member = z.discriminatedUnion('kind', [
+    z.object({ kind: z.literal('role'), role: z.enum(['admin', 'member', 'viewer']) }),
+    z.object({ kind: z.literal('group'), id: uuid }), z.object({ kind: z.literal('user'), id: uuid }),
+    z.object({ kind: z.literal('reporter') }), z.object({ kind: z.literal('assignee') }),
+  ])
+  const levelBody = z.object({ name: z.string().trim().min(1).max(60), description: z.string().max(500).default(''), members: z.array(member).min(1).max(50) })
+  const levelP = keyP.extend({ levelId: uuid })
+  const levels = (d: Db, projectId: string) => d.query(
+    `select l.*, (select count(*)::int from issues i where i.security_level_id = l.id) as items from security_levels l where l.project_id = $1 order by l.name`, [projectId])
+  app.get('/projects/:key/security-levels', { schema: { tags: T.config, summary: 'The project\'s security levels, with who is in each', params: keyP } }, async req => {
+    const p = await projectByKey(db, req, req.params.key)
+    return levels(db, p.id)
+  })
+  app.post('/projects/:key/security-levels', { schema: { tags: T.config, summary: 'Add a security level (project admins)', params: keyP, body: levelBody } }, async (req, reply) => {
+    const p = await projectByKey(db, req, req.params.key)
+    await requireProjectAdmin(req, p)
+    return tx(async d => {
+      const [row] = await d.query<{ id: string }>('insert into security_levels (project_id, name, description, members) values ($1, $2, $3, $4) returning id',
+        [p.id, req.body.name, req.body.description, JSON.stringify(req.body.members)])
+      await audit(d, req, { action: 'project.security_level.created', type: 'security level', id: row!.id, name: req.body.name, project: p, after: req.body })
+      reply.code(201)
+      return (await levels(d, p.id)).find((l: any) => l.id === row!.id)
+    })
+  })
+  app.patch('/projects/:key/security-levels/:levelId', { schema: { tags: T.config, summary: 'Change a security level and who is in it (project admins)', params: levelP, body: levelBody.partial() } }, async req => {
+    const p = await projectByKey(db, req, req.params.key)
+    await requireProjectAdmin(req, p)
+    return tx(async d => {
+      const [before] = await d.query<any>('select name, description, members from security_levels where id = $1 and project_id = $2 for update', [req.params.levelId, p.id])
+      if (!before) throw new HttpError(404, 'No such security level')
+      const next = { ...before, ...req.body }
+      await d.query('update security_levels set name = $2, description = $3, members = $4 where id = $1', [req.params.levelId, next.name, next.description, JSON.stringify(next.members)])
+      const c = changes(before, next)
+      if (c.changed) await audit(d, req, { action: 'project.security_level.updated', type: 'security level', id: req.params.levelId, name: next.name, project: p, before: c.before, after: c.after })
+      return (await levels(d, p.id)).find((l: any) => l.id === req.params.levelId)
+    })
+  })
+  app.delete('/projects/:key/security-levels/:levelId', { schema: {
+    tags: T.config, summary: 'Remove a security level (project admins). Items with it move to `moveTo`, or to no level with `moveTo=none`; one in use needs either',
+    params: levelP, querystring: z.object({ moveTo: z.union([uuid, z.literal('none')]).optional() }),
+  } }, async (req, reply) => {
+    const p = await projectByKey(db, req, req.params.key)
+    await requireProjectAdmin(req, p)
+    await tx(async d => {
+      const [l] = await d.query<any>('select name from security_levels where id = $1 and project_id = $2 for update', [req.params.levelId, p.id])
+      if (!l) throw new HttpError(404, 'No such security level')
+      const [{ n }] = await d.query<{ n: number }>('select count(*)::int as n from issues where security_level_id = $1', [req.params.levelId]) as any
+      const moveTo = req.query.moveTo
+      if (n && !moveTo) throw new HttpError(409, `${n} work items have this level: choose another level for them, or none (moveTo)`)
+      if (moveTo && moveTo !== 'none' && (moveTo === req.params.levelId || !(await d.query('select 1 from security_levels where id = $1 and project_id = $2', [moveTo, p.id])).length))
+        throw new HttpError(400, 'Choose another level of this project, or none')
+      if (n) await d.query('update issues set security_level_id = $2, version = version + 1, updated_at = now() where security_level_id = $1', [req.params.levelId, moveTo === 'none' ? null : moveTo])
+      await d.query('delete from security_levels where id = $1', [req.params.levelId])
+      await audit(d, req, { action: 'project.security_level.deleted', type: 'security level', id: req.params.levelId, name: l.name, project: p, before: { items: n }, after: { movedTo: moveTo ?? null } })
+    })
+    reply.code(204).send()
+  })
+
   // ── Work types (Jira's issue types): the built-in four can be renamed and recoloured; a project can add its own,
   // and removing one moves its items to another type ──
   const ICONS = ['zap', 'bookmark', 'check', 'bug', 'flag', 'star', 'wrench', 'book', 'shield', 'lightbulb', 'rocket', 'circle'] as const
@@ -613,9 +672,9 @@ export async function projectDetail(d: Db, ws: string, key: string, role: Projec
   // Sequential: `d` may be a single transaction connection, which can't run queries in parallel
   const statuses = await by('statuses', 'position'), transitions = await by('transitions', 'id'), types = await by('work_types', 'position, name')
   const fields = await by('field_defs', 'position'), templates = await by('item_templates', 'name')
-  const rules = await by('rules', 'id'), releases = await by('releases', 'release_date nulls last, id'), components = await by('components', 'lower(name)')
+  const rules = await by('rules', 'id'), releases = await by('releases', 'release_date nulls last, id'), components = await by('components', 'lower(name)'), securityLevels = await by('security_levels', 'name')
   const sprints = await by('sprints', 'created_at')
-  return { ...project, role, statuses, transitions, types, fields, templates, rules, releases, components, sprints }
+  return { ...project, role, statuses, transitions, types, fields, templates, rules, releases, components, securityLevels, sprints }
 }
 
 export default plugin

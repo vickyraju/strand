@@ -59,6 +59,7 @@ export function mapProject(p: Row): Project {
     fields: (p.fields ?? []).map(mapField),
     releases: (p.releases ?? []).map(mapRelease),
     templates: (p.templates ?? []).map(mapTemplate),
+    ...(p.securityLevels?.length ? { securityLevels: p.securityLevels.map((l: Row) => ({ id: l.id, name: l.name, description: l.description ?? '', members: l.members })) } : {}),
     ...(p.components?.length ? { components: p.components.map((c: Row) => ({ id: c.id, name: c.name, description: c.description ?? '', defaultAssignee: c.defaultAssignee, ...(c.leadId ? { leadId: c.leadId } : {}) })) } : {}),
     ...(p.types?.length ? { types: p.types.map((t: Row) => ({ key: t.key, name: t.name, color: t.color, icon: t.icon })) } : {}),
     ...(p.role ? { role: p.role } : {}),
@@ -90,6 +91,7 @@ export const mapIssue = (i: Row): Issue => ({
   ...(i.timeEstimate != null ? { timeEstimate: i.timeEstimate } : {}),
   ...(i.timeRemaining != null ? { timeRemaining: i.timeRemaining } : {}),
   ...(i.componentIds?.length ? { componentIds: i.componentIds } : {}),
+  ...(i.securityLevelId ? { securityLevelId: i.securityLevelId } : {}),
   ...(i.affectsReleaseIds?.length ? { affectsReleaseIds: i.affectsReleaseIds } : {}),
   ...(i.dueDate ? { dueDate: i.dueDate } : {}), ...(i.startDate ? { startDate: i.startDate } : {}),
   ...(i.sprintId ? { sprintId: i.sprintId } : {}), ...(i.releaseId ? { releaseId: i.releaseId } : {}),
@@ -131,6 +133,7 @@ export function notificationReason(text: string, actorName: string | undefined, 
 
 export const mapComment = (c: Row): Comment => ({
   id: c.id, issueId: c.issueId, authorId: c.authorId ?? '', body: c.body, createdAt: ms(c.createdAt) ?? Date.now(),
+  ...(c.visibility ? { visibility: c.visibility } : {}),
   ...(c.editedAt ? { editedAt: ms(c.editedAt) } : {}),
 })
 export const mapActivity = (a: Row): Activity => ({

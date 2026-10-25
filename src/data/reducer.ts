@@ -5,6 +5,13 @@ import { adjustRemaining, type Adjust } from '../../server/src/shared/estimates.
 // ── Types ──────────────────────────────────────────────────
 
 export type Template  = 'kanban' | 'scrum'
+export type LevelMember = { kind: 'role'; role: 'admin' | 'member' | 'viewer' } | { kind: 'group'; id: string } | { kind: 'user'; id: string } | { kind: 'reporter' } | { kind: 'assignee' }
+export interface SecurityLevel { id: string; name: string; description: string; members: LevelMember[]; items?: number }
+/** Am I in this level, for this item? (The server decides; this hides choices it would refuse.) */
+export function inLevel(level: SecurityLevel, me: { id: string; role?: string | null; groupIds: string[] }, item: { reporterId?: string; assigneeId?: string }) {
+  return level.members.some(m => m.kind === 'reporter' ? item.reporterId === me.id : m.kind === 'assignee' ? item.assigneeId === me.id
+    : m.kind === 'user' ? m.id === me.id : m.kind === 'group' ? me.groupIds.includes(m.id) : me.role === m.role)
+}
 export interface Component { id: string; name: string; description: string; leadId?: string; defaultAssignee: 'none' | 'component_lead' | 'project_lead' }
 
 /** Jira's component default assignee: new work in a component, with nobody chosen, goes to its lead or the project's. */
@@ -92,6 +99,8 @@ export interface Project {
   fields:      FieldDef[]
   releases:    Release[]
   templates:   ItemTemplate[]
+  /** Security levels (Jira's issue security), from the server */
+  securityLevels?: SecurityLevel[]
   /** Components (Jira's): parts of the project, each with a lead and a default assignee for new work in it */
   components?: Component[]
   /** Work types (Jira's issue types); missing in a project saved before they were configurable: the built-in four */
@@ -252,6 +261,8 @@ export interface Issue {
   resolvedAt?: number
   /** Original time estimate in minutes. */
   timeEstimate?: number
+  /** Security level (Jira's issue security): only its members see the item */
+  securityLevelId?: string
   /** Remaining estimate in minutes (Jira's): starts at the original estimate, counts down as work is logged. */
   timeRemaining?: number
   /** Components of the project it belongs to (Jira's). */
@@ -281,6 +292,8 @@ export interface Sprint {
   issueIds?:    string[]
 }
 
+/** Who can read a comment (Jira's comment visibility): a project role or a group. Unset: everyone who sees the item. */
+export type CommentVisibility = { kind: 'role'; role: 'admin' | 'member' | 'viewer' } | { kind: 'group'; id: string }
 export interface Comment {
   id:        string
   issueId:   string
@@ -288,6 +301,7 @@ export interface Comment {
   body:      string
   createdAt: number
   editedAt?: number
+  visibility?: CommentVisibility
 }
 
 export interface Activity {
@@ -344,7 +358,7 @@ export interface State {
 }
 
 export type ProjectPatch = Partial<Pick<Project,
-  'name' | 'description' | 'color' | 'leadId' | 'statuses' | 'transitions' | 'layout' | 'boardPrefs' | 'rules' | 'fields' | 'releases' | 'templates' | 'types' | 'components'>>
+  'name' | 'description' | 'color' | 'leadId' | 'statuses' | 'transitions' | 'layout' | 'boardPrefs' | 'rules' | 'fields' | 'releases' | 'templates' | 'types' | 'components' | 'securityLevels'>>
 export type IssuePatch = Partial<Omit<Issue, 'id' | 'key' | 'projectId' | 'reporterId' | 'createdAt' | 'watcherIds' | 'links' | 'attachments' | 'rank' | 'worklogs'>>
 export type NewIssue = Pick<Issue, 'projectId' | 'title'> & Partial<Pick<Issue,
   'type' | 'description' | 'status' | 'priority' | 'assigneeId' | 'labels' | 'estimate' | 'dueDate' | 'startDate' | 'sprintId' | 'parentId' | 'custom' | 'releaseId' | 'timeEstimate' | 'componentIds' | 'affectsReleaseIds'>>
@@ -380,7 +394,7 @@ export type Action =
   | { type: 'deleteView'; id: string }
   | { type: 'addLink'; issueId: string; link: IssueLink }
   | { type: 'removeLink'; issueId: string; otherId: string }
-  | { type: 'addComment'; issueId: string; body: string }
+  | { type: 'addComment'; issueId: string; body: string; visibility?: CommentVisibility }
   | { type: 'editComment'; id: string; body: string }
   | { type: 'deleteComment'; id: string }
   | { type: 'markViewed'; issueId: string }
@@ -741,7 +755,7 @@ export function reducer(state: State, action: Action, now = Date.now()): State {
       if (!issue || !actor || !action.body.trim()) return state
       const body = action.body.trim()
       const mentioned = mentionedUsers(body, state.users).map(u => u.id)
-      const comment: Comment = { id: uid(), issueId: issue.id, authorId: actor, body, createdAt: now }
+      const comment: Comment = { id: uid(), issueId: issue.id, authorId: actor, body, createdAt: now, ...(action.visibility ? { visibility: action.visibility } : {}) }
       const who = userName(actor)
       return {
         ...state,

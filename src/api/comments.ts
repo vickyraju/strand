@@ -23,7 +23,7 @@ export const keyOf = (issueId: string) => {
 export const commentSync = createCollectionSync<Comment>({
   id: c => c.id,
   changed: (a, b) => a.body !== b.body,
-  create: async c => { await api('POST', `/api/issues/${keyOf(c.issueId)}/comments`, { id: c.id, body: c.body }) },
+  create: async c => { await api('POST', `/api/issues/${keyOf(c.issueId)}/comments`, { id: c.id, body: c.body, ...(c.visibility ? { visibility: c.visibility } : {}) }) },
   update: async (_a, b) => { await api('PATCH', `/api/comments/${b.id}`, { body: b.body }) },
   remove: async c => { await api('DELETE', `/api/comments/${c.id}`) },
   // comments vanish locally when their issue is deleted; the issue can be undeleted, so keep them on the server
