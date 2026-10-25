@@ -5,9 +5,10 @@ import { useStore, migrate } from '../data/store'
 import { useApp } from '../appContext'
 import { Avatar, Modal, plural } from './ui'
 import AccessTokens from './AccessTokens'
+import NotificationPrefs from './NotificationPrefs'
 import { apiEnabled } from '../api/client'
 
-const SECTIONS = [['profile', 'Profile'], ...(apiEnabled ? [['tokens', 'Access tokens']] : []), ['appearance', 'Appearance'], ['workspace', 'Workspace'], ['data', 'Data']] as const
+const SECTIONS = [['profile', 'Profile'], ...(apiEnabled ? [['notifications', 'Notifications'], ['tokens', 'Access tokens']] : []), ['appearance', 'Appearance'], ['workspace', 'Workspace'], ['data', 'Data']] as const
 
 export default function SettingsView() {
   const { state, dispatch } = useStore()
@@ -60,6 +61,7 @@ export default function SettingsView() {
             </div>
           </section>
 
+          {apiEnabled && <NotificationPrefs />}
           {apiEnabled && <AccessTokens />}
 
           <section className="panel" id="appearance">

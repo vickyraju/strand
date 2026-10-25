@@ -74,6 +74,17 @@ export const SETTINGS = {
     }),
     default: { enabled: true, daysAhead: 1, daysLate: 3, dueSoonDays: 3 },
   },
+  email: {
+    label: 'Email notifications',
+    description: 'Whether people get their notifications by email too (each person chooses which, in Settings), and who the emails come from. Off until an admin turns it on; the platform team sets up the sending service.',
+    public: false,
+    schema: z.object({
+      enabled: z.boolean().describe('Send notification emails'),
+      from: z.string().trim().max(200).regex(/^$|^[^<>@\s]+@[^<>@\s]+\.[^<>@\s]+$|^[^<>]*<[^<>@\s]+@[^<>@\s]+\.[^<>@\s]+>$/, 'An address like strand@example.com or “Strand <strand@example.com>”').describe('Sender, e.g. Strand <strand@example.com>'),
+      appUrl: z.string().trim().max(300).regex(/^$|^https:\/\//, 'Starts with https://').describe('Address of the app, for links in emails'),
+    }).refine(v => !v.enabled || !!v.from, { path: ['from'], message: 'Say who the emails come from' }),
+    default: { enabled: false, from: '', appUrl: '' },
+  },
   projectBackups: {
     label: 'Project backups',
     description: 'Whether deleting a project backs it up first, and where. Managed on the Project backups page.',

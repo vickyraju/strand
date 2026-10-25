@@ -65,12 +65,47 @@ export default function SystemSettings() {
         { key: 'bulkMaxItems', label: 'Most work items in one bulk change', type: 'number', min: 1, max: 5000 },
         { key: 'importMaxRows', label: 'Most rows in one CSV import', type: 'number', min: 10, max: 100_000 },
       ]} />
+      <EmailSection setting={of('email')} save={v => save('email', v)} />
       <SimpleSection setting={of('dueReminders')} save={v => save('dueReminders', v)} fields={[
         { key: 'enabled', label: 'Send “due” notifications', type: 'toggle' },
         { key: 'daysAhead', label: 'Remind this many days before the due date', type: 'number', min: 0, max: 30, hint: '0: on the day it is due' },
         { key: 'daysLate', label: 'Keep reminding for this many days after it is late', type: 'number', min: 0, max: 90 },
         { key: 'dueSoonDays', label: '“Due soon” on Your work: within this many days', type: 'number', min: 1, max: 30 },
       ]} />
+    </section>
+  )
+}
+
+/** Email: on/off, who mail comes from, and the app's address for links (text fields, so not a SimpleSection). */
+function EmailSection({ setting, save }: { setting: Setting<{ enabled: boolean; from: string; appUrl: string }>; save: (v: object) => Promise<Record<string, string> | null> }) {
+  const [draft, setDraft] = useState(setting.value)
+  const [errors, setErrors] = useState<Record<string, string>>({})
+  useEffect(() => { setDraft(setting.value) }, [setting.value])
+  const dirty = JSON.stringify(draft) !== JSON.stringify(setting.value)
+  return (
+    <section className="panel" aria-label={setting.label}>
+      <h2 className="panel-title">{setting.label}</h2>
+      <p className="muted">{setting.description}</p>
+      <div className="settings-grid">
+        <label className="settings-row">
+          <span className="settings-label">Send notification emails</span>
+          <Toggle on={draft.enabled} onChange={enabled => setDraft({ ...draft, enabled })} label="Send notification emails" />
+        </label>
+        <label className="settings-row">
+          <span className="settings-label">From</span>
+          <input className="input" style={{ width: 320 }} placeholder="Strand <strand@example.com>" value={draft.from} onChange={e => setDraft({ ...draft, from: e.target.value })} aria-invalid={!!errors.from} />
+          {errors.from && <span className="hint error">{errors.from}</span>}
+        </label>
+        <label className="settings-row">
+          <span className="settings-label">App address<span className="muted sm">For links in emails</span></span>
+          <input className="input" style={{ width: 320 }} placeholder="https://strand.example.com" value={draft.appUrl} onChange={e => setDraft({ ...draft, appUrl: e.target.value })} aria-invalid={!!errors.appUrl} />
+          {errors.appUrl && <span className="hint error">{errors.appUrl}</span>}
+        </label>
+      </div>
+      <div className="btn-row" style={{ marginTop: 12 }}>
+        <button className="btn btn-primary" disabled={!dirty} onClick={async () => setErrors((await save(draft)) ?? {})}>Save</button>
+        {dirty && <button className="btn btn-ghost" onClick={() => { setDraft(setting.value); setErrors({}) }}>Discard changes</button>}
+      </div>
     </section>
   )
 }

@@ -337,6 +337,23 @@ test('CSV import: the server checks every row first, says what is wrong, then im
   assert.deepEqual(o.problems, [])
 })
 
+test('notification settings: turning off Inbox for assignments stops them reaching the Inbox', { skip, timeout: 60_000 }, async () => {
+  await owner('POST', '/projects', { name: 'Quiet', key: 'QUI', template: 'kanban' })
+  await owner('POST', '/projects/QUI/members', { userIds: [await idOf('maya@e2e.test')], role: 'member' })
+  const m = await signIn('maya@e2e.test')
+  await m.goto(url('/settings'))
+  await m.waitForSelector('#notifications tr:has-text("Someone assigns me a work item")')
+  await m.click('#notifications [aria-label="Someone assigns me a work item: Inbox"]')
+  await m.waitForSelector('text=Notification settings saved')
+  const maya = await idOf('maya@e2e.test')
+  const quiet = (await owner('POST', '/projects/QUI/issues', { title: 'Quietly assigned', assigneeId: maya })).body
+  await owner('POST', `/issues/${quiet.key}/comments`, { body: `@${PEOPLE['maya@e2e.test']} have a look` })
+  const notes = (await as('maya@e2e.test')('GET', '/notifications')).body
+  assert.ok(!notes.some(n => n.issueKey === quiet.key && n.kind === 'assigned'))
+  assert.ok(notes.some(n => n.issueKey === quiet.key && n.kind === 'mentioned'))
+  assert.deepEqual(m.problems, [])
+})
+
 test('plan a sprint, start it and complete it: unfinished work goes back to the backlog', { skip, timeout: 90_000 }, async () => {
   const p = (await owner('POST', '/projects', { name: 'Sprinting', key: 'SPR', template: 'scrum' })).body
   const done = p.statuses.find(s => s.category === 'done')
