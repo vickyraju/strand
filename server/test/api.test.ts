@@ -1653,6 +1653,14 @@ test('issue security: an item with a level is invisible everywhere to people out
   assert.deepEqual(await bodies('sec.ann@x.com'), ['For admins only', 'For everyone'])
   assert.deepEqual(await bodies('owner@x.com'), ['For admins only', 'For everyone'])
   assert.deepEqual((await as(`/api/v1/issues/${hidden.key}?expand=comments`)).body.comments.map((c: any) => c.body), ['For everyone'])
+  // cloning a parent "with child items" copies only the children the cloner can see (the copy would name them reporter)
+  await call('PATCH', `/api/v1/projects/SEC/security-levels/${lvl.id}`, { members: lvl.members })            // reporter in, assignee out again
+  const parent = (await call('POST', '/api/v1/projects/SEC/issues', { title: 'Parent' })).body
+  await call('POST', '/api/v1/projects/SEC/issues', { title: 'Secret child', parentId: parent.id, securityLevelId: lvl.id })
+  await call('POST', '/api/v1/projects/SEC/issues', { title: 'Open child', parentId: parent.id })
+  const cloned = (await call('POST', `/api/v1/issues/${parent.key}/clone`, { include: { children: true, links: false, sprint: false } }, 'sec.bob@x.com')).body
+  const kids = (await pool.query('select title from issues where parent_id = $1 order by title', [cloned.id])).rows.map(r => r.title)
+  assert.deepEqual(kids, ['Open child'])
   // removing a level in use needs somewhere for its items
   assert.equal((await call('DELETE', `/api/v1/projects/SEC/security-levels/${lvl.id}`)).status, 409)
   assert.equal((await call('DELETE', `/api/v1/projects/SEC/security-levels/${lvl.id}?moveTo=none`)).status, 204)

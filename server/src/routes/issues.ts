@@ -396,7 +396,8 @@ const plugin: FastifyPluginAsyncZod = async app => {
       })
       await d.query(`insert into issue_links (issue_id, target_id, type) values ($1, $2, 'clones')`, [id, src.id])
       if (include.children)
-        for (const c of await d.query<any>(`${ISSUE_ROW} where i.parent_id = $1 and i.deleted_at is null order by i.rank`, [src.id])) await copy(c, { parentId: id })
+        // only children I can see: a copy names me as reporter, so cloning must not hand me an item a level keeps from me
+        for (const c of await d.query<any>(`${ISSUE_ROW} where i.parent_id = $1 and i.deleted_at is null and ${levelOk(req.me, 2)} order by i.rank`, [src.id, req.me.id])) await copy(c, { parentId: id })
       if (include.links) {
         await d.query(`insert into issue_links (issue_id, target_id, type) select $2, target_id, type from issue_links where issue_id = $1 and target_id <> $2 and type <> 'clones' on conflict do nothing`, [src.id, id])
         await d.query(`insert into issue_links (issue_id, target_id, type) select issue_id, $2, type from issue_links where target_id = $1 and issue_id <> $2 and type <> 'clones' on conflict do nothing`, [src.id, id])
