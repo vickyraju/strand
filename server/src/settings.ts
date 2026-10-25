@@ -64,12 +64,14 @@ export const SETTINGS = {
   },
   testing: {
     label: 'Testing',
-    description: 'How test results add up (Xray’s rule): whether a finished run outweighs a newer one that hasn’t finished.',
+    description: 'How test results add up (Xray’s rule: whether a finished run outweighs a newer one that hasn’t finished), and how big a CI results import can be.',
     public: true,
     schema: z.object({
       finalStatusesHavePrecedence: z.boolean().describe('A test’s status is its latest finished result; a newer run still to do or under way doesn’t replace it. Off: the latest run counts, whatever its status'),
+      resultImportMaxMb: z.number().int().min(1).max(20).default(10).describe('Largest CI results file, in MB'),
+      resultImportMaxTests: z.number().int().min(10).max(20_000).default(2000).describe('Most test results in one import'),
     }),
-    default: { finalStatusesHavePrecedence: true },
+    default: { finalStatusesHavePrecedence: true, resultImportMaxMb: 10, resultImportMaxTests: 2000 },
   },
   dueReminders: {
     label: 'Due dates',

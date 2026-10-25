@@ -1876,6 +1876,83 @@ test('coverage: a story is UNCOVERED, then NOK for version 1.0 after a failing r
   void p
 })
 
+test('CI results: JUnit, Cucumber and Xray JSON at Xray’s own addresses, with an access token; tests are matched or made; one run per test', { skip, timeout: 60_000 }, async () => {
+  await call('POST', '/api/v1/projects', { name: 'Continuous', key: 'CI', template: 'kanban' })
+  await call('PUT', '/api/v1/projects/CI/testing', { enabled: true })
+  await call('POST', '/api/v1/projects/CI/releases', { name: '5.1' })
+  await join('CI', 'ci.bot@x.com'); await join('CI', 'ci.viewer@x.com', 'viewer')
+  const token = (await call('POST', '/api/v1/me/tokens', { name: 'pipeline' }, 'ci.bot@x.com')).body.token
+  const raven = (path: string, payload: string | object, type = 'application/json', t = token) =>
+    app.inject({ method: 'POST', url: `/rest/raven/1.0${path}`, payload: typeof payload === 'string' ? payload : JSON.stringify(payload), headers: { authorization: `Bearer ${t}`, 'content-type': type } })
+  const story = (await call('POST', '/api/v1/projects/CI/issues', { title: 'Login', type: 'story' })).body
+  const plan = (await call('POST', '/api/v1/projects/CI/issues', { title: 'Nightly', type: 'test_plan' })).body
+  // JUnit, as a multipart file (as Xray's endpoint takes it): new tests by definition, the failure's message, Xray's properties
+  const junit = `<?xml version="1.0"?><!DOCTYPE x [<!ENTITY boom "BOOM">]><testsuites><testsuite name="auth">
+    <testcase classname="auth.LoginTest" name="signsIn" time="1.2"><properties><property name="requirements" value="${story.key}"/></properties></testcase>
+    <testcase classname="auth.LoginTest" name="rejectsBadPassword"><failure message="expected 401">got 200 &amp; a cookie &boom;</failure></testcase>
+    <testcase classname="auth.LoginTest" name="locksOut"><skipped/></testcase>
+  </testsuite></testsuites>`
+  const boundary = 'XBOUNDARY'
+  const form = `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="junit.xml"\r\nContent-Type: text/xml\r\n\r\n${junit}\r\n--${boundary}--\r\n`
+  const r1 = await raven(`/import/execution/junit?projectKey=CI&testPlanKey=${plan.key}&testEnvironments=linux;chrome&fixVersion=5.1&revision=abc123`, form, `multipart/form-data; boundary=${boundary}`)
+  assert.equal(r1.statusCode, 200, r1.body)
+  const exec = JSON.parse(r1.body).testExecIssue
+  assert.match(exec.key, /^CI-\d+$/)
+  const e = (await call('GET', `/api/v1/issues/${exec.key}`)).body
+  assert.deepEqual([e.type, e.testEnvironments, e.revision], ['test_execution', ['linux', 'chrome'], 'abc123'])
+  const runs = async (key: string) => (await call('GET', `/api/v1/issues/${key}/runs`)).body
+  let rs = await runs(exec.key)
+  assert.deepEqual(rs.map((r: any) => [r.testTitle, r.status]), [['signsIn', 'PASS'], ['rejectsBadPassword', 'FAIL'], ['locksOut', 'TODO']])
+  assert.equal(rs[1].comment, 'expected 401\ngot 200 & a cookie &boom;')      // the declared entity is left as text, never expanded
+  assert.equal(rs[0].spec.definition, 'auth.LoginTest.signsIn')
+  assert.equal((await call('GET', `/api/v1/issues/${story.key}/coverage`)).body.tests.length, 1)   // its requirements property
+  assert.deepEqual((await call('GET', `/api/v1/issues/${plan.key}/executions`)).body.map((x: any) => x.key), [exec.key])
+  // the same report again, into the same execution: the same tests (matched by definition), no new ones
+  const r2 = await raven(`/import/execution/junit?testExecKey=${exec.key}`, junit.replace('<skipped/>', ''), 'text/xml')
+  assert.equal(r2.statusCode, 200, r2.body)
+  assert.deepEqual(JSON.parse(r2.body).createdTests, [])
+  rs = await runs(exec.key)
+  assert.deepEqual(rs.map((r: any) => r.status), ['PASS', 'FAIL', 'PASS'])
+  // Cucumber: a scenario tagged with a test's key updates it; an untagged one is found by name or made; outline rows merge
+  const cuke = (await call('POST', '/api/v1/projects/CI/issues', { title: 'Search finds items', type: 'test', testSpec: { kind: 'cucumber', gherkin: 'Scenario: x' } })).body
+  const step = (status: string, name = 'a step') => ({ keyword: 'Given ', name, result: { status, ...(status === 'failed' ? { error_message: 'boom' } : {}) } })
+  const features = [{ name: 'Search', elements: [
+    { type: 'scenario', keyword: 'Scenario', name: 'Search finds items', tags: [{ name: `@${cuke.key}` }, { name: `@${story.key}` }], steps: [step('passed'), step('passed')] },
+    { type: 'scenario', keyword: 'Scenario Outline', name: 'Filters', steps: [step('passed')] },
+    { type: 'scenario', keyword: 'Scenario Outline', name: 'Filters', steps: [step('failed')] },
+  ] }]
+  const r3 = await raven('/import/execution/cucumber?projectKey=CI', features)
+  assert.equal(r3.statusCode, 200, r3.body)
+  const c = JSON.parse(r3.body)
+  assert.equal(c.createdTests.length, 1)
+  rs = await runs(c.testExecIssue.key)
+  assert.deepEqual(rs.map((r: any) => [r.testKey, r.status]), [[cuke.key, 'PASS'], [c.createdTests[0], 'FAIL']])
+  assert.equal((await call('GET', `/api/v1/issues/${c.createdTests[0]}`)).body.testSpec.gherkin, 'Scenario Outline: Filters\n  Given a step')
+  // Xray JSON: a manual test with step results, by summary; Xray Cloud's status names; an unknown status refuses everything
+  const xray = { info: { project: 'CI', summary: 'Manual pass', testEnvironments: ['ios'] }, tests: [
+    { testInfo: { projectKey: 'CI', summary: 'Checkout by hand', testType: 'Manual', steps: [{ action: 'Open', result: 'Opens' }, { action: 'Pay', result: 'Paid' }] },
+      status: 'FAILED', comment: 'Pay button missing', steps: [{ status: 'PASSED' }, { status: 'FAILED', actualResult: 'No button' }] },
+  ] }
+  const r4 = await raven('/import/execution', xray)
+  assert.equal(r4.statusCode, 200, r4.body)
+  const [mr] = await runs(JSON.parse(r4.body).testExecIssue.key)
+  assert.deepEqual([mr.status, mr.steps.map((s: any) => s.status), mr.steps[1].actual, mr.comment], ['FAIL', ['PASS', 'FAIL'], 'No button', 'Pay button missing'])
+  const before = (await call('GET', '/api/v1/projects/CI/issues')).body.items.length
+  assert.equal((await raven('/import/execution', { ...xray, tests: [...xray.tests, { testInfo: { summary: 'New one', testType: 'Generic' }, status: 'MAYBE' }] })).statusCode, 400)
+  assert.equal((await call('GET', '/api/v1/projects/CI/issues')).body.items.length, before)          // nothing was saved
+  // the native address does the same; viewers and strangers can't; broken files are refused
+  assert.equal((await call('POST', '/api/v1/testing/import/xray?projectKey=CI', { tests: [{ testKey: mr.testKey, status: 'PASS' }] }, 'ci.bot@x.com')).status, 200)
+  assert.equal((await call('POST', '/api/v1/testing/import/xray?projectKey=CI', { tests: [{ testKey: mr.testKey, status: 'PASS' }] }, 'ci.viewer@x.com')).status, 403)
+  assert.equal((await raven('/import/execution/junit?projectKey=CI', '<testsuite><testcase name="x">', 'text/xml')).statusCode, 400)
+  assert.equal((await raven('/import/execution', { tests: [] }, 'application/json', 'jbp_' + 'x'.repeat(43))).statusCode, 401)
+  // the size and count limits are System settings
+  await call('PUT', '/api/v1/admin/settings/testing', { finalStatusesHavePrecedence: true, resultImportMaxMb: 1, resultImportMaxTests: 10 })
+  const many = { info: { project: 'CI' }, tests: Array.from({ length: 11 }, (_, n) => ({ testInfo: { summary: `t${n}`, testType: 'Generic' }, status: 'PASS' })) }
+  assert.match(JSON.parse((await raven('/import/execution', many)).body).error, /At most 10 results/)
+  assert.equal((await raven('/import/execution/junit?projectKey=CI', `<testsuite>${' '.repeat(1100 * 1024)}</testsuite>`, 'text/xml')).statusCode, 413)
+  await call('PUT', '/api/v1/admin/settings/testing', { finalStatusesHavePrecedence: true, resultImportMaxMb: 10, resultImportMaxTests: 2000 })
+})
+
 test('report data: every live item and every status change in order, for people who can see the project', { skip }, async () => {
   const p = (await call('POST', '/api/v1/projects', { name: 'Reports', key: 'REP', template: 'kanban' })).body
   const [a, b, c] = p.statuses
@@ -2456,6 +2533,7 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     'GET /test-statuses': ['any', '/test-statuses'],
     'GET /issues/{key}/coverage': ['read', `/issues/${K}-1/coverage`],
     'GET /projects/{key}/test-results': ['read', `/projects/${K}/test-results`],
+    'POST /testing/import/{format}': ['write', `/testing/import/xray?projectKey=${K}`, { tests: [{ testKey: mtest, status: 'PASS' }] }],
     'POST /admin/test-statuses': ['gadmin', '/admin/test-statuses', { kind: 'run', name: 'Matrix status', color: '#123456', mapsTo: 'unknown' }],
     'PATCH /admin/test-statuses/{kind}/{key}': ['gadmin', '/admin/test-statuses/run/PASS', { color: '#16A34A' }],
     'DELETE /admin/test-statuses/{kind}/{key}': ['gadmin', '/admin/test-statuses/run/c-nothinghere'],

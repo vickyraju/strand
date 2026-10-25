@@ -49,6 +49,12 @@ export const as = email => async (method, path, body) => {
   return { status: res.status, body: res.status === 204 ? null : await res.json().catch(() => null) }
 }
 
+/** POST a raw body to any address of the API (Xray's /rest/raven/1.0/… for CI results), with a bearer token. */
+export const postRaw = async (path, body, contentType, token) => {
+  const res = await fetch(`${apiUrl}${path}`, { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': contentType }, body })
+  return { status: res.status, body: await res.json().catch(() => null) }
+}
+
 export async function start() {
   if (skip) return
   // a clean database with every migration

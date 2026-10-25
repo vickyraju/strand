@@ -10,6 +10,7 @@ export default function TestingPanel({ project, admin }: { project: Project; adm
   const { dispatch } = useStore()
   const { toast } = useApp()
   const [busy, setBusy] = useState(false)
+  const origin = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') || window.location.origin
   const requirementTypes = project.requirementTypes ?? typesOf(project).map(t => t.key).filter(k => k !== 'bug' && !TEST_TYPES.includes(k as any))
   const saveTypes = async (types: string[]) => {
     setBusy(true)
@@ -50,6 +51,12 @@ export default function TestingPanel({ project, admin }: { project: Project; adm
               </label>
             ))}
           </div>
+          <h3 className="subhead" style={{ marginTop: 14 }}>Results from CI</h3>
+          <p className="muted sm">Pipelines send results with a personal access token, to the same addresses Xray uses (so one that sent them to Xray only needs this server’s address and a token):</p>
+          <pre className="mono ci-hint">{`POST ${origin}/rest/raven/1.0/import/execution/junit?projectKey=${project.key}   (JUnit XML, multipart "file")
+POST ${origin}/rest/raven/1.0/import/execution/cucumber?projectKey=${project.key}   (Cucumber JSON)
+POST ${origin}/rest/raven/1.0/import/execution   (Xray JSON)
+Authorization: Bearer <token>    Optional: testExecKey, testPlanKey, testEnvironments=a;b, fixVersion, revision`}</pre>
         </div>
       )}
     </section>

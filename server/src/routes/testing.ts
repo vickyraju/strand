@@ -9,10 +9,11 @@ import { canJoinWork, levelOk, visibleAs } from '../access.ts'
 import { publish } from '../events.ts'
 import { audit, changes } from '../audit.ts'
 import { getSetting } from '../settings.ts'
-import { ISSUE_ROW, issueByKey } from './issues.ts'
+import { ISSUE_ROW, TEST_TYPES, issueByKey } from './issues.ts'
 import { projectByKey } from './projects.ts'
 import { searchWhere } from './misc.ts'
-import { requirementStatus, runFromSteps, testStatus, withSubRequirements, type RunStatus, type StepStatus } from '../shared/testStatus.ts'
+import { combine, requirementStatus, runFromSteps, testStatus, withSubRequirements, type RunStatus, type StepStatus } from '../shared/testStatus.ts'
+import { fromCucumber, fromJunit, fromXrayJson, ImportError, type Batch, type Result } from '../testImport.ts'
 
 const uuid = z.string().uuid()
 const T = ['Testing']
@@ -34,6 +35,203 @@ const membersOf = (d: Db, me: Me, containerId: string) => d.query<any>(
      join test_items ti on ti.member_id = i.id
     where ti.container_id = $1 and i.deleted_at is null and ${visibleAs(me, 'i.project_id', 2)} and ${levelOk(me, 2)}
     order by ti.folder, ti.position, i.number`, [containerId, me.id])
+
+/** A run, as the API shows it: with its test and execution, and whether the test has changed since the run was made. */
+export const RUN_ROW = `
+  select r.id, r.execution_id, ep.key || '-' || e.number as execution_key, e.title as execution_title, e.test_environments as environments,
+         r.test_id, tp.key || '-' || t.number as test_key, t.title as test_title, r.status, r.assignee_id, r.executed_by,
+         r.started_at, r.finished_at, r.spec, r.steps, r.comment, r.defect_ids, r.evidence_ids, r.version, r.created_at, r.updated_at,
+         (r.spec is distinct from t.test_spec) as spec_changed
+    from test_runs r join issues e on e.id = r.execution_id join projects ep on ep.id = e.project_id
+                     join issues t on t.id = r.test_id join projects tp on tp.id = t.project_id`
+/** Runs I may see: both the execution and the test must be visible to me. `p` is the parameter holding my id. */
+export const runVisible = (me: Me, p: number) =>
+  `e.deleted_at is null and t.deleted_at is null and ${visibleAs(me, 'e.project_id', p)} and ${levelOk(me, p, 'e')} and ${visibleAs(me, 't.project_id', p)} and ${levelOk(me, p, 't')}`
+const freshSteps = (spec: any) => (spec?.kind === 'manual' ? spec.steps : []).map((s: any) => ({ id: s.id, status: 'TODO', actual: '', comment: '', defectIds: [], evidenceIds: [] }))
+export const statusesOf = async (d: Db, ws: string) => {
+  const rows = await d.query<any>('select kind, key, final, maps_to, rank from test_statuses where workspace_id = $1', [ws])
+  return { run: rows.filter(r => r.kind === 'run') as RunStatus[], step: rows.filter(r => r.kind === 'step') as StepStatus[] }
+}
+
+/** Runs one test each in an execution (those not already in it), in a transaction. */
+export async function addRuns(d: Db, me: Me, executionId: string, tests: { id: string }[]) {
+  if (!tests.length) return 0
+  const rows = await d.query(
+    `insert into test_runs (execution_id, test_id, spec, steps)
+     select $1, t.id, t.test_spec,
+            coalesce((select jsonb_agg(jsonb_build_object('id', s->>'id', 'status', 'TODO', 'actual', '', 'comment', '', 'defectIds', '[]'::jsonb, 'evidenceIds', '[]'::jsonb))
+                        from jsonb_array_elements(case when t.test_spec->>'kind' = 'manual' then t.test_spec->'steps' else '[]' end) s), '[]')
+       from issues t where t.id = any($2::uuid[])
+     on conflict (execution_id, test_id) do nothing returning id`, [executionId, tests.map(t => t.id)])
+  if (rows.length) await d.query('insert into activity (issue_id, actor_id, text) values ($1, $2, $3)', [executionId, me.id, `Added ${rows.length} test${rows.length === 1 ? '' : 's'} to run`])
+  return rows.length
+}
+// ── Importing results from CI (stage 5), as Xray does: into a new or an existing Test Execution, matching each result to a
+// test by key, or by summary (manual, Cucumber) or definition (generic) in the project, and creating the test if there is
+// none. Several results for one test become one run. All of it in one transaction: a bad batch changes nothing. ──
+export const importQuery = z.object({
+  projectKey: z.string().max(40).optional(), testExecKey: z.string().max(40).optional().describe('Add to this Test Execution (otherwise a new one is made)'),
+  testPlanKey: z.string().max(40).optional().describe('The new execution, and its tests, join this Test Plan'),
+  testEnvironments: z.string().max(1000).optional().describe('Semicolon-separated, as Xray takes them'), revision: z.string().max(200).optional(),
+  fixVersion: z.string().max(200).optional().describe('Release name'),
+})
+export async function importBatch(d: Db, req: any, batch: Batch, q: z.infer<typeof importQuery>) {
+  const me: Me = req.me
+  const info = { ...batch.info,
+    projectKey: q.projectKey ?? batch.info.projectKey, testExecKey: q.testExecKey ?? batch.info.testExecKey, testPlanKey: q.testPlanKey ?? batch.info.testPlanKey,
+    environments: q.testEnvironments ? q.testEnvironments.split(';').map(s => s.trim()).filter(Boolean) : batch.info.environments,
+    revision: q.revision ?? batch.info.revision, version: q.fixVersion ?? batch.info.version }
+  if (!batch.results.length) throw new HttpError(400, 'There are no test results in the file')
+  const { resultImportMaxTests } = await getSetting(me.workspaceId, 'testing')
+  if (batch.results.length > resultImportMaxTests) throw new HttpError(400, `At most ${resultImportMaxTests} results in one import (System settings › Testing); this has ${batch.results.length}`)
+  const get = (key: string) => issueByKey(d, { me, method: 'GET' }, key)
+
+  // the execution: an existing one, or a new one in the project the batch names (or its first test's)
+  let exec: any = info.testExecKey ? await issueByKey(d, { me, method: 'PATCH' }, info.testExecKey) : null
+  if (exec && exec.type !== 'test_execution') throw new HttpError(400, `${exec.key} isn’t a Test Execution`, { testExecKey: 'Not a Test Execution' })
+  const projectKey = exec ? exec.key.split('-')[0] : info.projectKey ?? batch.results.find(r => r.testKey)?.testKey?.split('-')[0] ?? batch.results.find(r => r.info?.projectKey)?.info?.projectKey
+  if (!projectKey) throw new HttpError(400, 'Say which project the results are for (projectKey)', { projectKey: 'Required' })
+  const project = await projectByKey(d, { me, method: 'POST' }, projectKey)
+  const [{ testing }] = await d.query<{ testing: boolean }>('select testing from projects where id = $1', [project.id]) as any
+  if (!testing) throw new HttpError(400, `Testing is off in ${project.key}: a project admin can turn it on in Project settings › Testing`)
+  const plan = info.testPlanKey ? await issueByKey(d, { me, method: 'PATCH' }, info.testPlanKey) : null
+  if (plan && plan.type !== 'test_plan') throw new HttpError(400, `${plan.key} isn’t a Test Plan`, { testPlanKey: 'Not a Test Plan' })
+  const { insertIssue } = await import('./issues.ts')
+  if (!exec) {
+    let releaseId: string | null = null
+    if (info.version) {
+      const [rel] = await d.query<{ id: string }>('select id from releases where project_id = $1 and lower(name) = lower($2)', [project.id, info.version])
+      if (!rel) throw new HttpError(400, `${project.key} has no release called “${info.version}”`, { fixVersion: 'Unknown release' })
+      releaseId = rel.id
+    }
+    const id = await insertIssue(d, me, project.id, {
+      type: 'test_execution', title: (info.summary ?? `Execution results [${new Date().toISOString().slice(0, 19).replace('T', ' ')}]`).slice(0, 500),
+      description: info.description ?? '', testEnvironments: info.environments, revision: info.revision ?? '', ...(releaseId ? { releaseId } : {}),
+    }, 'Created by importing test results')
+    exec = (await d.query<any>(`${ISSUE_ROW} where i.id = $1`, [id]))[0]
+  } else if (info.environments.length) {
+    await d.query('update issues set test_environments = $2, version = version + 1, updated_at = now() where id = $1', [exec.id, [...new Set([...exec.testEnvironments, ...info.environments])]])
+  }
+
+  // each result's test
+  const created: string[] = []
+  const madeHere = new Map<string, string>()                                    // kind + summary/definition → id, so one batch makes each test once
+  const testOf = async (r: Result): Promise<{ id: string; key: string; mine: boolean }> => {
+    const keys = r.testKey ? [r.testKey] : (r.tagKeys ?? [])
+    for (const k of keys) {
+      const t = await get(k).catch(e => { if (r.testKey) throw e; return null })
+      if (t?.type === 'test') return { id: t.id, key: t.key, mine: false }
+      if (r.testKey) throw new HttpError(400, `${k} isn’t a Test`, { testKey: 'Not a Test' })
+    }
+    const i = r.info!
+    const match = i.kind === 'generic'
+      ? await d.query<{ id: string; key: string }>(`select i.id, p.key || '-' || i.number as key from issues i join projects p on p.id = i.project_id
+          where i.project_id = $1 and i.type = 'test' and i.deleted_at is null and i.test_spec->>'kind' = 'generic' and i.test_spec->>'definition' = $2 order by i.number limit 1`, [project.id, i.definition ?? i.summary])
+      : await d.query<{ id: string; key: string }>(`select i.id, p.key || '-' || i.number as key from issues i join projects p on p.id = i.project_id
+          where i.project_id = $1 and i.type = 'test' and i.deleted_at is null and lower(i.title) = lower($2) and coalesce(i.test_spec->>'kind', 'manual') = $3 order by i.number limit 1`, [project.id, i.summary, i.kind])
+    if (match[0]) return { ...match[0], mine: false }
+    const sig = `${i.kind}:${i.kind === 'generic' ? i.definition ?? i.summary : i.summary.toLowerCase()}`
+    if (madeHere.has(sig)) { const id = madeHere.get(sig)!; return { id, key: created[[...madeHere.keys()].indexOf(sig)]!, mine: true } }
+    const spec = i.kind === 'generic' ? { kind: 'generic', definition: (i.definition ?? i.summary).slice(0, 5000) }
+      : i.kind === 'cucumber' ? { kind: 'cucumber', gherkin: (i.gherkin ?? '').slice(0, 50_000) }
+      : { kind: 'manual', steps: (i.steps ?? []).slice(0, 200).map((s, n) => ({ id: `s${n + 1}`, action: s.action.slice(0, 5000) || `Step ${n + 1}`, data: s.data.slice(0, 5000), expected: s.expected.slice(0, 5000), attachmentIds: [] })) }
+    const id = await insertIssue(d, me, project.id, { type: 'test', title: i.summary.slice(0, 500), testSpec: spec }, 'Created by importing test results')
+    const [{ key }] = await d.query<{ key: string }>(`select p.key || '-' || i.number as key from issues i join projects p on p.id = i.project_id where i.id = $1`, [id]) as any
+    madeHere.set(sig, id); created.push(key)
+    return { id, key, mine: true }
+  }
+
+  // statuses: a key, a name, or Xray Cloud's PASSED/FAILED
+  const st = await statusesOf(d, me.workspaceId)
+  const names = await d.query<{ kind: string; key: string; name: string }>('select kind, key, name from test_statuses where workspace_id = $1', [me.workspaceId])
+  const statusKey = (kind: 'run' | 'step', s: string) => {
+    const v = s.trim().toUpperCase(), alias = ({ PASSED: 'PASS', FAILED: 'FAIL', SKIPPED: 'TODO' } as Record<string, string>)[v] ?? v
+    const hit = names.find(n => n.kind === kind && (n.key.toUpperCase() === alias || n.name.toUpperCase() === v))
+    if (!hit) throw new HttpError(400, `Unknown ${kind} status “${s}”`, { status: `Unknown status ${s}` })
+    return hit.key
+  }
+
+  const byTest = new Map<string, { key: string; results: Result[] }>()
+  for (const r of batch.results) {
+    const t = await testOf(r)
+    byTest.set(t.id, { key: t.key, results: [...(byTest.get(t.id)?.results ?? []), r] })
+    // what the test covers (Xray's requirements property, or Cucumber tags that are requirements): needs edit rights on the test
+    const reqs = [...(r.requirements ?? []), ...(r.testKey ? [] : (r.tagKeys ?? []))]
+    for (const k of reqs) {
+      const target = await get(k).catch(() => null)
+      if (!target || (TEST_TYPES as readonly string[]).includes(target.type)) { if (r.requirements?.includes(k)) throw new HttpError(400, `${k} isn’t a requirement`, { requirements: `Not a requirement: ${k}` }); continue }
+      const canEdit = t.mine || await issueByKey(d, { me, method: 'PATCH' }, t.id).then(() => true, (e: any) => { if (e?.status === 403) return false; throw e })
+      if (canEdit) await d.query(`insert into issue_links (issue_id, target_id, type) values ($1, $2, 'tests') on conflict do nothing`, [t.id, target.id])
+    }
+  }
+  const tests = [...byTest.keys()].map(id => ({ id }))
+  await addRuns(d, me, exec.id, tests)
+  if (plan) {
+    await d.query(`insert into test_items (container_id, member_id, position) values ($1, $2, (select coalesce(max(position), 0) + 1 from test_items where container_id = $1)) on conflict do nothing`, [plan.id, exec.id])
+    await d.query(`insert into test_items (container_id, member_id, position)
+                   select $1, t.id, (select coalesce(max(position), 0) from test_items where container_id = $1) + t.n from unnest($2::uuid[]) with ordinality t(id, n) on conflict do nothing`, [plan.id, tests.map(t => t.id)])
+  }
+
+  // record each test's results on its run
+  for (const [testId, { results }] of byTest) {
+    const [run] = await d.query<any>('select id, steps from test_runs where execution_id = $1 and test_id = $2 for update', [exec.id, testId])
+    const status = combine(results.map(r => statusKey('run', r.status)), st.run)!
+    const final = st.run.find(x => x.key === status)?.final ?? false
+    const steps = (run.steps as any[]).map((s, n) => {
+      const got = results[0]!.steps?.[n]
+      return got ? { ...s, status: statusKey('step', got.status), actual: got.actual?.slice(0, 10000) ?? s.actual, comment: got.comment?.slice(0, 10000) ?? s.comment } : s
+    })
+    const comment = results.map(r => r.comment).filter(Boolean).join('\n\n').slice(0, 20000)
+    const time = (v?: string) => (v && !Number.isNaN(Date.parse(v)) ? new Date(v) : null)
+    const start = results.map(r => time(r.start)).filter(Boolean).sort()[0] ?? new Date()
+    const finish = final ? (results.map(r => time(r.finish)).filter(Boolean).sort().at(-1) ?? new Date()) : null
+    const defects: string[] = []
+    for (const k of results.flatMap(r => r.defects ?? [])) defects.push((await get(k)).id)
+    await d.query(`update test_runs set status = $2, steps = $3, comment = $4, started_at = $5, finished_at = $6, executed_by = $7,
+                   defect_ids = (select array(select distinct unnest(defect_ids || $8::uuid[]))), version = version + 1, updated_at = now() where id = $1`,
+      [run.id, status, JSON.stringify(steps), comment, start, finish, me.id, defects])
+  }
+  await d.query('insert into activity (issue_id, actor_id, text) values ($1, $2, $3)', [exec.id, me.id, `Imported ${batch.results.length} test result${batch.results.length === 1 ? '' : 's'}`])
+  await audit(d, req, { action: 'testing.results_imported', type: 'issue', id: exec.id, name: exec.key, project, after: { results: batch.results.length, tests: byTest.size, created: created.length } })
+  await publish(d, project.id, { type: 'runs.changed', id: exec.id })
+  return {
+    testExecIssue: { id: exec.id, key: exec.key, self: `/api/v1/issues/${exec.key}` },
+    testIssues: { success: [...byTest.values()].map(v => ({ key: v.key })), error: [] as { key: string }[] },
+    createdTests: created,
+  }
+}
+
+/** The file in a request: a multipart form's "file" field, or the body itself. */
+export async function fileOf(req: any): Promise<string> {
+  if (Buffer.isBuffer(req.body)) {
+    const form = await new Response(new Uint8Array(req.body), { headers: { 'content-type': String(req.headers['content-type']) } }).formData()
+    const f = form.get('file')
+    if (f == null) throw new HttpError(400, 'Send the report as the form field “file”', { file: 'Required' })
+    return typeof f === 'string' ? f : await f.text()
+  }
+  if (typeof req.body === 'string') return req.body
+  throw new HttpError(400, 'Send the report as XML, or as a multipart form with a “file” field')
+}
+/** Accept XML bodies and multipart forms on these routes (JSON is built in), up to the size in System settings › Testing. */
+export function acceptReports(app: any) {
+  app.addContentTypeParser(['application/xml', 'text/xml'], { parseAs: 'string' }, (_req: any, body: string, done: any) => done(null, body))
+  app.addContentTypeParser('multipart/form-data', { parseAs: 'buffer' }, (_req: any, body: Buffer, done: any) => done(null, body))
+  app.addHook('preHandler', async (req: any) => {
+    const { resultImportMaxMb } = await getSetting(req.me.workspaceId, 'testing')
+    const size = Number(req.headers['content-length'] ?? 0)
+    if (size > resultImportMaxMb * 1024 * 1024) throw new HttpError(413, `Reports can be at most ${resultImportMaxMb} MB (System settings › Testing)`)
+  })
+}
+export const readBatch = async (format: 'xray' | 'junit' | 'cucumber', req: any): Promise<Batch> => {
+  try {
+    if (format === 'junit') return fromJunit(await fileOf(req))
+    if (format === 'cucumber') return fromCucumber(typeof req.body === 'string' || Buffer.isBuffer(req.body) ? JSON.parse(await fileOf(req)) : req.body)
+    return fromXrayJson(req.body)
+  } catch (e) {
+    if (e instanceof ImportError || e instanceof SyntaxError) throw new HttpError(400, `The report can’t be read: ${e.message}`)
+    throw e
+  }
+}
 
 const plugin: FastifyPluginAsyncZod = async app => {
   app.get('/issues/:key/tests', { schema: { tags: T, summary: 'The tests a Test Set, Test Plan or Pre-Condition holds (those you can see)', params: keyP } }, async req => {
@@ -184,36 +382,6 @@ const plugin: FastifyPluginAsyncZod = async app => {
     reply.code(204).send()
   })
 
-  /** A run, as the API shows it: with its test and execution, and whether the test has changed since the run was made. */
-  const RUN_ROW = `
-    select r.id, r.execution_id, ep.key || '-' || e.number as execution_key, e.title as execution_title, e.test_environments as environments,
-           r.test_id, tp.key || '-' || t.number as test_key, t.title as test_title, r.status, r.assignee_id, r.executed_by,
-           r.started_at, r.finished_at, r.spec, r.steps, r.comment, r.defect_ids, r.evidence_ids, r.version, r.created_at, r.updated_at,
-           (r.spec is distinct from t.test_spec) as spec_changed
-      from test_runs r join issues e on e.id = r.execution_id join projects ep on ep.id = e.project_id
-                       join issues t on t.id = r.test_id join projects tp on tp.id = t.project_id`
-  /** Runs I may see: both the execution and the test must be visible to me. `p` is the parameter holding my id. */
-  const runVisible = (me: Me, p: number) =>
-    `e.deleted_at is null and t.deleted_at is null and ${visibleAs(me, 'e.project_id', p)} and ${levelOk(me, p, 'e')} and ${visibleAs(me, 't.project_id', p)} and ${levelOk(me, p, 't')}`
-  const freshSteps = (spec: any) => (spec?.kind === 'manual' ? spec.steps : []).map((s: any) => ({ id: s.id, status: 'TODO', actual: '', comment: '', defectIds: [], evidenceIds: [] }))
-  const statusesOf = async (d: Db, ws: string) => {
-    const rows = await d.query<any>('select kind, key, final, maps_to, rank from test_statuses where workspace_id = $1', [ws])
-    return { run: rows.filter(r => r.kind === 'run') as RunStatus[], step: rows.filter(r => r.kind === 'step') as StepStatus[] }
-  }
-
-  /** Runs one test each in an execution (those not already in it), in a transaction. */
-  async function addRuns(d: Db, me: Me, executionId: string, tests: { id: string }[]) {
-    if (!tests.length) return 0
-    const rows = await d.query(
-      `insert into test_runs (execution_id, test_id, spec, steps)
-       select $1, t.id, t.test_spec,
-              coalesce((select jsonb_agg(jsonb_build_object('id', s->>'id', 'status', 'TODO', 'actual', '', 'comment', '', 'defectIds', '[]'::jsonb, 'evidenceIds', '[]'::jsonb))
-                          from jsonb_array_elements(case when t.test_spec->>'kind' = 'manual' then t.test_spec->'steps' else '[]' end) s), '[]')
-         from issues t where t.id = any($2::uuid[])
-       on conflict (execution_id, test_id) do nothing returning id`, [executionId, tests.map(t => t.id)])
-    if (rows.length) await d.query('insert into activity (issue_id, actor_id, text) values ($1, $2, $3)', [executionId, me.id, `Added ${rows.length} test${rows.length === 1 ? '' : 's'} to run`])
-    return rows.length
-  }
   /** Tests to run: by key, by JQL, or every test of a Test Set or Test Plan I can see. */
   async function testsFor(d: Db, req: any, b: { keys?: string[]; jql?: string; from?: string }) {
     if (b.from) {
@@ -514,6 +682,18 @@ const plugin: FastifyPluginAsyncZod = async app => {
     const results = await resultsFor(db, req, tests.map(t => t.id), req.query)
     return tests.map(t => ({ testId: t.id, key: t.key, status: results.get(t.id) ?? null }))
   })
+
+  // ── CI results (Xray's import), here and at Xray's own addresses (routes/raven.ts) ──
+  app.register((async imp => {
+    acceptReports(imp)
+    imp.post('/testing/import/:format', { schema: {
+      tags: T, summary: 'Import test results from CI: Xray JSON, JUnit XML (body, or a multipart “file”) or Cucumber JSON. Into a new Test Execution, or `testExecKey`; tests are matched or created',
+      params: z.object({ format: z.enum(['xray', 'junit', 'cucumber']) }), querystring: importQuery, body: z.unknown(),
+    } }, async req => {
+      const batch = await readBatch(req.params.format, req)
+      return tx(d => importBatch(d, req, batch, req.query))
+    })
+  }) as FastifyPluginAsyncZod)
 
   // ── Test repository folders ──
   const folderBody = z.object({ name: z.string().trim().min(1).max(100).refine(n => !n.includes('/'), 'A folder name can’t contain “/”'), parentId: uuid.nullable().optional(), position: z.number().optional() })

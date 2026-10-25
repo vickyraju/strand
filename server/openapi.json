@@ -35919,6 +35919,179 @@
           }
         }
       }
+    },
+    "/api/v1/testing/import/{format}": {
+      "post": {
+        "summary": "Import test results from CI: Xray JSON, JUnit XML (body, or a multipart “file”) or Cucumber JSON. Into a new Test Execution, or `testExecKey`; tests are matched or created",
+        "tags": [
+          "Testing"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 40
+            },
+            "in": "query",
+            "name": "projectKey",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 40
+            },
+            "in": "query",
+            "name": "testExecKey",
+            "required": false,
+            "description": "Add to this Test Execution (otherwise a new one is made)"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 40
+            },
+            "in": "query",
+            "name": "testPlanKey",
+            "required": false,
+            "description": "The new execution, and its tests, join this Test Plan"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 1000
+            },
+            "in": "query",
+            "name": "testEnvironments",
+            "required": false,
+            "description": "Semicolon-separated, as Xray takes them"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "in": "query",
+            "name": "revision",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "in": "query",
+            "name": "fixVersion",
+            "required": false,
+            "description": "Release name"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "xray",
+                "junit",
+                "cucumber"
+              ]
+            },
+            "in": "path",
+            "name": "format",
+            "required": true
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "security": [
