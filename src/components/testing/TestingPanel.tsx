@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useStore, type Project, type WorkType } from '../../data/store'
+import { useStore, typesOf, TEST_TYPES, type Project, type WorkType } from '../../data/store'
 import { api, ApiError } from '../../api/client'
 import { useApp } from '../../appContext'
 import { Toggle } from '../ui'
@@ -10,6 +10,15 @@ export default function TestingPanel({ project, admin }: { project: Project; adm
   const { dispatch } = useStore()
   const { toast } = useApp()
   const [busy, setBusy] = useState(false)
+  const requirementTypes = project.requirementTypes ?? typesOf(project).map(t => t.key).filter(k => k !== 'bug' && !TEST_TYPES.includes(k as any))
+  const saveTypes = async (types: string[]) => {
+    setBusy(true)
+    try {
+      const r = await api<{ requirementTypes: string[] | null }>('PUT', `/api/projects/${encodeURIComponent(project.key)}/testing`, { enabled: true, requirementTypes: types })
+      dispatch({ type: 'updateProject', id: project.id, patch: { requirementTypes: r.requirementTypes ?? undefined } })
+    } catch (e) { toast(e instanceof ApiError ? e.message : 'Could not reach the server.', { tone: 'warn' }) }
+    setBusy(false)
+  }
   const turn = async (enabled: boolean) => {
     setBusy(true)
     try {
@@ -29,6 +38,20 @@ export default function TestingPanel({ project, admin }: { project: Project; adm
         </div>
         <Toggle on={!!project.testing} label="Test management" onChange={v => { if (admin && !busy) void turn(v) }} />
       </div>
+      {project.testing && (
+        <div style={{ marginTop: 12 }}>
+          <h3 className="subhead">Requirements</h3>
+          <p className="muted sm">Work types whose items tests cover and that show test coverage.</p>
+          <div className="check-grid">
+            {typesOf(project).filter(t => !TEST_TYPES.includes(t.key as any)).map(t => (
+              <label key={t.key} className="check-row">
+                <input type="checkbox" disabled={!admin || busy} checked={requirementTypes.includes(t.key)}
+                  onChange={e => void saveTypes(e.target.checked ? [...requirementTypes, t.key] : requirementTypes.filter(k => k !== t.key))} /> {t.name}
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
     </section>
   )
 }

@@ -604,6 +604,8 @@ const plugin: FastifyPluginAsyncZod = async app => {
     const [a, t] = await Promise.all([issueByKey(db, req, req.params.key), issueByKey(db, req, b.targetKey, false, 'viewer')])
     if (a.id === t.id) throw new HttpError(400, 'Cannot link an item to itself')
     if (!(await db.query('select 1 from link_types where workspace_id = $1 and id = $2', [req.me.workspaceId, b.type])).length) throw new HttpError(400, 'No such link type', { type: 'Unknown link type' })
+    if (b.type === 'tests' && (a.type !== 'test' || (TEST_TYPES as readonly string[]).includes(t.type)))
+      throw new HttpError(400, 'A Test tests a requirement: link from the Test to a story, epic or other requirement', { type: 'Not a Test and a requirement' })
     await db.query('insert into issue_links (issue_id, target_id, type) values ($1, $2, $3) on conflict do nothing', [a.id, t.id, b.type])
     reply.code(204).send()
   })

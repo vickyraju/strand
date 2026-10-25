@@ -2,7 +2,7 @@
 // statuses"), against the shared module the server and the app both use.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { runFromSteps, combine, testStatus, type RunStatus, type StepStatus } from '../src/shared/testStatus.ts'
+import { runFromSteps, combine, testStatus, requirementStatus, withSubRequirements, type RunStatus, type StepStatus } from '../src/shared/testStatus.ts'
 
 const RUN: RunStatus[] = [
   { key: 'TODO', final: false, mapsTo: 'notrun', rank: 1 }, { key: 'EXECUTING', final: false, mapsTo: 'notrun', rank: 2 },
@@ -46,4 +46,20 @@ test('a test from its runs: the latest final run counts (unless that rule is off
   assert.equal(testStatus([...envs, r('FAIL', '2026-01-04', '2026-01-04', ['safari'])], RUN, true), 'FAIL')
   assert.equal(testStatus([...envs, r('FAIL', '2026-01-04', '2026-01-04', ['safari'])], RUN, true, 'chrome'), 'PASS')
   assert.equal(testStatus([], RUN, true), null)
+})
+
+test('a requirement: OK when every test passed, NOK when one failed, NOTRUN or UNKNOWN in between, UNCOVERED with no tests', () => {
+  const cases: [(string | null)[], string][] = [
+    [[], 'UNCOVERED'], [['PASS', 'PASS'], 'OK'], [['PASS', 'FAIL'], 'NOK'], [['PASS', null], 'NOTRUN'], [['PASS', 'ABORTED'], 'NOTRUN'],
+    [['PASS', 'c-flaky'], 'UNKNOWN'], [['c-flaky', 'FAIL'], 'NOK'], [['c-blocked'], 'NOK'], [[null], 'NOTRUN'],
+  ]
+  for (const [tests, want] of cases) assert.equal(requirementStatus(tests, RUN), want, tests.join(','))
+})
+
+test('a requirement with sub-requirements: NOK > UNKNOWN > NOTRUN > OK; UNCOVERED takes the other side', () => {
+  const cases: [string, string[], string][] = [
+    ['OK', ['NOK'], 'NOK'], ['NOK', ['OK', 'OK'], 'NOK'], ['OK', ['NOTRUN', 'UNKNOWN'], 'UNKNOWN'], ['OK', ['NOTRUN'], 'NOTRUN'],
+    ['UNCOVERED', ['OK'], 'OK'], ['OK', ['UNCOVERED'], 'OK'], ['UNCOVERED', ['UNCOVERED'], 'UNCOVERED'], ['UNCOVERED', [], 'UNCOVERED'],
+  ]
+  for (const [own, subs, want] of cases) assert.equal(withSubRequirements(own as any, subs as any), want, `${own} + ${subs.join(',')}`)
 })

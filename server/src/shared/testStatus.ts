@@ -39,6 +39,23 @@ export function combine(keys: string[], runs: RunStatus[]): string | null {
   return keys.map(run).reduce(better).key
 }
 
+export type Coverage = 'OK' | 'NOK' | 'NOTRUN' | 'UNKNOWN' | 'UNCOVERED'
+const COVERAGE_ORDER: Coverage[] = ['UNCOVERED', 'OK', 'NOTRUN', 'UNKNOWN', 'NOK']   // later beats earlier
+
+/** A requirement's status from its tests' statuses in the scope (null: a test with no run there, i.e. still to do):
+ *  the tests are combined as one, and that result's meaning is the requirement's. No tests: UNCOVERED. */
+export function requirementStatus(testKeys: (string | null)[], runs: RunStatus[]): Coverage {
+  const top = combine(testKeys.map(k => k ?? 'TODO'), runs)
+  if (top === null) return 'UNCOVERED'
+  return ({ ok: 'OK', nok: 'NOK', notrun: 'NOTRUN', unknown: 'UNKNOWN' } as const)[lookup(runs)(top).mapsTo]
+}
+
+/** A requirement with sub-requirements: NOK beats UNKNOWN, which beats NOTRUN, which beats OK; UNCOVERED takes the other
+ *  side's status (so it is UNCOVERED only when nothing in it has tests). */
+export function withSubRequirements(own: Coverage, subs: Coverage[]): Coverage {
+  return [own, ...subs].reduce((a, b) => (COVERAGE_ORDER.indexOf(b) > COVERAGE_ORDER.indexOf(a) ? b : a))
+}
+
 /** A test's status from its runs in some scope (a version, a plan, the latest), as Xray does it:
  *  - per environment, with "final statuses have precedence" on, the latest final run (by when it finished) counts, or
  *    the latest run if none is final; with it off, the latest run made counts;

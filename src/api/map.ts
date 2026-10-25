@@ -55,6 +55,7 @@ export function mapProject(p: Row): Project {
     boardPrefs: { ...DEFAULT_BOARD_PREFS, ...prefs, fields: { ...DEFAULT_BOARD_PREFS.fields, ...(prefs.fields ?? {}) } },
     nextNumber: p.nextNumber ?? 1,
     ...(p.testing ? { testing: true } : {}),
+    ...(p.requirementTypes ? { requirementTypes: p.requirementTypes } : {}),
     createdAt: ms(p.createdAt) ?? Date.now(),
     rules: (p.rules ?? []).map(mapRule),
     fields: (p.fields ?? []).map(mapField),

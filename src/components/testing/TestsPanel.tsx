@@ -5,6 +5,7 @@ import { api, ApiError } from '../../api/client'
 import { useApp } from '../../appContext'
 import { href } from '../../router'
 import { Modal, TypeIcon, plural } from '../ui'
+import { ResultLozenge, useResults, useTestStatuses } from './shared'
 
 // The tests a Test Set, Test Plan or Pre-Condition holds (Xray's associations), and, on a Test, what holds it. A plan sorts
 // its tests into folders (Xray's Test Plan board). Members come from the server, which leaves out tests you can't see.
@@ -22,6 +23,8 @@ export function TestsPanel({ issue, project, readOnly }: { issue: Issue; project
   const plan = issue.type === 'test_plan'
   const base = `/api/issues/${enc(issue.key)}/tests`
   useEffect(() => { api<Member[]>('GET', base).then(setItems, e => toast(message(e), { tone: 'warn' })) }, [base])   // eslint-disable-line react-hooks/exhaustive-deps
+  const results = useResults(project.key, plan ? `plan=${enc(issue.key)}` : null)
+  const statuses = useTestStatuses()
   const remove = (m: Member) => api('DELETE', `${base}/${enc(m.key)}`).then(() => setItems(items!.filter(x => x.id !== m.id)), e => toast(message(e), { tone: 'warn' }))
   const moveTo = (m: Member, folder: string) => api<Member[]>('PATCH', `${base}/${enc(m.key)}`, { folder }).then(setItems, e => toast(message(e), { tone: 'warn' }))
   const statusName = (m: Member) => state.projects.find(p => p.id === m.projectId)?.statuses.find(s => s.id === m.statusId)?.name ?? ''
@@ -43,7 +46,7 @@ export function TestsPanel({ issue, project, readOnly }: { issue: Issue; project
                 <TypeIcon type="test" project={project} />
                 <a href={href({ name: 'issue', key: m.key })} className="mono">{m.key}</a>
                 <span className="test-member-title">{m.title}</span>
-                <span className="muted sm">{statusName(m)}</span>
+                {plan ? <ResultLozenge statuses={statuses} status={results.get(m.id)} /> : <span className="muted sm">{statusName(m)}</span>}
                 {plan && !readOnly && (
                   <input className="input input-sm test-member-folder" defaultValue={m.folder} placeholder="Folder" aria-label={`Folder for ${m.key}`}
                     onBlur={e => e.target.value.trim() !== m.folder && moveTo(m, e.target.value)} onKeyDown={e => e.key === 'Enter' && (e.target as HTMLInputElement).blur()} />

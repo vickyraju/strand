@@ -28,6 +28,7 @@ import Attachments from './Attachments'
 import TestSpecEditor from './TestSpecEditor'
 import { TestsPanel, TestContainers } from './testing/TestsPanel'
 import { ExecutionPanel, PlanExecutions, TestRuns } from './testing/Executions'
+import CoveragePanel, { isRequirement } from './testing/CoveragePanel'
 import { CustomFieldInput } from './CustomFields'
 import { TimeField } from './TimeTracking'
 import { TemplateDialog, blankTemplate } from './TemplatesImport'
@@ -241,6 +242,7 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
           {apiEnabled && issue.type === 'test' && <TestRuns issue={issue} readOnly={readOnly} />}
           {apiEnabled && issue.type === 'test_execution' && <ExecutionPanel issue={issue} project={project} readOnly={readOnly} />}
           {apiEnabled && issue.type === 'test_plan' && <PlanExecutions issue={issue} project={project} readOnly={readOnly} />}
+          {apiEnabled && isRequirement(project, issue.type) && <CoveragePanel issue={issue} project={project} readOnly={readOnly} />}
 
           <Attachments issue={issue} pickRef={attachRef} />
 

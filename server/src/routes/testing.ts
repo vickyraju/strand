@@ -12,7 +12,7 @@ import { getSetting } from '../settings.ts'
 import { ISSUE_ROW, issueByKey } from './issues.ts'
 import { projectByKey } from './projects.ts'
 import { searchWhere } from './misc.ts'
-import { runFromSteps, testStatus, type RunStatus, type StepStatus } from '../shared/testStatus.ts'
+import { requirementStatus, runFromSteps, testStatus, withSubRequirements, type RunStatus, type StepStatus } from '../shared/testStatus.ts'
 
 const uuid = z.string().uuid()
 const T = ['Testing']
@@ -443,6 +443,76 @@ const plugin: FastifyPluginAsyncZod = async app => {
       await publish(d, e.projectId, { type: 'runs.changed', id: r.executionId })
       return (await runFor(d, req, r.id, false)).r
     })
+  })
+
+  // ── Coverage (stage 4): which requirements are tested, and how they are doing, in a scope ──
+  const scopeQ = z.object({
+    version: uuid.optional().describe('Only executions for this fix version'), plan: z.string().max(40).optional().describe('Only this Test Plan’s executions'),
+    environment: z.string().max(100).optional().describe('Only runs in this environment'),
+  })
+  /** The scope's run filter (latest runs everywhere, a version's executions, or a plan's), checked and turned into SQL. */
+  async function scopeOf(d: Db, req: any, q: z.infer<typeof scopeQ>, args: unknown[]) {
+    const where: string[] = []
+    if (q.version) { args.push(q.version); where.push(`e.release_id = $${args.length}`) }
+    if (q.plan) {
+      const p = await issueByKey(d, { me: req.me, method: 'GET' }, q.plan)
+      if (p.type !== 'test_plan') throw new HttpError(400, `${p.key} isn’t a Test Plan`, { plan: 'Not a Test Plan' })
+      args.push(p.id); where.push(`r.execution_id in (select member_id from test_items where container_id = $${args.length})`)
+    }
+    return where
+  }
+  /** Each test's status in the scope (null: no run there), by Xray's rules. */
+  async function resultsFor(d: Db, req: any, testIds: string[], q: z.infer<typeof scopeQ>) {
+    if (!testIds.length) return new Map<string, string | null>()
+    const args: unknown[] = [testIds, req.me.id]
+    const extra = await scopeOf(d, req, q, args)
+    const runs = await d.query<any>(
+      `select r.test_id, r.status, r.finished_at, r.created_at, e.test_environments as environments
+         from test_runs r join issues e on e.id = r.execution_id join issues t on t.id = r.test_id
+        where r.test_id = any($1::uuid[]) and ${runVisible(req.me, 2)} ${extra.map(w => `and ${w}`).join(' ')}`, args)
+    const st = await statusesOf(d, req.me.workspaceId)
+    const { finalStatusesHavePrecedence } = await getSetting(req.me.workspaceId, 'testing')
+    const iso = (v: any) => (v ? new Date(v).toISOString() : null)
+    return new Map(testIds.map(id => [id, testStatus(
+      runs.filter(r => r.testId === id).map(r => ({ status: r.status, finishedAt: iso(r.finishedAt), createdAt: iso(r.createdAt)!, environments: r.environments })),
+      st.run, finalStatusesHavePrecedence, q.environment || undefined)]))
+  }
+  /** The tests covering a requirement that I can see. */
+  const coveringTests = (d: Db, me: Me, requirementId: string) => d.query<any>(
+    `select t.id, tp.key || '-' || t.number as key, t.title, t.project_id from issue_links l
+       join issues t on t.id = l.issue_id join projects tp on tp.id = t.project_id
+      where l.target_id = $1 and l.type = 'tests' and t.deleted_at is null and ${visibleAs(me, 't.project_id', 2)} and ${levelOk(me, 2, 't')}
+      order by t.number`, [requirementId, me.id])
+
+  app.get('/issues/:key/coverage', { schema: {
+    tags: T, summary: 'How a requirement is tested (Xray’s coverage): OK, NOK, NOTRUN, UNKNOWN or UNCOVERED, with its tests and sub-requirements, in a scope (latest, a version or a plan; optionally one environment)',
+    params: keyP, querystring: scopeQ,
+  } }, async req => {
+    const i = await issueByKey(db, req, req.params.key)
+    const st = await statusesOf(db, req.me.workspaceId)
+    const tests = await coveringTests(db, req.me, i.id)
+    const subs = await db.query<any>(`${ISSUE_ROW} where i.parent_id = $1 and i.deleted_at is null and ${levelOk(req.me, 2)} order by i.rank`, [i.id, req.me.id])
+    const subTests = await Promise.all(subs.map(s => coveringTests(db, req.me, s.id)))
+    const results = await resultsFor(db, req, [...new Set([...tests, ...subTests.flat()].map(t => t.id))], req.query)
+    const own = requirementStatus(tests.map(t => results.get(t.id) ?? null), st.run)
+    const subRows = subs.map((s, n) => ({ id: s.id, key: s.key, title: s.title, status: requirementStatus(subTests[n]!.map(t => results.get(t.id) ?? null), st.run) }))
+    return {
+      status: withSubRequirements(own, subRows.map(s => s.status)), own,
+      tests: tests.map(t => ({ id: t.id, key: t.key, title: t.title, status: results.get(t.id) ?? null })),
+      subRequirements: subRows,
+    }
+  })
+
+  app.get('/projects/:key/test-results', { schema: {
+    tags: T, summary: 'Every test in the project with its status in a scope (latest, a version or a plan; optionally one environment). Null: no run there',
+    params: keyP, querystring: scopeQ,
+  } }, async req => {
+    const p = await projectByKey(db, req, req.params.key)
+    const tests = await db.query<{ id: string; key: string }>(
+      `select i.id, pr.key || '-' || i.number as key from issues i join projects pr on pr.id = i.project_id
+        where i.project_id = $1 and i.type = 'test' and i.deleted_at is null and ${levelOk(req.me, 2)} order by i.number`, [p.id, req.me.id])
+    const results = await resultsFor(db, req, tests.map(t => t.id), req.query)
+    return tests.map(t => ({ testId: t.id, key: t.key, status: results.get(t.id) ?? null }))
   })
 
   // ── Test repository folders ──
