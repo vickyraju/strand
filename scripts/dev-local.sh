@@ -33,7 +33,7 @@ fi
 
 # The API gets an explicit environment so it can never pick up the hosted database from server/.env
 (cd "$ROOT/server" && exec env -i PATH="$PATH" HOME="$HOME" DATABASE_URL="$DB" PORT=3001 NODE_ENV=development AUTH_DEV=1 \
-  DEV_AUTH_SECRET=local-dev-secret CORS_ORIGINS=http://localhost:5173 DOCS_ENABLED=1 PG_POOL=10 \
+  DEV_AUTH_SECRET=local-dev-secret CORS_ORIGINS=http://localhost:5173 DOCS_ENABLED=1 PG_POOL=10 EMAIL_TRANSPORT=log \
   S3_BUCKET="${S3_BUCKET:-}" S3_ENDPOINT="${S3_ENDPOINT:-}" AWS_REGION="${AWS_REGION:-us-east-1}" \
   AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID:-}" AWS_SECRET_ACCESS_KEY="${AWS_SECRET_ACCESS_KEY:-}" node src/index.ts) &
 API=$!
