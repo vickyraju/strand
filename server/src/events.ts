@@ -41,11 +41,7 @@ export async function stopListener() {
   await c?.end().catch(() => {})
 }
 
-export async function publish(d: Db, projectId: string, event: Record<string, unknown>) {
-  // an item with a security level is not named to everyone watching the project: only "something changed", by id
-  if (typeof event.id === 'string' && (event.key || event.editors)
-      && (await d.query('select 1 from issues where id = $1 and security_level_id is not null', [event.id])).length)
-    event = { type: event.type, id: event.id }
+export function publish(d: Db, projectId: string, event: Record<string, unknown>) {
   return d.query('select pg_notify($1, $2)', ['strand', JSON.stringify({ projectId, ...event })])
 }
 

@@ -1610,62 +1610,18 @@ test('notification settings: each kind in the Inbox and/or by email; email only 
   await call('PUT', '/api/v1/admin/settings/email', { enabled: false, from: '', appUrl: '' })
 })
 
-test('issue security: an item with a level is invisible everywhere to people outside it; comments can be limited to a role', { skip }, async () => {
-  const p = (await call('POST', '/api/v1/projects', { name: 'Secret', key: 'SEC', template: 'kanban' })).body
-  await join('SEC', 'sec.ann@x.com'); await join('SEC', 'sec.bob@x.com'); await join('SEC', 'sec.viewer@x.com', 'viewer')
-  const id = async (w: string) => (await call('GET', '/api/v1/me', undefined, w)).body.id as string
-  const [ann, bob] = [await id('sec.ann@x.com'), await id('sec.bob@x.com')]
-  const lvl = (await call('POST', '/api/v1/projects/SEC/security-levels', { name: 'Security team', members: [{ kind: 'role', role: 'admin' }, { kind: 'user', id: ann }, { kind: 'reporter' }] })).body
-  assert.equal(lvl.name, 'Security team')
-  // Bob (a member, not in the level) can't set it; the owner can
-  const open = (await call('POST', '/api/v1/projects/SEC/issues', { title: 'Public item' })).body
-  const hidden = (await call('POST', '/api/v1/projects/SEC/issues', { title: 'Hidden vulnerability', securityLevelId: lvl.id, dueDate: '2020-01-01' })).body
-  assert.equal(hidden.securityLevelId, lvl.id)
-  assert.equal((await call('PATCH', `/api/v1/issues/${open.key}`, { securityLevelId: lvl.id }, 'sec.bob@x.com')).body.errors?.securityLevelId, 'You aren’t in this level')
-  await call('POST', `/api/v1/issues/${open.key}/links`, { type: 'relates', targetKey: hidden.key })
-  // Ann (listed) sees it; Bob sees nothing of it, on any path
-  assert.equal((await call('GET', `/api/v1/issues/${hidden.key}`, undefined, 'sec.ann@x.com')).status, 200)
-  const as = (path: string) => call('GET', path, undefined, 'sec.bob@x.com')
-  assert.equal((await as(`/api/v1/issues/${hidden.key}`)).status, 404)
-  assert.equal((await as(`/api/v1/issues/${hidden.id}`)).status, 404)
-  assert.equal((await call('PATCH', `/api/v1/issues/${hidden.key}`, { title: 'x' }, 'sec.bob@x.com')).status, 404)
-  assert.equal((await call('POST', `/api/v1/issues/${hidden.key}/comments`, { body: 'x' }, 'sec.bob@x.com')).status, 404)
-  const keys = (rows: any[]) => rows.map((r: any) => r.key)
-  assert.deepEqual(keys((await as('/api/v1/projects/SEC/issues')).body.items), [open.key])
-  assert.deepEqual(keys((await as('/api/v1/projects/SEC/report-data')).body.issues), [open.key])
-  assert.deepEqual(keys((await as('/api/v1/search?q=vulnerability&resolution=all')).body.items), [])
-  assert.deepEqual(keys((await as(`/api/v1/search?jql=${encodeURIComponent('project = SEC')}`)).body.items), [open.key])
-  assert.doesNotMatch((await app.inject({ method: 'GET', url: '/api/v1/search/export.csv?q=&resolution=all', headers: { authorization: (await bearer('sec.bob@x.com')).authorization } })).body, /Hidden vulnerability/)
-  assert.deepEqual((await as(`/api/v1/issues/${open.key}?expand=links`)).body.links, [])
-  const summary = (await as('/api/v1/projects/SEC/summary')).body
-  assert.equal(summary.byStatus.reduce((n: number, s: any) => n + s.count, 0), 1)
-  assert.equal(summary.overdue, 0)
-  // assigning it to Bob notifies nobody who can't see it… unless the level lets assignees in
-  await call('PATCH', `/api/v1/issues/${hidden.key}`, { assigneeId: bob })
-  assert.equal((await as('/api/v1/notifications')).body.some((n: any) => n.issueKey === hidden.key), false)
-  assert.equal((await as('/api/v1/me/work')).body.some((i: any) => i.key === hidden.key), false)
-  await call('PATCH', `/api/v1/projects/SEC/security-levels/${lvl.id}`, { members: [...lvl.members, { kind: 'assignee' }] })
-  assert.equal((await as(`/api/v1/issues/${hidden.key}`)).status, 200)
-  // comments limited to project admins: Bob (now able to see the item) doesn't see it; its author and admins do
-  await call('POST', `/api/v1/issues/${hidden.key}/comments`, { body: 'For admins only', visibility: { kind: 'role', role: 'admin' } }, 'sec.ann@x.com')
-  await call('POST', `/api/v1/issues/${hidden.key}/comments`, { body: 'For everyone' }, 'sec.ann@x.com')
-  const bodies = async (w: string) => (await call('GET', `/api/v1/issues/${hidden.key}/comments`, undefined, w)).body.items.map((c: any) => c.body)
-  assert.deepEqual(await bodies('sec.bob@x.com'), ['For everyone'])
-  assert.deepEqual(await bodies('sec.ann@x.com'), ['For admins only', 'For everyone'])
-  assert.deepEqual(await bodies('owner@x.com'), ['For admins only', 'For everyone'])
-  assert.deepEqual((await as(`/api/v1/issues/${hidden.key}?expand=comments`)).body.comments.map((c: any) => c.body), ['For everyone'])
-  // cloning a parent "with child items" copies only the children the cloner can see (the copy would name them reporter)
-  await call('PATCH', `/api/v1/projects/SEC/security-levels/${lvl.id}`, { members: lvl.members })            // reporter in, assignee out again
-  const parent = (await call('POST', '/api/v1/projects/SEC/issues', { title: 'Parent' })).body
-  await call('POST', '/api/v1/projects/SEC/issues', { title: 'Secret child', parentId: parent.id, securityLevelId: lvl.id })
-  await call('POST', '/api/v1/projects/SEC/issues', { title: 'Open child', parentId: parent.id })
-  const cloned = (await call('POST', `/api/v1/issues/${parent.key}/clone`, { include: { children: true, links: false, sprint: false } }, 'sec.bob@x.com')).body
-  const kids = (await pool.query('select title from issues where parent_id = $1 order by title', [cloned.id])).rows.map(r => r.title)
-  assert.deepEqual(kids, ['Open child'])
-  // removing a level in use needs somewhere for its items
-  assert.equal((await call('DELETE', `/api/v1/projects/SEC/security-levels/${lvl.id}`)).status, 409)
-  assert.equal((await call('DELETE', `/api/v1/projects/SEC/security-levels/${lvl.id}?moveTo=none`)).status, 204)
-  assert.equal((await call('GET', `/api/v1/issues/${hidden.key}`, undefined, 'sec.viewer@x.com')).status, 200)
+test('comment visibility: a comment limited to a role is read only by that role and its author', { skip }, async () => {
+  await call('POST', '/api/v1/projects', { name: 'Commented', key: 'CMV', template: 'kanban' })
+  await join('CMV', 'cmv.ann@x.com'); await join('CMV', 'cmv.bob@x.com')
+  const item = (await call('POST', '/api/v1/projects/CMV/issues', { title: 'Discussed' })).body
+  await call('POST', `/api/v1/issues/${item.key}/comments`, { body: 'For admins only', visibility: { kind: 'role', role: 'admin' } }, 'cmv.ann@x.com')
+  await call('POST', `/api/v1/issues/${item.key}/comments`, { body: 'For everyone' }, 'cmv.ann@x.com')
+  const bodies = async (w: string) => (await call('GET', `/api/v1/issues/${item.key}/comments`, undefined, w)).body.items.map((c: any) => c.body)
+  assert.deepEqual(await bodies('cmv.bob@x.com'), ['For everyone'])
+  assert.deepEqual(await bodies('cmv.ann@x.com'), ['For admins only', 'For everyone'])          // its author
+  assert.deepEqual(await bodies('owner@x.com'), ['For admins only', 'For everyone'])            // an admin
+  assert.deepEqual((await call('GET', `/api/v1/issues/${item.key}?expand=comments`, undefined, 'cmv.bob@x.com')).body.comments.map((c: any) => c.body), ['For everyone'])
+  assert.equal((await call('POST', `/api/v1/issues/${item.key}/comments`, { body: 'x', visibility: { kind: 'group', id: '00000000-0000-4000-8000-000000000000' } })).status, 400)
 })
 
 test('testing: turning it on adds the Xray work types; Tests hold steps, Gherkin or a definition; it turns off only when unused', { skip }, async () => {
@@ -1725,10 +1681,6 @@ test('testing: sets, plans and pre-conditions hold tests (by key or JQL); plans 
   assert.equal((await call('DELETE', `/api/v1/issues/${set.key}/tests/${t2.key}`)).status, 204)
   assert.equal((await call('DELETE', `/api/v1/issues/${set.key}/tests/${t2.key}`)).status, 404)
   assert.deepEqual(keys((await call('GET', `/api/v1/issues/${set.key}/tests`, undefined, 'sui.viewer@x.com')).body), [t1.key])
-  // a test the reader can't see (security level) is left out of the list
-  const lvl = (await call('POST', '/api/v1/projects/SUI/security-levels', { name: 'Admins', members: [{ kind: 'role', role: 'admin' }] })).body
-  await call('PATCH', `/api/v1/issues/${t1.key}`, { securityLevelId: lvl.id })
-  assert.deepEqual(keys((await call('GET', `/api/v1/issues/${set.key}/tests`, undefined, 'sui.viewer@x.com')).body), [])
   // repository folders: a tree; names unique among siblings; no loops; removing moves its tests up
   const f = (path: string, body?: unknown, method = 'POST') => call(method, `/api/v1/projects/SUI/test-folders${path}`, body, 'sui.member@x.com')
   const web = (await f('', { name: 'Web' })).body, auth = (await f('', { name: 'Auth', parentId: web.id })).body
@@ -1945,14 +1897,6 @@ test('CI results: JUnit, Cucumber and Xray JSON at Xray’s own addresses, with 
   assert.equal((await call('POST', '/api/v1/testing/import/xray?projectKey=CI', { tests: [{ testKey: mr.testKey, status: 'PASS' }] }, 'ci.viewer@x.com')).status, 403)
   assert.equal((await raven('/import/execution/junit?projectKey=CI', '<testsuite><testcase name="x">', 'text/xml')).statusCode, 400)
   assert.equal((await raven('/import/execution', { tests: [] }, 'application/json', 'jbp_' + 'x'.repeat(43))).statusCode, 401)
-  // a test the importer can't see (security level) is never matched by name: a new one is made, the hidden one is untouched
-  const lvl = (await call('POST', '/api/v1/projects/CI/security-levels', { name: 'Owners only', members: [{ kind: 'user', id: (await call('GET', '/api/v1/me')).body.id }] })).body
-  const hidden = (await call('POST', '/api/v1/projects/CI/issues', { title: 'Secret flow', type: 'test', securityLevelId: lvl.id, testSpec: { kind: 'generic', definition: 'secret.Flow.works' } })).body
-  const h = await raven('/import/execution/junit?projectKey=CI', '<testsuite><testcase classname="secret.Flow" name="works"/></testsuite>', 'text/xml')
-  assert.equal(h.statusCode, 200, h.body)
-  assert.equal(JSON.parse(h.body).createdTests.length, 1)
-  assert.notEqual(JSON.parse(h.body).testIssues.success[0].key, hidden.key)
-  assert.equal((await call('GET', `/api/v1/issues/${hidden.key}/runs`)).body.length, 0)
   // the size and count limits are System settings
   await call('PUT', '/api/v1/admin/settings/testing', { finalStatusesHavePrecedence: true, resultImportMaxMb: 1, resultImportMaxTests: 10 })
   const many = { info: { project: 'CI' }, tests: Array.from({ length: 11 }, (_, n) => ({ testInfo: { summary: `t${n}`, testType: 'Generic' }, status: 'PASS' })) }
@@ -1992,9 +1936,10 @@ test('testing JQL and reports: Xray’s functions find tests by requirement, set
   // mistakes, and items the searcher can't see, say so the same way
   assert.match((await jql(`issue in testSetTests("${plan.key}")`)).body.error, /isn’t a Test Set/)
   assert.match((await jql(`issue in testPlanTests("${plan.key}", "SOMETIMES")`)).body.error, /no test status/)
-  const lvl = (await call('POST', '/api/v1/projects/TRC/security-levels', { name: 'Admins', members: [{ kind: 'role', role: 'admin' }] })).body
-  await call('PATCH', `/api/v1/issues/${set.key}`, { securityLevelId: lvl.id })
-  assert.match((await jql(`issue in testSetTests("${set.key}")`, 'trc.viewer@x.com')).body.error, new RegExp(`no work item ${set.key}`))
+  await call('POST', '/api/v1/projects', { name: 'Hidden', key: 'TRH', template: 'kanban' })
+  await call('PUT', '/api/v1/projects/TRH/testing', { enabled: true })
+  const hiddenSet = (await call('POST', '/api/v1/projects/TRH/issues', { title: 'Elsewhere', type: 'test_set' })).body
+  assert.match((await jql(`issue in testSetTests("${hiddenSet.key}")`, 'trc.viewer@x.com')).body.error, new RegExp(`no work item ${hiddenSet.key}`))
   assert.match((await jql('issue in testSetTests("TRC-999")', 'trc.viewer@x.com')).body.error, /no work item TRC-999/)
   // traceability: each requirement, its coverage, its tests' results in the scope, their defects
   const tr = (await call('GET', `/api/v1/projects/TRC/reports/traceability?plan=${plan.key}`)).body
@@ -2624,7 +2569,6 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
   const rule = await make('rules', { name: 'Rule', trigger: { kind: 'created' }, actions: [] })
   const release = await make('releases', { name: '1.0' })
   const component = await make('components', { name: 'Matrix component' })
-  const level = await make('security-levels', { name: 'Matrix fixture level', members: [{ kind: 'role', role: 'admin' }] })
   const sprint = await make('sprints', { name: 'Sprint' })
   for (const t of ['one', 'two', 'three']) await call('POST', '/api/v1/projects/MTX/issues', { title: t })
   await call('PUT', '/api/v1/projects/MTX/testing', { enabled: true })
@@ -2796,10 +2740,6 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     'POST /test-runs/{id}/defects': ['write', `/test-runs/${mrun}/defects`, { title: 'Matrix defect' }],
     'DELETE /test-runs/{id}/defects/{defect}': ['write', `/test-runs/${mrun}/defects/00000000-0000-4000-8000-000000000000`],
     'POST /test-runs/{id}/evidence': ['write', `/test-runs/${mrun}/evidence`, { attachmentId: '00000000-0000-4000-8000-000000000000' }],
-    'GET /projects/{key}/security-levels': ['read', `/projects/${K}/security-levels`],
-    'POST /projects/{key}/security-levels': ['padmin', `/projects/${K}/security-levels`, { name: 'Matrix level', members: [{ kind: 'role', role: 'admin' }] }],
-    'PATCH /projects/{key}/security-levels/{levelId}': ['padmin', `/projects/${K}/security-levels/${level}`, { description: 'x' }],
-    'DELETE /projects/{key}/security-levels/{levelId}': ['padmin', `/projects/${K}/security-levels/${level}`],
     'GET /me/notification-prefs': ['any', '/me/notification-prefs'],
     'PUT /me/notification-prefs': ['any', '/me/notification-prefs', { prefs: [] }],
     'POST /projects/{key}/import': ['write', `/projects/${K}/import`, { csv: 'Title\nx', mapping: { title: 0 } }],

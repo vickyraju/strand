@@ -26,7 +26,7 @@ await s.connect()
 const sq = (sql: string, args: unknown[] = []) => s.query(sql, args)
 
 // ── Seed: one workspace, people, projects (Scrum, four statuses, the default any-to-any moves), items spread over them
-// with labels, priorities, assignees, due dates, sprints and a status history; a few security levels and comments ──
+// with labels, priorities, assignees, due dates, sprints, a status history and comments ──
 const [ws] = (await sq(`insert into workspaces (name) values ('Perf') returning id`)).rows
 await sq(`insert into users (email, name, initials) select 'p' || n || '@perf.test', 'Person ' || n, 'P' || (n % 10) from generate_series(1, $1) n`, [PEOPLE])
 await sq(`insert into memberships (workspace_id, user_id, role) select $1, id, case when email = 'p1@perf.test' then 'owner' else 'member' end from users`, [ws.id])
@@ -38,14 +38,13 @@ await sq(`insert into statuses (project_id, name, color, category, position)
 await sq(`insert into transitions (project_id, name, from_ids, to_id) select project_id, name, null, id from statuses`)
 await sq(`insert into project_members (project_id, user_id, role) select p.id, u.id, case when u.email = 'p1@perf.test' then 'admin' else 'member' end from projects p, users u`)
 await sq(`insert into sprints (workspace_id, project_id, name, state) select $1, id, 'Sprint 1', 'active' from projects`, [ws.id])
-await sq(`insert into security_levels (project_id, name, members) select id, 'Restricted', '[{"kind":"role","role":"admin"},{"kind":"reporter"}]' from projects`)
 console.log(`seeding ${ITEMS.toLocaleString('en')} items…`)
 await sq(`
   with people as (select array_agg(id order by email) as ids from users),
        st as (select project_id, array_agg(id order by position) as ids from statuses group by project_id),
        pr as (select row_number() over (order by key) as n, id from projects)
   insert into issues (workspace_id, project_id, number, type, title, description, status_id, priority, assignee_id, reporter_id,
-                      labels, estimate, due_date, sprint_id, rank, security_level_id, created_at, updated_at)
+                      labels, estimate, due_date, sprint_id, rank, created_at, updated_at)
   select $1, pr.id, g.n, (array['story','task','bug','task'])[1 + g.n % 4],
          'Item ' || g.n || ' ' || (array['login','payments','export','search','mobile','billing','reports','api'])[1 + g.n % 8] || ' work',
          'Description of item ' || g.n || ' with some words about ' || (array['latency','errors','layout','copy'])[1 + g.n % 4],
@@ -53,7 +52,6 @@ await sq(`
          case when g.n % 7 = 0 then null else people.ids[1 + g.n % array_length(people.ids, 1)] end, people.ids[1 + (g.n * 7) % array_length(people.ids, 1)],
          array[(array['ui','backend','infra','docs'])[1 + g.n % 4]], 1 + g.n % 8, current_date + (g.n % 60 - 20),
          case when g.n % 3 = 0 then (select id from sprints where project_id = pr.id) end, g.n * 1024,
-         case when g.n % 50 = 0 then (select id from security_levels where project_id = pr.id) end,
          now() - (g.n % 365) * interval '1 day', now() - (g.n % 90) * interval '1 hour'
     from generate_series(1, $2) g(n) join pr on pr.n = 1 + g.n % $3, people, st where st.project_id = pr.id`, [ws.id, ITEMS, PROJECTS])
 await sq(`update projects p set next_number = (select coalesce(max(number), 0) + 1 from issues where project_id = p.id)`).catch(() => {})

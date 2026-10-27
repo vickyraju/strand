@@ -51,12 +51,12 @@ async function prepareTestFns(d: Db, me: Me, n: Node | null): Promise<Map<string
   if (n) walk(n)
   const out = new Map<string, string[]>()
   if (!fns.length) return out
-  const { levelOk, visibleAs } = await import('./access.ts')
+  const { visibleAs } = await import('./access.ts')
   const items = async (keys: string[]) => {
     if (!keys.length) throw new HttpError(400, 'JQL: name at least one work item, such as testPlanTests("PAY-9")', { jql: 'Missing work item' })
     const rows = await d.query<{ id: string; key: string; type: string }>(
       `select i.id, p.key || '-' || i.number as key, i.type from issues i join projects p on p.id = i.project_id
-        where i.workspace_id = $1 and (p.key || '-' || i.number) = any($2::text[]) and i.deleted_at is null and ${visibleAs(me, 'i.project_id', 3)} and ${levelOk(me, 3)}`,
+        where i.workspace_id = $1 and (p.key || '-' || i.number) = any($2::text[]) and i.deleted_at is null and ${visibleAs(me, 'i.project_id', 3)}`,
       [me.workspaceId, keys.map(k => k.toUpperCase()), me.id])
     const missing = keys.find(k => !rows.some(r => r.key === k.toUpperCase()))
     if (missing) throw new HttpError(400, `JQL: there is no work item ${missing}`, { jql: `Unknown work item ${missing}` })
@@ -99,7 +99,7 @@ async function prepareTestFns(d: Db, me: Me, n: Node | null): Promise<Map<string
         const { getSetting } = await import('./settings.ts')
         const runs = await d.query<any>(
           `select r.test_id, r.status, r.finished_at, r.created_at, e.test_environments as environments from test_runs r join issues e on e.id = r.execution_id
-            where r.execution_id in (select member_id from test_items where container_id = $1) and e.deleted_at is null and ${visibleAs(me, 'e.project_id', 2)} and ${levelOk(me, 2, 'e')}`, [plan!.id, me.id])
+            where r.execution_id in (select member_id from test_items where container_id = $1) and e.deleted_at is null and ${visibleAs(me, 'e.project_id', 2)}`, [plan!.id, me.id])
         const st = await d.query<any>(`select key, final, maps_to, rank from test_statuses where workspace_id = $1 and kind = 'run'`, [me.workspaceId])
         const { finalStatusesHavePrecedence } = await getSetting(me.workspaceId, 'testing')
         const iso = (x: any) => (x ? new Date(x).toISOString() : null)

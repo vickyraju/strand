@@ -2,7 +2,7 @@ import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
 import { db, tx, type Db } from '../db.ts'
 import { HttpError, requireAdmin, type Me } from '../auth.ts'
-import { levelOk, visible, visibleAs } from '../access.ts'
+import { visible, visibleAs } from '../access.ts'
 import { projectByKey } from './projects.ts'
 import { audit } from '../audit.ts'
 import { getSetting } from '../settings.ts'
@@ -38,8 +38,6 @@ type SearchFilters = { q: string; project?: string; assignee?: string; type?: st
 export async function searchWhere(me: Me, q: SearchFilters, args: unknown[]): Promise<{ where: string[]; order: string | null }> {
   args.push(me.workspaceId)
   const where = [`i.workspace_id = $${args.length}`, 'i.deleted_at is null', visible(me, 'i.project_id', args)]
-  args.push(me.id)
-  where.push(levelOk(me, args.length))
   if (q.jql?.trim()) {
     const sql = await jqlToSql(db, me, parseOr400(q.jql), args)
     if (sql.where) where.push(sql.where)
@@ -150,12 +148,12 @@ const plugin: FastifyPluginAsyncZod = async app => {
 
   // "Your work": open items assigned to me
   app.get('/me/work', { schema: { tags: ['Search & work'], summary: 'Open issues assigned to me, due soonest first' } }, async req => db.query(
-    `${LIST} where i.workspace_id = $1 and i.assignee_id = $2 and i.deleted_at is null and ${visibleAs(req.me, 'i.project_id', 2)} and ${levelOk(req.me, 2)} and st.category <> 'done'
+    `${LIST} where i.workspace_id = $1 and i.assignee_id = $2 and i.deleted_at is null and ${visibleAs(req.me, 'i.project_id', 2)} and st.category <> 'done'
       order by i.due_date nulls last, i.updated_at desc limit 200`, [req.me.workspaceId, req.me.id]))
 
   // "Your work → Worked on": work items I last touched, newest first
   app.get('/me/recent', { schema: { tags: ['Search & work'], summary: 'Work items I last touched (activity, comments or work logs), most recent first' } }, async req => db.query(
-    `${LIST} where i.workspace_id = $1 and i.deleted_at is null and ${visibleAs(req.me, 'i.project_id', 2)} and ${levelOk(req.me, 2)}
+    `${LIST} where i.workspace_id = $1 and i.deleted_at is null and ${visibleAs(req.me, 'i.project_id', 2)}
       and i.id in (
         select issue_id from activity where actor_id = $2
         union select issue_id from comments where author_id = $2
@@ -177,7 +175,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
                 select 1 from issue_links l join issues b on b.id = l.issue_id join statuses bs on bs.id = b.status_id
                  where l.target_id = i.id and l.type = 'blocks' and b.deleted_at is null and bs.category <> 'done'))::int as blocked
          from issues i join statuses st on st.id = i.status_id
-        where i.workspace_id = $1 and i.assignee_id = $2 and i.deleted_at is null and ${visibleAs(req.me, 'i.project_id', 2)} and ${levelOk(req.me, 2)} and i.type <> 'epic' and st.category <> 'done'`, [req.me.workspaceId, req.me.id, soon])
+        where i.workspace_id = $1 and i.assignee_id = $2 and i.deleted_at is null and ${visibleAs(req.me, 'i.project_id', 2)} and i.type <> 'epic' and st.category <> 'done'`, [req.me.workspaceId, req.me.id, soon])
     return { ...r, dueSoonDays: soon }
   })
 
@@ -189,7 +187,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
             count(i.id)::int as total,
             coalesce(max(i.updated_at), p.created_at) as last_activity
        from projects p
-       left join issues i on i.project_id = p.id and i.deleted_at is null and i.type <> 'epic' and ${levelOk(req.me, 2)}
+       left join issues i on i.project_id = p.id and i.deleted_at is null and i.type <> 'epic'
        left join statuses st on st.id = i.status_id
       where p.workspace_id = $1 and p.archived_at is null and ${visibleAs(req.me, 'p.id', 2)}
       group by p.id order by coalesce(max(i.updated_at), p.created_at) desc, p.id limit 4`, [req.me.workspaceId, req.me.id]))
@@ -197,20 +195,20 @@ const plugin: FastifyPluginAsyncZod = async app => {
   // "Your work → Viewed"
   app.get('/me/viewed', { schema: { tags: ['Search & work'], summary: 'Work items I opened most recently (newest 50), most recent first' } }, async req => db.query(
     `${LIST} join issue_views v on v.issue_id = i.id and v.user_id = $2
-      where i.workspace_id = $1 and i.deleted_at is null and ${visibleAs(req.me, 'i.project_id', 2)} and ${levelOk(req.me, 2)} order by v.viewed_at desc limit 50`, [req.me.workspaceId, req.me.id]))
+      where i.workspace_id = $1 and i.deleted_at is null and ${visibleAs(req.me, 'i.project_id', 2)} order by v.viewed_at desc limit 50`, [req.me.workspaceId, req.me.id]))
 
   // Counts for a project's summary without scanning issues in the client
   app.get('/projects/:key/summary', { schema: { tags: ['Search & work'], summary: 'Counts by status, assignee and type; created in the last 7 days; overdue', params: z.object({ key: z.string() }) } }, async req => {
     const p = await projectByKey(db, req, req.params.key)
     const [byStatus, byAssignee, byType, created, overdue] = await Promise.all([
       db.query(`select s.id as status_id, s.name, s.category, count(i.id)::int as count from statuses s
-                  left join issues i on i.status_id = s.id and i.deleted_at is null and ${levelOk(req.me, 2)} where s.project_id = $1 group by s.id order by s.position`, [p.id, req.me.id]),
+                  left join issues i on i.status_id = s.id and i.deleted_at is null where s.project_id = $1 group by s.id order by s.position`, [p.id]),
       db.query(`select i.assignee_id, count(*)::int as open, coalesce(sum(i.estimate), 0) as points from issues i join statuses s on s.id = i.status_id
-                 where i.project_id = $1 and i.deleted_at is null and ${levelOk(req.me, 2)} and s.category <> 'done' group by i.assignee_id`, [p.id, req.me.id]),
-      db.query(`select i.type, count(*)::int as count from issues i where i.project_id = $1 and i.deleted_at is null and ${levelOk(req.me, 2)} group by i.type`, [p.id, req.me.id]),
-      db.query(`select count(*)::int as count from issues i where i.project_id = $1 and i.deleted_at is null and ${levelOk(req.me, 2)} and i.created_at > now() - interval '7 days'`, [p.id, req.me.id]),
+                 where i.project_id = $1 and i.deleted_at is null and s.category <> 'done' group by i.assignee_id`, [p.id]),
+      db.query(`select i.type, count(*)::int as count from issues i where i.project_id = $1 and i.deleted_at is null group by i.type`, [p.id]),
+      db.query(`select count(*)::int as count from issues i where i.project_id = $1 and i.deleted_at is null and i.created_at > now() - interval '7 days'`, [p.id]),
       db.query(`select count(*)::int as count from issues i join statuses s on s.id = i.status_id
-                 where i.project_id = $1 and i.deleted_at is null and ${levelOk(req.me, 2)} and s.category <> 'done' and i.due_date < current_date`, [p.id, req.me.id]),
+                 where i.project_id = $1 and i.deleted_at is null and s.category <> 'done' and i.due_date < current_date`, [p.id]),
     ])
     return { byStatus, byAssignee, byType, createdLast7Days: (created[0] as any).count, overdue: (overdue[0] as any).count }
   })
@@ -231,7 +229,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
       `insert into notifications (user_id, issue_id, kind, text)
        select $2, i.id, 'due', 'is due on ' || i.due_date::text
          from issues i join statuses st on st.id = i.status_id
-        where i.workspace_id = $1 and i.assignee_id = $2 and i.deleted_at is null and ${visibleAs(me, 'i.project_id', 2)} and ${levelOk(me, 2)} and st.category <> 'done'
+        where i.workspace_id = $1 and i.assignee_id = $2 and i.deleted_at is null and ${visibleAs(me, 'i.project_id', 2)} and st.category <> 'done'
           and i.due_date between (now() at time zone 'utc')::date - $3::int and (now() at time zone 'utc')::date + $4::int   -- UTC, so the answer does not depend on the server's timezone
           and not exists (select 1 from notifications n where n.user_id = $2 and n.issue_id = i.id and n.kind = 'due' and n.text = 'is due on ' || i.due_date::text)
        on conflict (user_id, issue_id, text) where kind = 'due' do nothing  -- another API pod may have just made it
@@ -246,7 +244,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
   }) } }, async req => {
     await ensureDueNotifications(req.me)
     const args: unknown[] = [req.me.id, req.query.archived === '1']
-    const where = ['n.user_id = $1', 'n.archived = $2', visibleAs(req.me, 'i.project_id', 1), levelOk(req.me, 1)]
+    const where = ['n.user_id = $1', 'n.archived = $2', visibleAs(req.me, 'i.project_id', 1)]
     if (req.query.kind) { args.push(req.query.kind); where.push(`n.kind = $${args.length}`) }
     if (req.query.project) { args.push(req.query.project); where.push(`i.project_id = $${args.length}`) }
     return db.query(

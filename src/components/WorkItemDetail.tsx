@@ -6,7 +6,7 @@ import {
   Ban, Unlink, Pencil, UserCheck, Copy, Paperclip, FileText,
 } from 'lucide-react'
 import {
-  useStore, userOf, projectOf, timeAgo, transitionsFrom, loopsFrom, moveContext, linkWords, DEFAULT_LINK_TYPES, inLevel,
+  useStore, userOf, projectOf, timeAgo, transitionsFrom, loopsFrom, moveContext, linkWords, DEFAULT_LINK_TYPES,
   type Issue, type IssuePatch,
 } from '../data/store'
 import { useApp } from '../appContext'
@@ -440,16 +440,6 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
                   options={[{ value: undefined, label: 'None' }, ...project.releases.map(r => ({ value: r.id as string | undefined, label: r.name, hint: r.released ? 'Released' : r.releaseDate ? `Due ${formatDate(r.releaseDate)}` : undefined }))]}
                   onChange={releaseId => set({ releaseId })}
                   trigger={issue.releaseId ? <>{project.releases.find(r => r.id === issue.releaseId)?.name}</> : <span className="muted">None</span>} />
-              </Field>
-            )}
-            {(project.securityLevels?.length ?? 0) > 0 && (
-              <Field label="Security">
-                <Picker value={issue.securityLevelId} className="field-btn" title="Security level"
-                  options={[{ value: undefined as string | undefined, label: 'Everyone in the project' },
-                    ...project.securityLevels!.filter(l => l.id === issue.securityLevelId || inLevel(l, { id: state.me?.id ?? '', role: project.role ?? 'admin', groupIds: state.groupIds ?? [] }, issue))
-                      .map(l => ({ value: l.id as string | undefined, label: l.name, icon: <Lock size={13} /> }))]}
-                  onChange={securityLevelId => set({ securityLevelId })}
-                  trigger={issue.securityLevelId ? <><Lock size={13} />{project.securityLevels!.find(l => l.id === issue.securityLevelId)?.name ?? 'Restricted'}</> : <span className="muted">Everyone in the project</span>} />
               </Field>
             )}
             {(project.components?.length ?? 0) > 0 && (

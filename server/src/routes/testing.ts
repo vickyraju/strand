@@ -5,7 +5,7 @@ import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
 import { db, tx, type Db } from '../db.ts'
 import { HttpError, requireAdmin, type Me } from '../auth.ts'
-import { canJoinWork, levelOk, visibleAs } from '../access.ts'
+import { canJoinWork, visibleAs } from '../access.ts'
 import { publish } from '../events.ts'
 import { audit, changes } from '../audit.ts'
 import { getSetting } from '../settings.ts'
@@ -33,7 +33,7 @@ async function containerOf(d: Db, req: { me: Me; method: string }, key: string) 
 const membersOf = (d: Db, me: Me, containerId: string) => d.query<any>(
   `${ISSUE_ROW.replace('select i.id,', 'select ti.folder, ti.position as item_position, i.id,')}
      join test_items ti on ti.member_id = i.id
-    where ti.container_id = $1 and i.deleted_at is null and ${visibleAs(me, 'i.project_id', 2)} and ${levelOk(me, 2)}
+    where ti.container_id = $1 and i.deleted_at is null and ${visibleAs(me, 'i.project_id', 2)}
     order by ti.folder, ti.position, i.number`, [containerId, me.id])
 
 /** A run, as the API shows it: with its test and execution, and whether the test has changed since the run was made. */
@@ -46,7 +46,7 @@ export const RUN_ROW = `
                      join issues t on t.id = r.test_id join projects tp on tp.id = t.project_id`
 /** Runs I may see: both the execution and the test must be visible to me. `p` is the parameter holding my id. */
 export const runVisible = (me: Me, p: number) =>
-  `e.deleted_at is null and t.deleted_at is null and ${visibleAs(me, 'e.project_id', p)} and ${levelOk(me, p, 'e')} and ${visibleAs(me, 't.project_id', p)} and ${levelOk(me, p, 't')}`
+  `e.deleted_at is null and t.deleted_at is null and ${visibleAs(me, 'e.project_id', p)} and ${visibleAs(me, 't.project_id', p)}`
 const freshSteps = (spec: any) => (spec?.kind === 'manual' ? spec.steps : []).map((s: any) => ({ id: s.id, status: 'TODO', actual: '', comment: '', defectIds: [], evidenceIds: [] }))
 export const statusesOf = async (d: Db, ws: string) => {
   const rows = await d.query<any>('select kind, key, final, maps_to, rank from test_statuses where workspace_id = $1', [ws])
@@ -124,14 +124,13 @@ export async function importBatch(d: Db, req: any, batch: Batch, q: z.infer<type
       if (r.testKey) throw new HttpError(400, `${k} isn’t a Test`, { testKey: 'Not a Test' })
     }
     const i = r.info!
-    // only tests the importer can see (a security level may hide some): a hidden one is never matched; a new test is made instead
     const match = i.kind === 'generic'
       ? await d.query<{ id: string; key: string }>(`select i.id, p.key || '-' || i.number as key from issues i join projects p on p.id = i.project_id
-          where i.project_id = $1 and i.type = 'test' and i.deleted_at is null and i.test_spec->>'kind' = 'generic' and i.test_spec->>'definition' = $2 and ${levelOk(me, 3)}
-          order by i.number limit 1`, [project.id, i.definition ?? i.summary, me.id])
+          where i.project_id = $1 and i.type = 'test' and i.deleted_at is null and i.test_spec->>'kind' = 'generic' and i.test_spec->>'definition' = $2
+          order by i.number limit 1`, [project.id, i.definition ?? i.summary])
       : await d.query<{ id: string; key: string }>(`select i.id, p.key || '-' || i.number as key from issues i join projects p on p.id = i.project_id
-          where i.project_id = $1 and i.type = 'test' and i.deleted_at is null and lower(i.title) = lower($2) and coalesce(i.test_spec->>'kind', 'manual') = $3 and ${levelOk(me, 4)}
-          order by i.number limit 1`, [project.id, i.summary, i.kind, me.id])
+          where i.project_id = $1 and i.type = 'test' and i.deleted_at is null and lower(i.title) = lower($2) and coalesce(i.test_spec->>'kind', 'manual') = $3
+          order by i.number limit 1`, [project.id, i.summary, i.kind])
     if (match[0]) return { ...match[0], mine: false }
     const sig = `${i.kind}:${i.kind === 'generic' ? i.definition ?? i.summary : i.summary.toLowerCase()}`
     if (madeHere.has(sig)) { const id = madeHere.get(sig)!; return { id, key: created[[...madeHere.keys()].indexOf(sig)]!, mine: true } }
@@ -312,7 +311,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     return db.query(
       `select i.id, p.key || '-' || i.number as key, i.type, i.title, i.project_id from test_items ti
          join issues i on i.id = ti.container_id join projects p on p.id = i.project_id
-        where ti.member_id = $1 and i.deleted_at is null and ${visibleAs(req.me, 'i.project_id', 2)} and ${levelOk(req.me, 2)}
+        where ti.member_id = $1 and i.deleted_at is null and ${visibleAs(req.me, 'i.project_id', 2)}
         order by i.type, i.number`, [t.id, req.me.id])
   })
 
@@ -652,7 +651,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
   const coveringTests = (d: Db, me: Me, requirementId: string) => d.query<any>(
     `select t.id, tp.key || '-' || t.number as key, t.title, t.project_id from issue_links l
        join issues t on t.id = l.issue_id join projects tp on tp.id = t.project_id
-      where l.target_id = $1 and l.type = 'tests' and t.deleted_at is null and ${visibleAs(me, 't.project_id', 2)} and ${levelOk(me, 2, 't')}
+      where l.target_id = $1 and l.type = 'tests' and t.deleted_at is null and ${visibleAs(me, 't.project_id', 2)}
       order by t.number`, [requirementId, me.id])
 
   app.get('/issues/:key/coverage', { schema: {
@@ -662,7 +661,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     const i = await issueByKey(db, req, req.params.key)
     const st = await statusesOf(db, req.me.workspaceId)
     const tests = await coveringTests(db, req.me, i.id)
-    const subs = await db.query<any>(`${ISSUE_ROW} where i.parent_id = $1 and i.deleted_at is null and ${levelOk(req.me, 2)} order by i.rank`, [i.id, req.me.id])
+    const subs = await db.query<any>(`${ISSUE_ROW} where i.parent_id = $1 and i.deleted_at is null order by i.rank`, [i.id])
     const subTests = await Promise.all(subs.map(s => coveringTests(db, req.me, s.id)))
     const results = await resultsFor(db, req, [...new Set([...tests, ...subTests.flat()].map(t => t.id))], req.query)
     const own = requirementStatus(tests.map(t => results.get(t.id) ?? null), st.run)
@@ -681,7 +680,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     const p = await projectByKey(db, req, req.params.key)
     const tests = await db.query<{ id: string; key: string }>(
       `select i.id, pr.key || '-' || i.number as key from issues i join projects pr on pr.id = i.project_id
-        where i.project_id = $1 and i.type = 'test' and i.deleted_at is null and ${levelOk(req.me, 2)} order by i.number`, [p.id, req.me.id])
+        where i.project_id = $1 and i.type = 'test' and i.deleted_at is null order by i.number`, [p.id])
     const results = await resultsFor(db, req, tests.map(t => t.id), req.query)
     return tests.map(t => ({ testId: t.id, key: t.key, status: results.get(t.id) ?? null }))
   })
@@ -699,22 +698,22 @@ const plugin: FastifyPluginAsyncZod = async app => {
     const { exportMaxRows } = await getSetting(req.me.workspaceId, 'searchAndBulk')
     const reqs = await db.query<{ id: string; key: string; title: string; type: string; parentId: string | null }>(
       `select i.id, pr.key || '-' || i.number as key, i.title, i.type, i.parent_id from issues i join projects pr on pr.id = i.project_id
-        where i.project_id = $1 and i.type = any($2::text[]) and i.deleted_at is null and ${levelOk(req.me, 3)} order by i.rank, i.number limit $4`,
-      [p.id, types, req.me.id, exportMaxRows + 1])
+        where i.project_id = $1 and i.type = any($2::text[]) and i.deleted_at is null order by i.rank, i.number limit $3`,
+      [p.id, types, exportMaxRows + 1])
     if (reqs.length > exportMaxRows) throw new HttpError(400, `More than ${exportMaxRows} requirements (the export limit in System settings)`)
     const children = await db.query<{ id: string; parentId: string }>(
-      `select i.id, i.parent_id from issues i where i.parent_id = any($1::uuid[]) and i.deleted_at is null and ${levelOk(req.me, 2)}`, [reqs.map(r => r.id), req.me.id])
+      `select i.id, i.parent_id from issues i where i.parent_id = any($1::uuid[]) and i.deleted_at is null`, [reqs.map(r => r.id)])
     const ids = [...new Set([...reqs.map(r => r.id), ...children.map(c => c.id)])]
     const links = await db.query<{ reqId: string; testId: string; key: string; title: string }>(
       `select l.target_id as req_id, t.id as test_id, tp.key || '-' || t.number as key, t.title from issue_links l
          join issues t on t.id = l.issue_id join projects tp on tp.id = t.project_id
-        where l.type = 'tests' and l.target_id = any($1::uuid[]) and t.deleted_at is null and ${visibleAs(req.me, 't.project_id', 2)} and ${levelOk(req.me, 2, 't')}
+        where l.type = 'tests' and l.target_id = any($1::uuid[]) and t.deleted_at is null and ${visibleAs(req.me, 't.project_id', 2)}
         order by t.number`, [ids, req.me.id])
     const testIds = [...new Set(links.map(l => l.testId))]
     const defects = await db.query<{ testId: string; id: string; key: string; title: string; done: boolean }>(
       `select l.issue_id as test_id, b.id, bp.key || '-' || b.number as key, b.title, st.category = 'done' as done from issue_links l
          join issues b on b.id = l.target_id join projects bp on bp.id = b.project_id join statuses st on st.id = b.status_id
-        where l.type = 'defect' and l.issue_id = any($1::uuid[]) and b.deleted_at is null and ${visibleAs(req.me, 'b.project_id', 2)} and ${levelOk(req.me, 2, 'b')}
+        where l.type = 'defect' and l.issue_id = any($1::uuid[]) and b.deleted_at is null and ${visibleAs(req.me, 'b.project_id', 2)}
         order by b.number`, [testIds, req.me.id])
     const results = await resultsFor(db, req, testIds, req.query)
     const st = await statusesOf(db, req.me.workspaceId)

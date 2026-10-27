@@ -5,13 +5,6 @@ import { adjustRemaining, type Adjust } from '../../server/src/shared/estimates.
 // ── Types ──────────────────────────────────────────────────
 
 export type Template  = 'kanban' | 'scrum'
-export type LevelMember = { kind: 'role'; role: 'admin' | 'member' | 'viewer' } | { kind: 'group'; id: string } | { kind: 'user'; id: string } | { kind: 'reporter' } | { kind: 'assignee' }
-export interface SecurityLevel { id: string; name: string; description: string; members: LevelMember[]; items?: number }
-/** Am I in this level, for this item? (The server decides; this hides choices it would refuse.) */
-export function inLevel(level: SecurityLevel, me: { id: string; role?: string | null; groupIds: string[] }, item: { reporterId?: string; assigneeId?: string }) {
-  return level.members.some(m => m.kind === 'reporter' ? item.reporterId === me.id : m.kind === 'assignee' ? item.assigneeId === me.id
-    : m.kind === 'user' ? m.id === me.id : m.kind === 'group' ? me.groupIds.includes(m.id) : me.role === m.role)
-}
 export interface Component { id: string; name: string; description: string; leadId?: string; defaultAssignee: 'none' | 'component_lead' | 'project_lead' }
 
 /** Jira's component default assignee: new work in a component, with nobody chosen, goes to its lead or the project's. */
@@ -105,8 +98,6 @@ export interface Project {
   fields:      FieldDef[]
   releases:    Release[]
   templates:   ItemTemplate[]
-  /** Security levels (Jira's issue security), from the server */
-  securityLevels?: SecurityLevel[]
   /** Test management is on (Xray's work types) */
   testing?: boolean
   /** Work types that count as requirements for coverage (unset: all but Bug and the testing types) */
@@ -272,8 +263,6 @@ export interface Issue {
   resolvedAt?: number
   /** Original time estimate in minutes. */
   timeEstimate?: number
-  /** Security level (Jira's issue security): only its members see the item */
-  securityLevelId?: string
   /** What a Test or Pre-Condition says to do (Xray's test kinds) */
   testSpec?: TestSpec
   /** Test repository folder (Tests) */
@@ -376,7 +365,7 @@ export interface State {
 }
 
 export type ProjectPatch = Partial<Pick<Project,
-  'name' | 'description' | 'color' | 'leadId' | 'statuses' | 'transitions' | 'layout' | 'boardPrefs' | 'rules' | 'fields' | 'releases' | 'templates' | 'types' | 'components' | 'securityLevels' | 'testing' | 'requirementTypes'>>
+  'name' | 'description' | 'color' | 'leadId' | 'statuses' | 'transitions' | 'layout' | 'boardPrefs' | 'rules' | 'fields' | 'releases' | 'templates' | 'types' | 'components' | 'testing' | 'requirementTypes'>>
 export type IssuePatch = Partial<Omit<Issue, 'id' | 'key' | 'projectId' | 'reporterId' | 'createdAt' | 'watcherIds' | 'links' | 'attachments' | 'rank' | 'worklogs'>>
 export type NewIssue = Pick<Issue, 'projectId' | 'title'> & Partial<Pick<Issue,
   'type' | 'description' | 'status' | 'priority' | 'assigneeId' | 'labels' | 'estimate' | 'dueDate' | 'startDate' | 'sprintId' | 'parentId' | 'custom' | 'releaseId' | 'timeEstimate' | 'componentIds' | 'affectsReleaseIds' | 'testFolderId'>>

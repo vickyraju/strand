@@ -2,7 +2,7 @@ import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
 import { db, tx, pick, type Db } from '../db.ts'
 import { HttpError, type Me } from '../auth.ts'
-import { canJoinWork, commentShown, levelOk, minFor, need, roleOf, visible, visibleAs, type ProjectRole } from '../access.ts'
+import { canJoinWork, commentShown, minFor, need, roleOf, visible, visibleAs, type ProjectRole } from '../access.ts'
 import { publish } from '../events.ts'
 import { audit } from '../audit.ts'
 import { getSetting } from '../settings.ts'
@@ -20,7 +20,7 @@ export const RESOLUTIONS = ['Done', "Won't do", 'Duplicate', 'Cannot reproduce']
 
 export const ISSUE_ROW = `
   select i.id, p.key || '-' || i.number as key, i.project_id, i.number, i.type, i.title, i.description,
-         i.status_id, i.priority, i.assignee_id, i.reporter_id, i.labels, i.estimate, i.time_estimate, i.time_remaining, i.component_ids, i.affects_release_ids, i.security_level_id, i.test_spec, i.test_folder_id, i.test_environments, i.revision,
+         i.status_id, i.priority, i.assignee_id, i.reporter_id, i.labels, i.estimate, i.time_estimate, i.time_remaining, i.component_ids, i.affects_release_ids, i.test_spec, i.test_folder_id, i.test_environments, i.revision,
          i.due_date, i.start_date, i.sprint_id, i.release_id, i.parent_id, i.custom, i.rank, i.version,
          i.resolution, i.resolved_at, i.created_at, i.updated_at
     from issues i join projects p on p.id = i.project_id`
@@ -43,7 +43,6 @@ const patchBody = z.object({
   timeEstimate: z.number().int().nonnegative().nullable(), timeRemaining: z.number().int().nonnegative().nullable().describe('Remaining estimate, minutes (starts at the original estimate)'),
   dueDate: date.nullable(), startDate: date.nullable(),
   sprintId: uuid.nullable(), releaseId: uuid.nullable().describe('Fix version'), parentId: uuid.nullable(),
-  securityLevelId: uuid.nullable().describe('Security level: only its members see the item (null: everyone in the project)'),
   componentIds: z.array(uuid).max(50).describe('Components of the project'), affectsReleaseIds: z.array(uuid).max(50).describe('Affects versions: releases of the project where it was found'),
   custom: z.record(z.string(), z.union([z.string(), z.number()])), rank: z.number(), testSpec: testSpec.nullable(),
   testFolderId: uuid.nullable().describe('Test repository folder (Tests only; null: the top)'),
@@ -67,8 +66,6 @@ export async function issueByKey(d: Db, req: { me: Me; method: string }, ref: st
     : await d.query<any>(`${ISSUE_ROW} where i.workspace_id = $1 and p.key = $2 and i.number = $3 ${live}`, [ws, m![1]!.toUpperCase(), Number(m![2])])
   const role = i ? await roleOf(d, req.me, i.projectId) : null
   if (!i || !role) throw new HttpError(404, 'Issue not found')
-  // an item whose security level leaves me out doesn't exist, as far as I can tell
-  if (i.securityLevelId && !(await d.query(`select 1 from issues i where i.id = $1 and ${levelOk(req.me, 2)}`, [i.id, req.me.id])).length) throw new HttpError(404, 'Issue not found')
   need(role, min ?? minFor(req.method))
   return i
 }
@@ -79,8 +76,7 @@ const note = (d: Db, to: string, me: Me, issueId: string, kind: string, text: st
     `insert into notifications (user_id, actor_id, issue_id, kind, text)
      select $1, $2, i.id, $4, $5 from issues i
       where i.id = $3 and (exists (select 1 from project_access pm where pm.project_id = i.project_id and pm.user_id = $1)
-                        or is_system_admin($1))
-        and issue_visible(i.security_level_id, i.reporter_id, i.assignee_id, i.project_id, $1, is_system_admin($1))`,
+                        or is_system_admin($1))`,
     [to, me.id, issueId, kind, text])
 
 /** True when `@name` appears in the text as a whole name (`@Ann` does not match inside `@Anna`). */
@@ -219,8 +215,6 @@ async function applyPatch(d: Db, me: Me, cur: any, patch: z.infer<typeof patchBo
   if (patch.timeEstimate != null && patch.timeRemaining === undefined && cur.timeRemaining === null) patch = { ...patch, timeRemaining: patch.timeEstimate }
   if (patch.type !== undefined && patch.type !== cur.type) await checkType(d, cur.projectId, patch.type)
   await checkParts(d, cur.projectId, patch)
-  if (patch.securityLevelId !== undefined && patch.securityLevelId !== cur.securityLevelId)
-    await checkLevel(d, me, cur.projectId, patch.securityLevelId, cur.reporterId, patch.assigneeId !== undefined ? patch.assigneeId : cur.assigneeId)
   if (patch.custom) await checkCustom(d, cur.projectId, patch.custom, cur.custom)
   checkSpec(patch.type ?? cur.type, patch.testSpec)
   if ((patch.testEnvironments?.length || patch.revision) && (patch.type ?? cur.type) !== 'test_execution') throw new HttpError(400, 'Only Test Executions have environments and a revision')
@@ -290,15 +284,6 @@ async function defaultAssignee(d: Db, projectId: string, componentIds: string[] 
   return null
 }
 
-/** A security level must be the project's, and (as in Jira) one I am in myself, judged with the item as it will be. */
-async function checkLevel(d: Db, me: Me, projectId: string, levelId: string | null | undefined, reporterId: string | null, assigneeId: string | null) {
-  if (!levelId) return
-  const [ok] = await d.query<{ ok: boolean }>(`select issue_visible($1, $2, $3, $4, $5, $6) as ok from security_levels where id = $1 and project_id = $4`,
-    [levelId, reporterId, assigneeId, projectId, me.id, me.admin])
-  if (!ok) throw new HttpError(400, 'No such security level in this project', { securityLevelId: 'Unknown level' })
-  if (!ok.ok) throw new HttpError(400, 'You can only choose a security level you are in', { securityLevelId: 'You aren’t in this level' })
-}
-
 /** Only Tests and Pre-Conditions say what to do. */
 function checkSpec(type: string, spec: unknown) {
   if (spec != null && type !== 'test' && type !== 'precondition') throw new HttpError(400, 'Only Tests and Pre-Conditions have test steps', { testSpec: 'Not a Test' })
@@ -329,7 +314,6 @@ export async function insertIssue(d: Db, me: Me, projectId: string, b: Record<st
   checkSpec(b.type ?? 'task', b.testSpec)
   await checkFolder(d, projectId, b.type ?? 'task', b.testFolderId)
   await checkParts(d, projectId, b)
-  await checkLevel(d, me, projectId, b.securityLevelId, me.id, b.assigneeId ?? null)
   if (b.assigneeId === undefined && b.componentIds?.length) { const who = await defaultAssignee(d, projectId, b.componentIds); if (who) b = { ...b, assigneeId: who } }
   let statusId = b.statusId
   if (!statusId) {
@@ -360,11 +344,11 @@ const plugin: FastifyPluginAsyncZod = async app => {
   app.get('/projects/:key/report-data', { schema: { tags: TAG, summary: 'All live items of a project and the full history of their status changes, for reports', params: projKeyP } }, async req => {
     const p = await projectByKey(db, req, req.params.key)
     const [issues, statusChanges] = await Promise.all([
-      db.query(`${ISSUE_ROW} where i.project_id = $1 and i.deleted_at is null and ${levelOk(req.me, 2)} order by i.rank, i.id`, [p.id, req.me.id]),
+      db.query(`${ISSUE_ROW} where i.project_id = $1 and i.deleted_at is null order by i.rank, i.id`, [p.id]),
       db.query(`select a.issue_id, a.from_value as from_id, a.to_value as to_id, a.created_at as at
                   from activity a join issues i on i.id = a.issue_id
-                 where i.project_id = $1 and i.deleted_at is null and ${levelOk(req.me, 2)} and a.field = 'statusId' and a.to_value is not null
-                 order by a.created_at, a.id`, [p.id, req.me.id]),
+                 where i.project_id = $1 and i.deleted_at is null and a.field = 'statusId' and a.to_value is not null
+                 order by a.created_at, a.id`, [p.id]),
     ])
     return { issues, statusChanges }
   })
@@ -372,8 +356,8 @@ const plugin: FastifyPluginAsyncZod = async app => {
   app.get('/projects/:key/issues', { schema: { tags: TAG, summary: 'List a project\'s issues in backlog order (keyset-paginated)', params: projKeyP, querystring: listQuery } }, async req => {
     const q = req.query
     const p = await projectByKey(db, req, req.params.key)
-    const args: unknown[] = [p.id, req.me.id]
-    const where = ['i.project_id = $1', 'i.deleted_at is null', levelOk(req.me, 2)]
+    const args: unknown[] = [p.id]
+    const where = ['i.project_id = $1', 'i.deleted_at is null']
     const add = (sql: string, v: unknown) => { args.push(v); where.push(sql.replace('?', `$${args.length}`)) }
     if (q.status) add('i.status_id = ?', q.status)
     if (q.assignee) add('i.assignee_id = ?', q.assignee)
@@ -418,7 +402,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
       const { include } = req.body
       const copy = async (i: any, over: Record<string, unknown>) => insertIssue(d, req.me, i.projectId, {
         type: i.type, title: i.title, description: i.description, priority: i.priority, labels: i.labels, estimate: i.estimate,
-        timeEstimate: i.timeEstimate, dueDate: i.dueDate, startDate: i.startDate, releaseId: i.releaseId, custom: i.custom, securityLevelId: i.securityLevelId,
+        timeEstimate: i.timeEstimate, dueDate: i.dueDate, startDate: i.startDate, releaseId: i.releaseId, custom: i.custom,
         assigneeId: i.assigneeId && (await canJoinWork(d, i.projectId, i.assigneeId)) ? i.assigneeId : null,
         sprintId: include.sprint ? i.sprintId : null, ...over,
       }, `Cloned from ${i.key}`)
@@ -428,8 +412,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
       })
       await d.query(`insert into issue_links (issue_id, target_id, type) values ($1, $2, 'clones')`, [id, src.id])
       if (include.children)
-        // only children I can see: a copy names me as reporter, so cloning must not hand me an item a level keeps from me
-        for (const c of await d.query<any>(`${ISSUE_ROW} where i.parent_id = $1 and i.deleted_at is null and ${levelOk(req.me, 2)} order by i.rank`, [src.id, req.me.id])) await copy(c, { parentId: id })
+            for (const c of await d.query<any>(`${ISSUE_ROW} where i.parent_id = $1 and i.deleted_at is null order by i.rank`, [src.id])) await copy(c, { parentId: id })
       if (include.links) {
         await d.query(`insert into issue_links (issue_id, target_id, type) select $2, target_id, type from issue_links where issue_id = $1 and target_id <> $2 and type <> 'clones' on conflict do nothing`, [src.id, id])
         await d.query(`insert into issue_links (issue_id, target_id, type) select issue_id, $2, type from issue_links where target_id = $1 and issue_id <> $2 and type <> 'clones' on conflict do nothing`, [src.id, id])
@@ -451,16 +434,16 @@ const plugin: FastifyPluginAsyncZod = async app => {
     const jobs: Promise<void>[] = []
     const load = (name: string, sql: string, map?: (rows: any[]) => unknown) => { if (want.has(name)) jobs.push(db.query(sql, sql.includes('$2') ? [i.id, req.me.id] : [i.id]).then(r => { out[name === 'watchers' ? 'watcherIds' : name] = map ? map(r) : r })) }
     load('links', `select l.type, 'out' as dir, t.id as issue_id, p.key || '-' || t.number as key, t.title
-                  from issue_links l join issues t on t.id = l.target_id join projects p on p.id = t.project_id where l.issue_id = $1 and t.deleted_at is null and ${levelOk(req.me, 2, 't')} and ${visibleAs(req.me, 't.project_id', 2)}
+                  from issue_links l join issues t on t.id = l.target_id join projects p on p.id = t.project_id where l.issue_id = $1 and t.deleted_at is null and ${visibleAs(req.me, 't.project_id', 2)}
                 union all
                 select l.type, 'in', t.id, p.key || '-' || t.number, t.title
-                  from issue_links l join issues t on t.id = l.issue_id join projects p on p.id = t.project_id where l.target_id = $1 and t.deleted_at is null and ${levelOk(req.me, 2, 't')} and ${visibleAs(req.me, 't.project_id', 2)}`)
+                  from issue_links l join issues t on t.id = l.issue_id join projects p on p.id = t.project_id where l.target_id = $1 and t.deleted_at is null and ${visibleAs(req.me, 't.project_id', 2)}`)
     load('watchers', 'select user_id from issue_watchers where issue_id = $1', rows => rows.map((w: any) => w.userId))
     load('comments', `select * from comments c where issue_id = $1 and ${commentShown(req.me, i.projectId, 2)} order by created_at, id limit 200`)
     load('activity', 'select * from activity where issue_id = $1 order by created_at desc, id desc limit 200')
     load('worklogs', 'select * from worklogs where issue_id = $1 order by date desc, created_at desc limit 200')
     load('attachments', 'select id, name, size, type, added_by, added_at from attachments where issue_id = $1 and uploaded_at is not null order by added_at')
-    load('children', `${ISSUE_ROW} where i.parent_id = $1 and i.deleted_at is null and ${levelOk(req.me, 2)} order by i.rank limit 500`)
+    load('children', `${ISSUE_ROW} where i.parent_id = $1 and i.deleted_at is null order by i.rank limit 500`)
     await Promise.all(jobs)
     return out
   })

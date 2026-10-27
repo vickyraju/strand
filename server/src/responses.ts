@@ -35,10 +35,6 @@ export const NotificationPrefs = z.object({
   prefs: z.array(z.object({ kind: z.enum(['assigned', 'mentioned', 'commented', 'status', 'due', 'automation']), inbox: z.boolean(), email: z.boolean() })),
   emailEnabled: z.boolean().describe('The workspace sends email (System settings)'),
 })
-export const SecurityLevel = z.object({
-  id, projectId: id, name: z.string(), description: z.string(), items: z.number(),
-  members: z.array(z.object({ kind: z.enum(['role', 'group', 'user', 'reporter', 'assignee']), role: z.string().optional(), id: id.optional() })),
-})
 export const AvailableTransition = z.object({
   id, name: z.string(), toId: nullable(id), screen: z.array(z.string()).describe('Fields to fill in (and "comment")'),
   problems: z.record(z.string(), z.string()).describe('What would stop the move if made now, by field'),
@@ -64,14 +60,14 @@ export const ProjectDetail = z.object({
   id, workspaceId: id, key: z.string(), name: z.string(), description: z.string(), color: z.string(), template: z.enum(['kanban', 'scrum']),
   leadId: nullable(id), archivedAt: nullable(ts), nextNumber: z.number(), testing: z.boolean().describe('Test management is on'), requirementTypes: nullable(z.array(z.string())).describe('Work types counted as requirements (null: all but testing types and Bug)'), boardPrefs: z.record(z.string(), z.unknown()), layout: z.record(z.string(), z.unknown()),
   sample: z.boolean(), createdAt: ts, role: z.enum(['admin', 'member', 'viewer']).describe('My role in this project'),
-  statuses: z.array(Status), transitions: z.array(Transition), types: z.array(WorkType), components: z.array(Component), securityLevels: z.array(SecurityLevel.omit({ items: true })), fields: z.array(Field), templates: z.array(Template),
+  statuses: z.array(Status), transitions: z.array(Transition), types: z.array(WorkType), components: z.array(Component), fields: z.array(Field), templates: z.array(Template),
   rules: z.array(Rule), releases: z.array(Release), sprints: z.array(Sprint),
 })
 
 const issueFields = {
   id, key: z.string().describe('e.g. PAY-12'), projectId: id, number: z.number(), type: z.string().describe('Work type key'),
   title: z.string(), description: z.string(), statusId: id, priority: z.enum(['urgent', 'high', 'medium', 'low', 'none']),
-  assigneeId: nullable(id), reporterId: nullable(id), labels: z.array(z.string()), estimate: nullable(z.number()), timeEstimate: nullable(z.number()), timeRemaining: nullable(z.number()), componentIds: z.array(id), affectsReleaseIds: z.array(id), securityLevelId: nullable(id),
+  assigneeId: nullable(id), reporterId: nullable(id), labels: z.array(z.string()), estimate: nullable(z.number()), timeEstimate: nullable(z.number()), timeRemaining: nullable(z.number()), componentIds: z.array(id), affectsReleaseIds: z.array(id),
   testSpec: nullable(z.unknown()).describe('Test steps, Gherkin or definition (Tests and Pre-Conditions)'), testFolderId: nullable(id).describe('Test repository folder'),
   testEnvironments: z.array(z.string()).describe('Test Executions: what it ran against'), revision: z.string().describe('Test Executions: build or revision'),
   dueDate: nullable(day), startDate: nullable(day), sprintId: nullable(id), releaseId: nullable(id), parentId: nullable(id),
@@ -260,9 +256,6 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'POST /test-runs/:id/evidence': TestRun,
   'POST /projects/:key/test-folders': TestFolder,
   'PATCH /projects/:key/test-folders/:folderId': TestFolder,
-  'GET /projects/:key/security-levels': z.array(SecurityLevel),
-  'POST /projects/:key/security-levels': SecurityLevel,
-  'PATCH /projects/:key/security-levels/:levelId': SecurityLevel,
   'GET /me/notification-prefs': NotificationPrefs,
   'PUT /me/notification-prefs': NotificationPrefs,
   'POST /projects/:key/import': z.object({
