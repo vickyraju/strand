@@ -62,6 +62,23 @@ export const SETTINGS = {
     }),
     default: { exportMaxRows: 20_000, bulkMaxItems: 200, importMaxRows: 10_000 },
   },
+  licenseCleanup: {
+    label: 'License cleanup',
+    description: 'People who haven’t used Strand for a while lose their seat (users-access) until they sign in again, or leave chosen groups, or are deactivated. Checked daily; they are warned first.',
+    public: false,
+    schema: z.object({
+      enabled: z.boolean().describe('Run the cleanup every day'),
+      inactiveDays: z.number().int().min(7).max(3650).describe('Inactive for this many days'),
+      action: z.enum(['remove-access', 'remove-groups', 'deactivate']).describe('remove-access: out of users-access, back at their next sign-in; remove-groups: out of the chosen groups; deactivate: sign-in refused until reactivated'),
+      groupIds: z.array(z.string().uuid()).max(50).describe('The groups for remove-groups'),
+      warnDays: z.number().int().min(0).max(60).describe('Email a warning this many days before (0: none)'),
+      excludedGroupIds: z.array(z.string().uuid()).max(50).describe('Members of these groups are never changed'),
+      protectLeads: z.boolean().describe('Leave project and component leads alone'),
+      reportTo: z.array(z.string().trim().email()).max(20).describe('Who gets a report of each run that changed someone'),
+    }).refine(v => v.action !== 'remove-groups' || v.groupIds.length > 0, { path: ['groupIds'], message: 'Choose the groups to take people out of' })
+      .refine(v => v.warnDays < v.inactiveDays, { path: ['warnDays'], message: 'Warn fewer days ahead than the inactivity period' }),
+    default: { enabled: false, inactiveDays: 90, action: 'remove-access' as 'remove-access' | 'remove-groups' | 'deactivate', groupIds: [] as string[], warnDays: 7, excludedGroupIds: [] as string[], protectLeads: true, reportTo: [] as string[] },
+  },
   groups: {
     label: 'Groups',
     description: 'Who may make groups. A group’s owners decide who is in it; project admins decide what a group may do in their project.',

@@ -92,6 +92,7 @@ export const TestRun = z.object({
   comment: z.string(), defectIds: z.array(id), evidenceIds: z.array(id), version: z.number(), createdAt: ts, updatedAt: ts,
   specChanged: z.boolean().describe('The test has changed since this run was made (reset to use the new one)'),
 })
+const CleanupPerson = z.object({ userId: id, email: z.string(), name: z.string(), lastActiveAt: nullable(ts) })
 export const GroupSummary = z.object({
   id, name: z.string(), description: z.string(), kind: z.enum(['system', 'directory', 'strand']).describe('system (users-access, system-administrators), directory (from Entra) or strand (made here)'),
   systemRole: nullable(z.string()), members: z.number(), owners: z.array(z.object({ id, name: z.string() })), isMember: z.boolean(), isOwner: z.boolean(),
@@ -215,6 +216,15 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'GET /projects/:key/test-folders': z.array(TestFolder),
   'GET /test-statuses': z.array(TestStatus),
   'GET /groups': z.array(GroupSummary),
+  'POST /admin/users/bulk': z.object({ changed: z.number(), unchanged: z.number().describe('Already as asked') }),
+  'GET /admin/users/refused-sign-ins': z.array(z.object({ at: ts, userId: nullable(z.string()), email: nullable(z.string()), ip: nullable(z.string()), name: nullable(z.string()), active: nullable(z.boolean()) })),
+  'GET /admin/license-cleanup': z.object({
+    seats: z.object({ total: z.number().describe('People in users-access'), active30: z.number(), active90: z.number(), never: z.number().describe('Never used Strand') }),
+    runs: z.array(z.object({ id, trigger: z.string(), action: z.string(), startedAt: ts, finishedAt: nullable(ts), changedCount: z.number(), warnedCount: z.number(),
+      changed: z.array(CleanupPerson), warned: z.array(CleanupPerson), notes: z.string(), startedBy: nullable(z.string()) })),
+  }),
+  'POST /admin/license-cleanup/preview': z.object({ change: z.array(CleanupPerson), warn: z.array(CleanupPerson) }),
+  'POST /admin/license-cleanup/run': z.object({ id, changed: z.number(), warned: z.number(), notes: z.string() }),
   'GET /groups/:id': GroupSummary.extend({
     people: z.array(z.object({ id, name: z.string(), email: z.string(), initials: z.string(), color: z.string(), active: z.boolean() })),
     projects: z.array(z.object({ key: z.string(), name: z.string(), role: z.string() })).describe('Projects you can see where the group has a role'),
@@ -311,6 +321,7 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'GET /admin/users': z.array(z.object({
     id, name: z.string(), email: z.string(), initials: z.string(), color: z.string(), title: nullable(z.string()), active: z.boolean(),
     role: z.enum(['owner', 'admin', 'member']), createdAt: ts, projects: z.number().describe('Projects they are a member of'),
+    lastActiveAt: nullable(ts).describe('Last used Strand (to the hour)'), lastSignInAt: nullable(ts), groups: z.array(z.object({ id, name: z.string() })),
   })),
   'GET /admin/project-backups': z.array(z.object({
     id, projectId: id, projectKey: z.string(), projectName: z.string(), bucket: z.string(), objectKey: z.string(),

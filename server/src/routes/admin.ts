@@ -9,20 +9,86 @@ import { enqueue, kickJobs } from '../jobs.ts'
 import { allowedBackupBuckets, backupBucket, backupSettings } from '../backups.ts'
 import { s3 } from '../storage.ts'
 import { SETTINGS, getSetting, isSettingKey, setSetting, type SettingKey } from '../settings.ts'
+import { preview, runCleanup, scheduleCleanup, seats } from '../licenseCleanup.ts'
 
 const idP = z.object({ id: z.string().uuid() })
 const TAG = ['Admin']
 
 const plugin: FastifyPluginAsyncZod = async app => {
   // ── People in the workspace (global admins). Accounts and admin rights come from Entra (sign-in and SCIM), so this is a view, not an editor ──
-  app.get('/admin/users', { schema: { tags: TAG, summary: 'Everyone in the workspace, with role, status and how many projects they are in (global admins)' } }, async req => {
+  app.get('/admin/users', { schema: { tags: TAG, summary: 'Everyone in the workspace, with role, status, last activity, groups and how many projects they are in (system administrators)' } }, async req => {
     requireAdmin(req)
     return db.query(
       `select u.id, u.name, u.email, u.initials, u.color, u.title, u.active, case when m.role = 'owner' then 'owner' when is_system_admin(u.id) then 'admin' else 'member' end as role, u.created_at,
+              u.last_active_at, u.last_sign_in_at,
+              coalesce((select jsonb_agg(jsonb_build_object('id', g.id, 'name', g.display_name) order by g.system_role is null, lower(g.display_name))
+                          from group_members gm join groups g on g.id = gm.group_id where gm.user_id = u.id), '[]') as groups,
               (select count(*)::int from project_access pm join projects p on p.id = pm.project_id
                 where pm.user_id = u.id and p.workspace_id = $1 and p.deleting_at is null) as projects
          from memberships m join users u on u.id = m.user_id
         where m.workspace_id = $1 order by u.active desc, lower(u.name), u.id limit 5000`, [req.me.workspaceId])
+  })
+
+  // People in bulk (resolution's User Deactivator): deactivate, reactivate, add to or take out of a group
+  app.post('/admin/users/bulk', { schema: { tags: TAG, summary: 'Change many people at once (system administrators): deactivate, reactivate, add to a group, remove from a group', body: z.object({
+    userIds: z.array(z.string().uuid()).min(1).max(1000), action: z.enum(['deactivate', 'reactivate', 'add-to-group', 'remove-from-group']), groupId: z.string().uuid().optional(),
+  }) } }, async req => {
+    requireAdmin(req)
+    const b = req.body
+    if ((b.action === 'add-to-group' || b.action === 'remove-from-group') && !b.groupId) throw new HttpError(400, 'Choose the group', { groupId: 'Required' })
+    return tx(async d => {
+      const people = await d.query<{ id: string; email: string; active: boolean }>(
+        'select u.id, u.email, u.active from users u join memberships m on m.user_id = u.id where m.workspace_id = $1 and u.id = any($2::uuid[])', [req.me.workspaceId, b.userIds])
+      if (people.length !== new Set(b.userIds).size) throw new HttpError(400, 'Everyone must be in this workspace', { userIds: 'Unknown people' })
+      const [g] = b.groupId ? await d.query<{ id: string; displayName: string; systemRole: string | null; externalId: string | null }>('select id, display_name, system_role, external_id from groups where id = $1 for update', [b.groupId]) : []
+      if (b.groupId && !g) throw new HttpError(400, 'No such group', { groupId: 'Unknown group' })
+      if (g?.externalId && !g.systemRole) throw new HttpError(400, `${g.displayName} comes from the directory (Entra): change it there`)
+      let changed = 0
+      for (const p of people) {
+        let did = 0
+        if (b.action === 'deactivate') {
+          if (p.id === req.me.id) throw new HttpError(400, 'You can’t deactivate yourself')
+          did = (await d.query('update users set active = false where id = $1 and active returning 1', [p.id])).length
+        } else if (b.action === 'reactivate') did = (await d.query('update users set active = true, cleanup_warned_at = null where id = $1 and not active returning 1', [p.id])).length
+        else if (b.action === 'add-to-group') did = (await d.query('insert into group_members (group_id, user_id) values ($1, $2) on conflict do nothing returning 1', [g!.id, p.id])).length
+        else did = (await d.query('delete from group_members where group_id = $1 and user_id = $2 returning 1', [g!.id, p.id])).length
+        if (did) { changed++; await audit(d, req, { action: `user.bulk.${b.action}`, type: 'user', id: p.id, name: p.email, after: g ? { group: g.displayName } : undefined }) }
+      }
+      // never leave Strand without a system administrator
+      const [{ n }] = await d.query<{ n: number }>(`select count(*)::int as n from group_members gm join groups g on g.id = gm.group_id join users u on u.id = gm.user_id where g.system_role = 'system-admins' and u.active`) as any
+      if (!n) throw new HttpError(409, 'Strand needs at least one active system administrator')
+      return { changed, unchanged: people.length - changed }
+    })
+  })
+  app.get('/admin/users/refused-sign-ins', { schema: { tags: TAG, summary: 'Deactivated people who tried to sign in, newest first (system administrators)' } }, async req => {
+    requireAdmin(req)
+    return db.query(`select a.at, a.target_id as user_id, a.target as email, a.ip, u.name, u.active from audit_log a left join users u on u.id::text = a.target_id
+                      where a.action = 'auth.refused_deactivated' and a.workspace_id = $1 order by a.at desc limit 100`, [req.me.workspaceId])
+  })
+
+  // ── License cleanup (resolution's License Optimizer and automatic deactivation): seats, a preview, run now, history ──
+  app.get('/admin/license-cleanup', { schema: { tags: TAG, summary: 'Seats (people in users-access, and how recently they were active) and the latest cleanup runs (system administrators)' } }, async req => {
+    requireAdmin(req)
+    return {
+      seats: await seats(db, req.me.workspaceId),
+      runs: await db.query(`select r.id, r.trigger, r.action, r.started_at, r.finished_at, jsonb_array_length(r.changed) as changed_count, jsonb_array_length(r.warned) as warned_count,
+                                   r.changed, r.warned, r.notes, u.name as started_by from license_cleanup_runs r left join users u on u.id = r.started_by
+                             where r.workspace_id = $1 order by r.started_at desc limit 50`, [req.me.workspaceId]),
+    }
+  })
+  app.post('/admin/license-cleanup/preview', { schema: { tags: TAG, summary: 'Who the cleanup would change and warn now, with the saved rule or one you send (nothing changes; system administrators)', body: z.object({ rule: z.record(z.string(), z.unknown()).optional() }) } }, async req => {
+    requireAdmin(req)
+    let rule = await getSetting(req.me.workspaceId, 'licenseCleanup')
+    if (req.body.rule) {
+      const parsed = SETTINGS.licenseCleanup.schema.safeParse({ ...rule, ...req.body.rule })
+      if (!parsed.success) throw new HttpError(400, 'That rule is not valid', Object.fromEntries(parsed.error.issues.map(i => [i.path.join('.') || 'rule', i.message])))
+      rule = parsed.data
+    }
+    return preview(db, req.me.workspaceId, rule)
+  })
+  app.post('/admin/license-cleanup/run', { schema: { tags: TAG, summary: 'Run the cleanup now with the saved rule, even if the daily run is off (system administrators)' } }, async req => {
+    requireAdmin(req)
+    return runCleanup(req.me.workspaceId, 'manual', req)
   })
 
   // ── System settings: policies a workspace admin controls (rate limiting, attachments, tokens, export and bulk sizes, due reminders) ──
@@ -49,6 +115,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
       await setSetting(d, req.me.workspaceId, key, parsed.data, req.me.id)
       const c = changes(before as any, parsed.data as any)
       if (c.changed) await audit(d, req, { action: `settings.${key}.updated`, type: 'settings', name: SETTINGS[key].label, before: c.before, after: c.after })
+      if (key === 'licenseCleanup' && (parsed.data as any).enabled) await scheduleCleanup(d, req.me.workspaceId)   // the next daily run
     })
     return view(req.me.workspaceId, key)
   })

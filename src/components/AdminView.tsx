@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Users, ScrollText, Archive, Download, RotateCcw, SlidersHorizontal, Link2, Bookmark, UsersRound } from 'lucide-react'
+import { Users, ScrollText, Archive, Download, RotateCcw, SlidersHorizontal, Link2, Bookmark, UsersRound, UserMinus } from 'lucide-react'
 import { api, apiEnabled, ApiError } from '../api/client'
 import { useStore, timeAgo } from '../data/store'
 import { isGlobalAdmin } from '../data/access'
@@ -9,12 +9,14 @@ import { formatBytes } from '../data/files'
 import { Avatar, Empty, Modal, Toggle, plural } from './ui'
 import SystemSettings from './SystemSettings'
 import GroupsView from './groups/GroupsView'
+import LicenseCleanup from './LicenseCleanup'
 import LinkTypesAdmin from './LinkTypesAdmin'
 import SharedViewsAdmin from './SharedViewsAdmin'
 
 const SECTIONS: { id: AdminSection; label: string; Icon: typeof Users }[] = [
   { id: 'people', label: 'People', Icon: Users },
   { id: 'groups', label: 'Groups', Icon: UsersRound },
+  { id: 'license', label: 'License cleanup', Icon: UserMinus },
   { id: 'audit', label: 'Audit log', Icon: ScrollText },
   { id: 'backups', label: 'Project backups', Icon: Archive },
   { id: 'link-types', label: 'Link types', Icon: Link2 },
@@ -47,6 +49,7 @@ export default function AdminView({ section = 'people' }: { section?: AdminSecti
       <div className="admin-body">
         {section === 'people' && <People />}
         {section === 'groups' && <GroupsView admin={admin} />}
+        {section === 'license' && <LicenseCleanup />}
         {section === 'audit' && <AuditLog />}
         {section === 'backups' && <Backups />}
         {section === 'link-types' && <LinkTypesAdmin />}
@@ -71,29 +74,80 @@ function useLoad<T>(path: string) {
   return { data, error, reload: () => setN(x => x + 1) }
 }
 
-interface Person { id: string; name: string; email: string; initials: string; color: string; title: string | null; active: boolean; role: 'owner' | 'admin' | 'member'; projects: number }
+interface Person {
+  id: string; name: string; email: string; initials: string; color: string; title: string | null; active: boolean; role: 'owner' | 'admin' | 'member'; projects: number
+  lastActiveAt: string | null; lastSignInAt: string | null; groups: { id: string; name: string }[]
+}
+type BulkAction = 'deactivate' | 'reactivate' | 'add-to-group' | 'remove-from-group'
+const BULK: Record<BulkAction, string> = { deactivate: 'Deactivate', reactivate: 'Reactivate', 'add-to-group': 'Add to group…', 'remove-from-group': 'Remove from group…' }
+const daysSince = (at: string | null) => (at ? (Date.now() - Date.parse(at)) / 86_400_000 : Infinity)
 
+/** Everyone, with last activity and groups (resolution's user browser): filter, pick, and change many at once. */
 function People() {
-  const { data, error } = useLoad<Person[]>('/api/admin/users')
+  const { toast } = useApp()
+  const { data, error, reload } = useLoad<Person[]>('/api/admin/users')
+  const refused = useLoad<{ at: string; userId: string | null; email: string | null; name: string | null; active: boolean | null }[]>('/api/admin/users/refused-sign-ins')
   const [q, setQ] = useState('')
-  const shown = (data ?? []).filter(p => !q || `${p.name} ${p.email}`.toLowerCase().includes(q.toLowerCase()))
+  const [inactive, setInactive] = useState('')            // '' | days | 'never'
+  const [status, setStatus] = useState<'all' | 'active' | 'deactivated'>('all')
+  const [group, setGroup] = useState('')                  // '' | in:<id> | out:<id>
+  const [picked, setPicked] = useState<string[]>([])
+  const [bulk, setBulk] = useState<{ action: BulkAction; groupId: string } | null>(null)
+  const groups = [...new Map((data ?? []).flatMap(p => p.groups).map(g => [g.id, g])).values()].sort((a, b) => a.name.localeCompare(b.name))
+  const shown = (data ?? []).filter(p => (!q || `${p.name} ${p.email}`.toLowerCase().includes(q.toLowerCase()))
+    && (status === 'all' || (status === 'active') === p.active)
+    && (!inactive || (inactive === 'never' ? !p.lastActiveAt : daysSince(p.lastActiveAt) > Number(inactive)))
+    && (!group || (group.startsWith('in:') ? p.groups.some(g => g.id === group.slice(3)) : !p.groups.some(g => g.id === group.slice(4)))))
+  const allPicked = shown.length > 0 && shown.every(p => picked.includes(p.id))
+  const apply = () => {
+    if (!bulk) return
+    api<{ changed: number; unchanged: number }>('POST', '/api/admin/users/bulk', { userIds: picked, action: bulk.action, ...(bulk.groupId ? { groupId: bulk.groupId } : {}) })
+      .then(r => { toast(`${BULK[bulk.action].replace('…', '')}: ${r.changed} changed${r.unchanged ? `, ${r.unchanged} already so` : ''}`); setBulk(null); setPicked([]); reload() }, e => toast(message(e), { tone: 'warn' }))
+  }
   return (
     <section>
-      <p className="muted">Accounts and admin rights come from your organisation’s sign-in (Microsoft Entra): people are added and deactivated there. Project roles are set in each project’s People and access page.</p>
-      <input className="input" style={{ maxWidth: 320, margin: '12px 0' }} placeholder="Find a person" aria-label="Find a person" value={q} onChange={e => setQ(e.target.value)} />
+      <p className="muted">Everyone who has signed in. Accounts come from your organisation’s sign-in (Microsoft Entra); here you can see who is active, filter, and change many people at once. Admin rights come from the system-administrators group.</p>
+      <div className="people-filters">
+        <input className="input" style={{ maxWidth: 240 }} placeholder="Find a person" aria-label="Find a person" value={q} onChange={e => setQ(e.target.value)} />
+        <select className="input" aria-label="Inactive" value={inactive} onChange={e => setInactive(e.target.value)}>
+          <option value="">Any activity</option><option value="30">Inactive 30+ days</option><option value="90">Inactive 90+ days</option><option value="180">Inactive 180+ days</option><option value="never">Never used Strand</option>
+        </select>
+        <select className="input" aria-label="Status" value={status} onChange={e => setStatus(e.target.value as typeof status)}>
+          <option value="all">Active and deactivated</option><option value="active">Active</option><option value="deactivated">Deactivated</option>
+        </select>
+        <select className="input" aria-label="Group" value={group} onChange={e => setGroup(e.target.value)}>
+          <option value="">Any group</option>
+          {groups.map(g => <option key={`in:${g.id}`} value={`in:${g.id}`}>In {g.name}</option>)}
+          {groups.map(g => <option key={`out:${g.id}`} value={`out:${g.id}`}>Not in {g.name}</option>)}
+        </select>
+      </div>
+      {picked.length > 0 && (
+        <div className="bulk-bar" role="region" aria-label="Change selected people">
+          <b>{picked.length} selected</b>
+          <select className="input input-sm" aria-label="Bulk action" value="" onChange={e => e.target.value && setBulk({ action: e.target.value as BulkAction, groupId: '' })}>
+            <option value="">Change them…</option>{Object.entries(BULK).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          </select>
+          <button className="btn btn-ghost btn-sm" onClick={() => setPicked([])}>Clear</button>
+        </div>
+      )}
       {error && <p className="hint error" role="alert">{error}</p>}
       {!data && !error && <p className="muted" role="status">Loading…</p>}
       {data && (
         <div className="card-table" style={{ marginInline: 0 }}>
           <table className="table">
-            <thead><tr><th>Name</th><th>Email</th><th>Workspace role</th><th>Projects</th><th>Status</th></tr></thead>
+            <thead><tr>
+              <th style={{ width: 32 }}><input type="checkbox" aria-label="Select everyone shown" checked={allPicked} onChange={e => setPicked(e.target.checked ? [...new Set([...picked, ...shown.map(p => p.id)])] : picked.filter(id => !shown.some(p => p.id === id)))} /></th>
+              <th>Name</th><th>Email</th><th>Role</th><th>Groups</th><th>Last active</th><th>Status</th>
+            </tr></thead>
             <tbody>
               {shown.map(p => (
                 <tr key={p.id} style={{ cursor: 'default' }}>
+                  <td><input type="checkbox" aria-label={`Select ${p.name}`} checked={picked.includes(p.id)} onChange={e => setPicked(e.target.checked ? [...picked, p.id] : picked.filter(x => x !== p.id))} /></td>
                   <td><span className="admin-person"><Avatar user={{ ...p, title: p.title ?? undefined }} size={24} />{p.name}{p.title && <span className="muted sm">{p.title}</span>}</span></td>
                   <td className="muted">{p.email}</td>
                   <td>{p.role === 'member' ? 'Member' : p.role === 'owner' ? 'Owner' : 'Admin'}</td>
-                  <td>{p.projects}</td>
+                  <td className="muted sm">{p.groups.map(g => g.name).join(', ')}</td>
+                  <td className="muted" title={p.lastSignInAt ? `Last sign-in ${new Date(p.lastSignInAt).toLocaleString()}` : 'Never signed in'}>{p.lastActiveAt ? timeAgo(Date.parse(p.lastActiveAt)) : 'Never'}</td>
                   <td>{p.active ? <span className="lozenge lozenge-done">Active</span> : <span className="lozenge lozenge-todo">Deactivated</span>}</td>
                 </tr>
               ))}
@@ -101,6 +155,28 @@ function People() {
           </table>
           {!shown.length && <p className="muted" style={{ padding: 12 }}>Nobody matches.</p>}
         </div>
+      )}
+      {!!refused.data?.length && (
+        <div className="panel" style={{ marginTop: 16 }}>
+          <h2 className="panel-title">Sign-in attempts by deactivated people</h2>
+          <p className="muted sm">Someone here may need to be reactivated: select them above and choose Reactivate.</p>
+          <ul className="test-members">{refused.data.map(r => <li key={`${r.userId}:${r.at}`} className="test-member"><span className="test-member-title">{r.name ?? r.email} <span className="muted sm">{r.email}</span></span><span className="muted sm">{timeAgo(Date.parse(r.at))}{r.active ? ' · reactivated since' : ''}</span></li>)}</ul>
+        </div>
+      )}
+      {bulk && (
+        <Modal title={`${BULK[bulk.action].replace('…', '')}: ${picked.length} ${picked.length === 1 ? 'person' : 'people'}`} onClose={() => setBulk(null)} footer={<>
+          <button className="btn btn-secondary" onClick={() => setBulk(null)}>Cancel</button>
+          <button className={`btn ${bulk.action === 'deactivate' ? 'btn-danger' : 'btn-primary'}`} disabled={bulk.action.endsWith('group') && !bulk.groupId} onClick={apply}>{BULK[bulk.action].replace('…', '')}</button>
+        </>}>
+          {bulk.action.endsWith('group') && (
+            <select className="input" aria-label="Which group" value={bulk.groupId} onChange={e => setBulk({ ...bulk, groupId: e.target.value })}>
+              <option value="">Choose a group…</option>{groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+            </select>
+          )}
+          {bulk.action === 'deactivate' && <p>They won’t be able to sign in until someone reactivates them. Their work, history and comments stay.</p>}
+          {bulk.action === 'reactivate' && <p>They can sign in again with the access they had.</p>}
+          <p className="muted sm">{(data ?? []).filter(p => picked.includes(p.id)).map(p => p.name).join(', ')}</p>
+        </Modal>
       )}
     </section>
   )

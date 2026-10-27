@@ -83,6 +83,7 @@ export async function authenticate(req: FastifyRequest) {
   if (bearer?.startsWith(PAT_PREFIX)) { req.me = await authenticateToken(bearer); return }
   const who = await identify(req)
   if (!who.email) throw new HttpError(401, 'Token has no email')
+  let refused: string | null = null
   req.me = await tx(async d => {
     // Identity is the Entra `oid`. Email (a mutable claim) only links a row that has no oid yet.
     type U = { id: string; active: boolean; entraOid: string | null }
@@ -105,7 +106,9 @@ export async function authenticate(req: FastifyRequest) {
         }
       }
     }
-    if (!u!.active) throw new HttpError(403, 'Account is deactivated')
+    if (!u!.active) { refused = u!.id; return null as unknown as Me }   // recorded after this (rolled back) transaction
+    // last use, at most once an hour; using Strand again cancels a pending cleanup warning
+    await d.query(`update users set last_active_at = now(), cleanup_warned_at = null where id = $1 and (last_active_at is null or last_active_at < now() - interval '1 hour')`, [u!.id])
     const oldest = () => d.query<{ id: string }>('select id from workspaces order by created_at limit 1')
     let [ws] = await oldest()
     let first = false
@@ -125,6 +128,17 @@ export async function authenticate(req: FastifyRequest) {
     const [{ admin }] = await d.query<{ admin: boolean }>('select is_system_admin($1) as admin', [u!.id]) as any
     return { id: u!.id, email: who.email, name: who.name, workspaceId: ws!.id, role: roleOf(m!.role, admin), admin, via: 'entra' as const, adminClaim: who.admin }
   })
+  if (refused) { await noteRefused(refused, who.email, req.ip); throw new HttpError(403, 'Account is deactivated') }
+}
+
+/** A deactivated person tried to sign in: kept in the audit log (at most once an hour each), so admins can see who to
+ *  reactivate (Administration › People). */
+async function noteRefused(userId: string, email: string, ip?: string) {
+  await db.query(
+    `insert into audit_log (workspace_id, actor_id, actor, action, target_type, target_id, target, ip)
+     select (select id from workspaces order by created_at limit 1), $1::uuid, $2::text, 'auth.refused_deactivated', 'user', $1::text, $2::text, $3::text
+      where not exists (select 1 from audit_log where action = 'auth.refused_deactivated' and target_id = $1::text and at > now() - interval '1 hour')`,
+    [userId, email, ip ?? null]).catch(() => {})
 }
 
 /** A personal access token acts as its owner, with the owner's current role. Expired, revoked (deleted) and
@@ -140,7 +154,8 @@ async function authenticateToken(token: string): Promise<Me> {
       where t.token_hash = $1 and t.expires_at > now()
       order by w.created_at limit 1`, [hashToken(token)])
   if (!t) throw new HttpError(401, 'Invalid token')
-  if (!t.active) throw new HttpError(403, 'Account is deactivated')
+  if (!t.active) { await noteRefused(t.userId, t.email); throw new HttpError(403, 'Account is deactivated') }
+  await db.query(`update users set last_active_at = now(), cleanup_warned_at = null where id = $1 and (last_active_at is null or last_active_at < now() - interval '1 hour')`, [t.userId])
   if (!(await getSetting(t.workspaceId, 'accessTokens')).enabled) throw new HttpError(401, 'Personal access tokens are turned off')
   // "last used" is written at most once a minute per token, so a busy script does not turn every call into a write
   await db.query(`update personal_access_tokens set last_used_at = now() where id = $1 and (last_used_at is null or last_used_at < now() - interval '1 minute')`, [t.id])

@@ -6,9 +6,10 @@ import { jsonSchemaTransform, serializerCompiler, validatorCompiler } from 'fast
 import { authenticate } from './auth.ts'
 import { noteLimited, policyFor, rateLimiter, tooMany, type RateSettings } from './rateLimit.ts'
 import { getSetting } from './settings.ts'
-import { pool } from './db.ts'
+import { pool, db } from './db.ts'
 import { startListener, stopListener } from './events.ts'
 import { startJobWorker } from './jobs.ts'
+import { scheduleCleanup } from './licenseCleanup.ts'
 import { errorSchema, toErrorBody } from './errors.ts'
 import { CREATED, RESPONSES } from './responses.ts'
 import projects from './routes/projects.ts'
@@ -139,6 +140,10 @@ export async function build() {
 
   await startListener()
   const stopJobs = startJobWorker(app.log)
+  // a workspace with daily license cleanup on gets its next run queued (once a day; repeats are ignored)
+  if (process.env.DATABASE_URL)   // not when only describing the API (npm run openapi)
+    for (const w of (await pool.query<{ workspace_id: string }>(`select workspace_id from system_settings where key = 'licenseCleanup' and (value->>'enabled')::boolean`)).rows)
+      await scheduleCleanup(db, w.workspace_id).catch(e => app.log.error(e))
   app.addHook('onClose', async () => stopJobs())
   app.addHook('onClose', async () => { await stopListener(); await pool.end() })
   return app
