@@ -2111,6 +2111,77 @@ test('groups: anyone makes one and manages it; a project admin gives it a role; 
   for (const a of ['group.created', 'group.members_added', 'group.member_removed', 'group.owners_added', 'group.owner_removed']) assert.ok(actions.includes(a), a)
 })
 
+test('license cleanup: inactive people lose their seat and get it back at sign-in; warnings and reports by email; admins, leads and excluded groups are safe; bulk actions; refused sign-ins', { skip, timeout: 60_000 }, async () => {
+  process.env.EMAIL_TRANSPORT = 'memory'
+  const { sentEmails } = await import('../src/email.ts')
+  await call('PUT', '/api/v1/admin/settings/email', { enabled: true, from: 'Strand <strand@example.com>', appUrl: '' })
+  const id = async (w: string) => (await call('GET', '/api/v1/me', undefined, w)).body.id as string
+  const [idle, soon, lead, keep, fresh] = [await id('lc.idle@x.com'), await id('lc.soon@x.com'), await id('lc.lead@x.com'), await id('lc.keep@x.com'), await id('lc.fresh@x.com')]
+  // pretend time has passed: idle 120 days, soon 85 days (due in 5), lead and keep 200 days, fresh today
+  const ago = (u: string, days: number) => pool.query(`update users set last_active_at = now() - make_interval(days => $2), cleanup_warned_at = null where id = $1`, [u, days])
+  await ago(idle, 120); await ago(soon, 85); await ago(lead, 200); await ago(keep, 200)
+  // a long-idle system administrator (not the one running these calls, whose own requests keep them active) is never touched
+  const me0 = await id('lc.admin@x.com')
+  await pool.query(`insert into group_members (group_id, user_id) select id, $1 from groups where system_role = 'system-admins' on conflict do nothing`, [me0])
+  await ago(me0, 300)
+  await call('POST', '/api/v1/projects', { name: 'Led', key: 'LCL', template: 'kanban' })
+  await pool.query(`update projects set lead_id = $1 where key = 'LCL'`, [lead])
+  const keepers = (await call('POST', '/api/v1/groups', { name: 'lc-keepers' })).body.id
+  await call('POST', `/api/v1/groups/${keepers}/members`, { userIds: [keep] })
+  const rule = { enabled: true, inactiveDays: 90, action: 'remove-access', groupIds: [], warnDays: 7, excludedGroupIds: [keepers], protectLeads: true, reportTo: ['it@x.com'] }
+  // the rule is checked
+  assert.equal((await call('PUT', '/api/v1/admin/settings/licenseCleanup', { ...rule, action: 'remove-groups' })).body.errors?.groupIds, 'Choose the groups to take people out of')
+  assert.equal((await call('PUT', '/api/v1/admin/settings/licenseCleanup', rule)).status, 200)
+  const ourPeople = (xs: any[]) => xs.map((p: any) => p.userId).filter((u: string) => [idle, soon, lead, keep, fresh].includes(u)).sort()
+  // the preview changes nothing: idle would lose the seat, soon would be warned; lead and keep are safe
+  const pv = (await call('POST', '/api/v1/admin/license-cleanup/preview', {})).body
+  assert.deepEqual([ourPeople(pv.change), ourPeople(pv.warn)], [[idle], [soon]])
+  const seat = async (u: string) => (await pool.query(`select 1 from group_members gm join groups g on g.id = gm.group_id where g.system_role = 'default-users' and gm.user_id = $1`, [u])).rowCount === 1
+  assert.equal(await seat(idle), true)
+  // a preview of another rule, without saving it: protecting leads off puts the lead in
+  assert.ok(ourPeople((await call('POST', '/api/v1/admin/license-cleanup/preview', { rule: { protectLeads: false } })).body.change).includes(lead))
+  // run now: idle loses the seat; soon is warned once; the report goes to it@x.com
+  const before = sentEmails.length
+  const run = (await call('POST', '/api/v1/admin/license-cleanup/run')).body
+  assert.ok(run.changed >= 1 && run.warned >= 1)
+  assert.deepEqual([await seat(idle), await seat(soon), await seat(lead), await seat(keep), await seat(fresh)], [false, true, true, true, true])
+  assert.equal(await seat(me0), true)
+  const mails = sentEmails.slice(before)
+  assert.ok(mails.some(m => m.to === 'lc.soon@x.com' && /haven’t used Strand/.test(m.subject)))
+  assert.ok(mails.some(m => m.to === 'it@x.com' && /license cleanup/.test(m.subject) && /lc\.idle@x\.com/.test(m.text)))
+  assert.equal(ourPeople((await call('POST', '/api/v1/admin/license-cleanup/preview', {})).body.warn).length, 0)    // warned once only
+  // the run is kept, with who and why
+  const page = (await call('GET', '/api/v1/admin/license-cleanup')).body
+  assert.ok(page.runs[0].changed.some((p: any) => p.userId === idle))
+  assert.ok(page.seats.total >= 1)
+  // idle signs in again: back in users-access (License Optimizer's rule)
+  assert.equal((await call('POST', '/api/v1/me/sign-in', undefined, 'lc.idle@x.com')).status, 204)
+  assert.equal(await seat(idle), true)
+  // deactivate mode: sign-in refused, and the attempt listed for admins; bulk reactivation lets them back
+  await ago(idle, 120)
+  await call('PUT', '/api/v1/admin/settings/licenseCleanup', { ...rule, action: 'deactivate', warnDays: 0 })
+  await call('POST', '/api/v1/admin/license-cleanup/run')
+  assert.equal((await call('GET', '/api/v1/me', undefined, 'lc.idle@x.com')).status, 403)
+  assert.ok((await call('GET', '/api/v1/admin/users/refused-sign-ins')).body.some((r: any) => r.email === 'lc.idle@x.com'))
+  assert.deepEqual((await call('POST', '/api/v1/admin/users/bulk', { userIds: [idle], action: 'reactivate' })).body, { changed: 1, unchanged: 0 })
+  assert.equal((await call('GET', '/api/v1/me', undefined, 'lc.idle@x.com')).status, 200)
+  // bulk: into a group and out; nobody deactivates themselves; never without an active system administrator
+  assert.deepEqual((await call('POST', '/api/v1/admin/users/bulk', { userIds: [idle, soon], action: 'add-to-group', groupId: keepers })).body, { changed: 2, unchanged: 0 })
+  assert.deepEqual((await call('POST', '/api/v1/admin/users/bulk', { userIds: [idle], action: 'remove-from-group', groupId: keepers })).body, { changed: 1, unchanged: 0 })
+  const me = await id('owner@x.com')
+  assert.equal((await call('POST', '/api/v1/admin/users/bulk', { userIds: [me], action: 'deactivate' })).status, 400)
+  // the list shows last activity and groups
+  const row = (await call('GET', '/api/v1/admin/users')).body.find((u: any) => u.id === soon)
+  assert.ok(row.lastActiveAt && row.groups.some((g: any) => g.name === 'lc-keepers'))
+  // activity is recorded on use, and clears a warning
+  await pool.query('update users set last_active_at = null where id = $1', [fresh])
+  await call('GET', '/api/v1/me', undefined, 'lc.fresh@x.com')
+  assert.ok((await pool.query('select last_active_at from users where id = $1', [fresh])).rows[0].last_active_at)
+  await call('PUT', '/api/v1/admin/settings/licenseCleanup', { ...rule, enabled: false })
+  await call('PUT', '/api/v1/admin/settings/email', { enabled: false, from: '', appUrl: '' })
+  delete process.env.EMAIL_TRANSPORT
+})
+
 test('report data: every live item and every status change in order, for people who can see the project', { skip }, async () => {
   const p = (await call('POST', '/api/v1/projects', { name: 'Reports', key: 'REP', template: 'kanban' })).body
   const [a, b, c] = p.statuses
@@ -2680,6 +2751,11 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     'GET /settings/public': ['any', '/settings/public'],
     'GET /link-types': ['any', '/link-types'],
     'POST /me/sign-in': ['any', '/me/sign-in'],
+    'POST /admin/users/bulk': ['gadmin', '/admin/users/bulk', { userIds: [viewerId], action: 'reactivate' }],
+    'GET /admin/users/refused-sign-ins': ['gadmin', '/admin/users/refused-sign-ins'],
+    'GET /admin/license-cleanup': ['gadmin', '/admin/license-cleanup'],
+    'POST /admin/license-cleanup/preview': ['gadmin', '/admin/license-cleanup/preview', {}],
+    'POST /admin/license-cleanup/run': ['gadmin', '/admin/license-cleanup/run'],
     'GET /groups': ['any', '/groups'],
     'GET /groups/{id}': ['any', `/groups/${mgroup}`],
     'POST /groups': ['any', '/groups', { name: 'Matrix made group' }],
@@ -2843,7 +2919,7 @@ test('system settings: admins change policies at runtime (validated, audited); e
   const { clearSettingsCache } = await import('../src/settings.ts')
   const put = (key: string, value: object, who = 'owner@x.com') => call('PUT', `/api/v1/admin/settings/${key}`, value, who)
   const all = (await call('GET', '/api/v1/admin/settings')).body
-  assert.deepEqual(all.map((s: any) => s.key), ['rateLimiting', 'attachments', 'accessTokens', 'searchAndBulk', 'groups', 'testing', 'dueReminders', 'email'])
+  assert.deepEqual(all.map((s: any) => s.key), ['rateLimiting', 'attachments', 'accessTokens', 'searchAndBulk', 'licenseCleanup', 'groups', 'testing', 'dueReminders', 'email'])
   assert.equal(all.find((s: any) => s.key === 'rateLimiting').value.enabled, false)                  // no limit unless an admin sets one
   assert.equal((await call('GET', '/api/v1/admin/settings', undefined, 'set.member@x.com')).status, 403)
   assert.equal((await put('attachments', { enabled: true, maxSizeMb: 5 }, 'set.member@x.com')).status, 403)

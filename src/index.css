@@ -1443,3 +1443,13 @@ h2.empty-title, h2.section-title, h2.side-title { margin: 0 }
 .groups-name { font-size: 18px; font-weight: 600; max-width: 420px }
 .admin-body .groups { margin: -16px -24px -32px; min-height: 70vh }
 @media (max-width: 760px) { .groups { grid-template-columns: 1fr; overflow: visible } .groups-list { border-right: 0 } }
+
+/* Administration › People and License cleanup */
+.people-filters { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 }
+.people-filters .input { width: auto }
+.bulk-bar { display: flex; align-items: center; gap: 10px; margin: 0 0 10px; padding: 8px 12px; border-radius: var(--radius); background: var(--sunken) }
+.seat-cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 10px }
+.seat-cards > div { display: grid; gap: 2px; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius) }
+.seat-cards b { font-size: 22px }
+.cleanup-preview { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border) }
+@media (max-width: 760px) { .seat-cards { grid-template-columns: repeat(2, minmax(0, 1fr)) } }
