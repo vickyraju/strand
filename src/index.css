@@ -1457,3 +1457,4 @@ h2.empty-title, h2.section-title, h2.side-title { margin: 0 }
 /* Workflows: what a change reaches, and a project's WIP limits */
 .wf-impact { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border) }
 .wip-grid { display: grid; gap: 6px; margin-top: 8px }
+.wip-grid .settings-row { display: grid; grid-template-columns: minmax(120px, 200px) minmax(0, 1fr); align-items: center; gap: 10px }
