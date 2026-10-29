@@ -36832,7 +36832,7 @@
     },
     "/api/v1/workflows/{id}": {
       "get": {
-        "summary": "One workflow: its statuses in order, transitions, diagram layout, and who uses it",
+        "summary": "One workflow: its statuses in order, transitions, diagram layout, and who uses it (the projects: for system administrators)",
         "tags": [
           "Workflows"
         ],

@@ -1383,7 +1383,8 @@ test('shared workflows: a system administrator’s change reaches every project 
   assert.equal((await call('GET', `/api/v1/workflows/${wf}/versions/99`)).status, 404)
   // only system administrators change workflows, statuses and schemes; a project admin can't
   await join('VER', 'ver.admin@x.com', 'admin')
-  assert.equal((await call('GET', `/api/v1/workflows/${wf}`, undefined, 'ver.admin@x.com')).status, 200)
+  const seen = await call('GET', `/api/v1/workflows/${wf}`, undefined, 'ver.admin@x.com')
+  assert.deepEqual([seen.status, seen.body.projects], [200, []])                                     // which projects use it: only for system administrators
   assert.equal((await pub(withReview, 'ver.admin@x.com')).status, 403)
   assert.equal((await call('POST', '/api/v1/admin/workflows', { name: 'Mine' }, 'ver.admin@x.com')).status, 403)
   assert.equal((await call('POST', '/api/v1/admin/statuses', { name: 'Mine', color: '#000000', category: 'todo' }, 'ver.admin@x.com')).status, 403)
@@ -1426,6 +1427,8 @@ test('workflow schemes: each work type follows its own workflow, new work starts
   // a story becoming a bug needs a status in the bug workflow
   const retype = await call('PATCH', `/api/v1/issues/${story.key}`, { type: 'bug' })
   assert.equal(retype.status, 400); assert.ok(retype.body.errors.statusId)
+  // …where it lands (its kind of status, else the start), not anywhere: a type change is no way round the bug workflow's rules
+  assert.equal((await call('PATCH', `/api/v1/issues/${story.key}`, { type: 'bug', statusId: done.id }, 'wfs.member@x.com')).status, 400)
   assert.equal((await call('PATCH', `/api/v1/issues/${story.key}`, { type: 'bug', statusId: tri.id })).body.statusId, tri.id)
   // everyone in the project sees which workflow each type uses
   const seen = (await call('GET', '/api/v1/projects/WFS/workflow', undefined, 'wfs.member@x.com')).body

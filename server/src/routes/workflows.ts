@@ -25,14 +25,15 @@ const STATUS_ROW = `s.id, s.name, s.description, s.color, s.category, s.position
 const statusesOf = (d: Db, ids: string[]) => d.query<any>(
   `select s.id, s.name, s.description, s.color, s.category from unnest($1::uuid[]) with ordinality x(id, n) join wf_statuses s on s.id = x.id order by x.n`, [ids])
 
-/** One workflow in full, with the schemes and projects that use it. */
-async function workflowOut(d: Db, ws: string, id: string) {
+/** One workflow in full, with the schemes and projects that use it (the projects only for system administrators: a
+ *  project someone can't see stays unnamed). */
+async function workflowOut(d: Db, ws: string, id: string, admin = true) {
   const [w] = await d.query<any>('select id, name, description, statuses, transitions, layout, version, updated_at from workflows where id = $1 and workspace_id = $2', [id, ws])
   if (!w) throw new HttpError(404, 'No such workflow')
   return {
     ...w, statuses: await statusesOf(d, w.statuses),
     schemes: await d.query(`select id, name from workflow_schemes where default_workflow_id = $1 or exists (select 1 from jsonb_each_text(mappings) m where m.value = $1::text) order by lower(name)`, [id]),
-    projects: (await projectsUsing(d, ws, { workflowId: id })).map(({ key, name }) => ({ key, name })),
+    projects: admin ? (await projectsUsing(d, ws, { workflowId: id })).map(({ key, name }) => ({ key, name })) : [],
   }
 }
 
@@ -73,8 +74,8 @@ const plugin: FastifyPluginAsyncZod = async app => {
                      (select count(*)::int from projects p join workflow_schemes sc on sc.id = p.workflow_scheme_id
                        where p.deleting_at is null and (sc.default_workflow_id = w.id or exists (select 1 from jsonb_each_text(sc.mappings) m where m.value = w.id::text))) as projects
                 from workflows w where w.workspace_id = $1 order by lower(w.name)`, [req.me.workspaceId]))
-  app.get('/workflows/:id', { schema: { tags: T, summary: 'One workflow: its statuses in order, transitions, diagram layout, and who uses it', params: idP } }, async req =>
-    workflowOut(db, req.me.workspaceId, req.params.id))
+  app.get('/workflows/:id', { schema: { tags: T, summary: 'One workflow: its statuses in order, transitions, diagram layout, and who uses it (the projects: for system administrators)', params: idP } }, async req =>
+    workflowOut(db, req.me.workspaceId, req.params.id, req.me.admin))
 
   // ── Statuses ──
   app.get('/admin/statuses', { schema: { tags: T, summary: 'Global statuses and the workflows using each (system administrators)' } }, async req => {
