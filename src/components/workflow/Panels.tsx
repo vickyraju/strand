@@ -1,17 +1,17 @@
 import { useState } from 'react'
 import { MousePointerClick, Trash2 } from 'lucide-react'
-import type { Category, FieldDef, Status, Transition, WorkType } from '../../data/store'
+import type { Category, Status, Transition } from '../../data/store'
 import RulesEditor, { rulesSummary } from './RulesEditor'
 import { hasGlobal, type Workflow } from '../../data/workflow'
-import { Checkbox, Toggle, plural } from '../ui'
+import { Checkbox, Toggle } from '../ui'
 
 const CATS: { id: Category; label: string }[] = [{ id: 'todo', label: 'To do' }, { id: 'in-progress', label: 'In progress' }, { id: 'done', label: 'Done' }]
 
 /** `key` names the kind of edit, so a burst of typing or colour picking is one undo step. */
 export type Change<T> = (patch: Partial<T>, key?: string) => void
 
-export function StatusPanel({ status, workflow, count, onChange, onGlobal, onSetStart, onDelete }: {
-  status: Status; workflow: Workflow; count: number
+export function StatusPanel({ status, workflow, onChange, onGlobal, onSetStart, onDelete }: {
+  status: Status; workflow: Workflow
   onChange: Change<Status>; onGlobal: (on: boolean) => void; onSetStart: () => void; onDelete: () => void
 }) {
   const isStart = workflow.statuses[0]?.id === status.id
@@ -30,17 +30,9 @@ export function StatusPanel({ status, workflow, count, onChange, onGlobal, onSet
         ))}
       </div>
       <p className="hint">Categories drive reports and decide when work counts as finished.</p>
-      <div className="form-row" style={{ marginTop: 12 }}>
-        <div>
-          <label className="label" htmlFor="wf-color">Color</label>
-          <input id="wf-color" type="color" className="color-input" value={status.color} onChange={e => onChange({ color: e.target.value }, `color:${status.id}`)} />
-        </div>
-        <div style={{ flex: 1 }}>
-          <label className="label" htmlFor="wf-wip">WIP limit</label>
-          <input id="wf-wip" className="input" type="number" min={1} placeholder="No limit" value={status.wipLimit ?? ''}
-            onChange={e => onChange({ wipLimit: e.target.value === '' ? undefined : Math.max(1, Number(e.target.value)) }, `wip:${status.id}`)} />
-        </div>
-      </div>
+      <label className="label" htmlFor="wf-color" style={{ marginTop: 12 }}>Color</label>
+      <input id="wf-color" type="color" className="color-input" value={status.color} onChange={e => onChange({ color: e.target.value }, `color:${status.id}`)} />
+      <p className="hint">Statuses are shared: a new name, colour or category shows in every workflow and project that has it. Each project sets its own WIP limits on its board.</p>
       <label className="toggle-row" style={{ marginTop: 14 }}>
         <span>Allow all statuses to move here</span>
         <Toggle on={hasGlobal(workflow, status.id)} label="Allow all statuses to move here" onChange={onGlobal} />
@@ -51,15 +43,15 @@ export function StatusPanel({ status, workflow, count, onChange, onGlobal, onSet
       </div>
       {!isStart && <p className="hint">Moves this status to the front. The first status is also the first column on the board.</p>}
       <div className="wf-panel-foot">
-        <span className="muted sm">{plural(count, 'work item')} in this status</span>
+        <span />
         <button className="btn btn-secondary text-danger" disabled={workflow.statuses.length <= 1} onClick={onDelete}><Trash2 size={14} />Delete status</button>
       </div>
     </>
   )
 }
 
-export function TransitionPanel({ transition, statuses, fields, types, projectKey, onChange, onDelete }: {
-  transition: Transition; statuses: Status[]; fields: FieldDef[]; types: WorkType[]; projectKey: string; onChange: Change<Transition>; onDelete: () => void
+export function TransitionPanel({ transition, statuses, onChange, onDelete }: {
+  transition: Transition; statuses: Status[]; onChange: Change<Transition>; onDelete: () => void
 }) {
   const [tab, setTab] = useState<'details' | 'rules'>('details')
   const from = transition.from
@@ -72,7 +64,7 @@ export function TransitionPanel({ transition, statuses, fields, types, projectKe
         <button role="tab" aria-selected={tab === 'rules'} className={tab === 'rules' ? 'on' : ''} onClick={() => setTab('rules')}>Rules{summary ? ` (${summary.split(' · ').length})` : ''}</button>
       </div>
       {tab === 'rules' ? (
-        <RulesEditor rules={transition.rules ?? {}} statuses={statuses} fields={fields} projectKey={projectKey}
+        <RulesEditor rules={transition.rules ?? {}} statuses={statuses}
           onChange={rules => onChange({ rules }, `rules:${transition.id}`)} />
       ) : <>
         <p className="hint" style={{ marginTop: 0, marginBottom: 12 }}>Transitions are the moves people can make. Only these appear in status menus and on the board.</p>
@@ -97,19 +89,6 @@ export function TransitionPanel({ transition, statuses, fields, types, projectKe
           {statuses.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
           <option value={LOOP}>Stays in its status (an action)</option>
         </select>
-        <fieldset className="wf-fieldset" style={{ marginTop: 12 }}>
-          <legend className="label">For work types</legend>
-          <label className="check-row">
-            <Checkbox checked={!transition.types?.length} label="Every work type" onChange={on => onChange({ types: on ? undefined : types.map(t => t.key) })} />Every work type
-          </label>
-          {!!transition.types?.length && types.map(t => (
-            <label key={t.key} className="check-row">
-              <Checkbox checked={transition.types!.includes(t.key)} label={t.name}
-                onChange={on => onChange({ types: on ? [...transition.types!, t.key] : transition.types!.filter(k => k !== t.key).length ? transition.types!.filter(k => k !== t.key) : undefined })} />{t.name}
-            </label>
-          ))}
-          {!!transition.types?.length && <p className="hint">Only these follow it: each work type has its own workflow over the project’s statuses.</p>}
-        </fieldset>
         {transition.to === null && <p className="hint">A loop: people find it in the work item’s Actions menu. It changes nothing by itself; give it rules to ask for input or perform actions, like “Log progress”.</p>}
       </>}
       <div className="wf-panel-foot">

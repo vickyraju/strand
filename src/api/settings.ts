@@ -1,5 +1,5 @@
-// Project settings → API: details, workflow (statuses, transitions), custom fields, templates, rules, releases,
-// stars and project deletion. Same approach as the other syncs: diff against what the server last saw.
+// Project settings → API: details, board WIP limits, custom fields, templates, rules, releases, stars and project
+// deletion. (Workflows are changed in Administration, on the server.) Same approach as the other syncs: diff against what the server last saw.
 import { api } from './client.ts'
 import { createCollectionSync } from './collections.ts'
 import { enqueue } from './queue.ts'
@@ -19,15 +19,14 @@ export const settingsDeps = {
 
 // ── Serializers: one place that says what the server stores for each kind ──
 
-export type Kind = 'statuses' | 'transitions' | 'fields' | 'templates' | 'rules' | 'releases' | 'components'
+export type Kind = 'statuses' | 'fields' | 'templates' | 'rules' | 'releases' | 'components'
 export interface Item { id: string; projectId: string; body: Record<string, unknown>; released?: boolean }
 
 export function itemsOf(projects: Project[], kind: Kind): Item[] {
   return projects.flatMap(p => {
     const mk = (v: { id: string }, body: Record<string, unknown>, released?: boolean): Item => ({ id: v.id, projectId: p.id, body, ...(released !== undefined ? { released } : {}) })
     switch (kind) {
-      case 'statuses':    return p.statuses.map((s, position) => mk(s, { name: s.name, description: s.description ?? '', color: s.color, category: s.category, wipLimit: s.wipLimit ?? null, position }))
-      case 'transitions': return p.transitions.map(t => mk(t, { name: t.name, fromIds: t.from === 'any' ? null : t.from, toId: t.to, rules: t.rules ?? {}, typeKeys: t.types?.length ? t.types : null }))
+      case 'statuses':    return p.statuses.map(s => mk(s, { wipLimit: s.wipLimit ?? null }))       // the board's WIP limit is all a project sets
       case 'fields':      return p.fields.map((f, position) => mk(f, { name: f.name, kind: f.kind, options: f.options ?? null, position }))
       case 'templates':   return p.templates.map(t => mk(t, { name: t.name, type: t.type, title: t.title, description: t.description, priority: t.priority, labels: t.labels, estimate: t.estimate ?? null }))
       case 'rules':       return p.rules.map(r => mk(r, { name: r.name, enabled: r.enabled, trigger: r.trigger, actions: r.actions }))
@@ -55,10 +54,6 @@ const keyOf = (projectId: string) => {
 }
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 
-/** Where a removed status's work items go (status id → status id), set by the workflow editor when it saves. The server
- *  moves every item, also those this browser never loaded, in the same request that removes the status. */
-export const statusMoves = new Map<string, string>()
-
 function kindSync(kind: Kind) {
   const path = (i: Item) => `/api/projects/${keyOf(i.projectId)}/${kind}`
   return createCollectionSync<Item>({
@@ -73,11 +68,7 @@ function kindSync(kind: Kind) {
         await settingsDeps.reloadProject(b.projectId)          // the server moved work between releases
       }
     },
-    remove: async i => {
-      const moveTo = kind === 'statuses' ? statusMoves.get(i.id) : undefined
-      await api('DELETE', `${path(i)}/${i.id}${moveTo ? `?moveTo=${moveTo}` : ''}`)
-      if (moveTo) { statusMoves.delete(i.id); await settingsDeps.reloadProject(i.projectId) }   // the server moved its items: take their new versions
-    },
+    remove: async i => { await api('DELETE', `${path(i)}/${i.id}`) },
     // the whole project went away: the project delete removes these, a separate request is not needed
     shouldDelete: i => settingsDeps.getProjects().some(p => p.id === i.projectId),
     recover: () => settingsDeps.reloadAll(),
@@ -85,8 +76,7 @@ function kindSync(kind: Kind) {
   })
 }
 
-// Order matters on first write: statuses before the transitions that point at them
-export const KINDS: Kind[] = ['statuses', 'fields', 'releases', 'components', 'templates', 'rules', 'transitions']
+export const KINDS: Kind[] = ['statuses', 'fields', 'releases', 'components', 'templates', 'rules']
 export const kindSyncs = Object.fromEntries(KINDS.map(k => [k, kindSync(k)])) as Record<Kind, ReturnType<typeof kindSync>>
 
 /** Load every kind from a freshly loaded project list, so the server's data is not sent back. */

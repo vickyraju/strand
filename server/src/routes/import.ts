@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto'
 import { tx, type Db } from '../db.ts'
 import { requireAdmin } from '../auth.ts'
 import { audit } from '../audit.ts'
+import { applyScheme } from '../workflows.ts'
 
 // One-time import of a client-side `forge:v1` state (reducer v4) into the shared workspace.
 // Local users are placeholders, so everything they authored is attributed to the importing admin.
@@ -42,12 +43,11 @@ const plugin: FastifyPluginAsyncZod = async app => {
           id: pid, workspace_id: me.workspaceId, key: p.key, name: p.name, description: p.description ?? '', color: p.color,
           template: p.template, lead_id: me.id, next_number: p.nextNumber ?? 1, board_prefs: JSON.stringify(p.boardPrefs ?? {}),
           layout: JSON.stringify(p.layout ?? {}), sample: !!p.sample, created_at: ms(p.createdAt) ?? new Date().toISOString(),
+          workflow_scheme_id: (await d.query<{ id: string }>('select id from workflow_schemes where workspace_id = $1 and lower(name) = $2', [me.workspaceId, p.template === 'scrum' ? 'scrum' : 'kanban']))[0]!.id,
         })
         await ins('project_members', { project_id: pid, user_id: me.id, role: 'admin', added_by: me.id })   // the importer administers what they imported
         for (const [i, st] of (p.statuses ?? []).entries())
           await ins('statuses', { id: nid(st.id), project_id: pid, name: st.name, color: st.color, category: st.category, wip_limit: st.wipLimit ?? null, position: i })
-        for (const t of p.transitions ?? [])
-          await ins('transitions', { id: nid(t.id), project_id: pid, name: t.name, from_ids: t.from === 'any' ? null : t.from.map(nid), to_id: nid(t.to) })
         for (const [i, f] of (p.fields ?? []).entries())
           await ins('field_defs', { id: nid(f.id), project_id: pid, name: f.name, kind: f.kind, options: f.options ?? null, position: i })
         for (const r of p.releases ?? [])
@@ -110,6 +110,9 @@ const plugin: FastifyPluginAsyncZod = async app => {
         })
       }
 
+      // the statuses came in as they were, so items could land; now the project's workflow scheme takes over (a status
+      // of the same name is kept, items in the others move to the first of their category)
+      for (const old of done) await applyScheme(d, req, nid(old))
       await importViews(d, s, me, id, done)
       await audit(d, req, { action: 'workspace.imported', type: 'workspace', id: me.workspaceId, after: report })
     })

@@ -64,6 +64,7 @@ export function mapProject(p: Row): Project {
     ...(p.components?.length ? { components: p.components.map((c: Row) => ({ id: c.id, name: c.name, description: c.description ?? '', defaultAssignee: c.defaultAssignee, ...(c.leadId ? { leadId: c.leadId } : {}) })) } : {}),
     ...(p.types?.length ? { types: p.types.map((t: Row) => ({ key: t.key, name: t.name, color: t.color, icon: t.icon })) } : {}),
     ...(p.role ? { role: p.role } : {}),
+    ...(p.workflowSchemeId ? { workflowSchemeId: p.workflowSchemeId, workflows: p.workflows ?? [] } : {}),
   }
 }
 

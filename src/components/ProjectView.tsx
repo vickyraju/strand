@@ -2,8 +2,9 @@ import { lazy, Suspense, useEffect, useState } from 'react'
 import WorkTypesPanel from './WorkTypesPanel'
 import ComponentsPanel from './ComponentsPanel'
 import TestingPanel from './testing/TestingPanel'
+import { WorkflowPanel } from './ProjectWorkflow'
 const TestRepository = lazy(() => import('./testing/TestRepository'))
-import { Plus, Star, FolderPlus, Columns2, List, ListChecks, Settings, Gauge, BarChart3, GanttChart, CalendarDays, Rocket, Check, GitBranch, Info, Zap, Users, FlaskConical } from 'lucide-react'
+import { Plus, Star, FolderPlus, Columns2, List, ListChecks, Settings, Gauge, BarChart3, GanttChart, CalendarDays, Rocket, Check, Info, Zap, Users, FlaskConical } from 'lucide-react'
 import { useStore, userOf, isDone, timeAgo, PROJECT_COLORS, type Project, type ProjectPatch } from '../data/store'
 import { useApp } from '../appContext'
 import { canAdmin, isGlobalAdmin } from '../data/access'
@@ -25,7 +26,7 @@ const ReportsView     = lazy(() => import('./ReportsView'))
 const TimelineView    = lazy(() => import('./TimelineView'))
 const CalendarView    = lazy(() => import('./CalendarView'))
 const ReleasesView    = lazy(() => import('./ReleasesView'))
-const WorkflowBuilder = lazy(() => import('./WorkflowBuilder'))
+const ProjectWorkflow = lazy(() => import('./ProjectWorkflow'))
 const AutomationView  = lazy(() => import('./AutomationView'))
 const ProjectPeople   = lazy(() => import('./ProjectPeople'))
 
@@ -251,7 +252,7 @@ export function ProjectView({ project, tab, sub }: { project: Project; tab: Proj
       {tab === 'releases' && <ReleasesView project={project} releaseId={sub} />}
       {tab === 'reports'  && <ReportsView project={project} report={sub} />}
       {tab === 'tests'    && (project.testing ? <TestRepository project={project} /> : <Empty icon={<FlaskConical size={22} />} title="Testing is off" body="A project admin can turn it on in Project settings › Testing." />)}
-      {tab === 'settings' && (!canAdmin(project) ? <ProjectPeople project={project} /> : sub === 'workflow' ? <WorkflowBuilder project={project} /> : sub === 'automation' ? <AutomationView project={project} /> : sub === 'people' ? <ProjectPeople project={project} /> : <ProjectSettings project={project} />)}
+      {tab === 'settings' && (sub === 'workflow' ? <ProjectWorkflow project={project} /> : !canAdmin(project) ? <ProjectPeople project={project} /> : sub === 'automation' ? <AutomationView project={project} /> : sub === 'people' ? <ProjectPeople project={project} /> : <ProjectSettings project={project} />)}
       </Suspense>
     </div>
   )
@@ -347,18 +348,7 @@ function ProjectSettings({ project }: { project: Project }) {
         </div>
       </section>
 
-      <section className="panel">
-        <div className="panel-title-row">
-          <div>
-            <h2 className="panel-title">Workflow</h2>
-            <p className="muted">{plural(project.statuses.length, 'status')} · {plural(project.transitions.length, 'transition')}. The workflow decides the board columns and which moves are allowed.</p>
-          </div>
-          <button className="btn btn-secondary" onClick={() => openProject(project.id, 'settings', 'workflow')}><GitBranch size={14} />Edit workflow</button>
-        </div>
-        <div className="workflow-strip">
-          {project.statuses.map(s => <span key={s.id} className={`lozenge lozenge-${s.category}`}>{s.name}</span>)}
-        </div>
-      </section>
+      <WorkflowPanel project={project} />
 
       {apiEnabled && <TestingPanel project={project} admin={canAdmin(project)} />}
       <WorkTypesPanel project={project} />

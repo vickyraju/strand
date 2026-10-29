@@ -23,7 +23,7 @@ export const snake = (s: string) => s.replace(/[A-Z]/g, c => '_' + c.toLowerCase
 
 export interface Db { query<T = any>(sql: string, params?: unknown[]): Promise<T[]> }
 
-const wrap = (c: pg.Pool | pg.PoolClient): Db => ({
+export const wrap = (c: pg.Pool | pg.PoolClient): Db => ({
   async query(sql, params) {
     const r = await c.query(sql, params as any[])
     return r.rows.map(row => Object.fromEntries(Object.entries(row).map(([k, v]) => [camel(k), v]))) as any

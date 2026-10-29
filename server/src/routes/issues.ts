@@ -8,6 +8,7 @@ import { audit } from '../audit.ts'
 import { getSetting } from '../settings.ts'
 import { runRules, moveAllowed } from '../rules.ts'
 import { available, ruleContext, transitionById, transitionTo, type TransitionRow } from '../transitions.ts'
+import { statusesFor } from '../workflows.ts'
 import { actionChanges, problems, type RuleCtx } from '../shared/transitionRules.ts'
 import { adjustRemaining, remainingWhenEstimated, type Adjust } from '../shared/estimates.ts'
 import { projectByKey } from './projects.ts'
@@ -198,9 +199,10 @@ async function applyPatch(d: Db, me: Me, cur: any, patch: z.infer<typeof patchBo
   // A status change goes through a transition: its Restrict rules decide whether this person may use it, its Validate
   // rules check the item as it will be after the change, and its Actions run after it
   const moving = patch.statusId !== undefined && patch.statusId !== cur.statusId
+  const retyping = patch.type !== undefined && patch.type !== cur.type
   let t = o.transition ?? null
   let ctx: RuleCtx | null = null
-  if ((moving && !override) || t) {
+  if ((moving && !override && !retyping) || t) {
     ctx = await ruleContext(d, cur, me)
     t ??= await transitionTo(d, cur, patch.statusId!, ctx)
     const errors = problems(t?.rules, ctx, cur, { ...cur, ...patch }, o.comment)
@@ -213,7 +215,10 @@ async function applyPatch(d: Db, me: Me, cur: any, patch: z.infer<typeof patchBo
   if (patch.parentId === cur.id) throw new HttpError(400, 'An item cannot be its own parent')
   // a first original estimate starts the remaining one (Jira's time tracking)
   if (patch.timeEstimate != null && patch.timeRemaining === undefined && cur.timeRemaining === null) patch = { ...patch, timeRemaining: patch.timeEstimate }
-  if (patch.type !== undefined && patch.type !== cur.type) await checkType(d, cur.projectId, patch.type)
+  if (retyping) await checkType(d, cur.projectId, patch.type)
+  // whatever happens, the item ends in a status of its type's workflow (a type change may need a new status)
+  if ((moving || retyping) && !(await statusesFor(d, cur.projectId, patch.type ?? cur.type)).includes(patch.statusId ?? cur.statusId))
+    throw new HttpError(400, retyping && !moving ? 'Its status isn’t in the workflow for that work type: choose a status too' : 'That status isn’t in the workflow for this work type', { statusId: 'Not in this type’s workflow' })
   await checkParts(d, cur.projectId, patch)
   if (patch.custom) await checkCustom(d, cur.projectId, patch.custom, cur.custom)
   checkSpec(patch.type ?? cur.type, patch.testSpec)
@@ -315,12 +320,10 @@ export async function insertIssue(d: Db, me: Me, projectId: string, b: Record<st
   await checkFolder(d, projectId, b.type ?? 'task', b.testFolderId)
   await checkParts(d, projectId, b)
   if (b.assigneeId === undefined && b.componentIds?.length) { const who = await defaultAssignee(d, projectId, b.componentIds); if (who) b = { ...b, assigneeId: who } }
-  let statusId = b.statusId
-  if (!statusId) {
-    const [s] = await d.query<{ id: string }>('select id from statuses where project_id = $1 order by position limit 1', [projectId])
-    if (!s) throw new HttpError(409, 'Project has no statuses')
-    statusId = s.id
-  }
+  // new work starts where its type's workflow starts, or in a status of that workflow
+  const allowed = await statusesFor(d, projectId, b.type ?? 'task')
+  const statusId = b.statusId ?? allowed[0]
+  if (!allowed.includes(statusId)) throw new HttpError(400, 'That status isn’t in the workflow for this work type', { statusId: 'Not in this type’s workflow' })
   const [{ number }] = await d.query<{ number: number }>('select next_issue_number($1) as number', [projectId]) as any
   const [{ rank }] = await d.query<{ rank: number }>(
     'select coalesce(max(rank), 0) + 1000 as rank from issues where project_id = $1', [projectId]) as any

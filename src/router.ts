@@ -2,8 +2,8 @@ import { useSyncExternalStore } from 'react'
 
 export type ProjectTab = 'summary' | 'board' | 'backlog' | 'list' | 'timeline' | 'calendar' | 'releases' | 'reports' | 'tests' | 'settings'
 
-export type AdminSection = 'people' | 'groups' | 'license' | 'audit' | 'backups' | 'settings' | 'link-types' | 'views'
-const ADMIN: AdminSection[] = ['people', 'groups', 'license', 'audit', 'backups', 'settings', 'link-types', 'views']
+export type AdminSection = 'people' | 'groups' | 'license' | 'workflows' | 'audit' | 'backups' | 'settings' | 'link-types' | 'views'
+const ADMIN: AdminSection[] = ['people', 'groups', 'license', 'workflows', 'audit', 'backups', 'settings', 'link-types', 'views']
 
 export type Route =
   | { name: 'home' }
@@ -11,7 +11,7 @@ export type Route =
   | { name: 'search'; q: string; view?: string }
   | { name: 'projects' }
   | { name: 'settings' }
-  | { name: 'admin'; section?: AdminSection }
+  | { name: 'admin'; section?: AdminSection; item?: string }
   | { name: 'project'; key: string; tab?: ProjectTab; sub?: string }
   | { name: 'issue'; key: string }
   | { name: 'not-found' }
@@ -32,7 +32,7 @@ export function parse(pathname: string, search: string): { route: Route; peek?: 
   else if (a === 'projects' && !b) route = { name: 'projects' }
   else if (a === 'settings')      route = { name: 'settings' }
   else if (a === 'groups')        route = { name: 'admin', section: 'groups' }   // old address: groups live in Administration / Configuration
-  else if (a === 'admin' && (!b || (ADMIN as string[]).includes(b))) route = { name: 'admin', section: b as AdminSection | undefined }
+  else if (a === 'admin' && (!b || (ADMIN as string[]).includes(b))) route = { name: 'admin', section: b as AdminSection | undefined, ...(b && c ? { item: c } : {}) }
   else if (a === 'i' && b)        route = { name: 'issue', key: b.toUpperCase() }
   else if ((a === 'project' || a === 'p') && b &&(!c || (TABS as string[]).includes(c)))
     route = { name: 'project', key: b.toUpperCase(), tab: c as ProjectTab | undefined, sub: d }
@@ -54,7 +54,7 @@ export function href(route: Route, peek?: string): string {
     }
     case 'projects':  return `/projects${q}`
     case 'settings':  return `/settings${q}`
-    case 'admin':     return `/admin${route.section ? `/${route.section}` : ''}`
+    case 'admin':     return `/admin${route.section ? `/${route.section}` : ''}${route.section && route.item ? `/${route.item}` : ''}`
     case 'issue':     return `/i/${route.key}`
     case 'project':   return `/project/${route.key}${route.tab ? `/${route.tab}` : ''}${route.sub ? `/${route.sub}` : ''}${q}`
     case 'not-found': return '/'

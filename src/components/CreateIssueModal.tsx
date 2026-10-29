@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { ChevronRight, Maximize2, Minimize2, X, CalendarDays, Tag, Zap, IterationCcw, Hash, FileText } from 'lucide-react'
-import { useStore, uid, userOf, type NewIssue, type IssueType, type Priority } from '../data/store'
+import { useStore, uid, userOf, statusesFor, type NewIssue, type IssueType, type Priority } from '../data/store'
 import { useApp } from '../appContext'
 import { canEdit } from '../data/access'
 import {
@@ -56,7 +56,7 @@ export default function CreateIssueModal({ defaults, onClose }: {
     dispatch({
       type: 'createIssue', id,
       issue: {
-        projectId, title: title.trim(), description: description.trim(), type, status, priority, assigneeId,
+        projectId, title: title.trim(), description: description.trim(), type, status: statusObj?.id ?? status, priority, assigneeId,
         dueDate: dueDate || undefined, startDate: defaults.startDate, sprintId, parentId: type === 'epic' ? undefined : parentId,
         estimate: estimate === '' ? undefined : Math.max(0, Number(estimate)),
         labels: labels.split(',').map(l => l.trim()).filter(Boolean),
@@ -68,7 +68,9 @@ export default function CreateIssueModal({ defaults, onClose }: {
   }
 
   const assignee = userOf(state, assigneeId)
-  const statusObj = project.statuses.find(s => s.id === status)
+  // only the statuses of the chosen type's workflow; one it lacks becomes where that workflow starts
+  const allowed = statusesFor(project, type)
+  const statusObj = allowed.find(s => s.id === status) ?? allowed[0]
 
   return (
     <div className="modal-backdrop top" onMouseDown={onClose}>
@@ -116,7 +118,7 @@ export default function CreateIssueModal({ defaults, onClose }: {
         <div className="compose-chips">
           <Picker value={type} options={typeOptions(project, !defaults.parentId)} onChange={setType} title="Type"
             trigger={<><TypeIcon type={type} size={13} project={project} />{typeMeta(type, project).label}</>} />
-          <Picker value={status} options={statusOptions(project)} onChange={setStatus} title="Status"
+          <Picker value={statusObj?.id ?? status} options={statusOptions(project, undefined, undefined, type)} onChange={setStatus} title="Status"
             trigger={<><span className="status-dot" style={{ background: statusObj?.color }} />{statusObj?.name}</>} />
           <Picker value={priority} options={priorityOptions} onChange={setPriority} title="Priority"
             trigger={<><PriorityIcon priority={priority} />{PRIORITY_META[priority].label}</>} />

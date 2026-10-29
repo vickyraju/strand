@@ -30,12 +30,17 @@ const sq = (sql: string, args: unknown[] = []) => s.query(sql, args)
 const [ws] = (await sq(`insert into workspaces (name) values ('Perf') returning id`)).rows
 await sq(`insert into users (email, name, initials) select 'p' || n || '@perf.test', 'Person ' || n, 'P' || (n % 10) from generate_series(1, $1) n`, [PEOPLE])
 await sq(`insert into memberships (workspace_id, user_id, role) select $1, id, case when email = 'p1@perf.test' then 'owner' else 'member' end from users`, [ws.id])
-await sq(`insert into projects (workspace_id, key, name, template, lead_id)
-          select $1, 'P' || n, 'Project ' || n, 'scrum', (select id from users where email = 'p1@perf.test') from generate_series(1, $2) n`, [ws.id, PROJECTS])
-await sq(`insert into statuses (project_id, name, color, category, position)
-          select p.id, s.name, '#999999', s.cat, s.pos from projects p,
-            (values ('To do', 'todo', 0), ('In progress', 'in-progress', 1), ('In review', 'in-progress', 2), ('Done', 'done', 3)) s(name, cat, pos)`)
-await sq(`insert into transitions (project_id, name, from_ids, to_id) select project_id, name, null, id from statuses`)
+await sq(`insert into projects (workspace_id, key, name, template, lead_id, workflow_scheme_id)
+          select $1, 'P' || n, 'Project ' || n, 'scrum', (select id from users where email = 'p1@perf.test'),
+                 (select id from workflow_schemes where workspace_id = $1 and name = 'Scrum') from generate_series(1, $2) n`, [ws.id, PROJECTS])
+// the Scrum scheme applied, as creating a project does
+await sq(`insert into statuses (project_id, name, color, category, position, global_status_id)
+          select p.id, g.name, g.color, g.category, array_position(w.statuses, g.id) - 1, g.id
+            from projects p join workflow_schemes sc on sc.id = p.workflow_scheme_id join workflows w on w.id = sc.default_workflow_id join wf_statuses g on g.id = any(w.statuses)`)
+await sq(`insert into transitions (project_id, name, from_ids, to_id, source)
+          select s.project_id, s.name, null, s.id, w.id || ':' || (t->>'id') from statuses s join projects p on p.id = s.project_id
+            join workflow_schemes sc on sc.id = p.workflow_scheme_id join workflows w on w.id = sc.default_workflow_id
+            cross join jsonb_array_elements(w.transitions) t where (t->>'toId')::uuid = s.global_status_id`)
 await sq(`insert into project_members (project_id, user_id, role) select p.id, u.id, case when u.email = 'p1@perf.test' then 'admin' else 'member' end from projects p, users u`)
 await sq(`insert into sprints (workspace_id, project_id, name, state) select $1, id, 'Sprint 1', 'active' from projects`, [ws.id])
 console.log(`seeding ${ITEMS.toLocaleString('en')} items…`)

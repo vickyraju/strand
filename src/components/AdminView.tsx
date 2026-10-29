@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Users, ScrollText, Archive, Download, RotateCcw, SlidersHorizontal, Link2, Bookmark, UsersRound, UserMinus } from 'lucide-react'
+import { Users, ScrollText, Archive, Download, RotateCcw, SlidersHorizontal, Link2, Bookmark, UsersRound, UserMinus, GitBranch } from 'lucide-react'
 import { api, apiEnabled, ApiError } from '../api/client'
 import { useStore, timeAgo } from '../data/store'
 import { isGlobalAdmin } from '../data/access'
@@ -10,6 +10,8 @@ import { Avatar, Empty, Modal, Toggle, plural } from './ui'
 import SystemSettings from './SystemSettings'
 import GroupsView from './groups/GroupsView'
 import LicenseCleanup from './LicenseCleanup'
+import WorkflowsAdmin from './WorkflowsAdmin'
+import WorkflowBuilder from './WorkflowBuilder'
 import LinkTypesAdmin from './LinkTypesAdmin'
 import SharedViewsAdmin from './SharedViewsAdmin'
 
@@ -17,6 +19,7 @@ const SECTIONS: { id: AdminSection; label: string; Icon: typeof Users }[] = [
   { id: 'people', label: 'People', Icon: Users },
   { id: 'groups', label: 'Groups', Icon: UsersRound },
   { id: 'license', label: 'License cleanup', Icon: UserMinus },
+  { id: 'workflows', label: 'Workflows', Icon: GitBranch },
   { id: 'audit', label: 'Audit log', Icon: ScrollText },
   { id: 'backups', label: 'Project backups', Icon: Archive },
   { id: 'link-types', label: 'Link types', Icon: Link2 },
@@ -27,7 +30,7 @@ const message = (e: unknown) => (e instanceof ApiError ? e.message : 'Could not 
 
 /** Administration (system administrators: people, groups, audit, backups, settings…). For everyone else the same
  *  area is Configuration, with only what they may manage there: groups. */
-export default function AdminView({ section = 'people' }: { section?: AdminSection }) {
+export default function AdminView({ section = 'people', item }: { section?: AdminSection; item?: string }) {
   const { state } = useStore()
   if (!apiEnabled)
     return <div className="page-col"><Empty icon={<Users size={22} strokeWidth={1.5} />} title="Administration needs a server"
@@ -36,6 +39,8 @@ export default function AdminView({ section = 'people' }: { section?: AdminSecti
   const admin = isGlobalAdmin(state)
   const sections = admin ? SECTIONS : SECTIONS.filter(s => s.id === 'groups')
   if (!sections.some(s => s.id === section)) section = 'groups'
+  // a workflow open in the editor takes the whole page
+  if (section === 'workflows' && item) return <WorkflowBuilder id={item} onBack={() => navigate(href({ name: 'admin', section: 'workflows' }))} />
   return (
     <div className="page-col">
       <div className="page-hdr"><h1 className="page-title">{admin ? 'Administration' : 'Configuration'}</h1></div>
@@ -50,6 +55,7 @@ export default function AdminView({ section = 'people' }: { section?: AdminSecti
         {section === 'people' && <People />}
         {section === 'groups' && <GroupsView admin={admin} />}
         {section === 'license' && <LicenseCleanup />}
+        {section === 'workflows' && <WorkflowsAdmin />}
         {section === 'audit' && <AuditLog />}
         {section === 'backups' && <Backups />}
         {section === 'link-types' && <LinkTypesAdmin />}

@@ -16,11 +16,12 @@ export const AccessTokenCreated = AccessToken.extend({ token: z.string().describ
 
 export const Member = z.object({ userId: id, name: z.string(), email: z.string(), initials: z.string(), color: z.string(), title: nullable(z.string()), role: z.enum(['admin', 'member', 'viewer']), addedAt: ts })
 
-export const Status = z.object({ id, projectId: id, name: z.string(), description: z.string(), color: z.string(), category: z.enum(['todo', 'in-progress', 'done']), wipLimit: nullable(z.number()), position: z.number() })
+export const Status = z.object({ id, projectId: id, globalStatusId: nullable(id).describe('The global status it is (Administration › Workflows)'), name: z.string(), description: z.string(), color: z.string(), category: z.enum(['todo', 'in-progress', 'done']), wipLimit: nullable(z.number()), position: z.number() })
 export const Transition = z.object({
   id, projectId: id, name: z.string(), fromIds: nullable(z.array(id)).describe('null: from any status'), toId: nullable(id).describe('null: a loop, the item stays in its status'),
   rules: z.record(z.string(), z.unknown()).describe('restrict, validate, screen, actions'),
   typeKeys: nullable(z.array(z.string())).describe('Work types this transition is for (null: every type)'),
+  source: nullable(z.string()).describe('The workflow and transition it comes from (workflow id:transition id)'),
 })
 export const WorkType = z.object({
   id, projectId: id, key: z.string().describe('What an item\'s `type` holds'), name: z.string(), color: z.string(),
@@ -56,12 +57,29 @@ export const ProjectListItem = z.object({
 })
 export const ProjectPage = z.object({ items: z.array(ProjectListItem), next: nullable(z.string()).describe('Pass back as `cursor`; null on the last page') })
 export const UserPage = z.object({ items: z.array(User), next: nullable(z.string()) })
+export const TypeWorkflow = z.object({ typeKey: z.string(), workflowId: id, workflow: z.string(), statusIds: z.array(id).describe('Statuses an item of this type can be in; new ones start in the first') })
+const WfStatus = z.object({ id, name: z.string(), description: z.string(), color: z.string(), category: z.enum(['todo', 'in-progress', 'done']) })
+const LibTransition = z.object({ id: z.string(), name: z.string(), fromIds: nullable(z.array(id)), toId: nullable(id), rules: z.record(z.string(), z.unknown()) })
+export const Workflow = z.object({
+  id, name: z.string(), description: z.string(), version: z.number(), updatedAt: ts, statuses: z.array(WfStatus).describe('In order: new work starts in the first'),
+  transitions: z.array(LibTransition), layout: z.record(z.string(), z.unknown()),
+  schemes: z.array(z.object({ id, name: z.string() })), projects: z.array(z.object({ key: z.string(), name: z.string() })),
+})
+export const WorkflowScheme = z.object({
+  id, name: z.string(), description: z.string(), defaultWorkflowId: id, defaultWorkflow: z.string(),
+  mappings: z.record(z.string(), id).describe('Work type key → workflow id'), projects: z.number(),
+})
+export const Impact = z.object({
+  project: z.object({ id, key: z.string(), name: z.string() }), added: z.array(z.string()).describe('Statuses the project gains'), removed: z.array(z.string()).describe('Statuses it loses'),
+  moves: z.array(z.object({ type: z.string(), from: z.string(), to: z.string(), count: z.number() })).describe('Items that change status, by work type'),
+})
 export const ProjectDetail = z.object({
   id, workspaceId: id, key: z.string(), name: z.string(), description: z.string(), color: z.string(), template: z.enum(['kanban', 'scrum']),
   leadId: nullable(id), archivedAt: nullable(ts), nextNumber: z.number(), testing: z.boolean().describe('Test management is on'), requirementTypes: nullable(z.array(z.string())).describe('Work types counted as requirements (null: all but testing types and Bug)'), boardPrefs: z.record(z.string(), z.unknown()), layout: z.record(z.string(), z.unknown()),
   sample: z.boolean(), createdAt: ts, role: z.enum(['admin', 'member', 'viewer']).describe('My role in this project'),
   statuses: z.array(Status), transitions: z.array(Transition), types: z.array(WorkType), components: z.array(Component), fields: z.array(Field), templates: z.array(Template),
   rules: z.array(Rule), releases: z.array(Release), sprints: z.array(Sprint),
+  workflowSchemeId: id.describe('Its workflow scheme'), workflows: z.array(TypeWorkflow),
 })
 
 const issueFields = {
@@ -163,13 +181,14 @@ const DevEntity = z.object({
 export const Development = z.object({ pullRequests: z.array(DevEntity), branches: z.array(DevEntity), commits: z.array(DevEntity) })
 
 // ── Routes. Keys are "METHOD /path" without the /api[/v1] prefix. All answer 200 unless noted. ──
-const kindRow = { statuses: Status, transitions: Transition, fields: Field, templates: Template, rules: Rule, releases: Release, components: Component } as const
+const kindRow = { fields: Field, templates: Template, rules: Rule, releases: Release, components: Component } as const
 
 /** Routes that create something answer 201 Created (Jira and REST convention), not 200. */
 export const CREATED = new Set([
   'POST /projects', 'POST /projects/:key/issues', 'POST /issues/:key/comments', 'POST /issues/:key/worklogs', 'POST /projects/:key/sprints',
   'POST /views', 'POST /issues/:key/attachments', 'POST /me/tokens',
-  ...['statuses', 'transitions', 'fields', 'templates', 'rules', 'releases', 'components'].map(k => `POST /projects/:key/${k}`),
+  'POST /admin/statuses', 'POST /admin/workflows', 'POST /admin/workflow-schemes',
+  ...['fields', 'templates', 'rules', 'releases', 'components'].map(k => `POST /projects/:key/${k}`),
 ])
 
 export const RESPONSES: Record<string, z.ZodType> = {
@@ -266,10 +285,22 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'GET /projects/:key/automation/runs': z.array(z.object({ id, ruleId: id, rule: z.string(), issueId: nullable(id), issueKey: nullable(z.string()), trigger: z.record(z.string(), z.unknown()),
     result: z.enum(['success', 'some_skipped', 'no_change', 'failed']), steps: z.array(Step), error: nullable(z.string()), at: ts })),
   'POST /projects/:key/automation/dry-run': z.object({ steps: z.array(Step), error: nullable(z.string()) }),
-  'GET /projects/:key/workflow/versions': z.array(z.object({ version: z.number(), note: z.string(), publishedAt: ts, publishedBy: nullable(z.string()), statuses: z.number(), transitions: z.number() })),
-  'GET /projects/:key/workflow/versions/:version': z.object({ version: z.number(), note: z.string(), publishedAt: ts, publishedBy: nullable(z.string()),
-    statuses: z.array(z.record(z.string(), z.unknown())), transitions: z.array(z.record(z.string(), z.unknown())), types: z.array(z.record(z.string(), z.unknown())) }),
-  'POST /projects/:key/workflow/versions': z.object({ version: z.number(), created: z.boolean().describe('False: the workflow hadn\'t changed since that version') }),
+  'GET /projects/:key/workflow': z.object({ scheme: z.object({ id, name: z.string(), description: z.string() }), types: z.array(TypeWorkflow) }),
+  'PUT /projects/:key/workflow-scheme': Impact,
+  'PATCH /projects/:key/statuses/:id': Status,
+  'GET /workflow-schemes': z.array(WorkflowScheme),
+  'GET /workflows': z.array(z.object({ id, name: z.string(), description: z.string(), version: z.number(), updatedAt: ts, statuses: z.number(), transitions: z.number(), schemes: z.number(), projects: z.number() })),
+  'GET /workflows/:id': Workflow,
+  'GET /workflows/:id/versions': z.array(z.object({ version: z.number(), note: z.string(), publishedAt: ts, publishedBy: nullable(z.string()), statuses: z.number(), transitions: z.number() })),
+  'GET /workflows/:id/versions/:version': z.object({ version: z.number(), note: z.string(), publishedAt: ts, publishedBy: nullable(z.string()), statuses: z.array(WfStatus), transitions: z.array(LibTransition) }),
+  'GET /admin/statuses': z.array(WfStatus.extend({ position: z.number(), workflows: z.array(z.string()).describe('Workflows using it') })),
+  'POST /admin/statuses': WfStatus.extend({ position: z.number(), workflows: z.array(z.string()) }),
+  'PATCH /admin/statuses/:id': WfStatus.extend({ position: z.number(), workflows: z.array(z.string()) }),
+  'POST /admin/workflows': Workflow,
+  'PATCH /admin/workflows/:id': Workflow,
+  'POST /admin/workflows/:id/publish': z.object({ workflow: Workflow, version: z.number(), created: z.boolean().describe('False: nothing but the layout changed'), projects: z.array(Impact).describe('Each project it was applied to') }),
+  'POST /admin/workflow-schemes': WorkflowScheme,
+  'PATCH /admin/workflow-schemes/:id': z.object({ scheme: WorkflowScheme, projects: z.array(Impact) }),
   'POST /projects/:key/types': WorkType,
   'PATCH /projects/:key/types/:typeKey': WorkType,
   'POST /admin/link-types': LinkType,

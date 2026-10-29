@@ -33,6 +33,11 @@ export const TEST_TYPES = ['test', 'precondition', 'test_set', 'test_plan', 'tes
 export const isFixedType = (k: string) => isBuiltinType(k) || (TEST_TYPES as readonly string[]).includes(k)
 export interface TestStep { id: string; action: string; data: string; expected: string; attachmentIds: string[] }
 export type TestSpec = { kind: 'manual'; steps: TestStep[] } | { kind: 'cucumber'; gherkin: string } | { kind: 'generic'; definition: string }
+/** The statuses an item of this type may be in, where new ones start first. */
+export const statusesFor = (p: Pick<Project, 'statuses' | 'workflows'>, type: string) => {
+  const ids = p.workflows?.find(w => w.typeKey === type)?.statusIds
+  return ids ? ids.flatMap(id => p.statuses.filter(s => s.id === id)) : p.statuses
+}
 /** A project's work types (the built-in ones for a project saved before types were configurable). */
 export const typesOf = (p: Pick<Project, 'types'> | undefined) => (p?.types?.length ? p.types : BUILTIN_TYPES)
 export type Priority  = 'urgent' | 'high' | 'medium' | 'low' | 'none'
@@ -108,6 +113,10 @@ export interface Project {
   types?:      WorkType[]
   /** What I may do here (from the server; unset for a local workspace, where everyone has full access) */
   role?:       'admin' | 'member' | 'viewer'
+  /** Its workflow scheme (Administration › Workflows), and the workflow each work type uses: the statuses it may be in,
+   *  new work starting in the first (from the server; unset for a local workspace, where every type uses every status) */
+  workflowSchemeId?: string
+  workflows?:  { typeKey: string; workflowId: string; workflow: string; statusIds: string[] }[]
 }
 
 /** Automation: "When <trigger> then <actions>". */
@@ -637,9 +646,12 @@ export function reducer(state: State, action: Action, now = Date.now()): State {
     case 'createIssue': {
       const project = state.projects.find(p => p.id === action.issue.projectId)
       if (!project || !actor) return state
+      // a status its type's workflow has: the one asked for, else where that workflow starts
+      const allowed = statusesFor(project, action.issue.type ?? 'task')
+      const status = allowed.some(s => s.id === action.issue.status) ? action.issue.status! : (allowed[0] ?? project.statuses[0]!).id
       const issue: Issue = {
-        type: 'task', description: '', status: project.statuses[0].id, priority: 'none', labels: [],
-        ...action.issue,
+        type: 'task', description: '', priority: 'none', labels: [],
+        ...action.issue, status,
         ...(!('assigneeId' in action.issue) && componentAssignee(project, action.issue.componentIds) ? { assigneeId: componentAssignee(project, action.issue.componentIds) } : {}),
         id: action.id, key: `${project.key}-${project.nextNumber}`, reporterId: actor,
         watcherIds: [...new Set([actor, action.issue.assigneeId].filter((x): x is string => !!x))],
@@ -1034,7 +1046,16 @@ function updateOne(
   // (the server checks the same). Its actions run here only for a workspace kept in this browser: otherwise the server runs them.
   let t = o.transition
   let actionComments: string[] = []
-  if ((patch.status && patch.status !== prev.status) || t) {
+  // A type change puts the item on that type's workflow (Jira's Move): in a status it has, of the same kind if there is one
+  const retyping = patch.type !== undefined && patch.type !== prev.type
+  if (retyping) {
+    const allowed = statusesFor(project, patch.type!), want = patch.status ?? prev.status
+    if (allowed.length && !allowed.some(s => s.id === want)) {
+      const kind = project.statuses.find(s => s.id === want)?.category
+      patch = { ...patch, status: (allowed.find(s => s.category === kind) ?? allowed[0]!).id }
+    }
+  }
+  if ((patch.status && patch.status !== prev.status && !retyping) || t) {
     const ctx = moveContext(state, prev)
     if (!t && project.transitions.length) { t = transitionFor(project, prev.status, patch.status!, ctx); if (!t) return state }
     const after = { ...prev, ...patch } as unknown as Item
