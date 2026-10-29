@@ -52,8 +52,8 @@ try {
     for (const s of p.statuses) statusId.set(`${p.id}|${s.id}`, randomUUID())
     const layout = Object.fromEntries(Object.entries(p.layout ?? {}).map(([k, v]) => [sid(p.id, k), v]))
     await run(
-      `insert into projects (id, workspace_id, key, name, description, color, template, lead_id, next_number, board_prefs, layout, sample, created_at)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, '{}', $10, true, $11)`,
+      `insert into projects (id, workspace_id, key, name, description, color, template, lead_id, next_number, board_prefs, layout, sample, created_at, workflow_scheme_id)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, '{}', $10, true, $11, (select id from workflow_schemes where workspace_id = $2 and lower(name) = $7))`,
       [p.id, ws, p.key, p.name, p.description, p.color, p.template, p.leadId || null, p.nextNumber, JSON.stringify(layout), at(p.createdAt)])
     // everyone in the sample team works on every sample project; the lead administers it (the owner sees all as workspace owner)
     await run(`insert into project_members (project_id, user_id, role)
@@ -62,9 +62,6 @@ try {
     for (const [i, s] of p.statuses.entries())
       await run('insert into statuses (id, project_id, name, description, color, category, wip_limit, position) values ($1, $2, $3, $4, $5, $6, $7, $8)',
         [sid(p.id, s.id), p.id, s.name, s.description ?? '', s.color, s.category, s.wipLimit ?? null, i])
-    for (const t of p.transitions)
-      await run('insert into transitions (id, project_id, name, from_ids, to_id) values ($1, $2, $3, $4, $5)',
-        [t.id, p.id, t.name, t.from === 'any' ? null : t.from.map(f => sid(p.id, f)), sid(p.id, t.to)])
     for (const [i, f] of p.fields.entries())
       await run('insert into field_defs (id, project_id, name, kind, options, position) values ($1, $2, $3, $4, $5, $6)', [f.id, p.id, f.name, f.kind, f.options ?? null, i])
     for (const t of p.templates)
@@ -107,6 +104,12 @@ try {
   for (const n of data.notifications ?? []) await run('insert into notifications (id, user_id, actor_id, issue_id, kind, text, read, archived, created_at) values ($1, $2, $3, $4, $5, $6, $7, $8, $9)',
     [n.id, n.userId, n.actorId || null, n.issueId, n.kind, n.text, n.read, n.archived, at(n.createdAt)])
   for (const p of data.starred ?? []) await run('insert into stars (user_id, project_id) values ($1, $2) on conflict do nothing', [owner.id, p])
+  // the statuses came in as the sample has them, so items could land; now each project's workflow scheme takes over, as
+  // for an import (a status of the same name stays; items in the others move to the first of their category).
+  // The app's code checks its sign-in settings when loaded: this is a local script, so it uses the development ones.
+  process.env.AUTH_DEV ??= '1'; process.env.NODE_ENV ??= 'development'
+  const [{ applyScheme }, { wrap }] = await Promise.all([import('../src/workflows.ts'), import('../src/db.ts')])
+  for (const p of data.projects ?? []) await applyScheme(wrap(c), { system: 'seed' }, p.id)
 
   await c.query('commit')
   const count = async (t: string) => (await c.query(`select count(*)::int as n from ${t}`)).rows[0].n
