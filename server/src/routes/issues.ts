@@ -204,11 +204,18 @@ async function applyPatch(d: Db, me: Me, cur: any, patch: z.infer<typeof patchBo
   // rules check the item as it will be after the change, and its Actions run after it
   const moving = patch.statusId !== undefined && patch.statusId !== cur.statusId
   const retyping = patch.type !== undefined && patch.type !== cur.type
+  if (retyping) await checkType(d, cur.projectId, patch.type)
   let t = o.transition ?? null
   let ctx: RuleCtx | null = null
-  if ((moving && !override && !retyping) || t) {
-    ctx = await ruleContext(d, cur, me)
-    t ??= await transitionTo(d, cur, patch.statusId!, ctx)
+  // A type change whose workflow lacks the item's status is Jira's Move: the item lands on a status of the same kind in
+  // the new workflow (else where it starts), not through a transition, so it can't skip ahead (to Done, say)
+  const landing = retyping && moving && !override ? await landingFor(d, cur, patch.type!) : null
+  if (landing && !landing.includes(patch.statusId!))
+    throw new HttpError(400, 'A type change keeps the item’s kind of status: move it on with a transition afterwards', { statusId: 'Not where a type change lands' })
+  if ((moving && !override && !landing) || t) {
+    const as = retyping ? { ...cur, type: patch.type } : cur             // the new type's transitions
+    ctx = await ruleContext(d, as, me)
+    t ??= await transitionTo(d, as, patch.statusId!, ctx)
     const errors = problems(t?.rules, ctx, cur, { ...cur, ...patch }, o.comment)
     if (Object.keys(errors).length) throw new HttpError(400, `“${t!.name}” needs more information`, errors)
   }
@@ -219,7 +226,6 @@ async function applyPatch(d: Db, me: Me, cur: any, patch: z.infer<typeof patchBo
   if (patch.parentId === cur.id) throw new HttpError(400, 'An item cannot be its own parent')
   // a first original estimate starts the remaining one (Jira's time tracking)
   if (patch.timeEstimate != null && patch.timeRemaining === undefined && cur.timeRemaining === null) patch = { ...patch, timeRemaining: patch.timeEstimate }
-  if (retyping) await checkType(d, cur.projectId, patch.type)
   // whatever happens, the item ends in a status of its type's workflow (a type change may need a new status)
   if ((moving || retyping) && !(await statusesFor(d, cur.projectId, patch.type ?? cur.type)).includes(patch.statusId ?? cur.statusId))
     throw new HttpError(400, retyping && !moving ? 'Its status isn’t in the workflow for that work type: choose a status too' : 'That status isn’t in the workflow for this work type', { statusId: 'Not in this type’s workflow' })
@@ -322,6 +328,15 @@ async function checkType(d: Db, projectId: string, type: string | undefined) {
   if (type === undefined) return
   if (!(await d.query('select 1 from work_types where project_id = $1 and key = $2', [projectId, type])).length)
     throw new HttpError(400, 'That work type isn’t in this project', { type: 'Unknown work type' })
+}
+
+/** Where a type change may put an item whose status the new type's workflow lacks: a status of the same category
+ *  there, else that workflow's start. Null when the workflow has the item's status (then moves follow transitions). */
+async function landingFor(d: Db, cur: any, type: string) {
+  const allowed = await statusesFor(d, cur.projectId, type)
+  if (allowed.includes(cur.statusId)) return null
+  const same = (await d.query<{ id: string }>('select id from statuses where id = any($1) and category = (select category from statuses where id = $2)', [allowed, cur.statusId])).map(s => s.id)
+  return same.length ? same : allowed.slice(0, 1)
 }
 
 /** Create one issue (key, rank and start status from the project unless given), with its first history entry, the
