@@ -7,6 +7,7 @@ import { tx, type Db } from './db.ts'
 import type { Me } from './auth.ts'
 import { parseCsv } from './shared/csv.ts'
 import { registerJob } from './jobs.ts'
+import { statusesFor } from './workflows.ts'
 import { canJoinWork } from './access.ts'
 
 export const IMPORT_FIELDS = ['title', 'description', 'type', 'status', 'priority', 'assignee', 'labels', 'estimate', 'dueDate', 'startDate', 'components', 'fixVersion'] as const
@@ -48,6 +49,7 @@ export async function checkImport(d: Db, projectId: string, csv: string, mapping
   ])
   const items: Record<string, unknown>[] = []
   const report: RowReport[] = []
+  const allowed: Record<string, string[]> = {}                                         // work type → its workflow's statuses
   for (const [n, r] of data.entries()) {
     const row = n + 2                                                                   // as a spreadsheet numbers it (1 is the header)
     const get = (f: string) => (mapping[f] === undefined ? '' : (r[mapping[f]!] ?? '').trim())
@@ -62,8 +64,13 @@ export async function checkImport(d: Db, projectId: string, csv: string, mapping
       if (!hit) warnings.push(`${what} “${v}” isn’t in this project: left empty`)
       return hit
     }
-    const st = pick('status', statuses, 'Status'); if (st) item.statusId = (st as any).id
     const ty = pick('type', types, 'Type'); item.type = ty ? (ty as any).key : 'task'
+    const st = pick('status', statuses, 'Status')
+    if (st) {
+      allowed[item.type as string] ??= await statusesFor(d, projectId, item.type as string)
+      if (allowed[item.type as string]!.includes((st as any).id)) item.statusId = (st as any).id
+      else warnings.push(`Status “${get('status')}” isn’t in the workflow for this work type: it starts at the beginning`)
+    }
     const who = pick('assignee', users, 'Person')
     if (who) { if (await canJoinWork(d, projectId, (who as any).id)) item.assigneeId = (who as any).id; else warnings.push(`${get('assignee')} isn’t in this project: left unassigned`) }
     const pr = get('priority')

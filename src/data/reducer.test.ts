@@ -38,6 +38,20 @@ test('the workflow blocks moves it does not allow', () => {
   assert.equal(moved.activity.at(-1)?.field, 'status')
 })
 
+test('each work type keeps to its workflow: new items start where it starts, and a type change lands on a status it has', () => {
+  const { s } = workspace()
+  // bugs: Triage (a To do status of their own) and Done; everything else: the project's four
+  const triage = { id: 'triage', name: 'Triage', color: '#f97316', category: 'todo' as const }
+  const all = s.projects[0].statuses.map(x => x.id)
+  const typed = run([{ type: 'updateProject', id: 'p1', patch: { statuses: [...s.projects[0].statuses, triage],
+    workflows: [{ typeKey: 'bug', workflowId: 'b', workflow: 'Bugs', statusIds: ['triage', 'done'] }, { typeKey: 'task', workflowId: 'a', workflow: 'Main', statusIds: all }] } as any }], s)
+  const made = run([{ type: 'createIssue', id: 'b1', issue: { projectId: 'p1', title: 'Bug', type: 'bug', status: 'in-progress' } }], typed)
+  assert.equal(made.issues.find(i => i.id === 'b1')!.status, 'triage')                       // not in its workflow: where that starts
+  const doing = run([{ type: 'updateIssues', ids: ['i1'], patch: { status: 'in-progress' } }], typed)
+  assert.equal(run([{ type: 'updateIssues', ids: ['i1'], patch: { type: 'bug' } }], doing).issues[0].status, 'triage')   // nothing of its kind: the start
+  assert.equal(run([{ type: 'updateIssues', ids: ['b1'], patch: { type: 'task' } }], made).issues.find(i => i.id === 'b1')!.status, all[0])   // tasks have no Triage: their To do
+})
+
 test('notifications go to the people involved, never to the actor', () => {
   const { s, owner, sam } = workspace()
   // Owner assigns to Sam: Sam is notified, owner is not

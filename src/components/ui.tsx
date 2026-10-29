@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { Bookmark, Bug, SquareCheck, Zap, ChevronsUp, ChevronUp, Equal, ChevronDown, Minus, Check, UserRound, X, Flag, Star, Wrench, BookOpen, Shield, Lightbulb, Rocket, Circle, FlaskConical, ClipboardList, Layers, Map as MapIcon, PlayCircle } from 'lucide-react'
 import type { RuleCtx } from '../data/transitionRules'
-import { useStore, transitionsFrom, typesOf, BUILTIN_TYPES, type IssueType, type Priority, type Project, type Status, type User } from '../data/store'
+import { useStore, transitionsFrom, statusesFor, typesOf, BUILTIN_TYPES, type IssueType, type Priority, type Project, type Status, type User } from '../data/store'
 
 // ── Type ───────────────────────────────────────────────────
 
@@ -368,10 +368,10 @@ export function Checkbox({ checked, indeterminate, onChange, label }: {
 // ── Option builders ────────────────────────────────────────
 
 /** Status options. With `from`, only statuses the workflow allows moving to (plus the current one); with `ctx`, only
- *  moves this person may make (transition rules). */
-export function statusOptions(project: Project, from?: string, ctx?: RuleCtx): PickerOption<string>[] {
+ *  moves this person may make (transition rules); with `type`, only the statuses of that work type's workflow. */
+export function statusOptions(project: Project, from?: string, ctx?: RuleCtx, type?: string): PickerOption<string>[] {
   const allowed = from === undefined || !project.transitions.length ? null : new Map(transitionsFrom(project, from, ctx).map(t => [t.to, t.name]))
-  return project.statuses
+  return (type ? statusesFor(project, type) : project.statuses)
     .filter(s => !allowed || s.id === from || allowed.has(s.id))
     .map(s => ({
       value: s.id, label: s.name,

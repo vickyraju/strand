@@ -268,7 +268,7 @@ function Shell() {
             {route.name === 'search'   && <SearchView query={route.q} viewId={route.view} />}
             {route.name === 'projects' && <ProjectsView onCreate={() => setCreateProjectOpen(true)} />}
             {route.name === 'settings' && <SettingsView />}
-            {route.name === 'admin' && <Suspense fallback={<div className="loading" role="status">Loading…</div>}><AdminView section={route.section} /></Suspense>}
+            {route.name === 'admin' && <Suspense fallback={<div className="loading" role="status">Loading…</div>}><AdminView section={route.section} item={route.item} /></Suspense>}
             {route.name === 'project'  && (project
               ? issuesLoad.status === 'loading' ? <div className="loading" role="status">Loading work items…</div>
               : issuesLoad.status === 'error' ? (

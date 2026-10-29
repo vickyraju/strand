@@ -4,8 +4,9 @@
 // ponytail: the whole project is held in memory while it is written; stream it table by table if projects get very large.
 import { createHash } from 'node:crypto'
 import { CopyObjectCommand, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3'
-import { db, pool, type Db } from './db.ts'
+import { db, pool, wrap, type Db } from './db.ts'
 import { HttpError } from './auth.ts'
+import { applyScheme } from './workflows.ts'
 import { audit } from './audit.ts'
 import { registerJob } from './jobs.ts'
 import { getSetting } from './settings.ts'
@@ -37,7 +38,6 @@ const TABLES: [table: string, where: string][] = [
   ['components', 'project_id = $1'],
   ['item_templates', 'project_id = $1'],
   ['rules', 'project_id = $1'],
-  ['workflow_versions', 'project_id = $1'],
   ['sprints', 'project_id = $1'],
   ['project_members', 'project_id = $1'],
   ['project_group_roles', 'project_id = $1'],
@@ -95,7 +95,7 @@ async function deleteProject(p: { projectId: string; actorId: string | null; act
   }
 
   const c = await pool.connect()
-  const d = wrapClient(c)
+  const d = wrap(c)
   try {
     await c.query('begin')
     if (backup) await c.query(
@@ -151,12 +151,15 @@ async function restoreProject(p: { backupId: string; actorId: string | null; act
     await s3().send(new CopyObjectCommand({ Bucket: filesBucket(), Key: String(a.object_key), CopySource: `${b.bucket}/${base}/files/${a.id}` }))
 
   const c = await pool.connect()
-  const d = wrapClient(c)
+  const d = wrap(c)
   try {
     await c.query('begin')
     const [taken] = (await c.query('select key from projects where id = $1 or (workspace_id = $2 and key = $3)', [doc.project.id, b.workspace_id, doc.project.key])).rows
     if (taken) throw new HttpError(409, `A project with the key ${doc.project.key} (or this project itself) already exists`)
     const people = new Set((await c.query('select id from users')).rows.map(r => r.id as string))
+    // the shared workflow library may have changed since: a scheme or status that's gone is left to the scheme applied below
+    const schemes = new Set((await c.query('select id from workflow_schemes where workspace_id = $1', [b.workspace_id])).rows.map(r => r.id as string))
+    const globals = new Set((await c.query('select id from wf_statuses where workspace_id = $1', [b.workspace_id])).rows.map(r => r.id as string))
     const issueIds = new Set((doc.tables.issues ?? []).map(r => r.id as string))
     const existing = new Set((await c.query('select id from issues where id = any($1::uuid[])',
       [[...new Set([...(doc.tables.issue_links ?? []).flatMap(l => [l.issue_id, l.target_id]), ...(doc.tables.test_items ?? []).flatMap(l => [l.container_id, l.member_id]), ...(doc.tables.test_runs ?? []).flatMap(l => [l.execution_id, l.test_id])])]])).rows.map(r => r.id as string))
@@ -173,6 +176,10 @@ async function restoreProject(p: { backupId: string; actorId: string | null; act
       for (const r0 of rows) {
         const r = { ...r0 }
         if (table === 'projects') r.deleting_at = null
+        if (table === 'projects' && !schemes.has(String(r.workflow_scheme_id)))
+          r.workflow_scheme_id = (await c.query('select id from workflow_schemes where workspace_id = $1 order by (lower(name) = $2) desc, id limit 1', [b.workspace_id, r.template])).rows[0]?.id
+        if (table === 'statuses' && !globals.has(String(r.global_status_id))) r.global_status_id = null
+        if (table === 'transitions') continue                          // the scheme applied below makes them
         if (table === 'issues' || table === 'test_folders') r.parent_id = null   // set below, once every row exists
         if (NEEDS_PERSON.has(table) && !people.has(String(r.user_id))) continue
         if (groups && !groups.has(String(r.group_id))) continue        // a group removed from the directory since
@@ -186,6 +193,7 @@ async function restoreProject(p: { backupId: string; actorId: string | null; act
           use.map(n => (json.has(n) && r[n] != null ? JSON.stringify(r[n]) : r[n])))
       }
     }
+    await applyScheme(d, { me: { id: p.actorId, email: p.actorEmail, workspaceId: b.workspace_id } as any, ip: p.ip }, doc.project.id)       // today's workflows, with items moved where needed
     for (const f of doc.tables.test_folders ?? []) if (f.parent_id) await c.query('update test_folders set parent_id = $2 where id = $1', [f.id, f.parent_id])
     for (const i of doc.tables.issues ?? []) if (i.parent_id && issueIds.has(String(i.parent_id)))
       await c.query('update issues set parent_id = $2 where id = $1', [i.id, i.parent_id])
@@ -201,7 +209,6 @@ async function restoreProject(p: { backupId: string; actorId: string | null; act
 
 // The shared db wrapper camelCases rows; these jobs work with the raw rows the backup stores.
 const wrapPool = (): Db => db
-const wrapClient = (c: import('pg').PoolClient): Db => ({ query: async (sql, params) => (await c.query(sql, params as any[])).rows })
 
 registerJob('project.delete', deleteProject)
 registerJob('project.restore', restoreProject)

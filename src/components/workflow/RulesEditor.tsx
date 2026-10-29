@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Trash2, FolderPlus } from 'lucide-react'
-import { useStore, type FieldDef, type Status } from '../../data/store'
+import { useStore, type Status } from '../../data/store'
 import {
   LIMITS, RULE_FIELDS, SETTABLE, DATE_FIELDS, isGroup,
   type Action, type Condition, type ConditionGroup, type TransitionRules, type Validator,
@@ -15,7 +15,7 @@ import { MultiSelect } from '../ui'
 
 interface Props {
   rules: TransitionRules; onChange: (r: TransitionRules) => void
-  statuses: Status[]; fields: FieldDef[]; projectKey: string
+  statuses: Status[]
 }
 type Group = { id: string; name: string }
 
@@ -23,13 +23,14 @@ const ROLE = { admin: 'Project admins', member: 'Members' } as const
 const WHO = { assignee: 'the assignee', reporter: 'the reporter', lead: 'the project lead' } as const
 const OPS = { empty: 'is empty', notEmpty: 'has a value', is: 'is', isNot: 'is not' } as const
 
-export default function RulesEditor({ rules, onChange, statuses, fields, projectKey }: Props) {
+export default function RulesEditor({ rules, onChange, statuses }: Props) {
   const [groups, setGroups] = useState<Group[]>([])
   useEffect(() => { if (apiEnabled) api<Group[]>('GET', '/api/groups/search').then(setGroups, () => {}) }, [])
-  const fieldList = [...Object.entries(RULE_FIELDS).map(([k, v]) => ({ key: k, name: v })), ...fields.map(f => ({ key: `custom.${f.id}`, name: f.name }))]
+  // workflows are shared by projects, so their rules use the standard fields (each project has its own custom fields)
+  const fieldList = Object.entries(RULE_FIELDS).map(([k, v]) => ({ key: k, name: v }))
   const fieldName = (k: string) => (k === 'comment' ? 'Comment' : fieldList.find(f => f.key === k)?.name ?? 'A field that was removed')
   const statusName = (id: string) => statuses.find(s => s.id === id)?.name ?? 'a removed status'
-  const ctx = { groups, fieldList, fieldName, statusName, statuses, projectKey }
+  const ctx = { groups, fieldList, fieldName, statusName, statuses }
   const set = (patch: Partial<TransitionRules>) => onChange(clean({ ...rules, ...patch }))
 
   const restrict = rules.restrict ?? { op: 'all' as const, items: [] }
@@ -77,7 +78,7 @@ function clean(r: TransitionRules): TransitionRules {
   return out
 }
 
-type Ctx = { groups: Group[]; fieldList: { key: string; name: string }[]; fieldName: (k: string) => string; statusName: (id: string) => string; statuses: Status[]; projectKey: string }
+type Ctx = { groups: Group[]; fieldList: { key: string; name: string }[]; fieldName: (k: string) => string; statusName: (id: string) => string; statuses: Status[] }
 
 /** A list of rules with an "Add" menu; each row edits one rule and can be removed. */
 function List<T>({ items, limit, onChange, add, render }: {
@@ -169,7 +170,7 @@ function ConditionRow({ c, put, ctx }: { c: Condition; put: (c: Condition) => vo
       <select className="input input-sm" aria-label="Who" value={c.who} onChange={e => put({ ...c, who: e.target.value as typeof c.who })}>
         {Object.entries(WHO).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
       </select>can use it</span>
-    case 'users': return <PeopleRule ids={c.userIds} onChange={userIds => put({ ...c, userIds })} ctx={ctx} />
+    case 'users': return <PeopleRule ids={c.userIds} onChange={userIds => put({ ...c, userIds })} />
     case 'role': return <span className="rule-line">Only
       {(['admin', 'member'] as const).map(r => (
         <label key={r} className="check-row inline"><input type="checkbox" checked={c.roles.includes(r)} onChange={e => put({ ...c, roles: e.target.checked ? [...c.roles, r] : c.roles.filter(x => x !== r) })} />{ROLE[r]}</label>
@@ -211,7 +212,7 @@ function ActionRow({ a, put, ctx }: { a: Action; put: (a: Action) => void; ctx: 
         <option value="mover">the person moving it</option><option value="reporter">the reporter</option><option value="lead">the project lead</option>
         <option value="none">nobody (unassign)</option><option value="user">someone…</option>
       </select>
-      {a.to === 'user' && <UserSelect label="Person" projectId={ctx.projectKey} value={a.userId} onChange={userId => put({ ...a, userId })} />}
+      {a.to === 'user' && <UserSelect label="Person" value={a.userId} onChange={userId => put({ ...a, userId })} />}
     </span>
     case 'set': {
       const settable = ctx.fieldList.filter(f => SETTABLE.includes(f.key) || f.key.startsWith('custom.'))
@@ -237,11 +238,11 @@ function FieldSelect({ value, fields, onChange }: { value: string; fields: { key
   )
 }
 
-function PeopleRule({ ids, onChange, ctx }: { ids: string[]; onChange: (ids: string[]) => void; ctx: Ctx }) {
+function PeopleRule({ ids, onChange }: { ids: string[]; onChange: (ids: string[]) => void }) {
   return (
     <span className="rule-line">Only
       {ids.map(id => <span key={id} className="chip-static"><UserName id={id} /><button className="chip-x" aria-label="Remove person" onClick={() => onChange(ids.filter(x => x !== id))}>×</button></span>)}
-      <UserSelect label="Add a person" projectId={ctx.projectKey} value={undefined} placeholder="+ Add a person" onChange={id => id && !ids.includes(id) && onChange([...ids, id])} />
+      <UserSelect label="Add a person" value={undefined} placeholder="+ Add a person" onChange={id => id && !ids.includes(id) && onChange([...ids, id])} />
       can use it
     </span>
   )

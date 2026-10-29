@@ -61,7 +61,8 @@ export function CreateTransitionDialog({ statuses, initial, onCreate, onClose }:
 
 export interface NewStatusInput { name: string; category: Category; global: boolean }
 
-export function AddStatusDialog({ existing, onAdd, onClose }: { existing: Status[]; onAdd: (s: NewStatusInput) => void; onClose: () => void }) {
+/** `known`: the global statuses, offered as names; picking one adds that status (with its own category). */
+export function AddStatusDialog({ existing, known = [], onAdd, onClose }: { existing: Status[]; known?: Status[]; onAdd: (s: NewStatusInput) => void; onClose: () => void }) {
   const [name, setName] = useState('')
   const [category, setCategory] = useState<Category>('in-progress')
   const [global, setGlobal] = useState(true)
@@ -78,8 +79,11 @@ export function AddStatusDialog({ existing, onAdd, onClose }: { existing: Status
       </>}>
       <form onSubmit={e => { e.preventDefault(); submit() }}>
         <label className="label" htmlFor="as-name">Name</label>
-        <input id="as-name" className="input" value={name} autoFocus placeholder="e.g. In review" onChange={e => setName(e.target.value)} aria-invalid={duplicate} />
+        <input id="as-name" className="input" value={name} autoFocus placeholder="e.g. In review" list="as-known" aria-invalid={duplicate}
+          onChange={e => { setName(e.target.value); const k = known.find(x => x.name.toLowerCase() === e.target.value.trim().toLowerCase()); if (k) setCategory(k.category) }} />
+        <datalist id="as-known">{known.filter(k => !existing.some(s => s.id === k.id)).map(k => <option key={k.id} value={k.name} />)}</datalist>
         {duplicate && <p className="hint error" role="alert">A status called “{trimmed}” already exists.</p>}
+        {!duplicate && known.some(k => k.name.toLowerCase() === trimmed.toLowerCase()) && <p className="hint">An existing status: projects that have it keep its items in it.</p>}
         <label className="label" style={{ marginTop: 12 }}>Category</label>
         <div className="segmented full" role="radiogroup" aria-label="Category">
           {CATS.map(c => <button type="button" key={c.id} role="radio" aria-checked={category === c.id} className={category === c.id ? 'on' : ''} onClick={() => setCategory(c.id)}>{c.label}</button>)}
@@ -97,8 +101,8 @@ export function AddStatusDialog({ existing, onAdd, onClose }: { existing: Status
 // ── Delete status ────────────────────────────────────────
 
 /** Asked only when work items are in the status: where should they go? */
-export function DeleteStatusDialog({ status, count, transitions, others, onConfirm, onClose }: {
-  status: Status; count: number; transitions: Transition[]; others: Status[]; onConfirm: (moveTo: string) => void; onClose: () => void
+export function DeleteStatusDialog({ status, transitions, others, onConfirm, onClose }: {
+  status: Status; transitions: Transition[]; others: Status[]; onConfirm: (moveTo: string) => void; onClose: () => void
 }) {
   const [moveTo, setMoveTo] = useState(others[0]!.id)
   return (
@@ -107,7 +111,7 @@ export function DeleteStatusDialog({ status, count, transitions, others, onConfi
         <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
         <button className="btn btn-danger" onClick={() => onConfirm(moveTo)}>Delete status</button>
       </>}>
-      <p>{plural(count, 'work item')} {count === 1 ? 'is' : 'are'} in this status. Choose where {count === 1 ? 'it' : 'they'} should go:</p>
+      <p>Work items in this status, in every project using this workflow, need somewhere to go. Choose where:</p>
       <label className="label" htmlFor="ds-to" style={{ marginTop: 12 }}>Move work items to</label>
       <select id="ds-to" className="input" value={moveTo} autoFocus onChange={e => setMoveTo(e.target.value)}>
         {others.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}

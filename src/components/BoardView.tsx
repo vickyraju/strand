@@ -236,7 +236,7 @@ export default function BoardView({ project }: { project: Project }) {
           )}
           <div className="section-label" style={{ marginTop: 10 }}>Columns</div>
           <button className="btn btn-secondary btn-sm" onClick={() => openProject(project.id, 'settings', 'workflow')}>
-            <GitBranch size={13} />Edit workflow
+            <GitBranch size={13} />Workflow and WIP limits
           </button>
         </Popover>
       </div>

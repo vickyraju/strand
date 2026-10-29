@@ -5,8 +5,26 @@ import { start, stop, skip, signIn, as, url, PEOPLE, postRaw } from './harness.m
 
 const owner = as('owner@e2e.test'), maya = as('maya@e2e.test'), vic = as('vic@e2e.test')
 const idOf = async email => (await as(email)('GET', '/me')).body.id
-/** A new project lets every status be reached from any other; journeys that draw their own moves start without them. */
-const clearMoves = async p => { for (const t of p.transitions) await owner('DELETE', `/projects/${p.key}/transitions/${t.id}`) }
+let flows = 0
+/** Give project `p` workflows of its own, made in the library by the owner (a system administrator): its statuses, these
+ *  moves (between its status ids), and for `byType` work types another workflow. Returns the workflow id. */
+const flow = async (p, moves, byType = {}) => {
+  const statuses = p.statuses.map(s => ({ id: s.globalStatusId, name: s.name, color: s.color, category: s.category }))
+  const gid = id => p.statuses.find(s => s.id === id)?.globalStatusId ?? id
+  const make = async ms => {
+    const w = (await owner('POST', '/admin/workflows', { name: `${p.key} flow ${++flows}` })).body
+    const r = await owner('POST', `/admin/workflows/${w.id}/publish`, { statuses,
+      transitions: ms.map((m, i) => ({ id: String(i), name: m.name, fromIds: m.fromIds ? m.fromIds.map(gid) : null, toId: m.toId && gid(m.toId), rules: m.rules ?? {} })) })
+    assert.equal(r.status, 200, JSON.stringify(r.body))
+    return w.id
+  }
+  const mappings = {}
+  for (const [t, ms] of Object.entries(byType)) mappings[t] = await make(ms)
+  const id = await make(moves)
+  const scheme = (await owner('POST', '/admin/workflow-schemes', { name: `${p.key} scheme ${++flows}`, defaultWorkflowId: id, mappings })).body
+  assert.equal((await owner('PUT', `/projects/${p.key}/workflow-scheme`, { schemeId: scheme.id })).status, 200)
+  return id
+}
 
 before(start, { timeout: 120_000 })
 after(stop)
@@ -64,8 +82,7 @@ test('an @mention in a comment reaches that person’s Inbox', { skip, timeout: 
 test('the workflow decides which moves are offered, and the server refuses the rest', { skip, timeout: 60_000 }, async () => {
   const p = (await owner('POST', '/projects', { name: 'Flow', key: 'FLW', template: 'kanban' })).body
   const [todo, doing, done] = [p.statuses[0], p.statuses[1], p.statuses.find(s => s.category === 'done')]
-  await clearMoves(p)
-  await owner('POST', '/projects/FLW/transitions', { name: 'Start', fromIds: [todo.id], toId: doing.id })
+  await flow(p, [{ name: 'Start', fromIds: [todo.id], toId: doing.id }])
   await owner('POST', '/projects/FLW/members', { userIds: [await idOf('maya@e2e.test')], role: 'member' })
   const item = (await owner('POST', '/projects/FLW/issues', { title: 'Follow the flow' })).body
   const m = await signIn('maya@e2e.test')
@@ -78,27 +95,27 @@ test('the workflow decides which moves are offered, and the server refuses the r
   assert.deepEqual(m.problems, [])
 })
 
-test('transition rules: an admin adds one in the editor; a move is hidden or asks for details; a loop acts from the Actions menu', { skip, timeout: 90_000 }, async () => {
+test('transition rules: a system admin adds one in the editor; a move is hidden or asks for details; a loop acts from the Actions menu', { skip, timeout: 90_000 }, async () => {
   const p = (await owner('POST', '/projects', { name: 'Rules', key: 'RLS', template: 'kanban' })).body
   const [todo, doing, done] = [p.statuses[0], p.statuses[1], p.statuses.find(s => s.category === 'done')]
-  await clearMoves(p)
-  await owner('POST', '/projects/RLS/transitions', { name: 'Start', fromIds: [todo.id], toId: doing.id })
-  await owner('POST', '/projects/RLS/transitions', { name: 'Finish', fromIds: [doing.id], toId: done.id,
-    rules: { validate: [{ kind: 'required', fields: ['dueDate'] }], screen: ['dueDate', 'comment'] } })
-  await owner('POST', '/projects/RLS/transitions', { name: 'Log progress', fromIds: [doing.id], toId: null,
-    rules: { validate: [{ kind: 'required', fields: ['comment'] }], screen: ['comment'] } })
+  const wf = await flow(p, [
+    { name: 'Start', fromIds: [todo.id], toId: doing.id },
+    { name: 'Finish', fromIds: [doing.id], toId: done.id, rules: { validate: [{ kind: 'required', fields: ['dueDate'] }], screen: ['dueDate', 'comment'] } },
+    { name: 'Log progress', fromIds: [doing.id], toId: null, rules: { validate: [{ kind: 'required', fields: ['comment'] }], screen: ['comment'] } },
+  ])
   await owner('POST', '/projects/RLS/members', { userIds: [await idOf('maya@e2e.test')], role: 'member' })
   const item = (await owner('POST', '/projects/RLS/issues', { title: 'Ruled work' })).body
   await owner('PATCH', `/issues/${item.key}`, { statusId: doing.id })
 
-  // the admin restricts Finish to project admins in the workflow editor (list view, Rules tab)
+  // the system admin restricts Finish to project admins in the workflow editor (Administration › Workflows; list view, Rules tab)
   const o = await signIn('owner@e2e.test')
-  await o.goto(url('/project/RLS/settings/workflow'))
+  await o.goto(url(`/admin/workflows/${wf}`))
   await o.click('.wf-tools [role="tab"]:has-text("List")')
   await o.click('.wf-list tr:has-text("Finish")')
   await o.click('.wf-panel [role="tab"]:has-text("Rules")')
   await o.selectOption('section[aria-label="Restrict transition"] select[aria-label="Add rule"]', { label: 'Only a project role' })
   await o.click('.wf-bar button:has-text("Update workflow")')
+  await o.waitForSelector('.modal >> text=Applies to 1 project')
   await o.click('.modal button:has-text("Update workflow")')
   await o.waitForSelector('text=Workflow updated')
   const saved = (await owner('GET', '/projects/RLS')).body.transitions.find(t => t.name === 'Finish')
@@ -152,8 +169,7 @@ test('work types: an admin adds one in settings; items of that type follow its o
   await o.waitForSelector('section[aria-label="Work types"] td:has-text("Incident")')
   const inc = (await owner('GET', '/projects/KND')).body.types.find(t => t.name === 'Incident')
   assert.ok(inc, 'the type was saved')
-  await clearMoves(p)
-  await owner('POST', '/projects/KND/transitions', { name: 'Resolve', fromIds: [todo.id], toId: done.id, typeKeys: [inc.key] })
+  await flow(p, [], { [inc.key]: [{ name: 'Resolve', fromIds: [todo.id], toId: done.id }] })
   const outage = (await owner('POST', '/projects/KND/issues', { title: 'Outage', type: inc.key })).body
   const task = (await owner('POST', '/projects/KND/issues', { title: 'Ordinary' })).body
   await o.goto(url(`/i/${outage.key}`))
@@ -168,35 +184,84 @@ test('work types: an admin adds one in settings; items of that type follow its o
   assert.deepEqual(o.problems, [])
 })
 
-test('workflow versions: removing a status says what happens to its items; each update is a version that can be loaded back', { skip, timeout: 90_000 }, async () => {
+test('workflow versions: removing a status says which projects it reaches and where their items go; each update is a version that can be loaded back', { skip, timeout: 90_000 }, async () => {
   const p = (await owner('POST', '/projects', { name: 'Releases flow', key: 'RFL', template: 'scrum' })).body
   const review = p.statuses.find(s => s.name === 'In review'), doing = p.statuses.find(s => s.name === 'In progress')
   const items = []
   for (let n = 0; n < 2; n++) items.push((await owner('POST', '/projects/RFL/issues', { title: `In review ${n}`, statusId: review.id })).body)
+  const wf = await flow(p, p.statuses.map(s => ({ name: s.name, toId: s.id })))          // each status from any other, as a new project has
   const o = await signIn('owner@e2e.test')
-  await o.goto(url('/project/RFL/settings/workflow'))
+  await o.goto(url(`/admin/workflows/${wf}`))
   await o.click('.wf-tools [role="tab"]:has-text("List")')
   await o.click('.wf-list tr:has-text("In review")')
   await o.click('.wf-panel button:has-text("Delete status")')
   await o.selectOption('#ds-to', { label: 'In progress' })
   await o.click('.modal button:has-text("Delete status")')
   await o.click('.wf-bar button:has-text("Update workflow")')
+  await o.waitForSelector('.modal >> text=Applies to 1 project')
   const summary = await o.locator('.modal').innerText()
   assert.match(summary, /Removes the status “In review”/)
   assert.match(summary, /move to “In progress”/)
+  assert.match(summary, /RFL[\s\S]*2 task items move from In review to In progress/)
   await o.fill('#pub-note', 'No review step')
   await o.click('.modal button:has-text("Update workflow")')
-  await o.waitForSelector('text=Workflow updated: version 1')
+  await o.waitForSelector('text=Workflow updated: version 2, in 1 project')
+  const after = (await owner('GET', '/projects/RFL')).body
   for (const i of items) assert.equal((await owner('GET', `/issues/${i.key}`)).body.statusId, doing.id)
-  // version 1 is the workflow without the review step; load the original back from the list (it was never published,
-  // so publish it first by API, then load version 1 and see the editor change)
-  const versions = (await owner('GET', '/projects/RFL/workflow/versions')).body
-  assert.deepEqual(versions.map(v => [v.version, v.note]), [[1, 'No review step']])
+  assert.ok(!after.statuses.some(s => s.name === 'In review'))
+  // version 2 is the workflow without the review step: compare it with the editor (the same)
+  const versions = (await owner('GET', `/workflows/${wf}/versions`)).body
+  assert.deepEqual(versions.map(v => [v.version, v.note]), [[2, 'No review step'], [1, '']])
   await o.click('.wf-bar button:has-text("Versions")')
   await o.click('.modal tr:has-text("No review step")')
-  await o.waitForSelector('.modal >> text=Going from version 1')
+  await o.waitForSelector('.modal >> text=Going from version 2')
   assert.match(await o.locator('.modal').innerText(), /They are the same/)
   assert.deepEqual(o.problems, [])
+})
+
+test('shared workflows: a system admin copies one, adds a status and makes a scheme; a project admin switches to it and the board gets the column; nobody else edits workflows', { skip, timeout: 120_000 }, async () => {
+  await owner('POST', '/projects', { name: 'Switching', key: 'WFJ', template: 'kanban' })
+  await owner('POST', '/projects/WFJ/members', { userIds: [await idOf('maya@e2e.test')], role: 'admin' })
+  await owner('POST', '/projects/WFJ/issues', { title: 'Already started' })
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url('/admin/workflows'))
+  await o.click('[aria-label="Copy Kanban"]')
+  await o.fill('#wfa-name', 'Kanban with review')
+  await o.click('.modal button:has-text("Save")')
+  await o.waitForSelector('.wf-title:has-text("Kanban with review")')
+  await o.click('.wf-tools button:has-text("Add status")')
+  await o.fill('#as-name', 'In review')
+  await o.waitForSelector('.modal >> text=An existing status')                         // the shared one, not a second "In review"
+  await o.click('.modal button:has-text("Add status")')
+  await o.click('.wf-bar button:has-text("Update workflow")')
+  await o.waitForSelector('.modal >> text=No project uses this workflow yet')
+  await o.click('.modal button:has-text("Update workflow")')
+  await o.waitForSelector('text=Workflow updated')
+  await o.click('.wf-bar button:has-text("Workflows")')
+  await o.click('[role="tab"]:has-text("Schemes")')
+  await o.click('button:has-text("Add scheme")')
+  await o.fill('#wsc-name', 'Reviewed')
+  await o.selectOption('#wsc-default', { label: 'Kanban with review' })
+  await o.click('.modal button:has-text("Save")')
+  await o.waitForSelector('td:has-text("Reviewed")')
+  const scheme = (await owner('GET', '/workflow-schemes')).body.find(x => x.name === 'Reviewed')
+
+  // Maya, the project's admin, sees the workflow read-only and switches it: the preview first, then Apply
+  const m = await signIn('maya@e2e.test')
+  await m.goto(url('/project/WFJ/settings/workflow'))
+  await m.waitForSelector('h1:has-text("Workflow")')
+  assert.equal(await m.locator('.wf-bar').count(), 0)                                    // nothing to edit here
+  await m.click('button:has-text("Change workflow")')
+  await m.selectOption('#cw-scheme', scheme.id)
+  await m.waitForSelector('.modal >> text=adds In review')
+  await m.click('.modal button:has-text("Apply")')
+  await m.waitForSelector('text=WFJ now uses Reviewed')
+  await m.goto(url('/project/WFJ/board'))
+  await m.waitForSelector('main >> text=In review')
+  assert.equal((await owner('GET', '/projects/WFJ')).body.workflowSchemeId, scheme.id)
+  // only system administrators change workflows
+  assert.equal((await maya('POST', '/admin/workflows', { name: 'Mine' })).status, 403)
+  assert.deepEqual([...o.problems, ...m.problems], [])
 })
 
 test('time tracking: logging work counts the remaining estimate down; it can be set instead', { skip, timeout: 60_000 }, async () => {

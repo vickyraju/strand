@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Plus, ArrowLeft, AlertTriangle, Workflow as WorkflowIcon, List as ListIcon, Undo2, Redo2, Network, PanelRightClose, PanelRightOpen, History } from 'lucide-react'
-import { useStore, typesOf, type Project } from '../data/store'
 import { useApp } from '../appContext'
 import { Checkbox, Modal } from './ui'
 import {
@@ -12,18 +11,34 @@ import WorkflowCanvas from './workflow/WorkflowCanvas'
 import { AddStatusDialog, CreateTransitionDialog, DeleteStatusDialog, type NewStatusInput, type NewTransition } from './workflow/dialogs'
 import { EmptyPanel, StatusPanel, TransitionPanel } from './workflow/Panels'
 import TextView from './workflow/TextView'
-import { PublishDialog, VersionsDialog, workflowOf } from './workflow/Versions'
-import { api, apiEnabled } from '../api/client'
-import { idle as queueIdle } from '../api/queue'
-import { statusMoves } from '../api/settings'
+import { PublishDialog, VersionsDialog, workflowOf, type Impact } from './workflow/Versions'
+import { api, ApiError } from '../api/client'
+import { sprintDeps } from '../api/sprints'
 import { sameSelection, type Selection } from './workflow/types'
+import type { Status } from '../data/store'
+
+// A shared workflow (Administration › Workflows), edited by a system administrator. Updating it applies it to every
+// project whose scheme uses it, as in Jira; statuses taken out send their work items where the administrator chooses.
 
 type Dialog = null | { kind: 'transition'; initial: NewTransition } | { kind: 'status' } | { kind: 'delete'; id: string }
+interface LibWorkflow { id: string; name: string; version: number; updatedAt: string; statuses: any[]; transitions: any[]; layout: Workflow['layout']; projects: { key: string; name: string }[] }
+const message = (e: unknown) => (e instanceof ApiError ? e.message : 'Could not reach the server.')
 
-export default function WorkflowBuilder({ project }: { project: Project }) {
-  const { state, dispatch } = useStore()
-  const { openProject, toast } = useApp()
-  const original = useMemo<Workflow>(() => ({ statuses: project.statuses, transitions: project.transitions, layout: project.layout }), [project.statuses, project.transitions, project.layout])
+export default function WorkflowBuilder({ id, onBack }: { id: string; onBack: () => void }) {
+  const { toast } = useApp()
+  const [lib, setLib] = useState<LibWorkflow | null>(null)
+  const [known, setKnown] = useState<Status[]>([])
+  useEffect(() => {
+    api<LibWorkflow>('GET', `/api/workflows/${id}`).then(setLib, e => toast(message(e), { tone: 'warn' }))
+    api<Status[]>('GET', '/api/admin/statuses').then(setKnown, () => {})
+  }, [id])   // eslint-disable-line react-hooks/exhaustive-deps
+  if (!lib) return <p className="muted" role="status" style={{ padding: 24 }}>Loading…</p>
+  return <Editor key={`${lib.id}:${lib.updatedAt}`} lib={lib} known={known} onBack={onBack} onSaved={setLib} />
+}
+
+function Editor({ lib, known, onBack, onSaved }: { lib: LibWorkflow; known: Status[]; onBack: () => void; onSaved: (w: LibWorkflow) => void }) {
+  const { toast } = useApp()
+  const original = useMemo<Workflow>(() => workflowOf(lib, lib.layout ?? {}), [lib])
   const [hist, setHist] = useState(() => startHistory<Draft>({ workflow: original, moves: {} }))
   const { workflow, moves } = hist.present
   const [selected, setSelected] = useState<Selection>(null)
@@ -34,15 +49,11 @@ export default function WorkflowBuilder({ project }: { project: Project }) {
   const [leaving, setLeaving] = useState(false)
   const [panelOpen, setPanelOpen] = useState(true)
   const [focus, setFocus] = useState<{ id?: string; tick: number }>()
-  const [publishing, setPublishing] = useState(false)
+  const [publishing, setPublishing] = useState<Impact[] | null | false>(false)   // false: closed; null: working out the projects
   const [versionsOpen, setVersionsOpen] = useState(false)
 
   const dirty = !sameWorkflow(workflow, original)
-  const counts = useMemo(() => {
-    const c: Record<string, number> = {}
-    for (const i of state.issues) if (i.projectId === project.id) c[i.status] = (c[i.status] ?? 0) + 1
-    return c
-  }, [state.issues, project.id])
+  const counts = useMemo<Record<string, number>>(() => ({}), [])   // items live in many projects: the editor doesn't count them
   const issues = useMemo<WorkflowIssue[]>(() => (showIssues ? validateWorkflow(workflow) : []), [showIssues, workflow])
 
   // ── Editing: every change goes through the history, so undo and redo cover all of it ──
@@ -78,8 +89,10 @@ export default function WorkflowBuilder({ project }: { project: Project }) {
     setDialog(null)
   }
 
+  /** A status by a known name is that global status (its colour and category); otherwise a new one. */
   const createStatus = (n: NewStatusInput) => {
-    const r = addStatus(workflow, n)
+    const same = known.find(k => k.name.toLowerCase() === n.name.toLowerCase())
+    const r = addStatus(workflow, same ? { ...n, id: same.id, name: same.name, category: same.category, color: same.color } : n)
     edit(() => r.workflow)
     setSelected({ kind: 'status', id: r.id })
     focusOn(r.id)
@@ -91,10 +104,10 @@ export default function WorkflowBuilder({ project }: { project: Project }) {
     setSelected(null)
     setDialog(null)
   }
-  /** Ask where the work items go when there are any; otherwise just delete (undo is there). */
+  /** A published status may hold work items in some project: ask where they go. One added since needs no answer. */
   const requestDeleteStatus = (id: string) => {
     if (workflow.statuses.length <= 1) return
-    if (counts[id]) setDialog({ kind: 'delete', id })
+    if (original.statuses.some(s => s.id === id)) setDialog({ kind: 'delete', id })
     else removeStatus(id, workflow.statuses.find(s => s.id !== id)!.id)
   }
   const deleteSelection = () => {
@@ -109,43 +122,39 @@ export default function WorkflowBuilder({ project }: { project: Project }) {
   // ── Save and discard ──
   const exists = (id: string) => workflow.statuses.some(s => s.id === id)
   const moveTarget = (id: string) => resolveMove(moves, id, exists) ?? workflow.statuses[0]!.id
-  /** Check first; then "Update workflow" says what changes before anything is saved. */
+  const removed = original.statuses.filter(s => !exists(s.id))
+  const body = (o: { note?: string; dryRun?: boolean }) => ({
+    statuses: workflow.statuses.map(s => ({ id: s.id, name: s.name, color: s.color, category: s.category, description: s.description ?? '' })),
+    transitions: workflow.transitions.map(t => ({ id: t.id, name: t.name, fromIds: t.from === 'any' ? null : t.from, toId: t.to, rules: t.rules ?? {} })),
+    layout: Object.fromEntries(Object.entries(workflow.layout).filter(([id]) => exists(id))),
+    statusMap: Object.fromEntries(removed.map(s => [s.id, moveTarget(s.id)])), ...o,
+  })
+  /** Check first; then "Update workflow" says what changes, and for which projects, before anything is saved. */
   const save = () => {
     const found = validateWorkflow(workflow)
     setShowIssues(true)
     if (found.some(i => i.level === 'error')) return
     if (!found.length) setShowIssues(false)
-    setPublishing(true)
+    setPublishing(null)
+    api<{ projects: Impact[] }>('POST', `/api/admin/workflows/${lib.id}/publish`, body({ dryRun: true }))
+      .then(r => setPublishing(p => (p === false ? p : r.projects)), e => { setPublishing(false); toast(message(e), { tone: 'warn' }) })
   }
   const publish = async (note: string) => {
     setPublishing(false)
-    const removedAll = project.statuses.filter(s => !exists(s.id))
-    // With a server, removing a status moves every one of its items there, also those not loaded here
-    if (apiEnabled) for (const s of removedAll) statusMoves.set(s.id, moveTarget(s.id))
-    // Move the items shown here off deleted statuses first, while both statuses still exist
-    const removed = removedAll.filter(s => counts[s.id])
-    if (removed.length) {
-      dispatch({ type: 'updateProject', id: project.id, patch: { statuses: [...workflow.statuses, ...removed] } })
-      for (const s of removed) dispatch({ type: 'remapStatus', projectId: project.id, from: s.id, to: moveTarget(s.id) })
-    }
-    const layout = Object.fromEntries(Object.entries(workflow.layout).filter(([id]) => exists(id)))
-    dispatch({ type: 'updateProject', id: project.id, patch: { statuses: workflow.statuses, transitions: workflow.transitions, layout } })
-    setHist(startHistory({ workflow: { ...workflow, layout }, moves: {} }))
-    if (!apiEnabled) { toast('Workflow updated'); return }
-    // once every change has reached the server, record it as a version
-    await new Promise(r => setTimeout(r, 0))
-    await queueIdle()
     try {
-      const v = await api<{ version: number; created: boolean }>('POST', `/api/projects/${encodeURIComponent(project.key)}/workflow/versions`, { note })
-      toast(v.created ? `Workflow updated: version ${v.version}` : 'Workflow updated')
-    } catch { toast('Workflow updated, but the version wasn’t recorded', { tone: 'warn' }) }
+      const r = await api<{ workflow: LibWorkflow; version: number; created: boolean; projects: Impact[] }>('POST', `/api/admin/workflows/${lib.id}/publish`, body({ note }))
+      toast(r.created ? `Workflow updated: version ${r.version}${r.projects.length ? `, in ${r.projects.length} project${r.projects.length === 1 ? '' : 's'}` : ''}` : 'Workflow updated')
+      onSaved(r.workflow)
+      // projects open here now have other statuses, and maybe items in other places
+      if (r.projects.length) { await sprintDeps.reloadAll(); for (const i of r.projects) await sprintDeps.reloadProject(i.project.id) }
+    } catch (e) { toast(message(e), { tone: 'warn' }) }
   }
   /** A published version into the editor, as an edit (undo goes back). Statuses it lacks send their items to one of its own. */
-  const loadVersion = (v: Parameters<typeof workflowOf>[0]) => {
-    const next = workflowOf(v, workflow.layout, typesOf(project).map(t => t.key))
+  const loadVersion = (v: Parameters<typeof workflowOf>[0] & { version: number }) => {
+    const next = workflowOf(v, workflow.layout)
     const has = (id: string) => next.statuses.some(s => s.id === id)
     const extra: Record<string, string> = {}
-    for (const s of project.statuses) if (!has(s.id))
+    for (const s of original.statuses) if (!has(s.id))
       extra[s.id] = next.statuses.find(x => x.category === s.category)?.id ?? next.statuses[0]!.id
     setHist(h => pushHistory(h, { workflow: next, moves: { ...h.present.moves, ...extra } }))
     setVersionsOpen(false); setSelected(null)
@@ -189,11 +198,12 @@ export default function WorkflowBuilder({ project }: { project: Project }) {
   return (
     <div className="wf">
       <div className="wf-bar">
-        <button className="btn btn-ghost" onClick={() => dirty ? setLeaving(true) : openProject(project.id, 'settings')}><ArrowLeft size={15} />Settings</button>
-        <h2 className="wf-title">Workflow</h2>
+        <button className="btn btn-ghost" onClick={() => (dirty ? setLeaving(true) : onBack())}><ArrowLeft size={15} />Workflows</button>
+        <h2 className="wf-title">{lib.name}</h2>
+        <span className="muted sm">{lib.projects.length ? `Used by ${lib.projects.map(p => p.key).join(', ')}` : 'No project uses it yet'}</span>
         {dirty && <span className="lozenge lozenge-in-progress">Unsaved changes</span>}
         <div style={{ flex: 1 }} />
-        {apiEnabled && <button className="btn btn-ghost" onClick={() => setVersionsOpen(true)}><History size={15} />Versions</button>}
+        <button className="btn btn-ghost" onClick={() => setVersionsOpen(true)}><History size={15} />Versions</button>
         <button className="btn btn-secondary" onClick={discard} disabled={!dirty}>Discard changes</button>
         <button className="btn btn-primary" onClick={save} disabled={!dirty}>Update workflow</button>
       </div>
@@ -235,35 +245,35 @@ export default function WorkflowBuilder({ project }: { project: Project }) {
             <WorkflowCanvas workflow={workflow} usage={counts} selection={activeSelection} showLabels={showLabels} onSelect={onSelect} onMoveNodes={onMoveNodes}
               onConnectStatuses={connectStatuses} onReconnect={reconnect} onDelete={deleteSelection} focus={focus} />
           ) : (
-            <TextView workflow={workflow} counts={counts} selection={activeSelection} onSelect={onSelect} onMoveStatus={moveInOrder} typeName={k => typesOf(project).find(t => t.key === k)?.name ?? 'a removed type'} />
+            <TextView workflow={workflow} counts={counts} selection={activeSelection} onSelect={onSelect} onMoveStatus={moveInOrder} />
           )}
         </div>
 
         {panelOpen && <aside className="wf-panel" aria-label="Properties">
           {selStatus ? (
-            <StatusPanel status={selStatus} workflow={workflow} count={counts[selStatus.id] ?? 0}
+            <StatusPanel status={selStatus} workflow={workflow}
               onChange={(patch, key) => edit(w => updateStatus(w, selStatus.id, patch), key)}
               onGlobal={on => edit(w => setGlobal(w, selStatus.id, on))}
               onSetStart={() => edit(w => setStart(w, selStatus.id))}
               onDelete={() => requestDeleteStatus(selStatus.id)} />
           ) : selTransition ? (
-            <TransitionPanel key={selTransition.id} transition={selTransition} statuses={workflow.statuses} fields={project.fields} types={typesOf(project)} projectKey={project.key}
+            <TransitionPanel key={selTransition.id} transition={selTransition} statuses={workflow.statuses}
               onChange={(patch, key) => edit(w => updateTransition(w, selTransition.id, patch), key)}
               onDelete={deleteSelection} />
           ) : <EmptyPanel />}
         </aside>}
       </div>
 
-      {publishing && <PublishDialog before={original} after={workflow} server={apiEnabled}
-        moved={project.statuses.filter(s => !exists(s.id)).map(s => ({ from: s.name, to: workflow.statuses.find(x => x.id === moveTarget(s.id))?.name ?? '', count: counts[s.id] ?? 0 }))}
+      {publishing !== false && <PublishDialog before={original} after={workflow} impact={publishing}
+        moved={removed.map(s => ({ from: s.name, to: workflow.statuses.find(x => x.id === moveTarget(s.id))?.name ?? '' }))}
         onClose={() => setPublishing(false)} onPublish={note => void publish(note)} />}
-      {versionsOpen && <VersionsDialog projectKey={encodeURIComponent(project.key)} current={workflow} onClose={() => setVersionsOpen(false)} onRestore={loadVersion} />}
+      {versionsOpen && <VersionsDialog workflowId={lib.id} current={workflow} onClose={() => setVersionsOpen(false)} onRestore={loadVersion} />}
       {dialog?.kind === 'transition' && <CreateTransitionDialog statuses={workflow.statuses} initial={dialog.initial} onCreate={createTransition} onClose={() => setDialog(null)} />}
-      {dialog?.kind === 'status' && <AddStatusDialog existing={workflow.statuses} onAdd={createStatus} onClose={() => setDialog(null)} />}
+      {dialog?.kind === 'status' && <AddStatusDialog existing={workflow.statuses} known={known} onAdd={createStatus} onClose={() => setDialog(null)} />}
       {dialog?.kind === 'delete' && (() => {
         const status = workflow.statuses.find(s => s.id === dialog.id)
         return status && (
-          <DeleteStatusDialog status={status} count={counts[status.id] ?? 0} transitions={transitionsTouching(workflow, status.id)}
+          <DeleteStatusDialog status={status} transitions={transitionsTouching(workflow, status.id)}
             others={workflow.statuses.filter(s => s.id !== status.id)} onConfirm={to => removeStatus(status.id, to)} onClose={() => setDialog(null)} />
         )
       })()}
@@ -271,7 +281,7 @@ export default function WorkflowBuilder({ project }: { project: Project }) {
         <Modal title="Discard unsaved changes?" onClose={() => setLeaving(false)}
           footer={<>
             <button className="btn btn-secondary" onClick={() => setLeaving(false)}>Keep editing</button>
-            <button className="btn btn-danger" onClick={() => openProject(project.id, 'settings')}>Discard and leave</button>
+            <button className="btn btn-danger" onClick={onBack}>Discard and leave</button>
           </>}>
           <p>Your workflow changes haven’t been saved.</p>
         </Modal>

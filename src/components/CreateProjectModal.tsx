@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Columns2, ListChecks, Check } from 'lucide-react'
 import { useStore, uid, suggestKey, isValidKey, PROJECT_COLORS, type Template } from '../data/store'
 import { Modal } from './ui'
@@ -22,6 +22,11 @@ export default function CreateProjectModal({ onClose, onCreated }: {
   const [keyEdited, setKeyEdited] = useState(false)
   const [template, setTemplate]   = useState<Template>('kanban')
   const [color, setColor]         = useState(PROJECT_COLORS[state.projects.length % PROJECT_COLORS.length])
+  // Its workflow scheme (Administration › Workflows): by default the one named after the template
+  const [schemes, setSchemes]     = useState<{ id: string; name: string; description: string }[]>([])
+  const [schemeId, setSchemeId]   = useState('')
+  useEffect(() => { if (apiEnabled) api<typeof schemes>('GET', '/api/workflow-schemes').then(setSchemes, () => {}) }, [])
+  const scheme = schemes.find(s => s.id === schemeId) ?? schemes.find(s => s.name.toLowerCase() === template) ?? schemes[0]
 
   const keyTaken = state.projects.some(p => p.key === key)
   const keyError = !key ? null
@@ -38,7 +43,7 @@ export default function CreateProjectModal({ onClose, onCreated }: {
       // The server owns the project's workflow (status ids), so wait for it instead of creating a local stand-in
       setBusy(true); setError('')
       try {
-        const created = mapProject(await api('POST', '/api/projects', { name: name.trim(), key, color, template }))
+        const created = mapProject(await api('POST', '/api/projects', { name: name.trim(), key, color, template, ...(scheme ? { workflowSchemeId: scheme.id } : {}) }))
         adoptProject(created)          // its default workflow is already on the server: do not send it back
         dispatch({ type: 'upsertProject', project: created })
         onCreated(created.key)
@@ -93,6 +98,14 @@ export default function CreateProjectModal({ onClose, onCreated }: {
             </button>
           ))}
         </div>
+
+        {scheme && <>
+          <label className="label" htmlFor="cp-scheme" style={{ marginTop: 18 }}>Workflow</label>
+          <select id="cp-scheme" className="input" value={scheme.id} onChange={e => setSchemeId(e.target.value)}>
+            {schemes.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+          <div className="hint">{scheme.description || 'Workflows are kept by system administrators; a project admin can switch to another later.'}</div>
+        </>}
 
         <label className="label" style={{ marginTop: 18 }}>Color</label>
         <div className="swatches" role="radiogroup" aria-label="Color">
