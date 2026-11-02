@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Plus, X, Folder } from 'lucide-react'
 import { useStore, type Issue, type Project } from '../../data/store'
-import { api, ApiError } from '../../api/client'
+import { api, errorMessage } from '../../api/client'
 import { useApp } from '../../appContext'
 import { href } from '../../router'
 import { Modal, TypeIcon, plural } from '../ui'
@@ -12,7 +12,6 @@ import { ResultLozenge, useResults, useTestStatuses } from './shared'
 
 interface Member { id: string; key: string; title: string; statusId: string; folder: string; projectId: string }
 interface Container { id: string; key: string; type: string; title: string }
-const message = (e: unknown) => (e instanceof ApiError ? e.message : 'Could not reach the server.')
 const enc = encodeURIComponent
 
 export function TestsPanel({ issue, project, readOnly }: { issue: Issue; project: Project; readOnly: boolean }) {
@@ -22,11 +21,11 @@ export function TestsPanel({ issue, project, readOnly }: { issue: Issue; project
   const [adding, setAdding] = useState(false)
   const plan = issue.type === 'test_plan'
   const base = `/api/issues/${enc(issue.key)}/tests`
-  useEffect(() => { api<Member[]>('GET', base).then(setItems, e => toast(message(e), { tone: 'warn' })) }, [base])   // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { api<Member[]>('GET', base).then(setItems, e => toast(errorMessage(e), { tone: 'warn' })) }, [base])   // eslint-disable-line react-hooks/exhaustive-deps
   const results = useResults(project.key, plan ? `plan=${enc(issue.key)}` : null)
   const statuses = useTestStatuses()
-  const remove = (m: Member) => api('DELETE', `${base}/${enc(m.key)}`).then(() => setItems(items!.filter(x => x.id !== m.id)), e => toast(message(e), { tone: 'warn' }))
-  const moveTo = (m: Member, folder: string) => api<Member[]>('PATCH', `${base}/${enc(m.key)}`, { folder }).then(setItems, e => toast(message(e), { tone: 'warn' }))
+  const remove = (m: Member) => api('DELETE', `${base}/${enc(m.key)}`).then(() => setItems(items!.filter(x => x.id !== m.id)), e => toast(errorMessage(e), { tone: 'warn' }))
+  const moveTo = (m: Member, folder: string) => api<Member[]>('PATCH', `${base}/${enc(m.key)}`, { folder }).then(setItems, e => toast(errorMessage(e), { tone: 'warn' }))
   const statusName = (m: Member) => state.projects.find(p => p.id === m.projectId)?.statuses.find(s => s.id === m.statusId)?.name ?? ''
   const folders = plan ? [...new Set((items ?? []).map(m => m.folder))] : ['']
 
@@ -74,7 +73,7 @@ function AddTestsDialog({ issue, project, plan, onClose, onAdded }: { issue: Iss
   const tests = state.issues.filter(i => i.projectId === project.id && i.type === 'test'
     && (!q.trim() || i.key.toLowerCase().includes(q.trim().toLowerCase()) || i.title.toLowerCase().includes(q.trim().toLowerCase()))).slice(0, 100)
   const add = () => api('POST', `/api/issues/${enc(issue.key)}/tests`, { ...(mode === 'pick' ? { keys: picked } : { jql }), ...(plan && folder.trim() ? { folder: folder.trim() } : {}) })
-    .then(onAdded, e => setError(message(e)))
+    .then(onAdded, e => setError(errorMessage(e)))
   return (
     <Modal title={`Add tests to ${issue.key}`} onClose={onClose} width={600} footer={<>
       <button className="btn btn-secondary" onClick={onClose}>Cancel</button>

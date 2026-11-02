@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
-import { api, ApiError } from '../api/client'
+import { api, ApiError, errorMessage } from '../api/client'
 import { reloadPublicSettings } from '../api/settings-public'
 import { searchUsers } from '../api/users'
 import { useApp } from '../appContext'
 import { timeAgo, type User } from '../data/store'
-import { Avatar, Toggle } from './ui'
+import { Avatar, LoadError, Loading, Toggle } from './ui'
 
 // Administration › System settings: the policies a workspace admin controls (like Jira's Administration › System), one
 // page each. Each page edits one setting as a whole and saves it in one go; the server checks it and records the change
@@ -23,7 +23,6 @@ type Mode = 'limit' | 'unlimited' | 'block'
 interface RateLimiting { enabled: boolean; mode: Mode; requests: number; intervalSeconds: number; burst: number; exemptions: Exemption[] }
 interface Exemption { userId: string; mode: Mode; requests?: number; intervalSeconds?: number; burst?: number }
 
-const message = (e: unknown) => (e instanceof ApiError ? e.message : 'Could not reach the server.')
 const MODES: { id: Mode; label: string; hint: string }[] = [
   { id: 'limit', label: 'Limit requests', hint: 'Each person’s tokens get the numbers below.' },
   { id: 'unlimited', label: 'Allow unlimited requests', hint: 'Count nothing, refuse nothing.' },
@@ -35,7 +34,8 @@ export default function SystemSettings({ page = SETTINGS_PAGES[0].id }: { page?:
   const { toast } = useApp()
   const [settings, setSettings] = useState<Setting[] | null>(null)
   const [error, setError] = useState('')
-  useEffect(() => { api<Setting[]>('GET', '/api/admin/settings').then(setSettings, e => setError(message(e))) }, [])
+  const load = () => { setError(''); api<Setting[]>('GET', '/api/admin/settings').then(setSettings, e => setError(errorMessage(e))) }
+  useEffect(load, [])
 
   /** Saves one setting; field errors come back keyed by field and are shown next to it. */
   const save = async (key: string, value: object): Promise<Record<string, string> | null> => {
@@ -46,13 +46,13 @@ export default function SystemSettings({ page = SETTINGS_PAGES[0].id }: { page?:
       toast(`${saved.label} saved`)
       return null
     } catch (e) {
-      toast(message(e), { tone: 'warn' })
+      toast(errorMessage(e), { tone: 'warn' })
       return (e instanceof ApiError && e.errors) || {}
     }
   }
 
-  if (error) return <p className="hint error" role="alert">{error}</p>
-  if (!settings) return <p className="muted" role="status">Loading…</p>
+  if (error) return <LoadError error={error} onRetry={load} />
+  if (!settings) return <Loading rows={5} />
   const of = <V,>(key: string) => settings.find(s => s.key === key) as Setting<V>
   return (
     <section>
@@ -277,7 +277,7 @@ function RateLimitingSection({ setting, save }: { setting: Setting<RateLimiting>
       </div>
 
       <h3 className="subhead" style={{ marginTop: 18 }}>Limited accounts</h3>
-      {!limited ? <p className="muted" role="status">Loading…</p>
+      {!limited ? <Loading rows={2} />
         : !limited.length ? <p className="muted">Nobody was limited in the last 24 hours.</p>
         : <div className="card-table" style={{ marginInline: 0 }}>
             <table className="table">

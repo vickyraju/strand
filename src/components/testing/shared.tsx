@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { api, ApiError } from '../../api/client'
+import { api, errorMessage } from '../../api/client'
 import { useStore } from '../../data/store'
 
 // Bits the testing screens share: the workspace's run and step statuses, a status lozenge, a progress bar, and items
@@ -13,7 +13,8 @@ export interface TestRun {
   steps: { id: string; status: string; actual: string; comment: string; defectIds: string[]; evidenceIds: string[] }[]
   version: number; createdAt: string; updatedAt: string; specChanged: boolean
 }
-export const message = (e: unknown) => (e instanceof ApiError ? e.message : 'Could not reach the server.')
+/** The testing screens' name for the shared error text. */
+export const message = errorMessage
 export const enc = encodeURIComponent
 
 let cache: Promise<TestStatus[]> | null = null

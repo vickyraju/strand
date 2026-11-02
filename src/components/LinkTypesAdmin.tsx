@@ -1,16 +1,15 @@
 import { useEffect, useState } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
-import { api, ApiError } from '../api/client'
+import { api, ApiError, errorMessage } from '../api/client'
 import { useApp } from '../appContext'
 import { useStore, type LinkType } from '../data/store'
-import { Modal, plural } from './ui'
+import { LoadError, Loading, Modal, plural } from './ui'
 import { PageAction } from './admin/AdminShell'
 
 // Administration › Link types (Jira's Issue linking): the kinds of link people can make between work items, each with
 // how it reads from both ends. Renaming keeps every link; removing one in use asks where its links go.
 
 type Row = LinkType & { position: number; uses: number }
-const message = (e: unknown) => (e instanceof ApiError ? e.message : 'Could not reach the server.')
 
 export default function LinkTypesAdmin() {
   const { toast } = useApp()
@@ -22,13 +21,13 @@ export default function LinkTypesAdmin() {
   const load = () => api<Row[]>('GET', '/api/link-types').then(r => {
     setRows(r)
     dispatch({ type: 'setLinkTypes', linkTypes: r.map(({ id, name, outward, inward, builtin }) => ({ id, name, outward, inward, builtin })) })
-  }, e => setError(message(e)))
+  }, e => setError(errorMessage(e)))
   useEffect(() => { void load() }, [])   // eslint-disable-line react-hooks/exhaustive-deps
 
-  const save = (t: Row, patch: Partial<LinkType>) => api('PATCH', `/api/admin/link-types/${t.id}`, patch).then(() => { void load(); toast(`${patch.name ?? t.name} saved`) }, e => toast(message(e), { tone: 'warn' }))
+  const save = (t: Row, patch: Partial<LinkType>) => api('PATCH', `/api/admin/link-types/${t.id}`, patch).then(() => { void load(); toast(`${patch.name ?? t.name} saved`) }, e => toast(errorMessage(e), { tone: 'warn' }))
 
-  if (error) return <p className="hint error" role="alert">{error}</p>
-  if (!rows) return <p className="muted" role="status">Loading…</p>
+  if (error) return <LoadError error={error} onRetry={() => { setError(''); void load() }} />
+  if (!rows) return <Loading />
   return (
     <section>
       <PageAction><button className="btn btn-primary" onClick={() => setAdding(true)}><Plus size={14} />Add link type</button></PageAction>
@@ -70,7 +69,7 @@ function AddDialog({ onClose, onAdded }: { onClose: () => void; onAdded: () => v
   const [errors, setErrors] = useState<Record<string, string>>({})
   const valid = !!(f.name.trim() && f.outward.trim() && f.inward.trim())
   const submit = () => api('POST', '/api/admin/link-types', f).then(() => { toast(`${f.name} added`); onAdded() },
-    e => { setErrors(e instanceof ApiError && e.errors ? e.errors : {}); toast(message(e), { tone: 'warn' }) })
+    e => { setErrors(e instanceof ApiError && e.errors ? e.errors : {}); toast(errorMessage(e), { tone: 'warn' }) })
   return (
     <Modal title="Add link type" onClose={onClose} footer={<>
       <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
@@ -95,7 +94,7 @@ function RemoveDialog({ type, others, onClose, onRemoved }: { type: Row; others:
   const [moveTo, setMoveTo] = useState(others[0]?.id ?? '')
   const remove = (how: 'move' | 'remove' | 'unused') => {
     const q = how === 'move' ? `?moveTo=${encodeURIComponent(moveTo)}` : how === 'remove' ? '?removeLinks=1' : ''
-    api('DELETE', `/api/admin/link-types/${type.id}${q}`).then(() => { toast(`${type.name} removed`); onRemoved() }, e => toast(message(e), { tone: 'warn' }))
+    api('DELETE', `/api/admin/link-types/${type.id}${q}`).then(() => { toast(`${type.name} removed`); onRemoved() }, e => toast(errorMessage(e), { tone: 'warn' }))
   }
   return (
     <Modal title={`Remove “${type.name}”?`} onClose={onClose} footer={<>

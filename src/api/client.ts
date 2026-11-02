@@ -20,6 +20,9 @@ export class ApiError extends Error {
   constructor(status: number, message: string, errors?: Record<string, string>) { super(message); this.status = status; this.errors = errors }
 }
 
+/** What to tell a person when a call failed: the server's own words, or that it couldn't be reached. */
+export const errorMessage = (e: unknown) => (e instanceof ApiError ? e.message : 'Could not reach the server.')
+
 export function buildRequest(base: string, token: string | null, method: string, path: string, body?: unknown, headers: Record<string, string> = {}): [string, RequestInit] {
   const h: Record<string, string> = { ...headers }
   if (token) h.authorization = `Bearer ${token}`

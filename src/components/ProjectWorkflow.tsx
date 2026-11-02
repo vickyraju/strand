@@ -4,7 +4,7 @@ import { useStore, typesOf, type Project } from '../data/store'
 import { useApp } from '../appContext'
 import { canAdmin, isGlobalAdmin } from '../data/access'
 import { href, navigate } from '../router'
-import { api, apiEnabled, ApiError } from '../api/client'
+import { api, apiEnabled, errorMessage } from '../api/client'
 import { sprintDeps } from '../api/sprints'
 import { Modal, plural } from './ui'
 import { impactLine, type Impact } from './workflow/Versions'
@@ -14,7 +14,6 @@ import { impactLine, type Impact } from './workflow/Versions'
 // the board's WIP limits.
 
 interface Scheme { id: string; name: string; description: string; defaultWorkflowId: string; defaultWorkflow: string; mappings: Record<string, string> }
-const message = (e: unknown) => (e instanceof ApiError ? e.message : 'Could not reach the server.')
 
 /** The project's workflows, one per workflow its types use: who uses it, its statuses, its moves. */
 function Workflows({ project }: { project: Project }) {
@@ -118,7 +117,7 @@ function ChangeScheme({ project, onClose }: { project: Project; onClose: () => v
   const [impact, setImpact] = useState<Impact | null>(null)
   const [busy, setBusy] = useState(false)
   const path = `/api/projects/${encodeURIComponent(project.key)}/workflow-scheme`
-  useEffect(() => { api<Scheme[]>('GET', '/api/workflow-schemes').then(setSchemes, e => toast(message(e), { tone: 'warn' })) }, [])   // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { api<Scheme[]>('GET', '/api/workflow-schemes').then(setSchemes, e => toast(errorMessage(e), { tone: 'warn' })) }, [])   // eslint-disable-line react-hooks/exhaustive-deps
   const scheme = schemes?.find(s => s.id === schemeId)
   useEffect(() => {
     setImpact(null)
@@ -130,7 +129,7 @@ function ChangeScheme({ project, onClose }: { project: Project; onClose: () => v
   useEffect(() => {
     if (!scheme) return
     let live = true
-    api<Impact>('PUT', path, { schemeId, statusMap: map, dryRun: true }).then(r => live && setImpact(r), e => toast(message(e), { tone: 'warn' }))
+    api<Impact>('PUT', path, { schemeId, statusMap: map, dryRun: true }).then(r => live && setImpact(r), e => toast(errorMessage(e), { tone: 'warn' }))
     return () => { live = false }
   }, [schemeId, schemes, map])   // eslint-disable-line react-hooks/exhaustive-deps
   const leaving = [...new Set((impact?.moves ?? []).map(m => m.from))].map(n => project.statuses.find(s => s.name === n)!).filter(Boolean)
@@ -141,7 +140,7 @@ function ChangeScheme({ project, onClose }: { project: Project; onClose: () => v
         toast(`${project.key} now uses ${scheme!.name}${r.moves.length ? `: ${impactLine(r)}` : ''}`)
         await sprintDeps.reloadAll(); await sprintDeps.reloadProject(project.id)
         onClose()
-      }, e => toast(message(e), { tone: 'warn' }))
+      }, e => toast(errorMessage(e), { tone: 'warn' }))
       .finally(() => setBusy(false))
   }
   return (

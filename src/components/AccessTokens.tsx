@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Copy, KeyRound, Plus, Trash2 } from 'lucide-react'
 import { useApp } from '../appContext'
 import { usePublicSettings } from '../api/settings-public'
-import { API_URL, ApiError } from '../api/client'
+import { API_URL, errorMessage } from '../api/client'
 import {
   activeCount, daysLabel, expiryChoices, createToken, curlExample, listTokens, revokeToken, tokenStatus,
   type AccessToken, type CreatedToken,
@@ -10,7 +10,6 @@ import {
 import { Modal } from './ui'
 
 const day = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
-const message = (e: unknown) => (e instanceof ApiError ? e.message : 'Could not reach the server.')
 
 /** Settings > Personal access tokens (API mode only): create, see and revoke the tokens that let scripts call the API as you. */
 export default function AccessTokens() {
@@ -24,7 +23,7 @@ export default function AccessTokens() {
   const [created, setCreated] = useState<CreatedToken | null>(null)   // the secret, held only until the dialog is closed
   const [revoking, setRevoking] = useState<AccessToken | null>(null)
 
-  const load = () => listTokens().then(t => { setTokens(t); setError('') }, e => setError(message(e)))
+  const load = () => listTokens().then(t => { setTokens(t); setError('') }, e => setError(errorMessage(e)))
   useEffect(() => { void load() }, [])
 
   const atLimit = tokens ? activeCount(tokens) >= policy.maxPerUser : false
@@ -36,12 +35,12 @@ export default function AccessTokens() {
       setCreated(await createToken(name.trim(), chosen))
       setName('')
       await load()
-    } catch (e) { setError(message(e)) } finally { setBusy(false) }
+    } catch (e) { setError(errorMessage(e)) } finally { setBusy(false) }
   }
 
   const revoke = async (t: AccessToken) => {
     setRevoking(null)
-    try { await revokeToken(t.id); toast(`Revoked “${t.name}”`); await load() } catch (e) { setError(message(e)) }
+    try { await revokeToken(t.id); toast(`Revoked “${t.name}”`); await load() } catch (e) { setError(errorMessage(e)) }
   }
 
   const copy = (text: string) => navigator.clipboard?.writeText(text).then(() => toast('Copied'), () => toast('Copy failed: select the text and copy it', { tone: 'warn' }))

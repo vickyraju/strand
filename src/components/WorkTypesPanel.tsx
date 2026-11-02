@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 import { useStore, typesOf, isFixedType, type Project, type WorkType } from '../data/store'
-import { api, apiEnabled, ApiError } from '../api/client'
+import { api, apiEnabled, errorMessage } from '../api/client'
 import { issueSync } from '../api/sync'
 import { sprintDeps } from '../api/sprints'
 import { useApp } from '../appContext'
@@ -11,7 +11,6 @@ import { Modal, TYPE_ICONS, TypeIcon, plural } from './ui'
 // the project adds. Removing one moves its work items to another type. Each type can have its own workflow: limit
 // transitions to it in the workflow editor.
 
-const message = (e: unknown) => (e instanceof ApiError ? e.message : 'Could not reach the server.')
 
 export default function WorkTypesPanel({ project }: { project: Project }) {
   const { state, dispatch } = useStore()
@@ -29,7 +28,7 @@ export default function WorkTypesPanel({ project }: { project: Project }) {
         const body = { name: t.name, color: t.color, icon: t.icon }
         const row = await api<WorkType>(isNew ? 'POST' : 'PATCH', isNew ? `/api/projects/${project.key}/types` : `/api/projects/${project.key}/types/${t.key}`, body)
         saved = { key: row.key, name: row.name, color: row.color, icon: row.icon }
-      } catch (e) { toast(message(e), { tone: 'warn' }); return false }
+      } catch (e) { toast(errorMessage(e), { tone: 'warn' }); return false }
     } else if (types.some(x => x.key !== t.key && x.name.toLowerCase() === t.name.toLowerCase())) { toast('A work type with that name already exists', { tone: 'warn' }); return false }
     dispatch({ type: 'updateProject', id: project.id, patch: { types: isNew ? [...types, saved] : types.map(x => (x.key === t.key ? saved : x)) } })
     toast(`${saved.name} saved`)
@@ -41,7 +40,7 @@ export default function WorkTypesPanel({ project }: { project: Project }) {
         await issueSync.idle()
         await api('DELETE', `/api/projects/${project.key}/types/${t.key}?moveTo=${encodeURIComponent(moveTo)}`)
         await sprintDeps.reloadProject(project.id)   // its items now have another type
-      } catch (e) { toast(message(e), { tone: 'warn' }); return }
+      } catch (e) { toast(errorMessage(e), { tone: 'warn' }); return }
     } else {
       const ids = state.issues.filter(i => i.projectId === project.id && i.type === t.key).map(i => i.id)
       if (ids.length) dispatch({ type: 'updateIssues', ids, patch: { type: moveTo } })
