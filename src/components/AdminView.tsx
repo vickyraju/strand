@@ -38,7 +38,7 @@ export default function AdminView({ section = 'people', item }: { section?: Admi
     <AdminShell title={admin ? 'Administration' : 'Configuration'} items={items} section={section}
       sub={settingsPage ? SETTINGS_PAGES.map(p => ({ id: p.id, label: p.label, current: p.id === settingsPage })) : undefined}>
       {section === 'people' && <People />}
-      {section === 'groups' && <GroupsView admin={admin} openId={item ?? null} onOpen={id => navigate(href({ name: 'admin', section: 'groups', ...(id ? { item: id } : {}) }))} />}
+      {section === 'groups' && <GroupsView admin={admin} openId={item && UUID.test(item) ? item : null} onOpen={id => navigate(href({ name: 'admin', section: 'groups', ...(id ? { item: id } : {}) }))} />}
       {section === 'license' && <LicenseCleanup />}
       {section === 'workflows' && <WorkflowsAdmin tab={item === 'statuses' || item === 'schemes' ? item : 'workflows'} />}
       {section === 'link-types' && <LinkTypesAdmin />}
