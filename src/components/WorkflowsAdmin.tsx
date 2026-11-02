@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
-import { Copy, Pencil, Plus, Trash2 } from 'lucide-react'
-import { api, ApiError } from '../api/client'
+import { Copy, GitBranch, Pencil, Plus, Trash2 } from 'lucide-react'
+import { api, errorMessage } from '../api/client'
 import { sprintDeps } from '../api/sprints'
 import { useApp } from '../appContext'
 import { BUILTIN_TYPES, type Category } from '../data/store'
 import { href, navigate } from '../router'
 import { AdminLink, PageAction } from './admin/AdminShell'
-import { Modal, plural } from './ui'
+import { ConfirmDialog, Empty, Loading, LoadError, Modal, openRow, plural } from './ui'
 import { impactLine, type Impact } from './workflow/Versions'
 
 // Administration › Workflows (Jira's workflows, statuses and workflow schemes), for system administrators. A change to
@@ -15,7 +15,6 @@ import { impactLine, type Impact } from './workflow/Versions'
 interface Wf { id: string; name: string; description: string; version: number; statuses: number; transitions: number; schemes: number; projects: number }
 interface St { id: string; name: string; description: string; color: string; category: Category; workflows: string[] }
 interface Scheme { id: string; name: string; description: string; defaultWorkflowId: string; defaultWorkflow: string; mappings: Record<string, string>; projects: number }
-const message = (e: unknown) => (e instanceof ApiError ? e.message : 'Could not reach the server.')
 const CATS: { id: Category; label: string }[] = [{ id: 'todo', label: 'To do' }, { id: 'in-progress', label: 'In progress' }, { id: 'done', label: 'Done' }]
 /** The work types every project has (a project's own types use the default workflow). */
 const TYPES = [...BUILTIN_TYPES.map(t => ({ key: t.key, name: t.name })), { key: 'test', name: 'Test' }, { key: 'precondition', name: 'Pre-Condition' },
@@ -43,7 +42,7 @@ export default function WorkflowsAdmin({ tab }: { tab: Tab }) {
 function useList<T>(path: string) {
   const [rows, setRows] = useState<T[] | null>(null)
   const [error, setError] = useState('')
-  const load = () => api<T[]>('GET', path).then(setRows, e => setError(message(e)))
+  const load = () => { setError(''); return api<T[]>('GET', path).then(setRows, e => setError(errorMessage(e))) }
   useEffect(() => { void load() }, [path])   // eslint-disable-line react-hooks/exhaustive-deps
   return { rows, error, load }
 }
@@ -52,29 +51,33 @@ function Workflows() {
   const { toast } = useApp()
   const { rows, error, load } = useList<Wf>('/api/workflows')
   const [adding, setAdding] = useState<{ copyFrom?: Wf } | null>(null)
+  const [removing, setRemoving] = useState<Wf | null>(null)
   const open = (id: string) => navigate(href({ name: 'admin', section: 'workflows', item: id }))
-  const remove = (w: Wf) => window.confirm(`Remove the workflow “${w.name}”?`) &&
-    api('DELETE', `/api/admin/workflows/${w.id}`).then(() => { toast(`${w.name} removed`); void load() }, e => toast(message(e), { tone: 'warn' }))
-  if (error) return <p className="hint error" role="alert">{error}</p>
-  if (!rows) return <p className="muted" role="status">Loading…</p>
+  if (error) return <LoadError error={error} onRetry={load} />
+  if (!rows) return <Loading />
   return <>
     <div className="card-table" style={{ marginInline: 0 }}>
       <table className="table">
         <thead><tr><th>Workflow</th><th className="col-num">Statuses</th><th className="col-num">Transitions</th><th className="col-num">Schemes</th><th className="col-num">Projects</th><th className="col-num">Version</th><th /></tr></thead>
         <tbody>{rows.map(w => (
-          <tr key={w.id} tabIndex={0} onClick={() => open(w.id)} onKeyDown={e => e.key === 'Enter' && open(w.id)}>
+          <tr key={w.id} {...openRow(() => open(w.id), `Edit ${w.name}`)}>
             <td><b>{w.name}</b>{w.description && <div className="muted sm">{w.description}</div>}</td>
             <td className="col-num">{w.statuses}</td><td className="col-num">{w.transitions}</td><td className="col-num">{w.schemes}</td><td className="col-num">{w.projects}</td><td className="col-num">{w.version}</td>
             <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }} onClick={e => e.stopPropagation()}>
               <button className="icon-btn sm" aria-label={`Edit ${w.name}`} title="Edit" onClick={() => open(w.id)}><Pencil size={14} /></button>
               <button className="icon-btn sm" aria-label={`Copy ${w.name}`} title="Copy" onClick={() => setAdding({ copyFrom: w })}><Copy size={14} /></button>
-              {!w.schemes && <button className="icon-btn sm" aria-label={`Remove ${w.name}`} title="Remove" onClick={() => remove(w)}><Trash2 size={14} /></button>}
+              {!w.schemes && <button className="icon-btn sm" aria-label={`Remove ${w.name}`} title="Remove" onClick={() => setRemoving(w)}><Trash2 size={14} /></button>}
             </td>
           </tr>
         ))}</tbody>
       </table>
     </div>
+    {!rows.length && <Empty icon={<GitBranch size={22} strokeWidth={1.5} />} title="No workflows" body="Add one, or copy one to start from." />}
     <PageAction><button className="btn btn-primary" onClick={() => setAdding({})}><Plus size={14} />Add workflow</button></PageAction>
+    {removing && <ConfirmDialog title={`Remove ${removing.name}?`} action="Remove workflow" onClose={() => setRemoving(null)}
+      onConfirm={() => api('DELETE', `/api/admin/workflows/${removing.id}`).then(() => { toast(`${removing.name} removed`); void load() })}>
+      <p>No scheme uses it, so no project changes. Its published versions go with it.</p>
+    </ConfirmDialog>}
     {adding && <NameDialog title={adding.copyFrom ? `Copy ${adding.copyFrom.name}` : 'Add workflow'} initial={adding.copyFrom ? `${adding.copyFrom.name} (copy)` : ''}
       hint={adding.copyFrom ? undefined : 'It starts with a To do and a Done status; add the rest in the editor.'} onClose={() => setAdding(null)}
       onSave={name => api<{ id: string }>('POST', '/api/admin/workflows', { name, ...(adding.copyFrom ? { copyFrom: adding.copyFrom.id } : {}) }).then(w => open(w.id))} />}
@@ -84,7 +87,7 @@ function Workflows() {
 function NameDialog({ title, initial, hint, onSave, onClose }: { title: string; initial: string; hint?: string; onSave: (name: string) => Promise<unknown>; onClose: () => void }) {
   const [name, setName] = useState(initial)
   const [error, setError] = useState('')
-  const save = () => name.trim() && onSave(name.trim()).catch(e => setError(message(e)))
+  const save = () => name.trim() && onSave(name.trim()).catch(e => setError(errorMessage(e)))
   return (
     <Modal title={title} onClose={onClose} footer={<>
       <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
@@ -104,9 +107,9 @@ function Statuses() {
   const { toast } = useApp()
   const { rows, error, load } = useList<St>('/api/admin/statuses')
   const [editing, setEditing] = useState<Partial<St> | null>(null)
-  const remove = (s: St) => api('DELETE', `/api/admin/statuses/${s.id}`).then(() => { toast(`${s.name} removed`); void load() }, e => toast(message(e), { tone: 'warn' }))
-  if (error) return <p className="hint error" role="alert">{error}</p>
-  if (!rows) return <p className="muted" role="status">Loading…</p>
+  const [removing, setRemoving] = useState<St | null>(null)
+  if (error) return <LoadError error={error} onRetry={load} />
+  if (!rows) return <Loading />
   return <>
     <p className="muted sm" style={{ marginBottom: 8 }}>Statuses are shared by every workflow. A new name, colour or category shows in every workflow and project that has the status.</p>
     <div className="card-table" style={{ marginInline: 0 }}>
@@ -119,13 +122,17 @@ function Statuses() {
             <td className="muted sm">{s.workflows.join(', ') || 'No workflow'}</td>
             <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
               <button className="icon-btn sm" aria-label={`Edit ${s.name}`} title="Edit" onClick={() => setEditing(s)}><Pencil size={14} /></button>
-              {!s.workflows.length && <button className="icon-btn sm" aria-label={`Remove ${s.name}`} title="Remove" onClick={() => remove(s)}><Trash2 size={14} /></button>}
+              {!s.workflows.length && <button className="icon-btn sm" aria-label={`Remove ${s.name}`} title="Remove" onClick={() => setRemoving(s)}><Trash2 size={14} /></button>}
             </td>
           </tr>
         ))}</tbody>
       </table>
     </div>
     <PageAction><button className="btn btn-primary" onClick={() => setEditing({ category: 'in-progress', color: '#3b82f6' })}><Plus size={14} />Add status</button></PageAction>
+    {removing && <ConfirmDialog title={`Remove ${removing.name}?`} action="Remove status" onClose={() => setRemoving(null)}
+      onConfirm={() => api('DELETE', `/api/admin/statuses/${removing.id}`).then(() => { toast(`${removing.name} removed`); void load() })}>
+      <p>No workflow uses it. It can be added again later.</p>
+    </ConfirmDialog>}
     {editing && <StatusDialog status={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); void load(); void sprintDeps.reloadAll() }} />}
   </>
 }
@@ -134,7 +141,7 @@ function StatusDialog({ status, onSaved, onClose }: { status: Partial<St>; onSav
   const [s, setS] = useState(status)
   const [error, setError] = useState('')
   const save = () => api(status.id ? 'PATCH' : 'POST', status.id ? `/api/admin/statuses/${status.id}` : '/api/admin/statuses',
-    { name: s.name?.trim(), description: s.description ?? '', color: s.color, category: s.category }).then(onSaved, e => setError(message(e)))
+    { name: s.name?.trim(), description: s.description ?? '', color: s.color, category: s.category }).then(onSaved, e => setError(errorMessage(e)))
   return (
     <Modal title={status.id ? `Edit ${status.name}` : 'Add status'} onClose={onClose} footer={<>
       <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
@@ -160,10 +167,10 @@ function Schemes() {
   const { rows, error, load } = useList<Scheme>('/api/workflow-schemes')
   const workflows = useList<Wf>('/api/workflows')
   const [editing, setEditing] = useState<Partial<Scheme> | null>(null)
-  const remove = (s: Scheme) => api('DELETE', `/api/admin/workflow-schemes/${s.id}`).then(() => { toast(`${s.name} removed`); void load() }, e => toast(message(e), { tone: 'warn' }))
+  const [removing, setRemoving] = useState<Scheme | null>(null)
   const wfName = (id: string) => workflows.rows?.find(w => w.id === id)?.name ?? '…'
-  if (error) return <p className="hint error" role="alert">{error}</p>
-  if (!rows || !workflows.rows) return <p className="muted" role="status">Loading…</p>
+  if (error || workflows.error) return <LoadError error={error || workflows.error} onRetry={() => { void load(); void workflows.load() }} />
+  if (!rows || !workflows.rows) return <Loading />
   return <>
     <div className="card-table" style={{ marginInline: 0 }}>
       <table className="table">
@@ -175,13 +182,17 @@ function Schemes() {
             <td className="col-num">{s.projects}</td>
             <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
               <button className="icon-btn sm" aria-label={`Edit ${s.name}`} title="Edit" onClick={() => setEditing(s)}><Pencil size={14} /></button>
-              {!s.projects && <button className="icon-btn sm" aria-label={`Remove ${s.name}`} title="Remove" onClick={() => remove(s)}><Trash2 size={14} /></button>}
+              {!s.projects && <button className="icon-btn sm" aria-label={`Remove ${s.name}`} title="Remove" onClick={() => setRemoving(s)}><Trash2 size={14} /></button>}
             </td>
           </tr>
         ))}</tbody>
       </table>
     </div>
     <PageAction><button className="btn btn-primary" onClick={() => setEditing({ defaultWorkflowId: workflows.rows![0]?.id, mappings: {} })}><Plus size={14} />Add scheme</button></PageAction>
+    {removing && <ConfirmDialog title={`Remove ${removing.name}?`} action="Remove scheme" onClose={() => setRemoving(null)}
+      onConfirm={() => api('DELETE', `/api/admin/workflow-schemes/${removing.id}`).then(() => { toast(`${removing.name} removed`); void load() })}>
+      <p>No project uses it. Its workflows stay.</p>
+    </ConfirmDialog>}
     {editing && <SchemeDialog scheme={editing} workflows={workflows.rows} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); void load() }} />}
   </>
 }
@@ -205,7 +216,7 @@ function SchemeDialog({ scheme, workflows, onSaved, onClose }: { scheme: Partial
       toast(`${body.name} saved${r.projects.length ? `, in ${plural(r.projects.length, 'project')}` : ''}`)
       if (r.projects.length) { await sprintDeps.reloadAll(); for (const i of r.projects) await sprintDeps.reloadProject(i.project.id) }
       onSaved()
-    } catch (e) { setError(message(e)) }
+    } catch (e) { setError(errorMessage(e)) }
   }
   return (
     <Modal title={scheme.id ? `Edit ${scheme.name}` : 'Add workflow scheme'} onClose={onClose} width={560} footer={<>

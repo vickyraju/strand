@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
-import { api, ApiError } from '../../api/client'
+import { api, errorMessage } from '../../api/client'
 import type { Status, Transition } from '../../data/store'
 import { describeDiff, diffWorkflows, type Workflow } from '../../data/workflow'
-import { Modal, plural } from '../ui'
+import { Modal, openRow, plural } from '../ui'
 import { timeAgo } from '../../data/store'
 
 // Publishing and versions (Jira keeps every published workflow): the save dialog says what changes, which projects it
@@ -70,7 +70,7 @@ export function VersionsDialog({ workflowId, current, onClose, onRestore }: {
   const [rows, setRows] = useState<VersionRow[] | null>(null)
   const [error, setError] = useState('')
   const [open, setOpen] = useState<Snapshot | null>(null)
-  useEffect(() => { api<VersionRow[]>('GET', `/api/workflows/${workflowId}/versions`).then(setRows, e => setError(e instanceof ApiError ? e.message : 'Could not reach the server.')) }, [workflowId])
+  useEffect(() => { api<VersionRow[]>('GET', `/api/workflows/${workflowId}/versions`).then(setRows, e => setError(errorMessage(e))) }, [workflowId])
   const show = (n: number) => api<Snapshot>('GET', `/api/workflows/${workflowId}/versions/${n}`).then(setOpen, () => setError('Could not load that version.'))
   const changes = open ? describeDiff(diffWorkflows(workflowOf(open, {}), current)) : []
 
@@ -88,7 +88,7 @@ export function VersionsDialog({ workflowId, current, onClose, onRestore }: {
             <thead><tr><th>Version</th><th>Note</th><th>Published</th><th>Shape</th></tr></thead>
             <tbody>
               {rows.map(r => (
-                <tr key={r.version} tabIndex={0} onClick={() => show(r.version)} onKeyDown={e => e.key === 'Enter' && show(r.version)}>
+                <tr key={r.version} {...openRow(() => void show(r.version), `Version ${r.version}`)}>
                   <td>{r.version}</td>
                   <td>{r.note || <span className="muted">No note</span>}</td>
                   <td className="muted sm">{timeAgo(Date.parse(r.publishedAt))}{r.publishedBy ? ` by ${r.publishedBy}` : ''}</td>

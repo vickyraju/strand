@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { Bookmark, Bug, SquareCheck, Zap, ChevronsUp, ChevronUp, Equal, ChevronDown, Minus, Check, UserRound, X, Flag, Star, Wrench, BookOpen, Shield, Lightbulb, Rocket, Circle, FlaskConical, ClipboardList, Layers, Map as MapIcon, PlayCircle } from 'lucide-react'
 import type { RuleCtx } from '../data/transitionRules'
+import { errorMessage } from '../api/client'
 import { useStore, transitionsFrom, statusesFor, typesOf, BUILTIN_TYPES, type IssueType, type Priority, type Project, type Status, type User } from '../data/store'
 
 // ── Type ───────────────────────────────────────────────────
@@ -412,6 +413,64 @@ export function MultiSelect({ label, all, value, onChange }: { label: string; al
     </span>
   )
 }
+
+// ── Loading, failed, confirm ───────────────────────────────
+
+/** Placeholder lines while a list or page loads (announced once to screen readers). */
+export function Loading({ rows = 3 }: { rows?: number }) {
+  return (
+    <div className="skeleton-list" role="status" aria-label="Loading">
+      {Array.from({ length: rows }, (_, i) => <div key={i} className="skeleton" style={{ width: `${90 - i * 12}%` }} />)}
+    </div>
+  )
+}
+
+/** A load that failed: what went wrong, and a way to try again. */
+export function LoadError({ error, onRetry }: { error: string; onRetry: () => void }) {
+  return (
+    <div className="load-error" role="alert">
+      <span>{error}</span>
+      <button className="btn btn-secondary btn-sm" onClick={onRetry}>Try again</button>
+    </div>
+  )
+}
+
+/** Asks before something that can't simply be undone, saying what it will do. `typeToConfirm`: for the biggest ones,
+ *  the person types this (a name) first. The dialog stays open, with the error, if the action fails. */
+export function ConfirmDialog({ title, children, action, danger = true, typeToConfirm, onConfirm, onClose }: {
+  title: string; children: ReactNode; action: string; danger?: boolean; typeToConfirm?: string
+  onConfirm: () => Promise<unknown> | void; onClose: () => void
+}) {
+  const [typed, setTyped] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const ready = !typeToConfirm || typed.trim() === typeToConfirm
+  const go = async () => {
+    setBusy(true); setError('')
+    try { await onConfirm(); onClose() } catch (e) { setError(errorMessage(e)); setBusy(false) }
+  }
+  return (
+    <Modal title={title} onClose={onClose} footer={<>
+      <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
+      <button className={`btn ${danger ? 'btn-danger' : 'btn-primary'}`} disabled={!ready || busy} onClick={() => void go()}>{busy ? 'Working…' : action}</button>
+    </>}>
+      {children}
+      {typeToConfirm && <>
+        <label className="label" htmlFor="confirm-type" style={{ marginTop: 12 }}>Type <b>{typeToConfirm}</b> to confirm</label>
+        <input id="confirm-type" className="input" autoFocus value={typed} onChange={e => setTyped(e.target.value)} onKeyDown={e => e.key === 'Enter' && ready && void go()} />
+      </>}
+      {error && <p className="hint error" role="alert">{error}</p>}
+    </Modal>
+  )
+}
+
+/** Props for a table row that opens something: pointer, keyboard (Tab, Enter) and a name for screen readers. */
+export const openRow = (open: () => void, label: string) => ({
+  className: 'row-open', tabIndex: 0, 'aria-label': label, onClick: open,
+  onKeyDown: (e: { key: string; target: EventTarget; currentTarget: EventTarget; preventDefault: () => void }) => {
+    if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) { e.preventDefault(); open() }
+  },
+})
 
 // ── Empty state ────────────────────────────────────────────
 

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Plus, ArrowLeft, AlertTriangle, Workflow as WorkflowIcon, List as ListIcon, Undo2, Redo2, Network, PanelRightClose, PanelRightOpen, History } from 'lucide-react'
 import { useApp } from '../appContext'
-import { Checkbox, Modal } from './ui'
+import { Checkbox, Loading, LoadError, Modal } from './ui'
 import {
   addStatus, addTransition, autoLayout, canRedo, canUndo, deleteStatusMoving, moveStatus, pushHistory, reconnectSource, reconnectTarget, redo, removeTransition,
   resolveMove, sameWorkflow, setGlobal, setStart, startHistory, transitionsTouching, undo, updateStatus, updateTransition, validateWorkflow,
@@ -12,7 +12,7 @@ import { AddStatusDialog, CreateTransitionDialog, DeleteStatusDialog, type NewSt
 import { EmptyPanel, StatusPanel, TransitionPanel } from './workflow/Panels'
 import TextView from './workflow/TextView'
 import { PublishDialog, VersionsDialog, workflowOf, type Impact } from './workflow/Versions'
-import { api, ApiError } from '../api/client'
+import { api, errorMessage } from '../api/client'
 import { sprintDeps } from '../api/sprints'
 import { sameSelection, type Selection } from './workflow/types'
 import type { Status } from '../data/store'
@@ -22,17 +22,19 @@ import type { Status } from '../data/store'
 
 type Dialog = null | { kind: 'transition'; initial: NewTransition } | { kind: 'status' } | { kind: 'delete'; id: string }
 interface LibWorkflow { id: string; name: string; version: number; updatedAt: string; statuses: any[]; transitions: any[]; layout: Workflow['layout']; projects: { key: string; name: string }[] }
-const message = (e: unknown) => (e instanceof ApiError ? e.message : 'Could not reach the server.')
 
 export default function WorkflowBuilder({ id, onBack }: { id: string; onBack: () => void }) {
-  const { toast } = useApp()
   const [lib, setLib] = useState<LibWorkflow | null>(null)
   const [known, setKnown] = useState<Status[]>([])
-  useEffect(() => {
-    api<LibWorkflow>('GET', `/api/workflows/${id}`).then(setLib, e => toast(message(e), { tone: 'warn' }))
+  const [error, setError] = useState('')
+  const load = () => {
+    setError('')
+    api<LibWorkflow>('GET', `/api/workflows/${encodeURIComponent(id)}`).then(setLib, e => setError(errorMessage(e)))
     api<Status[]>('GET', '/api/admin/statuses').then(setKnown, () => {})
-  }, [id])   // eslint-disable-line react-hooks/exhaustive-deps
-  if (!lib) return <p className="muted" role="status" style={{ padding: 24 }}>Loading…</p>
+  }
+  useEffect(load, [id])   // eslint-disable-line react-hooks/exhaustive-deps
+  if (error) return <div style={{ padding: 24 }}><LoadError error={error} onRetry={load} /><button className="btn btn-ghost" style={{ marginTop: 12 }} onClick={onBack}>Back to workflows</button></div>
+  if (!lib) return <div style={{ padding: 24 }}><Loading rows={6} /></div>
   return <Editor key={`${lib.id}:${lib.updatedAt}`} lib={lib} known={known} onBack={onBack} onSaved={setLib} />
 }
 
@@ -137,7 +139,7 @@ function Editor({ lib, known, onBack, onSaved }: { lib: LibWorkflow; known: Stat
     if (!found.length) setShowIssues(false)
     setPublishing(null)
     api<{ projects: Impact[] }>('POST', `/api/admin/workflows/${lib.id}/publish`, body({ dryRun: true }))
-      .then(r => setPublishing(p => (p === false ? p : r.projects)), e => { setPublishing(false); toast(message(e), { tone: 'warn' }) })
+      .then(r => setPublishing(p => (p === false ? p : r.projects)), e => { setPublishing(false); toast(errorMessage(e), { tone: 'warn' }) })
   }
   const publish = async (note: string) => {
     setPublishing(false)
@@ -147,7 +149,7 @@ function Editor({ lib, known, onBack, onSaved }: { lib: LibWorkflow; known: Stat
       onSaved(r.workflow)
       // projects open here now have other statuses, and maybe items in other places
       if (r.projects.length) { await sprintDeps.reloadAll(); for (const i of r.projects) await sprintDeps.reloadProject(i.project.id) }
-    } catch (e) { toast(message(e), { tone: 'warn' }) }
+    } catch (e) { toast(errorMessage(e), { tone: 'warn' }) }
   }
   /** A published version into the editor, as an edit (undo goes back). Statuses it lacks send their items to one of its own. */
   const loadVersion = (v: Parameters<typeof workflowOf>[0] & { version: number }) => {

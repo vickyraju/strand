@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
 import { Users, Download, RotateCcw } from 'lucide-react'
-import { api, apiEnabled, ApiError } from '../api/client'
+import { api, apiEnabled, errorMessage } from '../api/client'
 import { useStore, timeAgo } from '../data/store'
 import { isGlobalAdmin } from '../data/access'
 import { useApp } from '../appContext'
 import { href, navigate, type AdminSection } from '../router'
 import { formatBytes } from '../data/files'
-import { Avatar, Empty, Modal, Toggle, plural } from './ui'
+import { Avatar, Empty, LoadError, Loading, Modal, plural, Toggle } from './ui'
 import SystemSettings, { SETTINGS_PAGES } from './SystemSettings'
 import AdminShell, { ITEMS } from './admin/AdminShell'
 import TestStatusesAdmin from './testing/TestStatusesAdmin'
@@ -17,7 +17,6 @@ import WorkflowBuilder from './WorkflowBuilder'
 import LinkTypesAdmin from './LinkTypesAdmin'
 import SharedViewsAdmin from './SharedViewsAdmin'
 
-const message = (e: unknown) => (e instanceof ApiError ? e.message : 'Could not reach the server.')
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /** Administration (system administrators: people, groups, workflows, audit, backups, settings…). For everyone else the
@@ -59,7 +58,7 @@ function useLoad<T>(path: string) {
   useEffect(() => {
     let live = true
     setError('')
-    api<T>('GET', path).then(d => { if (live) setData(d) }, e => { if (live) setError(message(e)) })
+    api<T>('GET', path).then(d => { if (live) setData(d) }, e => { if (live) setError(errorMessage(e)) })
     return () => { live = false }
   }, [path, n])
   return { data, error, reload: () => setN(x => x + 1) }
@@ -93,7 +92,7 @@ function People() {
   const apply = () => {
     if (!bulk) return
     api<{ changed: number; unchanged: number }>('POST', '/api/admin/users/bulk', { userIds: picked, action: bulk.action, ...(bulk.groupId ? { groupId: bulk.groupId } : {}) })
-      .then(r => { toast(`${BULK[bulk.action].replace('…', '')}: ${r.changed} changed${r.unchanged ? `, ${r.unchanged} already so` : ''}`); setBulk(null); setPicked([]); reload() }, e => toast(message(e), { tone: 'warn' }))
+      .then(r => { toast(`${BULK[bulk.action].replace('…', '')}: ${r.changed} changed${r.unchanged ? `, ${r.unchanged} already so` : ''}`); setBulk(null); setPicked([]); reload() }, e => toast(errorMessage(e), { tone: 'warn' }))
   }
   return (
     <section>
@@ -120,8 +119,8 @@ function People() {
           <button className="btn btn-ghost btn-sm" onClick={() => setPicked([])}>Clear</button>
         </div>
       )}
-      {error && <p className="hint error" role="alert">{error}</p>}
-      {!data && !error && <p className="muted" role="status">Loading…</p>}
+      {error && <LoadError error={error} onRetry={reload} />}
+      {!data && !error && <Loading rows={6} />}
       {data && (
         <div className="card-table" style={{ marginInline: 0 }}>
           <table className="table">
@@ -196,7 +195,7 @@ function AuditLog() {
     setState('loading')
     api<{ items: AuditRow[]; next: string | null }>('GET', query(more ? next : null)).then(
       r => { setRows(rs => (more ? [...rs, ...r.items] : r.items)); setNext(r.next); setState('ready') },
-      e => { setError(message(e)); setState('error') })
+      e => { setError(errorMessage(e)); setState('error') })
   }
   useEffect(() => { const t = setTimeout(() => load(), 250); return () => clearTimeout(t) }, [action, actor]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -206,7 +205,7 @@ function AuditLog() {
         <input className="input" style={{ maxWidth: 260 }} placeholder="Action, e.g. project.member" aria-label="Filter by action" value={action} onChange={e => setAction(e.target.value)} />
         <input className="input" style={{ maxWidth: 260 }} placeholder="Who (email)" aria-label="Filter by who" value={actor} onChange={e => setActor(e.target.value)} />
       </div>
-      {state === 'error' && <p className="hint error" role="alert">{error}</p>}
+      {state === 'error' && <LoadError error={error} onRetry={() => load(rows.length > 0)} />}
       <div className="card-table" style={{ marginInline: 0 }}>
         <table className="table">
           <thead><tr><th>When</th><th>Who</th><th>What</th><th>Project</th><th>Target</th><th>Change</th></tr></thead>
@@ -227,7 +226,7 @@ function AuditLog() {
         </table>
         {state === 'ready' && !rows.length && <p className="muted" style={{ padding: 12 }}>Nothing recorded{action || actor ? ' that matches' : ' yet'}.</p>}
       </div>
-      {state === 'loading' && <p className="muted" role="status">Loading…</p>}
+      {state === 'loading' && <Loading rows={rows.length ? 1 : 6} />}
       {next && state === 'ready' && <button className="btn btn-secondary" style={{ marginTop: 12 }} onClick={() => load(true)}>Show older</button>}
     </section>
   )
@@ -246,10 +245,10 @@ function Backups() {
   const save = (patch: Partial<Pick<BackupSettings, 'enabled' | 'bucket'>>) => {
     const s = settings.data!
     api('PUT', '/api/admin/settings/project-backups', { enabled: patch.enabled ?? s.enabled, bucket: patch.bucket !== undefined ? patch.bucket : s.bucket })
-      .then(() => { settings.reload(); toast('Backup setting saved') }, e => toast(message(e), { tone: 'warn' }))
+      .then(() => { settings.reload(); toast('Backup setting saved') }, e => toast(errorMessage(e), { tone: 'warn' }))
   }
   const download = (b: Backup) => api<{ url: string }>('GET', `/api/admin/project-backups/${b.id}/url`)
-    .then(r => window.location.assign(r.url), e => toast(message(e), { tone: 'warn' }))
+    .then(r => window.location.assign(r.url), e => toast(errorMessage(e), { tone: 'warn' }))
   // A restore runs in the background: follow it until it is done
   const restore = async (b: Backup) => {
     setRestoring(null)
@@ -263,7 +262,7 @@ function Backups() {
         if (j.status === 'failed') { toast(`Could not restore ${b.projectKey}: ${j.lastError ?? 'unknown error'}`, { tone: 'warn' }); break }
         if (j.lastError && i > 5) { toast(`Still trying to restore ${b.projectKey}: ${j.lastError}`, { tone: 'warn' }); break }
       }
-    } catch (e) { toast(message(e), { tone: 'warn' }) }
+    } catch (e) { toast(errorMessage(e), { tone: 'warn' }) }
     setWaiting(null); list.reload()
   }
 
@@ -272,7 +271,8 @@ function Backups() {
     <section>
       <section className="panel">
         <h2 className="panel-title">When a project is deleted</h2>
-        {settings.error && <p className="hint error" role="alert">{settings.error}</p>}
+        {settings.error && <LoadError error={settings.error} onRetry={settings.reload} />}
+        {!settings.data && !settings.error && <Loading rows={2} />}
         {s && <>
           <div className="form-row" style={{ alignItems: 'center' }}>
             <Toggle on={s.enabled} onChange={enabled => save({ enabled })} label="Back up deleted projects" />
@@ -296,7 +296,8 @@ function Backups() {
 
       <section className="panel">
         <h2 className="panel-title">Backups</h2>
-        {list.error && <p className="hint error" role="alert">{list.error}</p>}
+        {list.error && <LoadError error={list.error} onRetry={list.reload} />}
+        {!list.data && !list.error && <Loading />}
         {list.data && !list.data.length && <p className="muted">No projects have been deleted with a backup yet.</p>}
         {list.data && list.data.length > 0 && (
           <div className="card-table" style={{ marginInline: 0 }}>

@@ -1,9 +1,9 @@
 import { Fragment, useEffect, useState } from 'react'
 import { Eye, Play, Save } from 'lucide-react'
-import { api, ApiError } from '../api/client'
+import { api, ApiError, errorMessage } from '../api/client'
 import { useApp } from '../appContext'
 import { timeAgo } from '../data/store'
-import { Toggle } from './ui'
+import { ConfirmDialog, Loading, LoadError, Toggle, openRow } from './ui'
 
 // Administration › License cleanup (resolution's User Deactivator and License Optimizer, built in): seats in use, the
 // daily rule, a preview that changes nothing, run now, and every past run.
@@ -13,12 +13,13 @@ interface Rule { enabled: boolean; inactiveDays: number; action: Action; groupId
 interface P { userId: string; email: string; name: string; lastActiveAt: string | null }
 interface Run { id: string; trigger: string; action: Action; startedAt: string; changedCount: number; warnedCount: number; changed: P[]; warned: P[]; notes: string; startedBy: string | null }
 interface Group { id: string; name: string; kind: string }
-const message = (e: unknown) => (e instanceof ApiError ? e.message : 'Could not reach the server.')
 const ACTIONS: Record<Action, string> = {
   'remove-access': 'Take them out of users-access (they get it back when they next sign in)',
   'remove-groups': 'Take them out of chosen groups',
   deactivate: 'Deactivate them (sign-in refused until an admin reactivates them)',
 }
+/** The action, briefly, for the runs table */
+const DID: Record<Action, string> = { 'remove-access': 'Took out of users-access', 'remove-groups': 'Took out of groups', deactivate: 'Deactivated' }
 const last = (p: P) => (p.lastActiveAt ? timeAgo(Date.parse(p.lastActiveAt)) : 'never')
 
 export default function LicenseCleanup() {
@@ -31,26 +32,32 @@ export default function LicenseCleanup() {
   const [pv, setPv] = useState<{ change: P[]; warn: P[] } | null>(null)
   const [busy, setBusy] = useState(false)
   const [open, setOpen] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState('')
+  const [confirm, setConfirm] = useState<{ change: number; warn: number } | null>(null)
   const load = () => {
-    api<{ value: Rule }[]>('GET', '/api/admin/settings').then(all => { const r = (all as any[]).find(s => s.key === 'licenseCleanup')!.value; setRule(r); setSaved(r) }, e => toast(message(e), { tone: 'warn' }))
-    api<typeof info>('GET', '/api/admin/license-cleanup').then(setInfo, e => toast(message(e), { tone: 'warn' }))
+    setLoadError('')
+    api<{ value: Rule }[]>('GET', '/api/admin/settings').then(all => { const r = (all as any[]).find(s => s.key === 'licenseCleanup')!.value; setRule(r); setSaved(r) }, e => setLoadError(errorMessage(e)))
+    api<typeof info>('GET', '/api/admin/license-cleanup').then(setInfo, e => setLoadError(errorMessage(e)))
   }
   useEffect(() => { load(); api<Group[]>('GET', '/api/groups').then(g => setGroups(g.filter(x => x.kind !== 'system' || x.name !== 'system-administrators')), () => {}) }, [])   // eslint-disable-line react-hooks/exhaustive-deps
-  if (!rule || !info) return <p className="muted" role="status">Loading…</p>
+  if (loadError) return <LoadError error={loadError} onRetry={load} />
+  if (!rule || !info) return <Loading rows={6} />
   const dirty = JSON.stringify(rule) !== JSON.stringify(saved)
   const set = (p: Partial<Rule>) => { setRule({ ...rule, ...p }); setPv(null) }
   const save = () => api<{ value: Rule }>('PUT', '/api/admin/settings/licenseCleanup', rule)
     .then(r => { setSaved(r.value); setRule(r.value); setErrors({}); toast(rule.enabled ? 'Saved: it runs every day at 02:00 UTC' : 'Saved') },
-      e => { setErrors(e instanceof ApiError ? e.errors ?? {} : {}); toast(message(e), { tone: 'warn' }) })
-  const preview = () => { setBusy(true); api<{ change: P[]; warn: P[] }>('POST', '/api/admin/license-cleanup/preview', { rule }).then(setPv, e => toast(message(e), { tone: 'warn' })).finally(() => setBusy(false)) }
+      e => { setErrors(e instanceof ApiError ? e.errors ?? {} : {}); toast(errorMessage(e), { tone: 'warn' }) })
+  const preview = () => { setBusy(true); api<{ change: P[]; warn: P[] }>('POST', '/api/admin/license-cleanup/preview', { rule }).then(setPv, e => toast(errorMessage(e), { tone: 'warn' })).finally(() => setBusy(false)) }
+  /** "Run now" first says how many people the saved rule changes now */
   const runNow = () => {
     if (dirty) { toast('Save the rule first: “Run now” uses the saved rule', { tone: 'warn' }); return }
-    if (!window.confirm('Run the cleanup now with the saved rule? The people in the preview will be changed.')) return
     setBusy(true)
-    api<{ changed: number; warned: number; notes: string }>('POST', '/api/admin/license-cleanup/run')
-      .then(r => { toast(`Changed ${r.changed}, warned ${r.warned}${r.notes ? ` (${r.notes.split('\n')[0]})` : ''}`); setPv(null); load() }, e => toast(message(e), { tone: 'warn' }))
+    api<{ change: P[]; warn: P[] }>('POST', '/api/admin/license-cleanup/preview', {})
+      .then(r => setConfirm({ change: r.change.length, warn: r.warn.length }), e => toast(errorMessage(e), { tone: 'warn' }))
       .finally(() => setBusy(false))
   }
+  const run = () => api<{ changed: number; warned: number; notes: string }>('POST', '/api/admin/license-cleanup/run')
+    .then(r => { toast(`Changed ${r.changed}, warned ${r.warned}${r.notes ? ` (${r.notes.split('\n')[0]})` : ''}`); setPv(null); load() })
   const pick = (field: 'groupIds' | 'excludedGroupIds', label: string) => (
     <label className="settings-row">
       <span className="settings-label">{label}</span>
@@ -137,9 +144,9 @@ export default function LicenseCleanup() {
           <table className="table">
             <thead><tr><th>When</th><th>How</th><th>Action</th><th className="col-num">Changed</th><th className="col-num">Warned</th><th>Notes</th></tr></thead>
             <tbody>{info.runs.map(r => <Fragment key={r.id}>
-              <tr onClick={() => setOpen(open === r.id ? null : r.id)} style={{ cursor: 'pointer' }}>
+              <tr {...openRow(() => setOpen(open === r.id ? null : r.id), `${open === r.id ? 'Hide' : 'Show'} who this run changed`)} aria-expanded={open === r.id}>
                 <td>{timeAgo(Date.parse(r.startedAt))}</td><td className="muted">{r.trigger === 'manual' ? `Run now${r.startedBy ? ` by ${r.startedBy}` : ''}` : 'Daily'}</td>
-                <td className="muted">{r.action}</td><td className="col-num">{r.changedCount}</td><td className="col-num">{r.warnedCount}</td><td className="muted sm">{r.notes}</td>
+                <td className="muted">{DID[r.action] ?? r.action}</td><td className="col-num">{r.changedCount}</td><td className="col-num">{r.warnedCount}</td><td className="muted sm">{r.notes}</td>
               </tr>
               {open === r.id && <tr><td colSpan={6} className="muted sm">
                 {r.changed.length ? <>Changed: {r.changed.map(p => p.email).join(', ')}. </> : null}{r.warned.length ? <>Warned: {r.warned.map(p => p.email).join(', ')}.</> : null}
@@ -148,6 +155,14 @@ export default function LicenseCleanup() {
           </table>
         )}
       </div>
+      {confirm && (
+        <ConfirmDialog title="Run the cleanup now?" action={confirm.change ? `Change ${confirm.change === 1 ? '1 person' : `${confirm.change.toLocaleString()} people`}` : 'Run'}
+          danger={rule.action === 'deactivate'} onClose={() => setConfirm(null)} onConfirm={run}>
+          <p>With the saved rule, <b>{confirm.change.toLocaleString()}</b> {confirm.change === 1 ? 'person is' : 'people are'} changed now ({ACTIONS[rule.action].toLowerCase()})
+            {confirm.warn ? <> and <b>{confirm.warn.toLocaleString()}</b> warned by email</> : null}. System administrators are never changed.</p>
+          <p className="muted sm">The run, and who it changed, is kept under Runs and in the Audit log.</p>
+        </ConfirmDialog>
+      )}
     </section>
   )
 }

@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
 import { Plus, Trash2, UsersRound, Crown, Lock, Cloud, X } from 'lucide-react'
-import { api, ApiError } from '../../api/client'
+import { api, errorMessage } from '../../api/client'
 import { usePublicSettings } from '../../api/settings-public'
 import { useStore } from '../../data/store'
 import { useApp } from '../../appContext'
 import { href } from '../../router'
-import { Avatar, Empty, Modal } from '../ui'
+import { Avatar, ConfirmDialog, Empty, Loading, LoadError, Modal } from '../ui'
 import { PageAction } from '../admin/AdminShell'
 
 const people = (n: number) => `${n} ${n === 1 ? 'person' : 'people'}`
@@ -17,7 +17,6 @@ import { UserSelect } from '../UserPicker'
 
 interface Group { id: string; name: string; description: string; kind: 'system' | 'directory' | 'strand'; systemRole: string | null; members: number; owners: { id: string; name: string }[]; isMember: boolean; isOwner: boolean; canManage: boolean }
 interface Detail extends Group { people: { id: string; name: string; email: string; initials: string; color: string; active: boolean }[]; projects: { key: string; name: string; role: string }[] }
-const message = (e: unknown) => (e instanceof ApiError ? e.message : 'Could not reach the server.')
 const KIND = { system: { label: 'System', Icon: Lock, hint: 'Built in: only system administrators change it' }, directory: { label: 'Directory', Icon: Cloud, hint: 'From Entra: change its members there' }, strand: { label: 'Made here', Icon: UsersRound, hint: 'Managed by its owners' } } as const
 
 export default function GroupsView({ admin = false, openId, onOpen }: { admin?: boolean; openId: string | null; onOpen: (id: string | null) => void }) {
@@ -27,8 +26,9 @@ export default function GroupsView({ admin = false, openId, onOpen }: { admin?: 
   const [mine, setMine] = useState(!admin)
   const [q, setQ] = useState('')
   const [list, setList] = useState<Group[] | null>(null)
+  const [listError, setListError] = useState('')
   const [making, setMaking] = useState(false)
-  const load = () => api<Group[]>('GET', `/api/groups?query=${encodeURIComponent(q)}${mine ? '&mine=1' : ''}`).then(setList, e => toast(message(e), { tone: 'warn' }))
+  const load = () => { setListError(''); return api<Group[]>('GET', `/api/groups?query=${encodeURIComponent(q)}${mine ? '&mine=1' : ''}`).then(setList, e => setListError(errorMessage(e))) }
   useEffect(() => { const t = setTimeout(load, 200); return () => clearTimeout(t) }, [q, mine])   // eslint-disable-line react-hooks/exhaustive-deps
   const mayCreate = settings.groups?.whoCanCreate !== 'admins' || state.isAdmin !== false
 
@@ -43,6 +43,8 @@ export default function GroupsView({ admin = false, openId, onOpen }: { admin?: 
           {mayCreate && <PageAction><button className="btn btn-primary" onClick={() => setMaking(true)}><Plus size={14} />New group</button></PageAction>}
         </div>
         <input className="input" placeholder="Find a group" aria-label="Find a group" value={q} onChange={e => setQ(e.target.value)} />
+        {listError && <LoadError error={listError} onRetry={load} />}
+        {!list && !listError && <Loading />}
         {list?.length === 0 && <p className="muted sm">{mine ? 'You aren’t in any group you can see here yet.' : 'No groups match.'}</p>}
         <ul className="groups-items">
           {(list ?? []).map(g => {
@@ -70,10 +72,13 @@ function GroupDetail({ id, onChanged, onDeleted }: { id: string; onChanged: () =
   const { toast } = useApp()
   const [g, setG] = useState<Detail | null>(null)
   const [adding, setAdding] = useState<'member' | 'owner' | null>(null)
-  const load = () => api<Detail>('GET', `/api/groups/${encodeURIComponent(id)}`).then(setG, e => toast(message(e), { tone: 'warn' }))
+  const [error, setError] = useState('')
+  const [confirm, setConfirm] = useState<null | { kind: 'delete' } | { kind: 'member' | 'owner'; id: string; name: string }>(null)
+  const load = () => { setError(''); return api<Detail>('GET', `/api/groups/${encodeURIComponent(id)}`).then(setG, e => setError(errorMessage(e))) }
   useEffect(() => { void load() }, [id])   // eslint-disable-line react-hooks/exhaustive-deps
-  if (!g) return <p className="muted" role="status">Loading…</p>
-  const act = (p: Promise<unknown>, done: string) => p.then(() => { toast(done); void load(); onChanged() }, e => toast(message(e), { tone: 'warn' }))
+  if (error) return <LoadError error={error} onRetry={load} />
+  if (!g) return <Loading rows={5} />
+  const act = (p: Promise<unknown>, done: string) => p.then(() => { toast(done); void load(); onChanged() }, e => toast(errorMessage(e), { tone: 'warn' }))
   const meId = state.me?.id
   const K = KIND[g.kind]
   const save = (patch: { name?: string; description?: string }) => act(api('PATCH', `/api/groups/${g.id}`, patch), 'Saved')
@@ -85,8 +90,7 @@ function GroupDetail({ id, onChanged, onDeleted }: { id: string; onChanged: () =
           : <h2 className="panel-title">{g.name}</h2>}
         <span className="lozenge lozenge-todo" title={K.hint}><K.Icon size={11} /> {K.label}</span>
         {g.canManage && g.kind === 'strand' && (
-          <button className="icon-btn" aria-label="Delete group" title="Delete group" onClick={() => window.confirm(`Delete ${g.name}? Everyone in it loses the project roles it gives.`) &&
-            api('DELETE', `/api/groups/${g.id}`).then(() => { toast(`Deleted ${g.name}`); onDeleted() }, e => toast(message(e), { tone: 'warn' }))}><Trash2 size={15} /></button>
+          <button className="icon-btn" aria-label="Delete group" title="Delete group" onClick={() => setConfirm({ kind: 'delete' })}><Trash2 size={15} /></button>
         )}
       </div>
       {g.canManage ? <textarea className="input" rows={2} aria-label="Description" placeholder="What is this group for?" defaultValue={g.description}
@@ -103,7 +107,7 @@ function GroupDetail({ id, onChanged, onDeleted }: { id: string; onChanged: () =
         </div>
         <div className="rule-chips">
           {g.owners.map(o => <span key={o.id} className="chip-static"><Crown size={11} />{o.name}
-            {g.canManage && <button className="chip-x" aria-label={`Remove owner ${o.name}`} onClick={() => act(api('DELETE', `/api/groups/${g.id}/owners/${o.id}`), `${o.name} no longer owns it`)}>×</button>}</span>)}
+            {g.canManage && <button className="chip-x" aria-label={`Remove owner ${o.name}`} onClick={() => setConfirm({ kind: 'owner', id: o.id, name: o.name })}>×</button>}</span>)}
         </div>
       </>}
 
@@ -118,7 +122,7 @@ function GroupDetail({ id, onChanged, onDeleted }: { id: string; onChanged: () =
             <div className="person-text"><span className="strong">{p.name}</span><span className="muted sm">{p.email}{p.active ? '' : ' · deactivated'}</span></div>
             {(g.canManage || (p.id === meId && g.kind === 'strand')) && (
               <button className="icon-btn sm" aria-label={p.id === meId ? 'Leave group' : `Remove ${p.name}`} title={p.id === meId ? 'Leave' : 'Remove'}
-                onClick={() => act(api('DELETE', `/api/groups/${g.id}/members/${p.id}`), p.id === meId ? `You left ${g.name}` : `Removed ${p.name}`)}><X size={14} /></button>
+                onClick={() => setConfirm({ kind: 'member', id: p.id, name: p.name })}><X size={14} /></button>
             )}
           </li>
         ))}
@@ -127,6 +131,25 @@ function GroupDetail({ id, onChanged, onDeleted }: { id: string; onChanged: () =
       <h3 className="subhead" style={{ marginTop: 14 }}>Roles in projects</h3>
       {g.projects.length === 0 ? <p className="muted sm">No project gives this group a role (among projects you can see). A project admin adds it under the project’s People and access.</p> : (
         <ul className="test-members">{g.projects.map(p => <li key={p.key} className="test-member"><a href={href({ name: 'project', key: p.key, tab: 'settings', sub: 'people' })} className="mono">{p.key}</a><span className="test-member-title">{p.name}</span><span className="muted sm">{p.role}</span></li>)}</ul>
+      )}
+      {confirm?.kind === 'delete' && (
+        <ConfirmDialog title={`Delete ${g.name}?`} action="Delete group" typeToConfirm={g.projects.length ? g.name : undefined} onClose={() => setConfirm(null)}
+          onConfirm={() => api('DELETE', `/api/groups/${g.id}`).then(() => { toast(`Deleted ${g.name}`); onDeleted() })}>
+          <p>{g.projects.length
+            ? <>Its {people(g.members)} lose the roles it gives in {g.projects.length === 1 ? '1 project' : `${g.projects.length} projects`} ({g.projects.slice(0, 3).map(p => p.key).join(', ')}{g.projects.length > 3 ? ` and ${g.projects.length - 3} more` : ''}), unless they have a role there another way.</>
+            : <>No project gives it a role, so nobody loses access.</>} This can’t be undone.</p>
+        </ConfirmDialog>
+      )}
+      {confirm && confirm.kind !== 'delete' && (
+        <ConfirmDialog title={confirm.id === meId ? `Leave ${g.name}?` : confirm.kind === 'owner' ? `Remove ${confirm.name} as an owner?` : `Remove ${confirm.name} from ${g.name}?`}
+          action={confirm.id === meId ? 'Leave' : 'Remove'} onClose={() => setConfirm(null)}
+          onConfirm={() => api('DELETE', `/api/groups/${g.id}/${confirm.kind === 'owner' ? 'owners' : 'members'}/${confirm.id}`).then(() => {
+            toast(confirm.kind === 'owner' ? `${confirm.name} no longer owns it` : confirm.id === meId ? `You left ${g.name}` : `Removed ${confirm.name}`); void load(); onChanged()
+          })}>
+          <p>{confirm.kind === 'owner' ? `${confirm.id === meId ? 'You' : 'They'} can no longer change the group, its members or its owners.`
+            : g.projects.length ? `${confirm.id === meId ? 'You' : 'They'} lose the roles this group gives in ${g.projects.length === 1 ? '1 project' : `${g.projects.length} projects`}, unless ${confirm.id === meId ? 'you' : 'they'} have a role there another way.`
+            : 'No project gives this group a role, so no access changes.'}</p>
+        </ConfirmDialog>
       )}
       {adding && <AddPeople title={adding === 'owner' ? `Add an owner to ${g.name}` : `Add people to ${g.name}`} onClose={() => setAdding(null)}
         onAdd={ids => act(api('POST', `/api/groups/${g.id}/${adding === 'owner' ? 'owners' : 'members'}`, { userIds: ids }), adding === 'owner' ? 'Owner added' : `Added ${people(ids.length)}`).then(() => setAdding(null))} />}
@@ -154,7 +177,7 @@ function MakeGroup({ onClose, onMade }: { onClose: () => void; onMade: (g: Group
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [error, setError] = useState('')
-  const make = () => api<Group>('POST', '/api/groups', { name: name.trim(), description }).then(onMade, e => setError(message(e)))
+  const make = () => api<Group>('POST', '/api/groups', { name: name.trim(), description }).then(onMade, e => setError(errorMessage(e)))
   return (
     <Modal title="New group" onClose={onClose} footer={<>
       <button className="btn btn-secondary" onClick={onClose}>Cancel</button>

@@ -2,13 +2,12 @@ import { useEffect, useState } from 'react'
 import { Plus, Trash2, Users } from 'lucide-react'
 import type { Project } from '../data/store'
 import { useApp } from '../appContext'
-import { ApiError, apiEnabled } from '../api/client'
+import { apiEnabled, errorMessage } from '../api/client'
 import { searchUsers } from '../api/users'
 import { addMembers, listMembers, removeMember, ROLES, setMemberRole, addGroup, listGroups, removeGroup, searchGroups, setGroupRole, type GroupHit, type ProjectGroup, type ProjectMember, type ProjectRole } from '../api/members'
 import type { User } from '../data/reducer'
 import { Avatar, Modal } from './ui'
 
-const message = (e: unknown) => (e instanceof ApiError ? e.message : 'Could not reach the server.')
 const asUser = (m: ProjectMember): User => ({ id: m.userId, name: m.name, initials: m.initials, color: m.color })
 
 function RoleSelect({ value, onChange, label, disabled }: { value: ProjectRole; onChange: (r: ProjectRole) => void; label: string; disabled?: boolean }) {
@@ -28,9 +27,9 @@ export default function ProjectPeople({ project }: { project: Project }) {
   const [removing, setRemoving] = useState<ProjectMember | null>(null)
   const canManage = project.role === 'admin'
 
-  useEffect(() => { listMembers(project.key).then(setMembers, e => setError(message(e))) }, [project.key])
+  useEffect(() => { listMembers(project.key).then(setMembers, e => setError(errorMessage(e))) }, [project.key])
   const run = (job: Promise<ProjectMember[] | void>, done: string) =>
-    job.then(r => { if (r) setMembers(r); toast(done) }, e => toast(message(e)))
+    job.then(r => { if (r) setMembers(r); toast(done) }, e => toast(errorMessage(e)))
 
   if (!apiEnabled) return <div className="settings"><section className="panel"><h2 className="panel-title">People and access</h2><p className="muted">Roles apply when Strand is connected to a server. This workspace is stored in your browser, so everyone using it has full access.</p></section></div>
 
@@ -100,7 +99,7 @@ function AddPeople({ project, existing, onClose, onAdded }: { project: Project; 
   const choices = found.filter(u => !existing.has(u.id) && !picked.some(p => p.id === u.id))
   const save = () => {
     setBusy(true)
-    addMembers(project.key, picked.map(u => u.id), role).then(onAdded, e => { toast(message(e)); setBusy(false) })
+    addMembers(project.key, picked.map(u => u.id), role).then(onAdded, e => { toast(errorMessage(e)); setBusy(false) })
   }
   return (
     <Modal title="Add people" onClose={onClose} footer={<>
@@ -135,7 +134,7 @@ function Groups({ project, canManage }: { project: Project; canManage: boolean }
   const [removing, setRemoving] = useState<ProjectGroup | null>(null)
   useEffect(() => { listGroups(project.key).then(setGroups, () => setGroups([])) }, [project.key])
   const run = (job: Promise<ProjectGroup[] | void>, done: string) =>
-    job.then(r => { if (r) setGroups(r); toast(done) }, e => toast(message(e)))
+    job.then(r => { if (r) setGroups(r); toast(done) }, e => toast(errorMessage(e)))
   if (!groups || (!groups.length && !canManage)) return null
   return (
     <section className="panel">

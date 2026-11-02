@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 import { api } from '../../api/client'
 import { useApp } from '../../appContext'
-import { Modal } from '../ui'
+import { ConfirmDialog, Loading, LoadError, Modal, openRow } from '../ui'
 import { message, refreshTestStatuses, type TestStatus } from './shared'
 
 // Administration › Test statuses (Xray's test and step statuses): the built-in ones keep what they mean (their name,
@@ -12,9 +12,11 @@ const MEANS = { ok: 'OK (passed)', nok: 'NOK (failed)', notrun: 'Not run', unkno
 
 export default function TestStatusesAdmin() {
   const { toast } = useApp()
-  const [list, setList] = useState<TestStatus[]>([])
+  const [list, setList] = useState<TestStatus[] | null>(null)
+  const [error, setError] = useState('')
   const [editing, setEditing] = useState<Partial<TestStatus> | null>(null)
-  const load = () => api<TestStatus[]>('GET', '/api/test-statuses').then(l => { setList(l); refreshTestStatuses() }, e => toast(message(e), { tone: 'warn' }))
+  const [removing, setRemoving] = useState<TestStatus | null>(null)
+  const load = () => { setError(''); return api<TestStatus[]>('GET', '/api/test-statuses').then(l => { setList(l); refreshTestStatuses() }, e => setError(message(e))) }
   useEffect(() => { void load() }, [])   // eslint-disable-line react-hooks/exhaustive-deps
   const save = async (s: Partial<TestStatus>) => {
     const body = { name: s.name, description: s.description ?? '', color: s.color, rank: s.rank ?? 5, ...(s.builtin ? {} : { final: s.final ?? true, mapsTo: s.mapsTo }) }
@@ -23,7 +25,8 @@ export default function TestStatusesAdmin() {
       setEditing(null); void load(); toast(`Saved ${s.name}`)
     } catch (e) { toast(message(e), { tone: 'warn' }) }
   }
-  const remove = (s: TestStatus) => window.confirm(`Remove “${s.name}”?`) && api('DELETE', `/api/admin/test-statuses/${s.kind}/${s.key}`).then(load, e => toast(message(e), { tone: 'warn' }))
+  if (error) return <LoadError error={error} onRetry={load} />
+  if (!list) return <Loading />
   const runName = (k: string) => list.find(x => x.kind === 'run' && x.key === k)?.name ?? k
 
   return (
@@ -32,24 +35,28 @@ export default function TestStatusesAdmin() {
         <div key={kind} style={{ marginTop: 12 }}>
           <div className="section-title-row">
             <h3 className="subhead">{kind === 'run' ? 'Run statuses' : 'Step statuses'}</h3>
-            <button className="btn btn-ghost btn-sm" onClick={() => setEditing({ kind, name: '', color: '#6366F1', final: true, mapsTo: kind === 'run' ? 'unknown' : 'TODO', rank: 5 })}><Plus size={14} />Add</button>
+            <button className="btn btn-secondary btn-sm" onClick={() => setEditing({ kind, name: '', color: '#6366F1', final: true, mapsTo: kind === 'run' ? 'unknown' : 'TODO', rank: 5 })}><Plus size={14} />Add</button>
           </div>
           <table className="table">
             <thead><tr><th>Status</th><th>{kind === 'run' ? 'Means' : 'Counts as'}</th>{kind === 'run' && <th>Final</th>}<th className="col-num">Rank</th><th /></tr></thead>
             <tbody>
               {list.filter(s => s.kind === kind).map(s => (
-                <tr key={s.key} onClick={() => setEditing(s)} style={{ cursor: 'pointer' }}>
+                <tr key={s.key} {...openRow(() => setEditing(s), `Edit ${s.name}`)}>
                   <td><span className="test-lozenge" style={{ background: s.color }}>{s.name}</span>{s.builtin && <span className="muted sm"> built in</span>}</td>
                   <td className="muted">{kind === 'run' ? MEANS[s.mapsTo as keyof typeof MEANS] : runName(s.mapsTo)}</td>
                   {kind === 'run' && <td className="muted">{s.final ? 'Yes' : 'No'}</td>}
                   <td className="col-num muted">{s.rank}</td>
-                  <td onClick={e => e.stopPropagation()}>{!s.builtin && <button className="icon-btn sm" aria-label={`Remove ${s.name}`} onClick={() => remove(s)}><Trash2 size={13} /></button>}</td>
+                  <td onClick={e => e.stopPropagation()}>{!s.builtin && <button className="icon-btn sm" aria-label={`Remove ${s.name}`} title="Remove" onClick={() => setRemoving(s)}><Trash2 size={13} /></button>}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       ))}
+      {removing && <ConfirmDialog title={`Remove ${removing.name}?`} action="Remove status" onClose={() => setRemoving(null)}
+        onConfirm={() => api('DELETE', `/api/admin/test-statuses/${removing.kind}/${removing.key}`).then(load)}>
+        <p>Only a status no run or step has can be removed; the server says so if one does.</p>
+      </ConfirmDialog>}
       {editing && <StatusDialog status={editing} runStatuses={list.filter(s => s.kind === 'run')} onClose={() => setEditing(null)} onSave={save} />}
     </section>
   )

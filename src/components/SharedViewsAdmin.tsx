@@ -1,14 +1,13 @@
 import { useEffect, useState } from 'react'
-import { api, ApiError } from '../api/client'
+import { api, errorMessage } from '../api/client'
 import { useApp } from '../appContext'
 import { UserSelect } from './UserPicker'
-import { Modal } from './ui'
+import { LoadError, Loading, Modal } from './ui'
 
 // Administration › Shared views (Jira's "Filters" admin page): every view shared beyond its owner, and any whose owner
 // has left, so an admin can give it to someone who will look after it.
 
 interface Row { id: string; name: string; ownerId: string; ownerName: string; ownerActive: boolean; shared: boolean; share: { kind: string }[] }
-const message = (e: unknown) => (e instanceof ApiError ? e.message : 'Could not reach the server.')
 
 export default function SharedViewsAdmin() {
   const { toast } = useApp()
@@ -16,15 +15,15 @@ export default function SharedViewsAdmin() {
   const [error, setError] = useState('')
   const [giving, setGiving] = useState<Row | null>(null)
   const [to, setTo] = useState<string>()
-  const load = () => api<Row[]>('GET', '/api/admin/views').then(setRows, e => setError(message(e)))
+  const load = () => { setError(''); return api<Row[]>('GET', '/api/admin/views').then(setRows, e => setError(errorMessage(e))) }
   useEffect(() => { void load() }, [])
   const sharedWith = (r: Row) => [r.shared ? 'the workspace' : '', ...['project', 'group', 'user'].map(k => {
     const n = r.share.filter(e => e.kind === k).length
     return n ? `${n} ${k === 'user' ? (n === 1 ? 'person' : 'people') : k + (n === 1 ? '' : 's')}` : ''
   })].filter(Boolean).join(', ') || 'nobody'
 
-  if (error) return <p className="hint error" role="alert">{error}</p>
-  if (!rows) return <p className="muted" role="status">Loading…</p>
+  if (error) return <LoadError error={error} onRetry={load} />
+  if (!rows) return <Loading />
   return (
     <section>
       {!rows.length ? <p className="muted">No shared views.</p> : (
@@ -49,7 +48,7 @@ export default function SharedViewsAdmin() {
           <button className="btn btn-secondary" onClick={() => setGiving(null)}>Cancel</button>
           <button className="btn btn-primary" disabled={!to} onClick={() => api('PATCH', `/api/views/${giving.id}`, { ownerId: to }).then(() => {
             toast(`${giving.name} has a new owner`); setGiving(null); void load()
-          }, e => toast(message(e), { tone: 'warn' }))}>Change owner</button>
+          }, e => toast(errorMessage(e), { tone: 'warn' }))}>Change owner</button>
         </>}>
           <UserSelect label="New owner" value={to} onChange={setTo} excludeId={giving.ownerId} />
           <p className="hint">They can then change it, share it and delete it. Recorded in the Audit log.</p>

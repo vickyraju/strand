@@ -678,6 +678,32 @@ test('Administration: a grouped menu of links; every page, a group, a Workflows 
   assert.deepEqual(o.problems, [])
 })
 
+test('Administration asks before removing: a group member (saying what access they lose), and a group with project roles only once its name is typed', { skip, timeout: 60_000 }, async () => {
+  await owner('POST', '/projects', { name: 'Asking', key: 'ASK', template: 'kanban' })
+  const g = (await owner('POST', '/groups', { name: 'askers' })).body
+  await owner('POST', `/groups/${g.id}/members`, { userIds: [await idOf('vic@e2e.test')] })
+  await owner('POST', '/projects/ASK/groups', { groupId: g.id, role: 'member' })
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url(`/admin/groups/${g.id}`))
+  const detail = o.locator('section[aria-label="Group askers"]')
+  await detail.locator(`[aria-label="Remove ${PEOPLE['vic@e2e.test']}"]`).click()
+  assert.match(await o.locator('.modal').innerText(), /lose the roles this group gives in 1 project/)
+  await o.click('.modal button:has-text("Cancel")')
+  assert.equal(await detail.locator(`.person:has-text("${PEOPLE['vic@e2e.test']}")`).count(), 1)     // Cancel changes nothing
+  await detail.locator(`[aria-label="Remove ${PEOPLE['vic@e2e.test']}"]`).click()
+  await o.click('.modal button:text-is("Remove")')
+  await o.waitForSelector(`text=Removed ${PEOPLE['vic@e2e.test']}`)
+  // deleting a group that gives project roles needs its name typed
+  await detail.locator('[aria-label="Delete group"]').click()
+  const del = o.locator('.modal button:has-text("Delete group")')
+  assert.equal(await del.isDisabled(), true)
+  await o.fill('#confirm-type', 'askers')
+  await del.click()
+  await o.waitForSelector('text=Deleted askers')
+  assert.equal((await owner('GET', `/groups/${g.id}`)).status, 404)
+  assert.deepEqual(o.problems, [])
+})
+
 test('system groups: a newcomer is in users-access and sees no Administration; a system administrator does', { skip, timeout: 60_000 }, async () => {
   const n = await signIn('sam@e2e.test')
   await n.waitForSelector('nav :text("Configuration")')                     // not an admin: the area is Configuration, with only Groups
@@ -740,8 +766,11 @@ test('license cleanup: an admin previews who is idle, runs the cleanup, and the 
   await o.waitForSelector('text=Saved')
   await o.click('button:has-text("Preview")')
   await o.waitForSelector('[aria-label="Preview"] td:has-text("Sam Someone")')
-  o.once('dialog', d => d.accept())
+  // "Run now" says how many people it changes before it does
   await o.click('button:has-text("Run now")')
+  await o.waitForSelector('.modal >> text=Run the cleanup now?')
+  assert.match(await o.locator('.modal').innerText(), /\d+ (person is|people are) changed now/)
+  await o.click('.modal button:has-text("Change")')
   await o.waitForSelector('text=/Changed [1-9]/')
   const seat = async () => (await as('owner@e2e.test')('GET', '/admin/users')).body.find(u => u.id === samId).groups.some(g => g.name === 'users-access')
   assert.equal(await seat(), false)

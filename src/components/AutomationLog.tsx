@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { api, ApiError } from '../api/client'
+import { api, errorMessage } from '../api/client'
 import type { Project, RuleAction } from '../data/store'
 import { timeAgo } from '../data/store'
 import { Modal } from './ui'
@@ -15,7 +15,6 @@ const RESULT: Record<Run['result'], { label: string; tone: string }> = {
   no_change: { label: 'No changes needed', tone: 'lozenge-todo' }, failed: { label: 'Failed', tone: 'lozenge-danger' },
 }
 const OUTCOME: Record<Step['outcome'], string> = { done: 'done', skipped: 'skipped', unchanged: 'already so', failed: 'failed' }
-const message = (e: unknown) => (e instanceof ApiError ? e.message : 'Could not reach the server.')
 
 export function StepList({ steps }: { steps: Step[] }) {
   return (
@@ -32,7 +31,7 @@ export function AuditLogDialog({ project, ruleId, onClose }: { project: Project;
   useEffect(() => {
     const q = new URLSearchParams({ limit: '100', ...(ruleId ? { rule: ruleId } : {}), ...(failedOnly ? { result: 'failed' } : {}) })
     setRuns(null)
-    api<Run[]>('GET', `/api/projects/${encodeURIComponent(project.key)}/automation/runs?${q}`).then(setRuns, e => setError(message(e)))
+    api<Run[]>('GET', `/api/projects/${encodeURIComponent(project.key)}/automation/runs?${q}`).then(setRuns, e => setError(errorMessage(e)))
   }, [project.key, ruleId, failedOnly])
   return (
     <Modal title={ruleId ? `Audit log · ${project.rules.find(r => r.id === ruleId)?.name ?? 'rule'}` : 'Automation audit log'} onClose={onClose} width={680}>
@@ -71,7 +70,7 @@ export function DryRun({ project, actions }: { project: Project; actions: RuleAc
   const run = () => {
     setBusy(true); setError(''); setOut(null)
     api<{ steps: Step[]; error: string | null }>('POST', `/api/projects/${encodeURIComponent(project.key)}/automation/dry-run`, { issue: key.trim(), actions })
-      .then(setOut, e => setError(message(e))).finally(() => setBusy(false))
+      .then(setOut, e => setError(errorMessage(e))).finally(() => setBusy(false))
   }
   return (
     <div className="dry-run">
