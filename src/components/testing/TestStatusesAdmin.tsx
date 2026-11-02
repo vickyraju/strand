@@ -5,7 +5,7 @@ import { useApp } from '../../appContext'
 import { Modal } from '../ui'
 import { message, refreshTestStatuses, type TestStatus } from './shared'
 
-// System settings › Test statuses (Xray's test and step statuses): the built-in ones keep what they mean (their name,
+// Administration › Test statuses (Xray's test and step statuses): the built-in ones keep what they mean (their name,
 // colour and rank can change); admins add their own. A run status says whether it is final and what it means for a
 // requirement; a step status says which run status it counts as.
 const MEANS = { ok: 'OK (passed)', nok: 'NOK (failed)', notrun: 'Not run', unknown: 'Unknown' } as const
@@ -28,8 +28,6 @@ export default function TestStatusesAdmin() {
 
   return (
     <section className="panel" aria-label="Test statuses">
-      <h2 className="panel-title">Test statuses</h2>
-      <p className="muted">What a test run or one of its steps can end up as. Built-in statuses keep their meaning; add your own for cases like “Blocked” or “Flaky”.</p>
       {(['run', 'step'] as const).map(kind => (
         <div key={kind} style={{ marginTop: 12 }}>
           <div className="section-title-row">

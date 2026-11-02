@@ -6,10 +6,17 @@ import { searchUsers } from '../api/users'
 import { useApp } from '../appContext'
 import { timeAgo, type User } from '../data/store'
 import { Avatar, Toggle } from './ui'
-import TestStatusesAdmin from './testing/TestStatusesAdmin'
 
-// Administration › System settings: the policies a workspace admin controls (like Jira's Administration › System).
-// Each section edits one setting as a whole and saves it in one go; the server checks it and records the change in the audit log.
+// Administration › System settings: the policies a workspace admin controls (like Jira's Administration › System), one
+// page each. Each page edits one setting as a whole and saves it in one go; the server checks it and records the change
+// in the audit log.
+
+/** System settings' pages, in menu order (the first is shown at /admin/settings). */
+export const SETTINGS_PAGES = [
+  { id: 'rate-limiting', label: 'Rate limiting' }, { id: 'attachments', label: 'Attachments' }, { id: 'access-tokens', label: 'Personal access tokens' },
+  { id: 'search-and-bulk', label: 'Search, export and bulk' }, { id: 'email', label: 'Email notifications' }, { id: 'groups', label: 'Group creation' },
+  { id: 'testing', label: 'Testing' }, { id: 'due-dates', label: 'Due dates' },
+] as const
 
 interface Setting<V = any> { key: string; label: string; description: string; value: V; default: V }
 type Mode = 'limit' | 'unlimited' | 'block'
@@ -24,7 +31,7 @@ const MODES: { id: Mode; label: string; hint: string }[] = [
 ]
 const INTERVALS = [{ s: 1, label: 'second' }, { s: 60, label: 'minute' }, { s: 3600, label: 'hour' }]
 
-export default function SystemSettings() {
+export default function SystemSettings({ page = SETTINGS_PAGES[0].id }: { page?: string }) {
   const { toast } = useApp()
   const [settings, setSettings] = useState<Setting[] | null>(null)
   const [error, setError] = useState('')
@@ -49,38 +56,36 @@ export default function SystemSettings() {
   const of = <V,>(key: string) => settings.find(s => s.key === key) as Setting<V>
   return (
     <section>
-      <p className="muted">Changes apply within seconds on every server, without a restart, and are recorded in the Audit log.</p>
-      <RateLimitingSection setting={of<RateLimiting>('rateLimiting')} save={v => save('rateLimiting', v)} />
-      <SimpleSection setting={of('attachments')} save={v => save('attachments', v)} fields={[
+      {page === 'rate-limiting' && <RateLimitingSection setting={of<RateLimiting>('rateLimiting')} save={v => save('rateLimiting', v)} />}
+      {page === 'attachments' && <SimpleSection setting={of('attachments')} save={v => save('attachments', v)} fields={[
         { key: 'enabled', label: 'Allow attachments', type: 'toggle' },
         { key: 'maxSizeMb', label: 'Largest file (MB)', type: 'number', min: 1, max: 2048 },
-      ]} />
-      <SimpleSection setting={of('accessTokens')} save={v => save('accessTokens', v)} fields={[
+      ]} />}
+      {page === 'access-tokens' && <SimpleSection setting={of('accessTokens')} save={v => save('accessTokens', v)} fields={[
         { key: 'enabled', label: 'Allow personal access tokens', type: 'toggle', hint: 'Off: no one can create one, and existing tokens stop working until this is on again.' },
         { key: 'maxPerUser', label: 'Active tokens per person', type: 'number', min: 1, max: 100 },
         { key: 'maxExpiryDays', label: 'Longest lifetime (days)', type: 'number', min: 1, max: 3650 },
         { key: 'defaultExpiryDays', label: 'Lifetime offered by default (days)', type: 'number', min: 1, max: 3650 },
-      ]} />
-      <SimpleSection setting={of('searchAndBulk')} save={v => save('searchAndBulk', v)} fields={[
+      ]} />}
+      {page === 'search-and-bulk' && <SimpleSection setting={of('searchAndBulk')} save={v => save('searchAndBulk', v)} fields={[
         { key: 'exportMaxRows', label: 'Most work items in one CSV export', type: 'number', min: 100, max: 1_000_000 },
         { key: 'bulkMaxItems', label: 'Most work items in one bulk change', type: 'number', min: 1, max: 5000 },
         { key: 'importMaxRows', label: 'Most rows in one CSV import', type: 'number', min: 10, max: 100_000 },
-      ]} />
-      <EmailSection setting={of('email')} save={v => save('email', v)} />
-      <SelectSection setting={of('groups')} save={v => save('groups', v)} field="whoCanCreate" label="Who may make groups"
-        options={[['everyone', 'Everyone'], ['admins', 'System administrators only']]} />
-      <SimpleSection setting={of('testing')} save={v => save('testing', v)} fields={[
+      ]} />}
+      {page === 'email' && <EmailSection setting={of('email')} save={v => save('email', v)} />}
+      {page === 'groups' && <SelectSection setting={of('groups')} save={v => save('groups', v)} field="whoCanCreate" label="Who may make groups"
+        options={[['everyone', 'Everyone'], ['admins', 'System administrators only']]} />}
+      {page === 'testing' && <SimpleSection setting={of('testing')} save={v => save('testing', v)} fields={[
         { key: 'finalStatusesHavePrecedence', label: 'A finished result outweighs a newer run that hasn’t finished', type: 'toggle', hint: 'Off: a test’s status is always its latest run’s' },
         { key: 'resultImportMaxMb', label: 'Largest CI results file (MB)', type: 'number', min: 1, max: 20 },
         { key: 'resultImportMaxTests', label: 'Most test results in one import', type: 'number', min: 10, max: 20000 },
-      ]} />
-      <TestStatusesAdmin />
-      <SimpleSection setting={of('dueReminders')} save={v => save('dueReminders', v)} fields={[
+      ]} />}
+      {page === 'due-dates' && <SimpleSection setting={of('dueReminders')} save={v => save('dueReminders', v)} fields={[
         { key: 'enabled', label: 'Send “due” notifications', type: 'toggle' },
         { key: 'daysAhead', label: 'Remind this many days before the due date', type: 'number', min: 0, max: 30, hint: '0: on the day it is due' },
         { key: 'daysLate', label: 'Keep reminding for this many days after it is late', type: 'number', min: 0, max: 90 },
         { key: 'dueSoonDays', label: '“Due soon” on Your work: within this many days', type: 'number', min: 1, max: 30 },
-      ]} />
+      ]} />}
     </section>
   )
 }

@@ -27,8 +27,7 @@ export default function SharedViewsAdmin() {
   if (!rows) return <p className="muted" role="status">Loading…</p>
   return (
     <section>
-      <p className="muted">Saved views shared beyond their owner, and views whose owner has left. Give one a new owner to keep it looked after.</p>
-      {!rows.length ? <p className="muted" style={{ marginTop: 12 }}>No shared views.</p> : (
+      {!rows.length ? <p className="muted">No shared views.</p> : (
         <div className="card-table" style={{ marginInline: 0, marginTop: 12 }}>
           <table className="table">
             <thead><tr><th>View</th><th>Owner</th><th>Shared with</th><th /></tr></thead>

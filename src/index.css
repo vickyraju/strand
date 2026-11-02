@@ -187,9 +187,9 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; line-height:
 .check-row:hover { background: var(--hover) }
 
 .segmented { display: inline-flex; padding: 2px; border-radius: var(--radius); background: var(--sunken); gap: 2px }
-.segmented button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; height: 28px; padding: 0 10px; border-radius: 5px; font-size: 13px; color: var(--text-2); white-space: nowrap }
-.segmented button:hover { color: var(--text-1) }
-.segmented button.on { background: var(--surface); color: var(--text-1); font-weight: 500; box-shadow: var(--shadow-sm) }
+.segmented button, .segmented a { display: inline-flex; align-items: center; justify-content: center; gap: 5px; height: 28px; padding: 0 10px; border-radius: 5px; font-size: 13px; color: var(--text-2); white-space: nowrap }
+.segmented button:hover, .segmented a:hover { color: var(--text-1) }
+.segmented button.on, .segmented a.on { background: var(--surface); color: var(--text-1); font-weight: 500; box-shadow: var(--shadow-sm) }
 .segmented.full { display: flex }
 .segmented.full button { flex: 1 }
 .segmented.sm button { height: 24px; font-size: 12px; padding: 0 8px }
@@ -1308,8 +1308,30 @@ h2.empty-title, h2.section-title, h2.side-title { margin: 0 }
 .role-help dd { margin: 2px 0 0 }
 .plain-fieldset { border: 0; padding: 0; margin: 0; min-width: 0; display: contents }
 /* the window doesn't scroll (.content), so each page body scrolls itself */
+.admin { flex-direction: row }
+.admin-nav { width: 232px; flex-shrink: 0; border-right: 1px solid var(--border); overflow-y: auto; padding: 18px 8px 24px 16px }
+.admin-nav-title { padding: 0 8px 4px; font-size: 15px; font-weight: 700 }
+.admin-nav .nav-section { padding-top: 14px }
+.admin-nav .nav-item { height: 32px }
+.admin-nav-sub { margin: 2px 0 6px 18px; padding-left: 8px; border-left: 1px solid var(--border) }
+.admin-nav-sub .nav-item { height: 28px; font-size: 13px }
+.admin-nav-sub .nav-item.active::before { display: none }
+.admin-main { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0 }
+.admin-hdr { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 22px 24px 4px }
+.admin-hdr-text { max-width: 760px }
+.admin-hdr-text .muted { margin-top: 6px }
+.admin-hdr-action:empty { display: none }
+.admin-hdr-action { flex-shrink: 0; display: flex; gap: 8px }
 .admin-body { flex: 1; min-height: 0; overflow-y: auto; padding: 16px 24px 32px }
 .admin-body > * { max-width: 1100px }
+@media (max-width: 860px) {
+  .admin { flex-direction: column }
+  .admin-nav { width: auto; border-right: 0; border-bottom: 1px solid var(--border); padding: 8px 12px; display: flex; gap: 2px; overflow-x: auto; overflow-y: hidden; flex-shrink: 0 }
+  .admin-nav-title, .admin-nav .nav-section, .admin-nav-sub { display: none }
+  .admin-nav-group { display: contents }
+  .admin-nav .nav-item { width: auto }
+  .admin-nav .nav-item.active::before { display: none }
+}
 .admin-body > section > .panel:first-child { margin-top: 0 }
 .admin-person { display: inline-flex; align-items: center; gap: 8px }
 .admin-person .muted { margin-left: 4px }

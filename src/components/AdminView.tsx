@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Users, ScrollText, Archive, Download, RotateCcw, SlidersHorizontal, Link2, Bookmark, UsersRound, UserMinus, GitBranch } from 'lucide-react'
+import { Users, Download, RotateCcw } from 'lucide-react'
 import { api, apiEnabled, ApiError } from '../api/client'
 import { useStore, timeAgo } from '../data/store'
 import { isGlobalAdmin } from '../data/access'
@@ -7,7 +7,9 @@ import { useApp } from '../appContext'
 import { href, navigate, type AdminSection } from '../router'
 import { formatBytes } from '../data/files'
 import { Avatar, Empty, Modal, Toggle, plural } from './ui'
-import SystemSettings from './SystemSettings'
+import SystemSettings, { SETTINGS_PAGES } from './SystemSettings'
+import AdminShell, { ITEMS } from './admin/AdminShell'
+import TestStatusesAdmin from './testing/TestStatusesAdmin'
 import GroupsView from './groups/GroupsView'
 import LicenseCleanup from './LicenseCleanup'
 import WorkflowsAdmin from './WorkflowsAdmin'
@@ -15,21 +17,11 @@ import WorkflowBuilder from './WorkflowBuilder'
 import LinkTypesAdmin from './LinkTypesAdmin'
 import SharedViewsAdmin from './SharedViewsAdmin'
 
-const SECTIONS: { id: AdminSection; label: string; Icon: typeof Users }[] = [
-  { id: 'people', label: 'People', Icon: Users },
-  { id: 'groups', label: 'Groups', Icon: UsersRound },
-  { id: 'license', label: 'License cleanup', Icon: UserMinus },
-  { id: 'workflows', label: 'Workflows', Icon: GitBranch },
-  { id: 'audit', label: 'Audit log', Icon: ScrollText },
-  { id: 'backups', label: 'Project backups', Icon: Archive },
-  { id: 'link-types', label: 'Link types', Icon: Link2 },
-  { id: 'views', label: 'Shared views', Icon: Bookmark },
-  { id: 'settings', label: 'System settings', Icon: SlidersHorizontal },
-]
 const message = (e: unknown) => (e instanceof ApiError ? e.message : 'Could not reach the server.')
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-/** Administration (system administrators: people, groups, audit, backups, settings…). For everyone else the same
- *  area is Configuration, with only what they may manage there: groups. */
+/** Administration (system administrators: people, groups, workflows, audit, backups, settings…). For everyone else the
+ *  same area is Configuration, with only what they may manage there: groups. */
 export default function AdminView({ section = 'people', item }: { section?: AdminSection; item?: string }) {
   const { state } = useStore()
   if (!apiEnabled)
@@ -37,32 +29,25 @@ export default function AdminView({ section = 'people', item }: { section?: Admi
       body="Administration needs Strand to be connected to a server." /></div>
   // system administrators see everything; everyone else sees Configuration with what they may manage: groups
   const admin = isGlobalAdmin(state)
-  const sections = admin ? SECTIONS : SECTIONS.filter(s => s.id === 'groups')
-  if (!sections.some(s => s.id === section)) section = 'groups'
+  const items = admin ? ITEMS : ITEMS.filter(s => s.id === 'groups')
+  if (!items.some(s => s.id === section)) section = 'groups'
   // a workflow open in the editor takes the whole page
-  if (section === 'workflows' && item) return <WorkflowBuilder id={item} onBack={() => navigate(href({ name: 'admin', section: 'workflows' }))} />
+  if (section === 'workflows' && item && UUID.test(item)) return <WorkflowBuilder id={item} onBack={() => navigate(href({ name: 'admin', section: 'workflows' }))} />
+  const settingsPage = section === 'settings' ? (SETTINGS_PAGES.find(p => p.id === item) ?? SETTINGS_PAGES[0]).id : undefined
   return (
-    <div className="page-col">
-      <div className="page-hdr"><h1 className="page-title">{admin ? 'Administration' : 'Configuration'}</h1></div>
-      <div className="tabs" role="tablist" aria-label={admin ? 'Administration' : 'Configuration'}>
-        {sections.map(({ id, label, Icon }) => (
-          <button key={id} role="tab" aria-selected={section === id} className={`tab${section === id ? ' active' : ''}`} onClick={() => navigate(href({ name: 'admin', section: id }))}>
-            <Icon size={15} strokeWidth={1.75} />{label}
-          </button>
-        ))}
-      </div>
-      <div className="admin-body">
-        {section === 'people' && <People />}
-        {section === 'groups' && <GroupsView admin={admin} />}
-        {section === 'license' && <LicenseCleanup />}
-        {section === 'workflows' && <WorkflowsAdmin />}
-        {section === 'audit' && <AuditLog />}
-        {section === 'backups' && <Backups />}
-        {section === 'link-types' && <LinkTypesAdmin />}
-        {section === 'views' && <SharedViewsAdmin />}
-        {section === 'settings' && <SystemSettings />}
-      </div>
-    </div>
+    <AdminShell title={admin ? 'Administration' : 'Configuration'} items={items} section={section}
+      sub={settingsPage ? SETTINGS_PAGES.map(p => ({ id: p.id, label: p.label, current: p.id === settingsPage })) : undefined}>
+      {section === 'people' && <People />}
+      {section === 'groups' && <GroupsView admin={admin} openId={item ?? null} onOpen={id => navigate(href({ name: 'admin', section: 'groups', ...(id ? { item: id } : {}) }))} />}
+      {section === 'license' && <LicenseCleanup />}
+      {section === 'workflows' && <WorkflowsAdmin tab={item === 'statuses' || item === 'schemes' ? item : 'workflows'} />}
+      {section === 'link-types' && <LinkTypesAdmin />}
+      {section === 'test-statuses' && <TestStatusesAdmin />}
+      {section === 'settings' && <SystemSettings page={settingsPage} />}
+      {section === 'audit' && <AuditLog />}
+      {section === 'backups' && <Backups />}
+      {section === 'views' && <SharedViewsAdmin />}
+    </AdminShell>
   )
 }
 
@@ -112,7 +97,6 @@ function People() {
   }
   return (
     <section>
-      <p className="muted">Everyone who has signed in. Accounts come from your organisation’s sign-in (Microsoft Entra); here you can see who is active, filter, and change many people at once. Admin rights come from the system-administrators group.</p>
       <div className="people-filters">
         <input className="input" style={{ maxWidth: 240 }} placeholder="Find a person" aria-label="Find a person" value={q} onChange={e => setQ(e.target.value)} />
         <select className="input" aria-label="Inactive" value={inactive} onChange={e => setInactive(e.target.value)}>
@@ -218,7 +202,6 @@ function AuditLog() {
 
   return (
     <section>
-      <p className="muted">Who changed people, project settings, workflows, automation and deletions, and when. Entries can’t be edited or removed.</p>
       <div className="form-row" style={{ margin: '12px 0' }}>
         <input className="input" style={{ maxWidth: 260 }} placeholder="Action, e.g. project.member" aria-label="Filter by action" value={action} onChange={e => setAction(e.target.value)} />
         <input className="input" style={{ maxWidth: 260 }} placeholder="Who (email)" aria-label="Filter by who" value={actor} onChange={e => setActor(e.target.value)} />

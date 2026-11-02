@@ -4,6 +4,7 @@ import { api, ApiError } from '../api/client'
 import { useApp } from '../appContext'
 import { useStore, type LinkType } from '../data/store'
 import { Modal, plural } from './ui'
+import { PageAction } from './admin/AdminShell'
 
 // Administration › Link types (Jira's Issue linking): the kinds of link people can make between work items, each with
 // how it reads from both ends. Renaming keeps every link; removing one in use asks where its links go.
@@ -30,8 +31,8 @@ export default function LinkTypesAdmin() {
   if (!rows) return <p className="muted" role="status">Loading…</p>
   return (
     <section>
-      <p className="muted">The kinds of link people can make between work items, and how each reads from both ends. Changes are recorded in the Audit log.</p>
-      <div className="card-table" style={{ marginInline: 0, marginTop: 12 }}>
+      <PageAction><button className="btn btn-primary" onClick={() => setAdding(true)}><Plus size={14} />Add link type</button></PageAction>
+      <div className="card-table" style={{ marginInline: 0 }}>
         <table className="table">
           <thead><tr><th>Name</th><th>Outward (from the item that links)</th><th>Inward (from the linked item)</th><th className="col-num">Links</th><th /></tr></thead>
           <tbody>
@@ -49,7 +50,6 @@ export default function LinkTypesAdmin() {
           </tbody>
         </table>
       </div>
-      <button className="btn btn-secondary" style={{ marginTop: 12 }} onClick={() => setAdding(true)}><Plus size={14} />Add link type</button>
       {adding && <AddDialog onClose={() => setAdding(false)} onAdded={() => { setAdding(false); void load() }} />}
       {removing && <RemoveDialog type={removing} others={rows.filter(r => r.id !== removing.id)} onClose={() => setRemoving(null)} onRemoved={() => { setRemoving(null); void load() }} />}
     </section>

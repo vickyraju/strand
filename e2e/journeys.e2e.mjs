@@ -238,7 +238,8 @@ test('shared workflows: a system admin copies one, adds a status and makes a sch
   await o.click('.modal button:has-text("Update workflow")')
   await o.waitForSelector('text=Workflow updated')
   await o.click('.wf-bar button:has-text("Workflows")')
-  await o.click('[role="tab"]:has-text("Schemes")')
+  await o.click('nav[aria-label="Workflows"] a:has-text("Schemes")')
+  await o.waitForURL(/\/admin\/workflows\/schemes$/)
   await o.click('button:has-text("Add scheme")')
   await o.fill('#wsc-name', 'Reviewed')
   await o.selectOption('#wsc-default', { label: 'Kanban with review' })
@@ -639,12 +640,41 @@ test('long pages scroll: Administration and the Tests tab reach their last secti
     await o.locator(scroller).evaluate(el => { el.scrollTop = el.scrollHeight })
     return o.locator(last).last().evaluate(el => el.getBoundingClientRect().bottom <= window.innerHeight + 1)   // its end is on screen, not cut off
   }
-  for (const section of ['settings', 'people', 'audit']) {
+  for (const section of ['settings/rate-limiting', 'people', 'audit']) {
     await o.goto(url(`/admin/${section}`))
     assert.ok(await reachesEnd('.admin-body', '.admin-body :is(.panel, tr, li):not(:has(.panel, tr, li))'), `Administration › ${section} scrolls to its end`)
   }
   await o.goto(url('/project/SCR/tests'))
   assert.ok(await reachesEnd('.repo', '.repo-list tr'), 'the Tests tab scrolls to its last test')
+  assert.deepEqual(o.problems, [])
+})
+
+test('Administration: a grouped menu of links; every page, a group, a Workflows part and a settings page have their own address', { skip, timeout: 60_000 }, async () => {
+  const g = (await owner('POST', '/groups', { name: 'Linkable' })).body
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url('/admin'))
+  const menu = o.locator('nav[aria-label="Administration"]')
+  await menu.locator('.nav-section').first().waitFor()
+  assert.deepEqual(await menu.locator('.nav-section').allInnerTexts(), ['PEOPLE & ACCESS', 'WORK ITEMS', 'SYSTEM'])
+  assert.equal(await menu.locator('a[aria-current="page"]').innerText(), 'People')
+  await menu.locator('a:has-text("Test statuses")').click()
+  await o.waitForURL(/\/admin\/test-statuses$/)
+  await o.waitForSelector('h1:has-text("Test statuses")')
+  // System settings is a page per setting, listed under it
+  await menu.locator('a:has-text("System settings")').click()
+  await menu.locator('a:has-text("Attachments")').click()
+  await o.waitForURL(/\/admin\/settings\/attachments$/)
+  await o.waitForSelector('section[aria-label="Attachments"]')
+  assert.equal(await o.locator('section[aria-label="Rate limiting"]').count(), 0)
+  // opening a group puts it in the address; the address opens it again
+  await menu.locator('a:has-text("Groups")').click()
+  await o.click('.groups-item:has-text("Linkable")')
+  await o.waitForURL(new RegExp(`/admin/groups/${g.id}$`))
+  await o.goto(url(`/admin/groups/${g.id}`))
+  await o.waitForSelector('section[aria-label="Group Linkable"]')
+  // the page's main action is in its header
+  await o.goto(url('/admin/link-types'))
+  await o.waitForSelector('.admin-hdr button:has-text("Add link type")')
   assert.deepEqual(o.problems, [])
 })
 
@@ -654,8 +684,8 @@ test('system groups: a newcomer is in users-access and sees no Administration; a
   assert.equal(await n.locator('nav :text("Administration")').count(), 0)
   assert.equal(await n.locator('nav :text("Settings")').count(), 0)          // Settings lives in the profile menu
   await n.click('nav :text("Configuration")')
-  await n.waitForSelector('.tabs[aria-label="Configuration"] [role="tab"]')
-  assert.deepEqual(await n.$$eval('.tabs[aria-label="Configuration"] [role="tab"]', t => t.map(x => x.textContent.trim())), ['Groups'])
+  await n.waitForSelector('h1:has-text("Groups")')
+  assert.equal(await n.locator('nav[aria-label="Configuration"]').count(), 0)            // only one page: no menu
   await n.goto(url('/admin/settings'))
   await n.waitForSelector('section[aria-label="Groups"], .groups')            // an admin-only section falls back to Groups
   const me = (await as('sam@e2e.test')('GET', '/me')).body
