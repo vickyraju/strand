@@ -133,7 +133,7 @@ function People() {
               {shown.map(p => (
                 <tr key={p.id} style={{ cursor: 'default' }}>
                   <td><input type="checkbox" aria-label={`Select ${p.name}`} checked={picked.includes(p.id)} onChange={e => setPicked(e.target.checked ? [...picked, p.id] : picked.filter(x => x !== p.id))} /></td>
-                  <td><span className="admin-person"><Avatar user={{ ...p, title: p.title ?? undefined }} size={24} />{p.name}{p.title && <span className="muted sm">{p.title}</span>}</span></td>
+                  <td><span className="admin-person"><Avatar user={{ ...p, title: p.title ?? undefined }} size={24} /><span className="admin-person-name">{p.name}{p.title && <span className="muted sm">{p.title}</span>}</span></span></td>
                   <td className="muted">{p.email}</td>
                   <td>{p.role === 'member' ? 'Member' : p.role === 'owner' ? 'Owner' : 'Admin'}</td>
                   <td className="muted sm">{p.groups.map(g => g.name).join(', ')}</td>
