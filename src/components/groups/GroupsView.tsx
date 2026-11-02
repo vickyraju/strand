@@ -6,6 +6,7 @@ import { useStore } from '../../data/store'
 import { useApp } from '../../appContext'
 import { href } from '../../router'
 import { Avatar, Empty, Modal } from '../ui'
+import { PageAction } from '../admin/AdminShell'
 
 const people = (n: number) => `${n} ${n === 1 ? 'person' : 'people'}`
 import { UserSelect } from '../UserPicker'
@@ -19,14 +20,13 @@ interface Detail extends Group { people: { id: string; name: string; email: stri
 const message = (e: unknown) => (e instanceof ApiError ? e.message : 'Could not reach the server.')
 const KIND = { system: { label: 'System', Icon: Lock, hint: 'Built in: only system administrators change it' }, directory: { label: 'Directory', Icon: Cloud, hint: 'From Entra: change its members there' }, strand: { label: 'Made here', Icon: UsersRound, hint: 'Managed by its owners' } } as const
 
-export default function GroupsView({ admin = false }: { admin?: boolean }) {
+export default function GroupsView({ admin = false, openId, onOpen }: { admin?: boolean; openId: string | null; onOpen: (id: string | null) => void }) {
   const { state } = useStore()
   const { toast } = useApp()
   const settings = usePublicSettings()
   const [mine, setMine] = useState(!admin)
   const [q, setQ] = useState('')
   const [list, setList] = useState<Group[] | null>(null)
-  const [openId, setOpenId] = useState<string | null>(null)
   const [making, setMaking] = useState(false)
   const load = () => api<Group[]>('GET', `/api/groups?query=${encodeURIComponent(q)}${mine ? '&mine=1' : ''}`).then(setList, e => toast(message(e), { tone: 'warn' }))
   useEffect(() => { const t = setTimeout(load, 200); return () => clearTimeout(t) }, [q, mine])   // eslint-disable-line react-hooks/exhaustive-deps
@@ -40,7 +40,7 @@ export default function GroupsView({ admin = false }: { admin?: boolean }) {
             <button role="tab" aria-selected={mine} className={mine ? 'on' : ''} onClick={() => setMine(true)}>Mine</button>
             <button role="tab" aria-selected={!mine} className={!mine ? 'on' : ''} onClick={() => setMine(false)}>All groups</button>
           </div>
-          {mayCreate && <button className="btn btn-primary btn-sm" onClick={() => setMaking(true)}><Plus size={14} />New group</button>}
+          {mayCreate && <PageAction><button className="btn btn-primary" onClick={() => setMaking(true)}><Plus size={14} />New group</button></PageAction>}
         </div>
         <input className="input" placeholder="Find a group" aria-label="Find a group" value={q} onChange={e => setQ(e.target.value)} />
         {list?.length === 0 && <p className="muted sm">{mine ? 'You aren’t in any group you can see here yet.' : 'No groups match.'}</p>}
@@ -48,7 +48,7 @@ export default function GroupsView({ admin = false }: { admin?: boolean }) {
           {(list ?? []).map(g => {
             const K = KIND[g.kind]
             return (
-              <li key={g.id}><button className={`groups-item${openId === g.id ? ' is-active' : ''}`} onClick={() => setOpenId(g.id)}>
+              <li key={g.id}><button className={`groups-item${openId === g.id ? ' is-active' : ''}`} aria-current={openId === g.id ? 'true' : undefined} onClick={() => onOpen(g.id)}>
                 <span className="groups-item-name"><K.Icon size={14} aria-label={K.label} />{g.name}{g.isOwner && <Crown size={12} className="muted" aria-label="You own it" />}</span>
                 <span className="muted sm">{people(g.members)}</span>
               </button></li>
@@ -57,10 +57,10 @@ export default function GroupsView({ admin = false }: { admin?: boolean }) {
         </ul>
       </div>
       <div className="groups-detail">
-        {openId ? <GroupDetail key={openId} id={openId} onChanged={load} onDeleted={() => { setOpenId(null); void load() }} />
-          : <Empty icon={<UsersRound size={22} strokeWidth={1.5} />} title="Groups" body="A group gives a whole team a role in a project at once. Pick a group, or make one: its owners decide who is in it, and project admins decide what it may do in their project." />}
+        {openId ? <GroupDetail key={openId} id={openId} onChanged={load} onDeleted={() => { onOpen(null); void load() }} />
+          : <Empty icon={<UsersRound size={22} strokeWidth={1.5} />} title="Pick a group" body="Its members, owners, and the roles it has in projects show here." />}
       </div>
-      {making && <MakeGroup onClose={() => setMaking(false)} onMade={g => { setMaking(false); setMine(true); setOpenId(g.id); void load(); toast(`Made ${g.name}`) }} />}
+      {making && <MakeGroup onClose={() => setMaking(false)} onMade={g => { setMaking(false); setMine(true); onOpen(g.id); void load(); toast(`Made ${g.name}`) }} />}
     </div>
   )
 }

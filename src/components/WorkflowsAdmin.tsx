@@ -5,6 +5,7 @@ import { sprintDeps } from '../api/sprints'
 import { useApp } from '../appContext'
 import { BUILTIN_TYPES, type Category } from '../data/store'
 import { href, navigate } from '../router'
+import { AdminLink, PageAction } from './admin/AdminShell'
 import { Modal, plural } from './ui'
 import { impactLine, type Impact } from './workflow/Versions'
 
@@ -20,16 +21,18 @@ const CATS: { id: Category; label: string }[] = [{ id: 'todo', label: 'To do' },
 const TYPES = [...BUILTIN_TYPES.map(t => ({ key: t.key, name: t.name })), { key: 'test', name: 'Test' }, { key: 'precondition', name: 'Pre-Condition' },
   { key: 'test_set', name: 'Test Set' }, { key: 'test_plan', name: 'Test Plan' }, { key: 'test_execution', name: 'Test Execution' }]
 
-export default function WorkflowsAdmin() {
-  const [tab, setTab] = useState<'workflows' | 'statuses' | 'schemes'>('workflows')
+type Tab = 'workflows' | 'statuses' | 'schemes'
+const TABS: { id: Tab; label: string }[] = [{ id: 'workflows', label: 'Workflows' }, { id: 'statuses', label: 'Statuses' }, { id: 'schemes', label: 'Schemes' }]
+
+/** Each part has its own address: /admin/workflows, /admin/workflows/statuses, /admin/workflows/schemes. */
+export default function WorkflowsAdmin({ tab }: { tab: Tab }) {
   return (
     <section>
-      <p className="muted">Workflows are shared: a workflow scheme says which workflow each work type uses, and each project uses one scheme. Changing a workflow or a scheme changes every project using it. Project admins choose their project’s scheme; they don’t edit workflows.</p>
-      <div className="segmented" role="tablist" aria-label="Workflows" style={{ margin: '12px 0' }}>
-        {(['workflows', 'statuses', 'schemes'] as const).map(t => (
-          <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? 'on' : ''} onClick={() => setTab(t)}>{t === 'workflows' ? 'Workflows' : t === 'statuses' ? 'Statuses' : 'Schemes'}</button>
+      <nav className="segmented" aria-label="Workflows" style={{ marginBottom: 12 }}>
+        {TABS.map(t => (
+          <AdminLink key={t.id} to={href({ name: 'admin', section: 'workflows', ...(t.id === 'workflows' ? {} : { item: t.id }) })} current={tab === t.id} className={tab === t.id ? 'on' : ''}>{t.label}</AdminLink>
         ))}
-      </div>
+      </nav>
       {tab === 'workflows' && <Workflows />}
       {tab === 'statuses' && <Statuses />}
       {tab === 'schemes' && <Schemes />}
@@ -71,7 +74,7 @@ function Workflows() {
         ))}</tbody>
       </table>
     </div>
-    <button className="btn btn-secondary" style={{ marginTop: 12 }} onClick={() => setAdding({})}><Plus size={14} />Add workflow</button>
+    <PageAction><button className="btn btn-primary" onClick={() => setAdding({})}><Plus size={14} />Add workflow</button></PageAction>
     {adding && <NameDialog title={adding.copyFrom ? `Copy ${adding.copyFrom.name}` : 'Add workflow'} initial={adding.copyFrom ? `${adding.copyFrom.name} (copy)` : ''}
       hint={adding.copyFrom ? undefined : 'It starts with a To do and a Done status; add the rest in the editor.'} onClose={() => setAdding(null)}
       onSave={name => api<{ id: string }>('POST', '/api/admin/workflows', { name, ...(adding.copyFrom ? { copyFrom: adding.copyFrom.id } : {}) }).then(w => open(w.id))} />}
@@ -105,8 +108,8 @@ function Statuses() {
   if (error) return <p className="hint error" role="alert">{error}</p>
   if (!rows) return <p className="muted" role="status">Loading…</p>
   return <>
-    <p className="muted sm">Statuses are shared by every workflow. A new name, colour or category shows in every workflow and project that has the status.</p>
-    <div className="card-table" style={{ marginInline: 0, marginTop: 8 }}>
+    <p className="muted sm" style={{ marginBottom: 8 }}>Statuses are shared by every workflow. A new name, colour or category shows in every workflow and project that has the status.</p>
+    <div className="card-table" style={{ marginInline: 0 }}>
       <table className="table">
         <thead><tr><th>Status</th><th>Category</th><th>Used in</th><th /></tr></thead>
         <tbody>{rows.map(s => (
@@ -122,7 +125,7 @@ function Statuses() {
         ))}</tbody>
       </table>
     </div>
-    <button className="btn btn-secondary" style={{ marginTop: 12 }} onClick={() => setEditing({ category: 'in-progress', color: '#3b82f6' })}><Plus size={14} />Add status</button>
+    <PageAction><button className="btn btn-primary" onClick={() => setEditing({ category: 'in-progress', color: '#3b82f6' })}><Plus size={14} />Add status</button></PageAction>
     {editing && <StatusDialog status={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); void load(); void sprintDeps.reloadAll() }} />}
   </>
 }
@@ -178,7 +181,7 @@ function Schemes() {
         ))}</tbody>
       </table>
     </div>
-    <button className="btn btn-secondary" style={{ marginTop: 12 }} onClick={() => setEditing({ defaultWorkflowId: workflows.rows![0]?.id, mappings: {} })}><Plus size={14} />Add scheme</button>
+    <PageAction><button className="btn btn-primary" onClick={() => setEditing({ defaultWorkflowId: workflows.rows![0]?.id, mappings: {} })}><Plus size={14} />Add scheme</button></PageAction>
     {editing && <SchemeDialog scheme={editing} workflows={workflows.rows} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); void load() }} />}
   </>
 }

@@ -2,8 +2,8 @@ import { useSyncExternalStore } from 'react'
 
 export type ProjectTab = 'summary' | 'board' | 'backlog' | 'list' | 'timeline' | 'calendar' | 'releases' | 'reports' | 'tests' | 'settings'
 
-export type AdminSection = 'people' | 'groups' | 'license' | 'workflows' | 'audit' | 'backups' | 'settings' | 'link-types' | 'views'
-const ADMIN: AdminSection[] = ['people', 'groups', 'license', 'workflows', 'audit', 'backups', 'settings', 'link-types', 'views']
+export type AdminSection = 'people' | 'groups' | 'license' | 'workflows' | 'link-types' | 'test-statuses' | 'settings' | 'audit' | 'backups' | 'views'
+const ADMIN: AdminSection[] = ['people', 'groups', 'license', 'workflows', 'link-types', 'test-statuses', 'settings', 'audit', 'backups', 'views']
 
 export type Route =
   | { name: 'home' }
@@ -11,6 +11,7 @@ export type Route =
   | { name: 'search'; q: string; view?: string }
   | { name: 'projects' }
   | { name: 'settings' }
+  /** `item`: a page within the section (a group, a workflow, a settings page, a Workflows tab) */
   | { name: 'admin'; section?: AdminSection; item?: string }
   | { name: 'project'; key: string; tab?: ProjectTab; sub?: string }
   | { name: 'issue'; key: string }
