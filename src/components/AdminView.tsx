@@ -136,7 +136,7 @@ function People() {
                   <td><span className="admin-person"><Avatar user={{ ...p, title: p.title ?? undefined }} size={24} /><span className="admin-person-name">{p.name}{p.title && <span className="muted sm">{p.title}</span>}</span></span></td>
                   <td className="muted">{p.email}</td>
                   <td>{p.role === 'member' ? 'Member' : p.role === 'owner' ? 'Owner' : 'Admin'}</td>
-                  <td className="muted sm">{p.groups.map(g => g.name).join(', ')}</td>
+                  <td className="muted sm admin-wrap">{p.groups.map(g => g.name).join(', ')}</td>
                   <td className="muted" title={p.lastSignInAt ? `Last sign-in ${new Date(p.lastSignInAt).toLocaleString()}` : 'Never signed in'}>{p.lastActiveAt ? timeAgo(Date.parse(p.lastActiveAt)) : 'Never'}</td>
                   <td>{p.active ? <span className="lozenge lozenge-done">Active</span> : <span className="lozenge lozenge-todo">Deactivated</span>}</td>
                 </tr>
