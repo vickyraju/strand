@@ -70,7 +70,7 @@ function GroupDetail({ id, onChanged, onDeleted }: { id: string; onChanged: () =
   const { toast } = useApp()
   const [g, setG] = useState<Detail | null>(null)
   const [adding, setAdding] = useState<'member' | 'owner' | null>(null)
-  const load = () => api<Detail>('GET', `/api/groups/${id}`).then(setG, e => toast(message(e), { tone: 'warn' }))
+  const load = () => api<Detail>('GET', `/api/groups/${encodeURIComponent(id)}`).then(setG, e => toast(message(e), { tone: 'warn' }))
   useEffect(() => { void load() }, [id])   // eslint-disable-line react-hooks/exhaustive-deps
   if (!g) return <p className="muted" role="status">Loading…</p>
   const act = (p: Promise<unknown>, done: string) => p.then(() => { toast(done); void load(); onChanged() }, e => toast(message(e), { tone: 'warn' }))
