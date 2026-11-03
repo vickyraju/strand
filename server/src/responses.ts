@@ -29,7 +29,7 @@ export const WorkType = z.object({
 })
 export const LinkType = z.object({
   id: z.string(), name: z.string(), outward: z.string().describe('How a link reads from its source: "blocks"'), inward: z.string().describe('How it reads from its target: "is blocked by"'),
-  builtin: z.boolean().describe('Built in (the app relies on it): can be renamed, not removed'), position: z.number(), uses: z.number().describe('Links of this type'),
+  builtin: z.boolean().describe('Built in (the app relies on it): can be renamed, not removed'), position: z.number(), uses: nullable(z.number()).describe('Links of this type (with uses=1, for system administrators; null otherwise)'),
 })
 export const Component = z.object({ id, projectId: id, name: z.string(), description: z.string(), leadId: nullable(id), defaultAssignee: z.enum(['none', 'component_lead', 'project_lead']) })
 export const NotificationPrefs = z.object({
@@ -63,7 +63,7 @@ const LibTransition = z.object({ id: z.string(), name: z.string(), fromIds: null
 export const Workflow = z.object({
   id, name: z.string(), description: z.string(), version: z.number(), updatedAt: ts, statuses: z.array(WfStatus).describe('In order: new work starts in the first'),
   transitions: z.array(LibTransition), layout: z.record(z.string(), z.unknown()),
-  schemes: z.array(z.object({ id, name: z.string() })), projects: z.array(z.object({ key: z.string(), name: z.string() })),
+  schemes: z.array(z.object({ id, name: z.string() })), projectCount: z.number().describe('Projects using it, through their scheme'),
 })
 export const WorkflowScheme = z.object({
   id, name: z.string(), description: z.string(), defaultWorkflowId: id, defaultWorkflow: z.string(),
@@ -73,6 +73,13 @@ export const Impact = z.object({
   project: z.object({ id, key: z.string(), name: z.string() }), added: z.array(z.string()).describe('Statuses the project gains'), removed: z.array(z.string()).describe('Statuses it loses'),
   moves: z.array(z.object({ type: z.string(), from: z.string(), to: z.string(), count: z.number() })).describe('Items that change status, by work type'),
 })
+export const ApplySummary = z.object({
+  projects: z.number().describe('Projects it reaches'), changed: z.number().describe('Projects that gain or lose a status, or have items that move'),
+  itemsMoved: z.number(), added: z.array(z.string()), removed: z.array(z.string()),
+  moves: z.array(z.object({ from: z.string(), to: z.string(), count: z.number() })).describe('Where items go, over every project, biggest first (at most 10)'),
+  top: z.array(Impact).describe('The projects most changed (at most 10)'),
+})
+const ProjectsPage = z.object({ items: z.array(z.object({ id, key: z.string(), name: z.string(), scheme: z.string() })), next: nullable(z.string()), total: z.number() })
 export const ProjectDetail = z.object({
   id, workspaceId: id, key: z.string(), name: z.string(), description: z.string(), color: z.string(), template: z.enum(['kanban', 'scrum']),
   leadId: nullable(id), archivedAt: nullable(ts), nextNumber: z.number(), testing: z.boolean().describe('Test management is on'), requirementTypes: nullable(z.array(z.string())).describe('Work types counted as requirements (null: all but testing types and Bug)'), boardPrefs: z.record(z.string(), z.unknown()), layout: z.record(z.string(), z.unknown()),
@@ -107,6 +114,7 @@ export const TestRun = z.object({
   specChanged: z.boolean().describe('The test has changed since this run was made (reset to use the new one)'),
 })
 const CleanupPerson = z.object({ userId: id, email: z.string(), name: z.string(), lastActiveAt: nullable(ts) })
+const GroupMember = z.object({ id, name: z.string(), email: z.string(), initials: z.string(), color: z.string(), active: z.boolean() })
 export const GroupSummary = z.object({
   id, name: z.string(), description: z.string(), kind: z.enum(['system', 'directory', 'strand']).describe('system (users-access, system-administrators), directory (from Entra) or strand (made here)'),
   systemRole: nullable(z.string()), members: z.number(), owners: z.array(z.object({ id, name: z.string() })), isMember: z.boolean(), isOwner: z.boolean(),
@@ -230,20 +238,23 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'GET /issues/:key/test-containers': z.array(z.object({ id, key: z.string(), type: z.string(), title: z.string(), projectId: id })),
   'GET /projects/:key/test-folders': z.array(TestFolder),
   'GET /test-statuses': z.array(TestStatus),
-  'GET /groups': z.array(GroupSummary),
+  'GET /groups': z.object({ items: z.array(GroupSummary), next: nullable(z.string()).describe('Pass back as `cursor`; null on the last page') }),
   'POST /admin/users/bulk': z.object({ changed: z.number(), unchanged: z.number().describe('Already as asked') }),
   'GET /admin/users/refused-sign-ins': z.array(z.object({ at: ts, userId: nullable(z.string()), email: nullable(z.string()), ip: nullable(z.string()), name: nullable(z.string()), active: nullable(z.boolean()) })),
   'GET /admin/license-cleanup': z.object({
     seats: z.object({ total: z.number().describe('People in users-access'), active30: z.number(), active90: z.number(), never: z.number().describe('Never used Strand') }),
     runs: z.array(z.object({ id, trigger: z.string(), action: z.string(), startedAt: ts, finishedAt: nullable(ts), changedCount: z.number(), warnedCount: z.number(),
-      changed: z.array(CleanupPerson), warned: z.array(CleanupPerson), notes: z.string(), startedBy: nullable(z.string()) })),
+      notes: z.string(), startedBy: nullable(z.string()) })).describe('Counts only: open a run for who it changed'),
   }),
-  'POST /admin/license-cleanup/preview': z.object({ change: z.array(CleanupPerson), warn: z.array(CleanupPerson) }),
+  'POST /admin/license-cleanup/preview': z.object({ changeCount: z.number(), warnCount: z.number(),
+    change: z.array(CleanupPerson).describe('The first 100, longest away first'), warn: z.array(CleanupPerson).describe('The first 100') }),
+  'GET /admin/license-cleanup/runs/:id': z.object({ id, changed: z.array(CleanupPerson), warned: z.array(CleanupPerson) }),
   'POST /admin/license-cleanup/run': z.object({ id, changed: z.number(), warned: z.number(), notes: z.string() }),
   'GET /groups/:id': GroupSummary.extend({
-    people: z.array(z.object({ id, name: z.string(), email: z.string(), initials: z.string(), color: z.string(), active: z.boolean() })),
+    people: z.array(GroupMember).describe('The first members by name (GET /groups/:id/members for the rest)'), morePeople: nullable(z.string()).describe('Cursor for the next page of members'),
     projects: z.array(z.object({ key: z.string(), name: z.string(), role: z.string() })).describe('Projects you can see where the group has a role'),
   }),
+  'GET /groups/:id/members': z.object({ items: z.array(GroupMember), next: nullable(z.string()) }),
   'POST /groups': GroupSummary,
   'PATCH /groups/:id': GroupSummary,
   'POST /groups/:id/members': z.object({ added: z.number() }),
@@ -298,9 +309,12 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'PATCH /admin/statuses/:id': WfStatus.extend({ position: z.number(), workflows: z.array(z.string()) }),
   'POST /admin/workflows': Workflow,
   'PATCH /admin/workflows/:id': Workflow,
-  'POST /admin/workflows/:id/publish': z.object({ workflow: Workflow, version: z.number(), created: z.boolean().describe('False: nothing but the layout changed'), projects: z.array(Impact).describe('Each project it was applied to') }),
+  'POST /admin/workflows/:id/publish': z.object({ workflow: Workflow, version: z.number(), created: z.boolean().describe('False: nothing but the layout changed'), summary: ApplySummary, jobId: nullable(id).describe('The job applying it to projects (null: a preview, or nothing to apply)') }),
+  'GET /admin/workflows/:id/projects': ProjectsPage,
+  'GET /admin/workflow-schemes/:id/projects': ProjectsPage,
+  'GET /admin/workflows/applying': nullable(z.object({ jobId: id, workflowId: nullable(id), schemeId: nullable(id), name: nullable(z.string()), done: z.number(), total: z.number(), startedAt: ts })),
   'POST /admin/workflow-schemes': WorkflowScheme,
-  'PATCH /admin/workflow-schemes/:id': z.object({ scheme: WorkflowScheme, projects: z.array(Impact) }),
+  'PATCH /admin/workflow-schemes/:id': z.object({ scheme: WorkflowScheme, summary: ApplySummary, jobId: nullable(id) }),
   'POST /projects/:key/types': WorkType,
   'PATCH /projects/:key/types/:typeKey': WorkType,
   'POST /admin/link-types': LinkType,
@@ -327,7 +341,7 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'GET /views': z.array(SavedView),
   'POST /views': SavedView,
   'PATCH /views/:id': SavedView,
-  'GET /admin/views': z.array(SavedView),
+  'GET /admin/views': z.object({ items: z.array(SavedView), total: z.number(), next: nullable(z.string()) }),
   'POST /issues/:key/attachments': AttachmentTicket,
   'GET /attachments/:id/url': z.object({ url: z.string() }),
   'GET /admin/settings/project-backups': BackupSettings,
@@ -342,19 +356,22 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'GET /admin/rate-limits/limited': z.array(z.object({
     userId: id, name: z.string(), email: z.string(), firstAt: ts, lastAt: ts, times: z.number().describe('Minutes in which they were refused at least once'),
   })),
-  'GET /admin/users': z.array(z.object({
-    id, name: z.string(), email: z.string(), initials: z.string(), color: z.string(), title: nullable(z.string()), active: z.boolean(),
-    role: z.enum(['owner', 'admin', 'member']), createdAt: ts, projects: z.number().describe('Projects they are a member of'),
-    lastActiveAt: nullable(ts).describe('Last used Strand (to the hour)'), lastSignInAt: nullable(ts), groups: z.array(z.object({ id, name: z.string() })),
-  })),
-  'GET /admin/project-backups': z.array(z.object({
+  'GET /admin/users': z.object({
+    items: z.array(z.object({
+      id, name: z.string(), email: z.string(), initials: z.string(), color: z.string(), title: nullable(z.string()), active: z.boolean(),
+      role: z.enum(['owner', 'admin', 'member']), createdAt: ts, projects: z.number().describe('Projects they are a member of'),
+      lastActiveAt: nullable(ts).describe('Last used Strand (to the hour)'), lastSignInAt: nullable(ts), groups: z.array(z.object({ id, name: z.string() })),
+    })),
+    total: z.number().describe('Everyone the filter matches'), next: nullable(z.string()).describe('Pass back as `cursor`; null on the last page'),
+  }),
+  'GET /admin/project-backups': z.object({ items: z.array(z.object({
     id, projectId: id, projectKey: z.string(), projectName: z.string(), bucket: z.string(), objectKey: z.string(),
     items: z.number(), files: z.number(), bytes: z.number(), createdAt: ts, createdBy: nullable(id), restoredAt: nullable(ts),
-  })),
+  })), total: z.number(), next: nullable(z.string()) }),
   'GET /admin/project-backups/:id/url': z.object({ url: z.string() }),
   'GET /jobs/:id': z.object({
     id, kind: z.string(), status: z.enum(['queued', 'running', 'done', 'failed']), attempts: z.number(), maxAttempts: z.number(),
-    lastError: nullable(z.string()), result: z.unknown(), createdBy: nullable(id), createdAt: ts, finishedAt: nullable(ts),
+    lastError: nullable(z.string()), result: z.unknown(), progress: z.unknown().describe('How far a long job has got, when it says (e.g. done and total)'), createdBy: nullable(id), createdAt: ts, finishedAt: nullable(ts),
   }),
   'GET /audit': z.object({
     items: z.array(z.object({

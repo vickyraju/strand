@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { api, errorMessage } from '../../api/client'
 import type { Status, Transition } from '../../data/store'
 import { describeDiff, diffWorkflows, type Workflow } from '../../data/workflow'
@@ -18,9 +18,34 @@ export const impactLine = (i: Impact) => [
   ...i.moves.map(m => `${plural(m.count, `${m.type.replace(/_/g, ' ')} item`)} move${m.count === 1 ? 's' : ''} from ${m.from} to ${m.to}`),
 ].filter(Boolean).join('; ') || 'nothing else changes'
 
-/** "Update workflow": what changes, where work items go, the projects it reaches (null while that's worked out), and a note. */
-export function PublishDialog({ before, after, moved, impact, onClose, onPublish }: {
-  before: Workflow; after: Workflow; moved: { from: string; to: string }[]; impact: Impact[] | null
+/** What a change does across every project it reaches (the server's summary: never a line per project). */
+export interface Summary { projects: number; changed: number; itemsMoved: number; added: string[]; removed: string[]; moves: { from: string; to: string; count: number }[]; top: Impact[] }
+
+/** A change's reach, readable at any size: how many projects, how many change and how many items move (and where), and
+ *  the projects most affected. `children`: where to see every project (a count that opens the list). */
+export function SummaryView({ s, children }: { s: Summary; children?: ReactNode }) {
+  if (!s.projects) return <p className="muted">No project uses this yet, so no project changes.</p>
+  return (
+    <div className="summary">
+      <p><b>Applies to {plural(s.projects, 'project')}</b>{children ? <> ({children})</> : null}.{' '}
+        {s.changed ? <>{s.changed === s.projects ? (s.projects === 1 ? 'It changes' : 'Every one changes') : `${s.changed.toLocaleString()} of them change`}{s.added.length || s.removed.length ? ': ' : ''}{[s.added.length ? `${s.changed === 1 ? 'it gains' : 'they gain'} ${s.added.join(', ')}` : '', s.removed.length ? `${s.added.length ? '' : s.changed === 1 ? 'it ' : 'they '}lose${s.changed === 1 ? 's' : ''} ${s.removed.join(', ')}` : ''].filter(Boolean).join(' and ')}.</>
+          : 'None of them changes beyond their transitions.'}</p>
+      {s.itemsMoved > 0 && <>
+        <p><b>{plural(s.itemsMoved, 'work item')}</b> move{s.itemsMoved === 1 ? 's' : ''} to another status:</p>
+        <ul className="change-list">{s.moves.map(m => <li key={`${m.from}>${m.to}`}>{m.count.toLocaleString()} from {m.from} to {m.to}</li>)}</ul>
+      </>}
+      {s.top.length > 0 && <>
+        <p className="muted sm" style={{ marginTop: 8 }}>{s.changed > s.top.length ? `The ${s.top.length} projects most changed` : s.changed === 1 ? 'The project that changes' : 'Projects that change'}:</p>
+        <ul className="change-list sm">{s.top.map(i => <li key={i.project.id}><b>{i.project.key}</b> {i.project.name}: {impactLine(i)}</li>)}</ul>
+      </>}
+      {s.projects > 1 && <p className="hint">It applies in the background, a project at a time; you can leave this page. Each moved item’s history says so.</p>}
+    </div>
+  )
+}
+
+/** "Update workflow": what changes, where work items go, what it does to the projects using it (null while that's worked out), and a note. */
+export function PublishDialog({ before, after, moved, impact, onClose, onPublish, seeAll }: {
+  before: Workflow; after: Workflow; moved: { from: string; to: string }[]; impact: Summary | null; seeAll?: ReactNode
   onClose: () => void; onPublish: (note: string) => void
 }) {
   const [note, setNote] = useState('')
@@ -39,12 +64,7 @@ export function PublishDialog({ before, after, moved, impact, onClose, onPublish
         </div>
       )}
       <div className="wf-impact" role="region" aria-label="Projects">
-        {!impact ? <p className="muted" role="status">Working out which projects this reaches…</p>
-          : !impact.length ? <p className="muted">No project uses this workflow yet.</p>
-          : <>
-            <p><b>Applies to {plural(impact.length, 'project')}</b> straight away:</p>
-            <ul className="change-list">{impact.map(i => <li key={i.project.id}><b>{i.project.key}</b> {i.project.name}: {impactLine(i)}</li>)}</ul>
-          </>}
+        {!impact ? <p className="muted" role="status">Working out what this does to the projects using it…</p> : <SummaryView s={impact}>{seeAll}</SummaryView>}
       </div>
       <label className="label" htmlFor="pub-note" style={{ marginTop: 12 }}>Note for this version (optional)</label>
       <input id="pub-note" className="input" value={note} maxLength={500} placeholder="e.g. Added a review step" onChange={e => setNote(e.target.value)} />

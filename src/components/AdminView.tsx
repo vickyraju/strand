@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import { Users, Download, RotateCcw } from 'lucide-react'
 import { api, apiEnabled, errorMessage } from '../api/client'
 import { useStore, timeAgo } from '../data/store'
@@ -6,9 +6,10 @@ import { isGlobalAdmin } from '../data/access'
 import { useApp } from '../appContext'
 import { href, navigate, type AdminSection } from '../router'
 import { formatBytes } from '../data/files'
-import { Avatar, Empty, LoadError, Loading, Modal, plural, Toggle } from './ui'
+import { Avatar, ConfirmDialog, Empty, LoadError, Loading, Modal, openRow, plural, Toggle } from './ui'
 import SystemSettings, { SETTINGS_PAGES } from './SystemSettings'
 import AdminShell, { ITEMS } from './admin/AdminShell'
+import { GroupPicker, Progress, useJob, type GroupRef } from './admin/scale'
 import TestStatusesAdmin from './testing/TestStatusesAdmin'
 import GroupsView from './groups/GroupsView'
 import LicenseCleanup from './LicenseCleanup'
@@ -70,72 +71,104 @@ interface Person {
 }
 type BulkAction = 'deactivate' | 'reactivate' | 'add-to-group' | 'remove-from-group'
 const BULK: Record<BulkAction, string> = { deactivate: 'Deactivate', reactivate: 'Reactivate', 'add-to-group': 'Add to group…', 'remove-from-group': 'Remove from group…' }
-const daysSince = (at: string | null) => (at ? (Date.now() - Date.parse(at)) / 86_400_000 : Infinity)
+const PAGE = 50
 
-/** Everyone, with last activity and groups (resolution's user browser): filter, pick, and change many at once. */
+/** Everyone, with last activity and groups (resolution's user browser), searched, filtered and paged on the server:
+ *  pick people, or take everyone a filter matches (any number, changed in the background). */
 function People() {
   const { toast } = useApp()
-  const { data, error, reload } = useLoad<Person[]>('/api/admin/users')
   const refused = useLoad<{ at: string; userId: string | null; email: string | null; name: string | null; active: boolean | null }[]>('/api/admin/users/refused-sign-ins')
   const [q, setQ] = useState('')
   const [inactive, setInactive] = useState('')            // '' | days | 'never'
   const [status, setStatus] = useState<'all' | 'active' | 'deactivated'>('all')
-  const [group, setGroup] = useState('')                  // '' | in:<id> | out:<id>
-  const [picked, setPicked] = useState<string[]>([])
-  const [bulk, setBulk] = useState<{ action: BulkAction; groupId: string } | null>(null)
-  const groups = [...new Map((data ?? []).flatMap(p => p.groups).map(g => [g.id, g])).values()].sort((a, b) => a.name.localeCompare(b.name))
-  const shown = (data ?? []).filter(p => (!q || `${p.name} ${p.email}`.toLowerCase().includes(q.toLowerCase()))
-    && (status === 'all' || (status === 'active') === p.active)
-    && (!inactive || (inactive === 'never' ? !p.lastActiveAt : daysSince(p.lastActiveAt) > Number(inactive)))
-    && (!group || (group.startsWith('in:') ? p.groups.some(g => g.id === group.slice(3)) : !p.groups.some(g => g.id === group.slice(4)))))
-  const allPicked = shown.length > 0 && shown.every(p => picked.includes(p.id))
-  const apply = () => {
-    if (!bulk) return
-    api<{ changed: number; unchanged: number }>('POST', '/api/admin/users/bulk', { userIds: picked, action: bulk.action, ...(bulk.groupId ? { groupId: bulk.groupId } : {}) })
-      .then(r => { toast(`${BULK[bulk.action].replace('…', '')}: ${r.changed} changed${r.unchanged ? `, ${r.unchanged} already so` : ''}`); setBulk(null); setPicked([]); reload() }, e => toast(errorMessage(e), { tone: 'warn' }))
+  const [inGroup, setInGroup] = useState<'in' | 'out'>('in')
+  const [group, setGroup] = useState<GroupRef | null>(null)
+  const [rows, setRows] = useState<Person[] | null>(null)
+  const [total, setTotal] = useState(0)
+  const [next, setNext] = useState<string | null>(null)
+  const [error, setError] = useState('')
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [picked, setPicked] = useState<Map<string, string>>(new Map())       // id → name
+  const [everyone, setEveryone] = useState(false)                             // everyone the filter matches, not just those picked
+  const [bulk, setBulk] = useState<{ action: BulkAction; group: GroupRef | null } | null>(null)
+  const [jobId, setJobId] = useState<string | null>(null)
+  const seq = useRef(0)
+  const filter: Record<string, string> = { ...(q.trim() ? { query: q.trim() } : {}), status, ...(inactive ? { inactive } : {}), ...(group ? (inGroup === 'in' ? { group: group.id } : { notInGroup: group.id }) : {}) }
+  const load = (more = false) => {
+    const mine = ++seq.current
+    setError(''); if (more) setLoadingMore(true)
+    const p = new URLSearchParams({ ...filter, limit: String(PAGE), ...(more && next ? { cursor: next } : {}) })
+    api<{ items: Person[]; total: number; next: string | null }>('GET', `/api/admin/users?${p}`).then(r => {
+      if (mine !== seq.current) return
+      setRows(xs => (more ? [...(xs ?? []), ...r.items] : r.items)); setTotal(r.total); setNext(r.next); setLoadingMore(false)
+    }, e => { if (mine === seq.current) { setError(errorMessage(e)); setLoadingMore(false) } })
   }
+  const key = JSON.stringify(filter)
+  useEffect(() => { setEveryone(false); const t = setTimeout(() => load(), q ? 250 : 0); return () => clearTimeout(t) }, [key])   // eslint-disable-line react-hooks/exhaustive-deps
+  const job = useJob(jobId, (st, result) => {
+    setJobId(null); setPicked(new Map()); setEveryone(false); load()
+    toast(st === 'done' ? `Changed ${result.changed.toLocaleString()}${result.unchanged ? `, ${result.unchanged.toLocaleString()} already so` : ''}${result.stopped ? `. Stopped: ${result.stopped}` : ''}` : 'The change could not be finished',
+      st === 'done' && !result.stopped ? undefined : { tone: 'warn' })
+  })
+  const shown = rows ?? []
+  const allShown = shown.length > 0 && shown.every(p => picked.has(p.id))
+  const count = everyone ? total : picked.size
+  const apply = async () => {
+    if (!bulk) return
+    if (bulk.action.endsWith('group') && !bulk.group) throw new Error('Choose a group first')
+    const body = { action: bulk.action, ...(bulk.group ? { groupId: bulk.group.id } : {}) }
+    if (everyone) {
+      const r = await api<{ jobId: string; matched: number }>('POST', '/api/admin/users/bulk', { ...body, filter })
+      setJobId(r.jobId); return
+    }
+    const r = await api<{ changed: number; unchanged: number }>('POST', '/api/admin/users/bulk', { ...body, userIds: [...picked.keys()] })
+    toast(`${BULK[bulk.action].replace('…', '')}: ${r.changed} changed${r.unchanged ? `, ${r.unchanged} already so` : ''}`); setPicked(new Map()); load()
+  }
+  const pick = (ids: Person[], on: boolean) => { const m = new Map(picked); for (const p of ids) { if (on) m.set(p.id, p.name); else m.delete(p.id) } setPicked(m) }
   return (
     <section>
       <div className="people-filters">
         <input className="input" style={{ maxWidth: 240 }} placeholder="Find a person" aria-label="Find a person" value={q} onChange={e => setQ(e.target.value)} />
         <select className="input" aria-label="Inactive" value={inactive} onChange={e => setInactive(e.target.value)}>
-          <option value="">Any activity</option><option value="30">Inactive 30+ days</option><option value="90">Inactive 90+ days</option><option value="180">Inactive 180+ days</option><option value="never">Never used Strand</option>
+          <option value="">Any activity</option><option value="30">Inactive 30+ days</option><option value="90">Inactive 90+ days</option><option value="180">Inactive 180+ days</option><option value="365">Inactive a year or more</option><option value="never">Never used Strand</option>
         </select>
         <select className="input" aria-label="Status" value={status} onChange={e => setStatus(e.target.value as typeof status)}>
           <option value="all">Active and deactivated</option><option value="active">Active</option><option value="deactivated">Deactivated</option>
         </select>
-        <select className="input" aria-label="Group" value={group} onChange={e => setGroup(e.target.value)}>
-          <option value="">Any group</option>
-          {groups.map(g => <option key={`in:${g.id}`} value={`in:${g.id}`}>In {g.name}</option>)}
-          {groups.map(g => <option key={`out:${g.id}`} value={`out:${g.id}`}>Not in {g.name}</option>)}
+        <select className="input" aria-label="In or not in the group" value={inGroup} onChange={e => setInGroup(e.target.value as 'in' | 'out')}>
+          <option value="in">In group</option><option value="out">Not in group</option>
         </select>
+        <GroupPicker label="Group" value={group} onChange={setGroup} placeholder="Any group" />
       </div>
-      {picked.length > 0 && (
+      {jobId && <div className="apply-banner">{job?.progress ? <Progress label="Changing people" done={job.progress.done ?? 0} total={job.progress.total ?? 0} /> : <span role="status">Starting…</span>}</div>}
+      {(picked.size > 0 || everyone) && !jobId && (
         <div className="bulk-bar" role="region" aria-label="Change selected people">
-          <b>{picked.length} selected</b>
-          <select className="input input-sm" aria-label="Bulk action" value="" onChange={e => e.target.value && setBulk({ action: e.target.value as BulkAction, groupId: '' })}>
+          <b>{everyone ? `All ${total.toLocaleString()} matching` : `${picked.size.toLocaleString()} selected`}</b>
+          {!everyone && allShown && total > shown.length && <button className="btn btn-ghost btn-sm" onClick={() => setEveryone(true)}>Select all {total.toLocaleString()} matching</button>}
+          <select className="input input-sm" aria-label="Bulk action" value="" onChange={e => e.target.value && setBulk({ action: e.target.value as BulkAction, group: null })}>
             <option value="">Change them…</option>{Object.entries(BULK).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </select>
-          <button className="btn btn-ghost btn-sm" onClick={() => setPicked([])}>Clear</button>
+          <button className="btn btn-ghost btn-sm" onClick={() => { setPicked(new Map()); setEveryone(false) }}>Clear</button>
         </div>
       )}
-      {error && <LoadError error={error} onRetry={reload} />}
-      {!data && !error && <Loading rows={6} />}
-      {data && (
+      {error && <LoadError error={error} onRetry={() => load(!!rows?.length && !!next)} />}
+      {!rows && !error && <Loading rows={6} />}
+      {rows && <>
+        <p className="muted sm" role="status" style={{ marginBottom: 6 }}>Showing {shown.length.toLocaleString()} of {total.toLocaleString()}</p>
         <div className="card-table" style={{ marginInline: 0 }}>
           <table className="table">
             <thead><tr>
-              <th style={{ width: 32 }}><input type="checkbox" aria-label="Select everyone shown" checked={allPicked} onChange={e => setPicked(e.target.checked ? [...new Set([...picked, ...shown.map(p => p.id)])] : picked.filter(id => !shown.some(p => p.id === id)))} /></th>
+              <th style={{ width: 32 }}><input type="checkbox" aria-label="Select everyone shown" checked={allShown || everyone} disabled={everyone} onChange={e => pick(shown, e.target.checked)} /></th>
               <th>Name</th><th>Email</th><th>Role</th><th>Groups</th><th>Last active</th><th>Status</th>
             </tr></thead>
             <tbody>
               {shown.map(p => (
-                <tr key={p.id} style={{ cursor: 'default' }}>
-                  <td><input type="checkbox" aria-label={`Select ${p.name}`} checked={picked.includes(p.id)} onChange={e => setPicked(e.target.checked ? [...picked, p.id] : picked.filter(x => x !== p.id))} /></td>
+                <tr key={p.id}>
+                  <td><input type="checkbox" aria-label={`Select ${p.name}`} checked={everyone || picked.has(p.id)} disabled={everyone} onChange={e => pick([p], e.target.checked)} /></td>
                   <td><span className="admin-person"><Avatar user={{ ...p, title: p.title ?? undefined }} size={24} /><span className="admin-person-name">{p.name}{p.title && <span className="muted sm">{p.title}</span>}</span></span></td>
                   <td className="muted">{p.email}</td>
                   <td>{p.role === 'member' ? 'Member' : p.role === 'owner' ? 'Owner' : 'Admin'}</td>
-                  <td className="muted sm admin-wrap">{p.groups.map(g => g.name).join(', ')}</td>
+                  <td className="muted sm admin-wrap">{p.groups.length > 4 ? `${p.groups.slice(0, 3).map(g => g.name).join(', ')} and ${p.groups.length - 3} more` : p.groups.map(g => g.name).join(', ')}</td>
                   <td className="muted" title={p.lastSignInAt ? `Last sign-in ${new Date(p.lastSignInAt).toLocaleString()}` : 'Never signed in'}>{p.lastActiveAt ? timeAgo(Date.parse(p.lastActiveAt)) : 'Never'}</td>
                   <td>{p.active ? <span className="lozenge lozenge-done">Active</span> : <span className="lozenge lozenge-todo">Deactivated</span>}</td>
                 </tr>
@@ -144,28 +177,25 @@ function People() {
           </table>
           {!shown.length && <p className="muted" style={{ padding: 12 }}>Nobody matches.</p>}
         </div>
-      )}
+        {next && <button className="btn btn-secondary btn-sm" style={{ marginTop: 10 }} disabled={loadingMore} onClick={() => load(true)}>{loadingMore ? 'Loading…' : `Load ${Math.min(PAGE, total - shown.length).toLocaleString()} more`}</button>}
+      </>}
       {!!refused.data?.length && (
         <div className="panel" style={{ marginTop: 16 }}>
           <h2 className="panel-title">Sign-in attempts by deactivated people</h2>
-          <p className="muted sm">Someone here may need to be reactivated: select them above and choose Reactivate.</p>
+          <p className="muted sm">Someone here may need to be reactivated: find them above and choose Reactivate.</p>
           <ul className="test-members">{refused.data.map(r => <li key={`${r.userId}:${r.at}`} className="test-member"><span className="test-member-title">{r.name ?? r.email} <span className="muted sm">{r.email}</span></span><span className="muted sm">{timeAgo(Date.parse(r.at))}{r.active ? ' · reactivated since' : ''}</span></li>)}</ul>
         </div>
       )}
       {bulk && (
-        <Modal title={`${BULK[bulk.action].replace('…', '')}: ${picked.length} ${picked.length === 1 ? 'person' : 'people'}`} onClose={() => setBulk(null)} footer={<>
-          <button className="btn btn-secondary" onClick={() => setBulk(null)}>Cancel</button>
-          <button className={`btn ${bulk.action === 'deactivate' ? 'btn-danger' : 'btn-primary'}`} disabled={bulk.action.endsWith('group') && !bulk.groupId} onClick={apply}>{BULK[bulk.action].replace('…', '')}</button>
-        </>}>
-          {bulk.action.endsWith('group') && (
-            <select className="input" aria-label="Which group" value={bulk.groupId} onChange={e => setBulk({ ...bulk, groupId: e.target.value })}>
-              <option value="">Choose a group…</option>{groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-            </select>
-          )}
-          {bulk.action === 'deactivate' && <p>They won’t be able to sign in until someone reactivates them. Their work, history and comments stay.</p>}
+        <ConfirmDialog title={`${BULK[bulk.action].replace('…', '')}: ${count.toLocaleString()} ${count === 1 ? 'person' : 'people'}`}
+          action={BULK[bulk.action].replace('…', '')} danger={bulk.action === 'deactivate'} typeToConfirm={everyone && count > 100 ? String(count) : undefined}
+          onClose={() => setBulk(null)} onConfirm={apply}>
+          {bulk.action.endsWith('group') && <GroupPicker label="Which group" value={bulk.group} onChange={g => setBulk({ ...bulk, group: g })} />}
+          {bulk.action === 'deactivate' && <p>They won’t be able to sign in until someone reactivates them. Their work, history and comments stay. You are never deactivated this way.</p>}
           {bulk.action === 'reactivate' && <p>They can sign in again with the access they had.</p>}
-          <p className="muted sm">{(data ?? []).filter(p => picked.includes(p.id)).map(p => p.name).join(', ')}</p>
-        </Modal>
+          {everyone ? <p className="muted sm">Everyone the filter matches now. It runs in the background; you can leave this page.</p>
+            : <p className="muted sm">{[...picked.values()].slice(0, 8).join(', ')}{picked.size > 8 ? ` and ${picked.size - 8} more` : ''}</p>}
+        </ConfirmDialog>
       )}
     </section>
   )
@@ -180,51 +210,79 @@ const brief = (v: unknown) => (v == null ? '' : typeof v === 'object' ? Object.e
 function AuditLog() {
   const [action, setAction] = useState('')
   const [actor, setActor] = useState('')
+  const [project, setProject] = useState('')
+  const [from, setFrom] = useState('')                     // YYYY-MM-DD, inclusive
+  const [to, setTo] = useState('')                         // YYYY-MM-DD, inclusive
   const [rows, setRows] = useState<AuditRow[]>([])
   const [next, setNext] = useState<string | null>(null)
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading')
   const [error, setError] = useState('')
+  const [open, setOpen] = useState<string | null>(null)
   const query = (cursor?: string | null) => {
     const q = new URLSearchParams({ limit: '50' })
     if (action.trim()) q.set('action', action.trim())
     if (actor.trim()) q.set('actor', actor.trim())
+    if (project.trim()) q.set('project', project.trim())
+    if (from) q.set('from', new Date(`${from}T00:00`).toISOString())
+    if (to) { const d = new Date(`${to}T00:00`); d.setDate(d.getDate() + 1); q.set('to', d.toISOString()) }
     if (cursor) q.set('cursor', cursor)
     return `/api/audit?${q}`
   }
+  const filtered = !!(action || actor || project || from || to)
   const load = (more = false) => {
     setState('loading')
     api<{ items: AuditRow[]; next: string | null }>('GET', query(more ? next : null)).then(
       r => { setRows(rs => (more ? [...rs, ...r.items] : r.items)); setNext(r.next); setState('ready') },
       e => { setError(errorMessage(e)); setState('error') })
   }
-  useEffect(() => { const t = setTimeout(() => load(), 250); return () => clearTimeout(t) }, [action, actor]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { const t = setTimeout(() => load(), 250); return () => clearTimeout(t) }, [action, actor, project, from, to]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <section>
-      <div className="form-row" style={{ margin: '12px 0' }}>
-        <input className="input" style={{ maxWidth: 260 }} placeholder="Action, e.g. project.member" aria-label="Filter by action" value={action} onChange={e => setAction(e.target.value)} />
-        <input className="input" style={{ maxWidth: 260 }} placeholder="Who (email)" aria-label="Filter by who" value={actor} onChange={e => setActor(e.target.value)} />
+      <div className="people-filters">
+        <input className="input" style={{ maxWidth: 220 }} placeholder="Action, e.g. project.member" aria-label="Filter by action" value={action} onChange={e => setAction(e.target.value)} />
+        <input className="input" style={{ maxWidth: 200 }} placeholder="Who (email)" aria-label="Filter by who" value={actor} onChange={e => setActor(e.target.value)} />
+        <input className="input mono" style={{ maxWidth: 130 }} placeholder="Project key" aria-label="Filter by project" value={project} onChange={e => setProject(e.target.value.toUpperCase())} />
+        <label className="form-row" style={{ alignItems: 'center', gap: 6 }}><span className="muted sm">From</span>
+          <input className="input" type="date" aria-label="From date" value={from} max={to || undefined} onChange={e => setFrom(e.target.value)} /></label>
+        <label className="form-row" style={{ alignItems: 'center', gap: 6 }}><span className="muted sm">to</span>
+          <input className="input" type="date" aria-label="To date" value={to} min={from || undefined} onChange={e => setTo(e.target.value)} /></label>
+        {filtered && <button className="btn btn-ghost btn-sm" onClick={() => { setAction(''); setActor(''); setProject(''); setFrom(''); setTo('') }}>Clear</button>}
       </div>
       {state === 'error' && <LoadError error={error} onRetry={() => load(rows.length > 0)} />}
       <div className="card-table" style={{ marginInline: 0 }}>
         <table className="table">
           <thead><tr><th>When</th><th>Who</th><th>What</th><th>Project</th><th>Target</th><th>Change</th></tr></thead>
           <tbody>
-            {rows.map(r => (
-              <tr key={r.id} style={{ cursor: 'default' }}>
-                <td title={new Date(r.at).toLocaleString()}>{timeAgo(Date.parse(r.at))}</td>
-                <td>{r.actor}</td>
-                <td>{actionLabel(r.action)}</td>
-                <td className="mono">{r.projectKey ?? ''}</td>
-                <td>{r.target ?? ''}</td>
-                <td className="muted sm admin-change" title={`Before: ${brief(r.before)}\nAfter: ${brief(r.after)}`}>
-                  {r.before != null && <span>{brief(r.before)}</span>}{r.before != null && r.after != null && ' → '}{r.after != null && <span>{brief(r.after)}</span>}
-                </td>
-              </tr>
-            ))}
+            {rows.map(r => {
+              const has = r.before != null || r.after != null
+              return (
+                <Fragment key={r.id}>
+                  <tr {...(has ? openRow(() => setOpen(open === r.id ? null : r.id), `${open === r.id ? 'Hide' : 'Show'} the change`) : {})} aria-expanded={has ? open === r.id : undefined}>
+                    <td title={new Date(r.at).toLocaleString()}>{timeAgo(Date.parse(r.at))}</td>
+                    <td>{r.actor}</td>
+                    <td>{actionLabel(r.action)}</td>
+                    <td className="mono">{r.projectKey ?? ''}</td>
+                    <td>{r.target ?? ''}</td>
+                    <td className="muted sm admin-change">
+                      {r.before != null && <span>{brief(r.before)}</span>}{r.before != null && r.after != null && ' → '}{r.after != null && <span>{brief(r.after)}</span>}
+                    </td>
+                  </tr>
+                  {open === r.id && (
+                    <tr className="audit-detail"><td colSpan={6}>
+                      <dl>
+                        <dt>When</dt><dd>{new Date(r.at).toLocaleString()}{r.ip ? ` · from ${r.ip}` : ''}</dd>
+                        {r.before != null && <><dt>Before</dt><dd><pre>{JSON.stringify(r.before, null, 2)}</pre></dd></>}
+                        {r.after != null && <><dt>After</dt><dd><pre>{JSON.stringify(r.after, null, 2)}</pre></dd></>}
+                      </dl>
+                    </td></tr>
+                  )}
+                </Fragment>
+              )
+            })}
           </tbody>
         </table>
-        {state === 'ready' && !rows.length && <p className="muted" style={{ padding: 12 }}>Nothing recorded{action || actor ? ' that matches' : ' yet'}.</p>}
+        {state === 'ready' && !rows.length && <p className="muted" style={{ padding: 12 }}>Nothing recorded{filtered ? ' that matches' : ' yet'}.</p>}
       </div>
       {state === 'loading' && <Loading rows={rows.length ? 1 : 6} />}
       {next && state === 'ready' && <button className="btn btn-secondary" style={{ marginTop: 12 }} onClick={() => load(true)}>Show older</button>}
@@ -238,7 +296,19 @@ interface Backup { id: string; projectKey: string; projectName: string; items: n
 function Backups() {
   const { toast } = useApp()
   const settings = useLoad<BackupSettings>('/api/admin/settings/project-backups')
-  const list = useLoad<Backup[]>('/api/admin/project-backups')
+  const [q, setQ] = useState('')
+  const [rows, setRows] = useState<Backup[] | null>(null)
+  const [total, setTotal] = useState(0)
+  const [next, setNext] = useState<string | null>(null)
+  const [listError, setListError] = useState('')
+  const load = (more = false) => {
+    setListError('')
+    const p = new URLSearchParams({ limit: '50', ...(q.trim() ? { query: q.trim() } : {}), ...(more && next ? { cursor: next } : {}) })
+    api<{ items: Backup[]; total: number; next: string | null }>('GET', `/api/admin/project-backups?${p}`)
+      .then(r => { setRows(xs => (more ? [...(xs ?? []), ...r.items] : r.items)); setTotal(r.total); setNext(r.next) }, e => setListError(errorMessage(e)))
+  }
+  useEffect(() => { const t = setTimeout(() => load(), q ? 250 : 0); return () => clearTimeout(t) }, [q])   // eslint-disable-line react-hooks/exhaustive-deps
+  const list = { reload: () => load() }
   const [restoring, setRestoring] = useState<Backup | null>(null)
   const [waiting, setWaiting] = useState<string | null>(null)
 
@@ -296,15 +366,17 @@ function Backups() {
 
       <section className="panel">
         <h2 className="panel-title">Backups</h2>
-        {list.error && <LoadError error={list.error} onRetry={list.reload} />}
-        {!list.data && !list.error && <Loading />}
-        {list.data && !list.data.length && <p className="muted">No projects have been deleted with a backup yet.</p>}
-        {list.data && list.data.length > 0 && (
+        {(total > 10 || q) && <input className="input" style={{ maxWidth: 280, marginBottom: 8 }} placeholder="Find a project by key or name" aria-label="Find a backup" value={q} onChange={e => setQ(e.target.value)} />}
+        {listError && <LoadError error={listError} onRetry={() => load(!!rows?.length && !!next)} />}
+        {!rows && !listError && <Loading />}
+        {rows && !rows.length && <p className="muted">{q ? 'No backup matches.' : 'No projects have been deleted with a backup yet.'}</p>}
+        {rows && rows.length > 0 && <p className="muted sm" role="status" style={{ marginBottom: 6 }}>Showing {rows.length.toLocaleString()} of {total.toLocaleString()}</p>}
+        {rows && rows.length > 0 && (
           <div className="card-table" style={{ marginInline: 0 }}>
             <table className="table">
               <thead><tr><th>Project</th><th>Deleted</th><th>Contents</th><th></th></tr></thead>
               <tbody>
-                {list.data.map(b => (
+                {rows.map(b => (
                   <tr key={b.id} style={{ cursor: 'default' }}>
                     <td><span className="mono">{b.projectKey}</span> {b.projectName}</td>
                     <td title={new Date(b.createdAt).toLocaleString()}>{timeAgo(Date.parse(b.createdAt))}</td>
@@ -321,6 +393,7 @@ function Backups() {
             </table>
           </div>
         )}
+        {next && !listError && <button className="btn btn-secondary btn-sm" style={{ marginTop: 10 }} onClick={() => load(true)}>Show older backups</button>}
       </section>
 
       {restoring && (

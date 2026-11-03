@@ -129,8 +129,8 @@ function ChangeScheme({ project, onClose }: { project: Project; onClose: () => v
   useEffect(() => {
     if (!scheme) return
     let live = true
-    api<Impact>('PUT', path, { schemeId, statusMap: map, dryRun: true }).then(r => live && setImpact(r), e => toast(errorMessage(e), { tone: 'warn' }))
-    return () => { live = false }
+    const t = setTimeout(() => api<Impact>('PUT', path, { schemeId, statusMap: map, dryRun: true }).then(r => live && setImpact(r), e => live && toast(errorMessage(e), { tone: 'warn' })), 250)
+    return () => { live = false; clearTimeout(t) }
   }, [schemeId, schemes, map])   // eslint-disable-line react-hooks/exhaustive-deps
   const leaving = [...new Set((impact?.moves ?? []).map(m => m.from))].map(n => project.statuses.find(s => s.name === n)!).filter(Boolean)
   const apply = () => {

@@ -32,6 +32,13 @@ const people = (d: Db, ws: string, rule: Rule, days: number, extra: string) => d
     where ${eligible(rule)} and ${stillApplies(rule)} and ${LAST} < now() - make_interval(days => $3) ${extra}
     order by ${LAST}, lower(u.name)`, [ws, rule.excludedGroupIds, days, rule.groupIds])
 
+/** How many a run would change and warn now, and the first `sample` of each, by how long they've been away (a preview
+ *  at 40,000 people is counts and a page, not everyone). */
+export async function previewSummary(d: Db, ws: string, rule: Rule, sample = 100) {
+  const p = await preview(d, ws, rule)
+  return { changeCount: p.change.length, warnCount: p.warn.length, change: p.change.slice(0, sample), warn: p.warn.slice(0, sample) }
+}
+
 /** Who a run would change now, and who it would warn (due within the warning days, not warned yet). */
 export async function preview(d: Db, ws: string, rule: Rule) {
   const change = await people(d, ws, rule, rule.inactiveDays, '')

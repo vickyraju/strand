@@ -806,9 +806,21 @@
     },
     "/api/v1/users": {
       "get": {
-        "summary": "Active users in the workspace (first 1000 by name; use /users/search for more)",
+        "summary": "People in the workspace: those named in `ids` (also deactivated ones, so old work keeps its names), or the first 1000 active people by name",
         "tags": [
           "Account"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 7400
+            },
+            "in": "query",
+            "name": "ids",
+            "required": false,
+            "description": "Comma-separated user ids, up to 200"
+          }
         ],
         "responses": {
           "200": {
@@ -854,6 +866,47 @@
                       "role"
                     ],
                     "additionalProperties": false
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
                   }
                 }
               }
@@ -23520,9 +23573,53 @@
     },
     "/api/v1/admin/views": {
       "get": {
-        "summary": "Views shared with anyone, and views whose owner is deactivated (workspace admins)",
+        "summary": "Views shared with anyone, and views whose owner is deactivated, a page at a time: those whose owner left first, then by name; with query, by view or owner name; ownerLeft=1 for those only (system administrators)",
         "tags": [
           "Admin"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "in": "query",
+            "name": "query",
+            "required": false
+          },
+          {
+            "schema": {
+              "default": "0",
+              "type": "string",
+              "enum": [
+                "0",
+                "1"
+              ]
+            },
+            "in": "query",
+            "name": "ownerLeft",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 400
+            },
+            "in": "query",
+            "name": "cursor",
+            "required": false
+          },
+          {
+            "schema": {
+              "default": 50,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "in": "query",
+            "name": "limit",
+            "required": false
+          }
         ],
         "responses": {
           "200": {
@@ -23530,91 +23627,150 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "type": "object",
-                    "properties": {
-                      "id": {
-                        "type": "string",
-                        "description": "uuid"
-                      },
-                      "workspaceId": {
-                        "type": "string",
-                        "description": "uuid"
-                      },
-                      "ownerId": {
-                        "type": "string",
-                        "description": "uuid"
-                      },
-                      "ownerName": {
-                        "type": "string"
-                      },
-                      "ownerActive": {
-                        "type": "boolean",
-                        "description": "False: its owner left; an admin can give it to someone"
-                      },
-                      "name": {
-                        "type": "string"
-                      },
-                      "shared": {
-                        "type": "boolean",
-                        "description": "Everyone in the workspace can see it"
-                      },
-                      "share": {
-                        "type": "array",
-                        "items": {
-                          "type": "object",
-                          "properties": {
-                            "kind": {
-                              "type": "string",
-                              "enum": [
-                                "project",
-                                "group",
-                                "user"
-                              ]
-                            },
-                            "id": {
-                              "type": "string",
-                              "description": "uuid"
-                            },
-                            "can": {
-                              "type": "string",
-                              "enum": [
-                                "view",
-                                "edit"
-                              ]
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "description": "uuid"
+                          },
+                          "workspaceId": {
+                            "type": "string",
+                            "description": "uuid"
+                          },
+                          "ownerId": {
+                            "type": "string",
+                            "description": "uuid"
+                          },
+                          "ownerName": {
+                            "type": "string"
+                          },
+                          "ownerActive": {
+                            "type": "boolean",
+                            "description": "False: its owner left; an admin can give it to someone"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "shared": {
+                            "type": "boolean",
+                            "description": "Everyone in the workspace can see it"
+                          },
+                          "share": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "enum": [
+                                    "project",
+                                    "group",
+                                    "user"
+                                  ]
+                                },
+                                "id": {
+                                  "type": "string",
+                                  "description": "uuid"
+                                },
+                                "can": {
+                                  "type": "string",
+                                  "enum": [
+                                    "view",
+                                    "edit"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "id",
+                                "can"
+                              ],
+                              "additionalProperties": false
                             }
                           },
-                          "required": [
-                            "kind",
-                            "id",
-                            "can"
-                          ],
-                          "additionalProperties": false
-                        }
-                      },
-                      "canEdit": {
-                        "type": "boolean",
-                        "description": "I can change its name and filters"
-                      },
-                      "filters": {
-                        "type": "object",
-                        "additionalProperties": {}
+                          "canEdit": {
+                            "type": "boolean",
+                            "description": "I can change its name and filters"
+                          },
+                          "filters": {
+                            "type": "object",
+                            "additionalProperties": {}
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "workspaceId",
+                          "ownerId",
+                          "ownerName",
+                          "ownerActive",
+                          "name",
+                          "shared",
+                          "share",
+                          "canEdit",
+                          "filters"
+                        ],
+                        "additionalProperties": false
                       }
                     },
-                    "required": [
-                      "id",
-                      "workspaceId",
-                      "ownerId",
-                      "ownerName",
-                      "ownerActive",
-                      "name",
-                      "shared",
-                      "share",
-                      "canEdit",
-                      "filters"
-                    ],
-                    "additionalProperties": false
+                    "total": {
+                      "type": "number"
+                    },
+                    "next": {
+                      "nullable": true,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "items",
+                    "total",
+                    "next"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
                   }
                 }
               }
@@ -25388,9 +25544,87 @@
     },
     "/api/v1/admin/users": {
       "get": {
-        "summary": "Everyone in the workspace, with role, status, last activity, groups and how many projects they are in (system administrators)",
+        "summary": "People in the workspace, by name, a page at a time, with role, status, last activity, groups and how many projects they are in; filtered (system administrators)",
         "tags": [
           "Admin"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "in": "query",
+            "name": "query",
+            "required": false,
+            "description": "In the name or email"
+          },
+          {
+            "schema": {
+              "default": "all",
+              "type": "string",
+              "enum": [
+                "all",
+                "active",
+                "deactivated"
+              ]
+            },
+            "in": "query",
+            "name": "status",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^(\\d{1,4}|never)$"
+            },
+            "in": "query",
+            "name": "inactive",
+            "required": false,
+            "description": "Days without using Strand, or \"never\""
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "query",
+            "name": "group",
+            "required": false,
+            "description": "Only members of this group"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "query",
+            "name": "notInGroup",
+            "required": false,
+            "description": "Only people outside this group"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 400
+            },
+            "in": "query",
+            "name": "cursor",
+            "required": false
+          },
+          {
+            "schema": {
+              "default": 50,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "in": "query",
+            "name": "limit",
+            "required": false
+          }
         ],
         "responses": {
           "200": {
@@ -25398,96 +25632,157 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "type": "object",
-                    "properties": {
-                      "id": {
-                        "type": "string",
-                        "description": "uuid"
-                      },
-                      "name": {
-                        "type": "string"
-                      },
-                      "email": {
-                        "type": "string"
-                      },
-                      "initials": {
-                        "type": "string"
-                      },
-                      "color": {
-                        "type": "string"
-                      },
-                      "title": {
-                        "nullable": true,
-                        "type": "string"
-                      },
-                      "active": {
-                        "type": "boolean"
-                      },
-                      "role": {
-                        "type": "string",
-                        "enum": [
-                          "owner",
-                          "admin",
-                          "member"
-                        ]
-                      },
-                      "createdAt": {
-                        "type": "string",
-                        "description": "ISO 8601 timestamp"
-                      },
-                      "projects": {
-                        "type": "number",
-                        "description": "Projects they are a member of"
-                      },
-                      "lastActiveAt": {
-                        "nullable": true,
-                        "description": "Last used Strand (to the hour)",
-                        "type": "string"
-                      },
-                      "lastSignInAt": {
-                        "nullable": true,
-                        "type": "string",
-                        "description": "ISO 8601 timestamp"
-                      },
-                      "groups": {
-                        "type": "array",
-                        "items": {
-                          "type": "object",
-                          "properties": {
-                            "id": {
-                              "type": "string",
-                              "description": "uuid"
-                            },
-                            "name": {
-                              "type": "string"
-                            }
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "description": "uuid"
                           },
-                          "required": [
-                            "id",
-                            "name"
-                          ],
-                          "additionalProperties": false
-                        }
+                          "name": {
+                            "type": "string"
+                          },
+                          "email": {
+                            "type": "string"
+                          },
+                          "initials": {
+                            "type": "string"
+                          },
+                          "color": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "nullable": true,
+                            "type": "string"
+                          },
+                          "active": {
+                            "type": "boolean"
+                          },
+                          "role": {
+                            "type": "string",
+                            "enum": [
+                              "owner",
+                              "admin",
+                              "member"
+                            ]
+                          },
+                          "createdAt": {
+                            "type": "string",
+                            "description": "ISO 8601 timestamp"
+                          },
+                          "projects": {
+                            "type": "number",
+                            "description": "Projects they are a member of"
+                          },
+                          "lastActiveAt": {
+                            "nullable": true,
+                            "description": "Last used Strand (to the hour)",
+                            "type": "string"
+                          },
+                          "lastSignInAt": {
+                            "nullable": true,
+                            "type": "string",
+                            "description": "ISO 8601 timestamp"
+                          },
+                          "groups": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "type": "string",
+                                  "description": "uuid"
+                                },
+                                "name": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "name"
+                              ],
+                              "additionalProperties": false
+                            }
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name",
+                          "email",
+                          "initials",
+                          "color",
+                          "title",
+                          "active",
+                          "role",
+                          "createdAt",
+                          "projects",
+                          "lastActiveAt",
+                          "lastSignInAt",
+                          "groups"
+                        ],
+                        "additionalProperties": false
                       }
                     },
-                    "required": [
-                      "id",
-                      "name",
-                      "email",
-                      "initials",
-                      "color",
-                      "title",
-                      "active",
-                      "role",
-                      "createdAt",
-                      "projects",
-                      "lastActiveAt",
-                      "lastSignInAt",
-                      "groups"
-                    ],
-                    "additionalProperties": false
+                    "total": {
+                      "type": "number",
+                      "description": "Everyone the filter matches"
+                    },
+                    "next": {
+                      "nullable": true,
+                      "description": "Pass back as `cursor`; null on the last page",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "items",
+                    "total",
+                    "next"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
                   }
                 }
               }
@@ -25539,7 +25834,7 @@
     },
     "/api/v1/admin/users/bulk": {
       "post": {
-        "summary": "Change many people at once (system administrators): deactivate, reactivate, add to a group, remove from a group",
+        "summary": "Change many people at once (system administrators): deactivate, reactivate, add to a group, remove from a group. Either `userIds`, or `filter` for everyone it matches (then a background job: 202 with its id)",
         "tags": [
           "Admin"
         ],
@@ -25560,6 +25855,42 @@
                       "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                     }
                   },
+                  "filter": {
+                    "type": "object",
+                    "properties": {
+                      "query": {
+                        "description": "In the name or email",
+                        "type": "string",
+                        "maxLength": 100
+                      },
+                      "status": {
+                        "default": "all",
+                        "type": "string",
+                        "enum": [
+                          "all",
+                          "active",
+                          "deactivated"
+                        ]
+                      },
+                      "inactive": {
+                        "description": "Days without using Strand, or \"never\"",
+                        "type": "string",
+                        "pattern": "^(\\d{1,4}|never)$"
+                      },
+                      "group": {
+                        "description": "Only members of this group",
+                        "type": "string",
+                        "format": "uuid",
+                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                      },
+                      "notInGroup": {
+                        "description": "Only people outside this group",
+                        "type": "string",
+                        "format": "uuid",
+                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                      }
+                    }
+                  },
                   "action": {
                     "type": "string",
                     "enum": [
@@ -25576,7 +25907,6 @@
                   }
                 },
                 "required": [
-                  "userIds",
                   "action"
                 ]
               }
@@ -25862,66 +26192,6 @@
                           "warnedCount": {
                             "type": "number"
                           },
-                          "changed": {
-                            "type": "array",
-                            "items": {
-                              "type": "object",
-                              "properties": {
-                                "userId": {
-                                  "type": "string",
-                                  "description": "uuid"
-                                },
-                                "email": {
-                                  "type": "string"
-                                },
-                                "name": {
-                                  "type": "string"
-                                },
-                                "lastActiveAt": {
-                                  "nullable": true,
-                                  "type": "string",
-                                  "description": "ISO 8601 timestamp"
-                                }
-                              },
-                              "required": [
-                                "userId",
-                                "email",
-                                "name",
-                                "lastActiveAt"
-                              ],
-                              "additionalProperties": false
-                            }
-                          },
-                          "warned": {
-                            "type": "array",
-                            "items": {
-                              "type": "object",
-                              "properties": {
-                                "userId": {
-                                  "type": "string",
-                                  "description": "uuid"
-                                },
-                                "email": {
-                                  "type": "string"
-                                },
-                                "name": {
-                                  "type": "string"
-                                },
-                                "lastActiveAt": {
-                                  "nullable": true,
-                                  "type": "string",
-                                  "description": "ISO 8601 timestamp"
-                                }
-                              },
-                              "required": [
-                                "userId",
-                                "email",
-                                "name",
-                                "lastActiveAt"
-                              ],
-                              "additionalProperties": false
-                            }
-                          },
                           "notes": {
                             "type": "string"
                           },
@@ -25938,13 +26208,12 @@
                           "finishedAt",
                           "changedCount",
                           "warnedCount",
-                          "changed",
-                          "warned",
                           "notes",
                           "startedBy"
                         ],
                         "additionalProperties": false
-                      }
+                      },
+                      "description": "Counts only: open a run for who it changed"
                     }
                   },
                   "required": [
@@ -25952,6 +26221,192 @@
                     "runs"
                   ],
                   "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/license-cleanup/runs/{id}": {
+      "get": {
+        "summary": "Who one cleanup run changed and warned (system administrators)",
+        "tags": [
+          "Admin"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "changed": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "userId": {
+                            "type": "string",
+                            "description": "uuid"
+                          },
+                          "email": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "lastActiveAt": {
+                            "nullable": true,
+                            "type": "string",
+                            "description": "ISO 8601 timestamp"
+                          }
+                        },
+                        "required": [
+                          "userId",
+                          "email",
+                          "name",
+                          "lastActiveAt"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "warned": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "userId": {
+                            "type": "string",
+                            "description": "uuid"
+                          },
+                          "email": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "lastActiveAt": {
+                            "nullable": true,
+                            "type": "string",
+                            "description": "ISO 8601 timestamp"
+                          }
+                        },
+                        "required": [
+                          "userId",
+                          "email",
+                          "name",
+                          "lastActiveAt"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "changed",
+                    "warned"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
                 }
               }
             }
@@ -26030,6 +26485,12 @@
                 "schema": {
                   "type": "object",
                   "properties": {
+                    "changeCount": {
+                      "type": "number"
+                    },
+                    "warnCount": {
+                      "type": "number"
+                    },
                     "change": {
                       "type": "array",
                       "items": {
@@ -26058,7 +26519,8 @@
                           "lastActiveAt"
                         ],
                         "additionalProperties": false
-                      }
+                      },
+                      "description": "The first 100, longest away first"
                     },
                     "warn": {
                       "type": "array",
@@ -26088,10 +26550,13 @@
                           "lastActiveAt"
                         ],
                         "additionalProperties": false
-                      }
+                      },
+                      "description": "The first 100"
                     }
                   },
                   "required": [
+                    "changeCount",
+                    "warnCount",
                     "change",
                     "warn"
                   ],
@@ -26516,9 +26981,24 @@
     },
     "/api/v1/link-types": {
       "get": {
-        "summary": "Kinds of link between work items, each with how it reads both ways",
+        "summary": "Kinds of link between work items, each with how it reads both ways; with uses=1 (system administrators), how many links each has",
         "tags": [
           "Links & watchers"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "default": "0",
+              "type": "string",
+              "enum": [
+                "0",
+                "1"
+              ]
+            },
+            "in": "query",
+            "name": "uses",
+            "required": false
+          }
         ],
         "responses": {
           "200": {
@@ -26552,8 +27032,9 @@
                         "type": "number"
                       },
                       "uses": {
-                        "type": "number",
-                        "description": "Links of this type"
+                        "nullable": true,
+                        "description": "Links of this type (with uses=1, for system administrators; null otherwise)",
+                        "type": "number"
                       }
                     },
                     "required": [
@@ -26566,6 +27047,47 @@
                       "uses"
                     ],
                     "additionalProperties": false
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
                   }
                 }
               }
@@ -26683,8 +27205,9 @@
                       "type": "number"
                     },
                     "uses": {
-                      "type": "number",
-                      "description": "Links of this type"
+                      "nullable": true,
+                      "description": "Links of this type (with uses=1, for system administrators; null otherwise)",
+                      "type": "number"
                     }
                   },
                   "required": [
@@ -26860,8 +27383,9 @@
                       "type": "number"
                     },
                     "uses": {
-                      "type": "number",
-                      "description": "Links of this type"
+                      "nullable": true,
+                      "description": "Links of this type (with uses=1, for system administrators; null otherwise)",
+                      "type": "number"
                     }
                   },
                   "required": [
@@ -27505,9 +28029,40 @@
     },
     "/api/v1/admin/project-backups": {
       "get": {
-        "summary": "Backups of deleted projects, newest first (global admins)",
+        "summary": "Backups of deleted projects, newest first, a page at a time; with query, those whose key or name contains it (system administrators)",
         "tags": [
           "Admin"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "in": "query",
+            "name": "query",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "in": "query",
+            "name": "cursor",
+            "required": false
+          },
+          {
+            "schema": {
+              "default": 50,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "in": "query",
+            "name": "limit",
+            "required": false
+          }
         ],
         "responses": {
           "200": {
@@ -27515,69 +28070,128 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "type": "object",
-                    "properties": {
-                      "id": {
-                        "type": "string",
-                        "description": "uuid"
-                      },
-                      "projectId": {
-                        "type": "string",
-                        "description": "uuid"
-                      },
-                      "projectKey": {
-                        "type": "string"
-                      },
-                      "projectName": {
-                        "type": "string"
-                      },
-                      "bucket": {
-                        "type": "string"
-                      },
-                      "objectKey": {
-                        "type": "string"
-                      },
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
                       "items": {
-                        "type": "number"
-                      },
-                      "files": {
-                        "type": "number"
-                      },
-                      "bytes": {
-                        "type": "number"
-                      },
-                      "createdAt": {
-                        "type": "string",
-                        "description": "ISO 8601 timestamp"
-                      },
-                      "createdBy": {
-                        "nullable": true,
-                        "type": "string",
-                        "description": "uuid"
-                      },
-                      "restoredAt": {
-                        "nullable": true,
-                        "type": "string",
-                        "description": "ISO 8601 timestamp"
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "description": "uuid"
+                          },
+                          "projectId": {
+                            "type": "string",
+                            "description": "uuid"
+                          },
+                          "projectKey": {
+                            "type": "string"
+                          },
+                          "projectName": {
+                            "type": "string"
+                          },
+                          "bucket": {
+                            "type": "string"
+                          },
+                          "objectKey": {
+                            "type": "string"
+                          },
+                          "items": {
+                            "type": "number"
+                          },
+                          "files": {
+                            "type": "number"
+                          },
+                          "bytes": {
+                            "type": "number"
+                          },
+                          "createdAt": {
+                            "type": "string",
+                            "description": "ISO 8601 timestamp"
+                          },
+                          "createdBy": {
+                            "nullable": true,
+                            "type": "string",
+                            "description": "uuid"
+                          },
+                          "restoredAt": {
+                            "nullable": true,
+                            "type": "string",
+                            "description": "ISO 8601 timestamp"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "projectId",
+                          "projectKey",
+                          "projectName",
+                          "bucket",
+                          "objectKey",
+                          "items",
+                          "files",
+                          "bytes",
+                          "createdAt",
+                          "createdBy",
+                          "restoredAt"
+                        ],
+                        "additionalProperties": false
                       }
                     },
-                    "required": [
-                      "id",
-                      "projectId",
-                      "projectKey",
-                      "projectName",
-                      "bucket",
-                      "objectKey",
-                      "items",
-                      "files",
-                      "bytes",
-                      "createdAt",
-                      "createdBy",
-                      "restoredAt"
-                    ],
-                    "additionalProperties": false
+                    "total": {
+                      "type": "number"
+                    },
+                    "next": {
+                      "nullable": true,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "items",
+                    "total",
+                    "next"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
                   }
                 }
               }
@@ -27929,6 +28543,9 @@
                       "type": "string"
                     },
                     "result": {},
+                    "progress": {
+                      "description": "How far a long job has got, when it says (e.g. done and total)"
+                    },
                     "createdBy": {
                       "nullable": true,
                       "type": "string",
@@ -27952,6 +28569,7 @@
                     "maxAttempts",
                     "lastError",
                     "result",
+                    "progress",
                     "createdBy",
                     "createdAt",
                     "finishedAt"
@@ -35064,7 +35682,7 @@
     },
     "/api/v1/groups": {
       "get": {
-        "summary": "Groups, with their owners and how many people are in each; `mine` for those I’m in or own",
+        "summary": "Groups, with their owners and how many people are in each, a page at a time (system groups first, then by name); `mine` for those I’m in or own",
         "tags": [
           "Groups"
         ],
@@ -35087,6 +35705,27 @@
             "in": "query",
             "name": "mine",
             "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 300
+            },
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "description": "`next` from the previous page"
+          },
+          {
+            "schema": {
+              "default": 100,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "in": "query",
+            "name": "limit",
+            "required": false
           }
         ],
         "responses": {
@@ -35095,86 +35734,101 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "type": "object",
-                    "properties": {
-                      "id": {
-                        "type": "string",
-                        "description": "uuid"
-                      },
-                      "name": {
-                        "type": "string"
-                      },
-                      "description": {
-                        "type": "string"
-                      },
-                      "kind": {
-                        "type": "string",
-                        "enum": [
-                          "system",
-                          "directory",
-                          "strand"
-                        ],
-                        "description": "system (users-access, system-administrators), directory (from Entra) or strand (made here)"
-                      },
-                      "systemRole": {
-                        "nullable": true,
-                        "type": "string"
-                      },
-                      "members": {
-                        "type": "number"
-                      },
-                      "owners": {
-                        "type": "array",
-                        "items": {
-                          "type": "object",
-                          "properties": {
-                            "id": {
-                              "type": "string",
-                              "description": "uuid"
-                            },
-                            "name": {
-                              "type": "string"
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "description": "uuid"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "system",
+                              "directory",
+                              "strand"
+                            ],
+                            "description": "system (users-access, system-administrators), directory (from Entra) or strand (made here)"
+                          },
+                          "systemRole": {
+                            "nullable": true,
+                            "type": "string"
+                          },
+                          "members": {
+                            "type": "number"
+                          },
+                          "owners": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "type": "string",
+                                  "description": "uuid"
+                                },
+                                "name": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "name"
+                              ],
+                              "additionalProperties": false
                             }
                           },
-                          "required": [
-                            "id",
-                            "name"
-                          ],
-                          "additionalProperties": false
-                        }
-                      },
-                      "isMember": {
-                        "type": "boolean"
-                      },
-                      "isOwner": {
-                        "type": "boolean"
-                      },
-                      "canManage": {
-                        "type": "boolean",
-                        "description": "You may change it"
-                      },
-                      "createdAt": {
-                        "type": "string",
-                        "description": "ISO 8601 timestamp"
+                          "isMember": {
+                            "type": "boolean"
+                          },
+                          "isOwner": {
+                            "type": "boolean"
+                          },
+                          "canManage": {
+                            "type": "boolean",
+                            "description": "You may change it"
+                          },
+                          "createdAt": {
+                            "type": "string",
+                            "description": "ISO 8601 timestamp"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name",
+                          "description",
+                          "kind",
+                          "systemRole",
+                          "members",
+                          "owners",
+                          "isMember",
+                          "isOwner",
+                          "canManage",
+                          "createdAt"
+                        ],
+                        "additionalProperties": false
                       }
                     },
-                    "required": [
-                      "id",
-                      "name",
-                      "description",
-                      "kind",
-                      "systemRole",
-                      "members",
-                      "owners",
-                      "isMember",
-                      "isOwner",
-                      "canManage",
-                      "createdAt"
-                    ],
-                    "additionalProperties": false
-                  }
+                    "next": {
+                      "nullable": true,
+                      "description": "Pass back as `cursor`; null on the last page",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "items",
+                    "next"
+                  ],
+                  "additionalProperties": false
                 }
               }
             }
@@ -35585,7 +36239,13 @@
                           "active"
                         ],
                         "additionalProperties": false
-                      }
+                      },
+                      "description": "The first members by name (GET /groups/:id/members for the rest)"
+                    },
+                    "morePeople": {
+                      "nullable": true,
+                      "description": "Cursor for the next page of members",
+                      "type": "string"
                     },
                     "projects": {
                       "type": "array",
@@ -35625,6 +36285,7 @@
                     "canManage",
                     "createdAt",
                     "people",
+                    "morePeople",
                     "projects"
                   ],
                   "additionalProperties": false
@@ -36029,6 +36690,195 @@
       }
     },
     "/api/v1/groups/{id}/members": {
+      "get": {
+        "summary": "A group’s members by name, a page at a time; with query, those whose name or email contains it",
+        "tags": [
+          "Groups"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "default": "",
+              "type": "string",
+              "maxLength": 100
+            },
+            "in": "query",
+            "name": "query",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 300
+            },
+            "in": "query",
+            "name": "cursor",
+            "required": false
+          },
+          {
+            "schema": {
+              "default": 50,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "in": "query",
+            "name": "limit",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "description": "uuid"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "email": {
+                            "type": "string"
+                          },
+                          "initials": {
+                            "type": "string"
+                          },
+                          "color": {
+                            "type": "string"
+                          },
+                          "active": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name",
+                          "email",
+                          "initials",
+                          "color",
+                          "active"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "next": {
+                      "nullable": true,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "items",
+                    "next"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "post": {
         "summary": "Add people to a group (its owners and system administrators)",
         "tags": [
@@ -36832,7 +37682,7 @@
     },
     "/api/v1/workflows/{id}": {
       "get": {
-        "summary": "One workflow: its statuses in order, transitions, diagram layout, and who uses it (the projects: for system administrators)",
+        "summary": "One workflow: its statuses in order, transitions, diagram layout, the schemes using it and how many projects",
         "tags": [
           "Workflows"
         ],
@@ -36974,24 +37824,9 @@
                         "additionalProperties": false
                       }
                     },
-                    "projects": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "key": {
-                            "type": "string"
-                          },
-                          "name": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "key",
-                          "name"
-                        ],
-                        "additionalProperties": false
-                      }
+                    "projectCount": {
+                      "type": "number",
+                      "description": "Projects using it, through their scheme"
                     }
                   },
                   "required": [
@@ -37004,7 +37839,7 @@
                     "transitions",
                     "layout",
                     "schemes",
-                    "projects"
+                    "projectCount"
                   ],
                   "additionalProperties": false
                 }
@@ -37048,6 +37883,482 @@
                       "description": "Validation messages by field (400 only)"
                     }
                   }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/workflows/{id}/projects": {
+      "get": {
+        "summary": "Projects using a workflow, by key, a page at a time; with query, those whose key or name contains it (system administrators)",
+        "tags": [
+          "Workflows"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "in": "query",
+            "name": "query",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 40
+            },
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "description": "`next` from the previous page"
+          },
+          {
+            "schema": {
+              "default": 50,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "in": "query",
+            "name": "limit",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "description": "uuid"
+                          },
+                          "key": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "scheme": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "key",
+                          "name",
+                          "scheme"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "next": {
+                      "nullable": true,
+                      "type": "string"
+                    },
+                    "total": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "items",
+                    "next",
+                    "total"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/workflow-schemes/{id}/projects": {
+      "get": {
+        "summary": "Projects using a scheme, by key, a page at a time; with query, those whose key or name contains it (system administrators)",
+        "tags": [
+          "Workflows"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "in": "query",
+            "name": "query",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 40
+            },
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "description": "`next` from the previous page"
+          },
+          {
+            "schema": {
+              "default": 50,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "in": "query",
+            "name": "limit",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "description": "uuid"
+                          },
+                          "key": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "scheme": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "key",
+                          "name",
+                          "scheme"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "next": {
+                      "nullable": true,
+                      "type": "string"
+                    },
+                    "total": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "items",
+                    "next",
+                    "total"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/workflows/applying": {
+      "get": {
+        "summary": "The workflow change being applied to projects right now, if any, and how far it has got (system administrators)",
+        "tags": [
+          "Workflows"
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "nullable": true,
+                  "type": "object",
+                  "properties": {
+                    "jobId": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "workflowId": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "schemeId": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "name": {
+                      "nullable": true,
+                      "type": "string"
+                    },
+                    "done": {
+                      "type": "number"
+                    },
+                    "total": {
+                      "type": "number"
+                    },
+                    "startedAt": {
+                      "type": "string",
+                      "description": "ISO 8601 timestamp"
+                    }
+                  },
+                  "required": [
+                    "jobId",
+                    "workflowId",
+                    "schemeId",
+                    "name",
+                    "done",
+                    "total",
+                    "startedAt"
+                  ],
+                  "additionalProperties": false
                 }
               }
             }
@@ -37837,24 +39148,9 @@
                         "additionalProperties": false
                       }
                     },
-                    "projects": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "key": {
-                            "type": "string"
-                          },
-                          "name": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "key",
-                          "name"
-                        ],
-                        "additionalProperties": false
-                      }
+                    "projectCount": {
+                      "type": "number",
+                      "description": "Projects using it, through their scheme"
                     }
                   },
                   "required": [
@@ -37867,7 +39163,7 @@
                     "transitions",
                     "layout",
                     "schemes",
-                    "projects"
+                    "projectCount"
                   ],
                   "additionalProperties": false
                 }
@@ -38124,24 +39420,9 @@
                         "additionalProperties": false
                       }
                     },
-                    "projects": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "key": {
-                            "type": "string"
-                          },
-                          "name": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "key",
-                          "name"
-                        ],
-                        "additionalProperties": false
-                      }
+                    "projectCount": {
+                      "type": "number",
+                      "description": "Projects using it, through their scheme"
                     }
                   },
                   "required": [
@@ -38154,7 +39435,7 @@
                     "transitions",
                     "layout",
                     "schemes",
-                    "projects"
+                    "projectCount"
                   ],
                   "additionalProperties": false
                 }
@@ -38350,7 +39631,7 @@
     },
     "/api/v1/admin/workflows/{id}/publish": {
       "post": {
-        "summary": "Save a workflow’s statuses, transitions and layout, and apply it to every project using it (system administrators). With dryRun, only reports what would change. A changed workflow is recorded as a new version",
+        "summary": "Save a workflow’s statuses, transitions and layout (system administrators). A changed workflow is recorded as a new version, and a background job applies it to every project using it (follow it at GET /jobs/:id). With dryRun, only reports what would change",
         "tags": [
           "Workflows"
         ],
@@ -38857,24 +40138,9 @@
                             "additionalProperties": false
                           }
                         },
-                        "projects": {
-                          "type": "array",
-                          "items": {
-                            "type": "object",
-                            "properties": {
-                              "key": {
-                                "type": "string"
-                              },
-                              "name": {
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "key",
-                              "name"
-                            ],
-                            "additionalProperties": false
-                          }
+                        "projectCount": {
+                          "type": "number",
+                          "description": "Projects using it, through their scheme"
                         }
                       },
                       "required": [
@@ -38887,7 +40153,7 @@
                         "transitions",
                         "layout",
                         "schemes",
-                        "projects"
+                        "projectCount"
                       ],
                       "additionalProperties": false
                     },
@@ -38898,91 +40164,159 @@
                       "type": "boolean",
                       "description": "False: nothing but the layout changed"
                     },
-                    "projects": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "project": {
+                    "summary": {
+                      "type": "object",
+                      "properties": {
+                        "projects": {
+                          "type": "number",
+                          "description": "Projects it reaches"
+                        },
+                        "changed": {
+                          "type": "number",
+                          "description": "Projects that gain or lose a status, or have items that move"
+                        },
+                        "itemsMoved": {
+                          "type": "number"
+                        },
+                        "added": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "removed": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "moves": {
+                          "type": "array",
+                          "items": {
                             "type": "object",
                             "properties": {
-                              "id": {
-                                "type": "string",
-                                "description": "uuid"
-                              },
-                              "key": {
+                              "from": {
                                 "type": "string"
                               },
-                              "name": {
+                              "to": {
                                 "type": "string"
+                              },
+                              "count": {
+                                "type": "number"
                               }
                             },
                             "required": [
-                              "id",
-                              "key",
-                              "name"
+                              "from",
+                              "to",
+                              "count"
                             ],
                             "additionalProperties": false
                           },
-                          "added": {
-                            "type": "array",
-                            "items": {
-                              "type": "string"
-                            },
-                            "description": "Statuses the project gains"
-                          },
-                          "removed": {
-                            "type": "array",
-                            "items": {
-                              "type": "string"
-                            },
-                            "description": "Statuses it loses"
-                          },
-                          "moves": {
-                            "type": "array",
-                            "items": {
-                              "type": "object",
-                              "properties": {
-                                "type": {
-                                  "type": "string"
-                                },
-                                "from": {
-                                  "type": "string"
-                                },
-                                "to": {
-                                  "type": "string"
-                                },
-                                "count": {
-                                  "type": "number"
-                                }
-                              },
-                              "required": [
-                                "type",
-                                "from",
-                                "to",
-                                "count"
-                              ],
-                              "additionalProperties": false
-                            },
-                            "description": "Items that change status, by work type"
-                          }
+                          "description": "Where items go, over every project, biggest first (at most 10)"
                         },
-                        "required": [
-                          "project",
-                          "added",
-                          "removed",
-                          "moves"
-                        ],
-                        "additionalProperties": false
+                        "top": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "project": {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string",
+                                    "description": "uuid"
+                                  },
+                                  "key": {
+                                    "type": "string"
+                                  },
+                                  "name": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "id",
+                                  "key",
+                                  "name"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "added": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                },
+                                "description": "Statuses the project gains"
+                              },
+                              "removed": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                },
+                                "description": "Statuses it loses"
+                              },
+                              "moves": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "type": {
+                                      "type": "string"
+                                    },
+                                    "from": {
+                                      "type": "string"
+                                    },
+                                    "to": {
+                                      "type": "string"
+                                    },
+                                    "count": {
+                                      "type": "number"
+                                    }
+                                  },
+                                  "required": [
+                                    "type",
+                                    "from",
+                                    "to",
+                                    "count"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                "description": "Items that change status, by work type"
+                              }
+                            },
+                            "required": [
+                              "project",
+                              "added",
+                              "removed",
+                              "moves"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "description": "The projects most changed (at most 10)"
+                        }
                       },
-                      "description": "Each project it was applied to"
+                      "required": [
+                        "projects",
+                        "changed",
+                        "itemsMoved",
+                        "added",
+                        "removed",
+                        "moves",
+                        "top"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "jobId": {
+                      "nullable": true,
+                      "description": "The job applying it to projects (null: a preview, or nothing to apply)",
+                      "type": "string"
                     }
                   },
                   "required": [
                     "workflow",
                     "version",
                     "created",
-                    "projects"
+                    "summary",
+                    "jobId"
                   ],
                   "additionalProperties": false
                 }
@@ -39633,7 +40967,7 @@
     },
     "/api/v1/admin/workflow-schemes/{id}": {
       "patch": {
-        "summary": "Change a workflow scheme, and apply it to every project using it (system administrators). With dryRun, only reports what would change",
+        "summary": "Change a workflow scheme (system administrators). A background job applies it to every project using it (follow it at GET /jobs/:id). With dryRun, only reports what would change",
         "tags": [
           "Workflows"
         ],
@@ -39750,88 +41084,157 @@
                       ],
                       "additionalProperties": false
                     },
-                    "projects": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "project": {
+                    "summary": {
+                      "type": "object",
+                      "properties": {
+                        "projects": {
+                          "type": "number",
+                          "description": "Projects it reaches"
+                        },
+                        "changed": {
+                          "type": "number",
+                          "description": "Projects that gain or lose a status, or have items that move"
+                        },
+                        "itemsMoved": {
+                          "type": "number"
+                        },
+                        "added": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "removed": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "moves": {
+                          "type": "array",
+                          "items": {
                             "type": "object",
                             "properties": {
-                              "id": {
-                                "type": "string",
-                                "description": "uuid"
-                              },
-                              "key": {
+                              "from": {
                                 "type": "string"
                               },
-                              "name": {
+                              "to": {
                                 "type": "string"
+                              },
+                              "count": {
+                                "type": "number"
                               }
                             },
                             "required": [
-                              "id",
-                              "key",
-                              "name"
+                              "from",
+                              "to",
+                              "count"
                             ],
                             "additionalProperties": false
                           },
-                          "added": {
-                            "type": "array",
-                            "items": {
-                              "type": "string"
-                            },
-                            "description": "Statuses the project gains"
-                          },
-                          "removed": {
-                            "type": "array",
-                            "items": {
-                              "type": "string"
-                            },
-                            "description": "Statuses it loses"
-                          },
-                          "moves": {
-                            "type": "array",
-                            "items": {
-                              "type": "object",
-                              "properties": {
-                                "type": {
-                                  "type": "string"
-                                },
-                                "from": {
-                                  "type": "string"
-                                },
-                                "to": {
-                                  "type": "string"
-                                },
-                                "count": {
-                                  "type": "number"
-                                }
-                              },
-                              "required": [
-                                "type",
-                                "from",
-                                "to",
-                                "count"
-                              ],
-                              "additionalProperties": false
-                            },
-                            "description": "Items that change status, by work type"
-                          }
+                          "description": "Where items go, over every project, biggest first (at most 10)"
                         },
-                        "required": [
-                          "project",
-                          "added",
-                          "removed",
-                          "moves"
-                        ],
-                        "additionalProperties": false
-                      }
+                        "top": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "project": {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string",
+                                    "description": "uuid"
+                                  },
+                                  "key": {
+                                    "type": "string"
+                                  },
+                                  "name": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "id",
+                                  "key",
+                                  "name"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "added": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                },
+                                "description": "Statuses the project gains"
+                              },
+                              "removed": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                },
+                                "description": "Statuses it loses"
+                              },
+                              "moves": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "type": {
+                                      "type": "string"
+                                    },
+                                    "from": {
+                                      "type": "string"
+                                    },
+                                    "to": {
+                                      "type": "string"
+                                    },
+                                    "count": {
+                                      "type": "number"
+                                    }
+                                  },
+                                  "required": [
+                                    "type",
+                                    "from",
+                                    "to",
+                                    "count"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                "description": "Items that change status, by work type"
+                              }
+                            },
+                            "required": [
+                              "project",
+                              "added",
+                              "removed",
+                              "moves"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "description": "The projects most changed (at most 10)"
+                        }
+                      },
+                      "required": [
+                        "projects",
+                        "changed",
+                        "itemsMoved",
+                        "added",
+                        "removed",
+                        "moves",
+                        "top"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "jobId": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "uuid"
                     }
                   },
                   "required": [
                     "scheme",
-                    "projects"
+                    "summary",
+                    "jobId"
                   ],
                   "additionalProperties": false
                 }

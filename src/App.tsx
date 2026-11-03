@@ -21,6 +21,7 @@ import { useProjectOnDemand } from './api/useProjectOnDemand'
 import { rememberProject } from './api/recent'
 import { apiEnabled } from './api/client'
 import { useIssueSync } from './api/useIssueSync'
+import { useKnownPeople } from './api/users'
 import TransitionDialog, { makeTransition, planMove, type Pending } from './components/TransitionDialog'
 import { problems } from './data/transitionRules'
 import { useIssueDetail } from './api/useIssueDetail'
@@ -180,6 +181,7 @@ function Shell() {
   // Global shortcuts. A ref keeps the listener stable while seeing current values.
   const undo = () => { dispatch({ type: 'undo' }); actions.toast('Undone') }
   useIssueSync(actions.toast)
+  useKnownPeople()
   const keys = useRef({ modalOpen, actions, peek, gPending: 0, undoType, undo })
   keys.current = { ...keys.current, modalOpen, actions, peek, undoType, undo }
   useEffect(() => {

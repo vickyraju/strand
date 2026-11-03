@@ -16,7 +16,8 @@ import { UserSelect } from '../UserPicker'
 // first). What you may change comes from the server (canManage).
 
 interface Group { id: string; name: string; description: string; kind: 'system' | 'directory' | 'strand'; systemRole: string | null; members: number; owners: { id: string; name: string }[]; isMember: boolean; isOwner: boolean; canManage: boolean }
-interface Detail extends Group { people: { id: string; name: string; email: string; initials: string; color: string; active: boolean }[]; projects: { key: string; name: string; role: string }[] }
+type Member = { id: string; name: string; email: string; initials: string; color: string; active: boolean }
+interface Detail extends Group { people: Member[]; morePeople: string | null; projects: { key: string; name: string; role: string }[] }
 const KIND = { system: { label: 'System', Icon: Lock, hint: 'Built in: only system administrators change it' }, directory: { label: 'Directory', Icon: Cloud, hint: 'From Entra: change its members there' }, strand: { label: 'Made here', Icon: UsersRound, hint: 'Managed by its owners' } } as const
 
 export default function GroupsView({ admin = false, openId, onOpen }: { admin?: boolean; openId: string | null; onOpen: (id: string | null) => void }) {
@@ -27,8 +28,14 @@ export default function GroupsView({ admin = false, openId, onOpen }: { admin?: 
   const [q, setQ] = useState('')
   const [list, setList] = useState<Group[] | null>(null)
   const [listError, setListError] = useState('')
+  const [next, setNext] = useState<string | null>(null)
   const [making, setMaking] = useState(false)
-  const load = () => { setListError(''); return api<Group[]>('GET', `/api/groups?query=${encodeURIComponent(q)}${mine ? '&mine=1' : ''}`).then(setList, e => setListError(errorMessage(e))) }
+  // a page at a time ("Show more"): a directory can bring thousands of groups
+  const load = (more = false) => {
+    setListError('')
+    const url = `/api/groups?limit=100&query=${encodeURIComponent(q)}${mine ? '&mine=1' : ''}${more && next ? `&cursor=${encodeURIComponent(next)}` : ''}`
+    return api<{ items: Group[]; next: string | null }>('GET', url).then(r => { setList(xs => (more ? [...(xs ?? []), ...r.items] : r.items)); setNext(r.next) }, e => setListError(errorMessage(e)))
+  }
   useEffect(() => { const t = setTimeout(load, 200); return () => clearTimeout(t) }, [q, mine])   // eslint-disable-line react-hooks/exhaustive-deps
   const mayCreate = settings.groups?.whoCanCreate !== 'admins' || state.isAdmin !== false
 
@@ -43,7 +50,7 @@ export default function GroupsView({ admin = false, openId, onOpen }: { admin?: 
           {mayCreate && <PageAction><button className="btn btn-primary" onClick={() => setMaking(true)}><Plus size={14} />New group</button></PageAction>}
         </div>
         <input className="input" placeholder="Find a group" aria-label="Find a group" value={q} onChange={e => setQ(e.target.value)} />
-        {listError && <LoadError error={listError} onRetry={load} />}
+        {listError && <LoadError error={listError} onRetry={() => load(!!list?.length)} />}
         {!list && !listError && <Loading />}
         {list?.length === 0 && <p className="muted sm">{mine ? 'You aren’t in any group you can see here yet.' : 'No groups match.'}</p>}
         <ul className="groups-items">
@@ -57,6 +64,7 @@ export default function GroupsView({ admin = false, openId, onOpen }: { admin?: 
             )
           })}
         </ul>
+        {next && !listError && <button className="btn btn-secondary btn-sm" onClick={() => void load(true)}>Show more groups</button>}
       </div>
       <div className="groups-detail">
         {openId ? <GroupDetail key={openId} id={openId} onChanged={load} onDeleted={() => { onOpen(null); void load() }} />
@@ -74,8 +82,23 @@ function GroupDetail({ id, onChanged, onDeleted }: { id: string; onChanged: () =
   const [adding, setAdding] = useState<'member' | 'owner' | null>(null)
   const [error, setError] = useState('')
   const [confirm, setConfirm] = useState<null | { kind: 'delete' } | { kind: 'member' | 'owner'; id: string; name: string }>(null)
-  const load = () => { setError(''); return api<Detail>('GET', `/api/groups/${encodeURIComponent(id)}`).then(setG, e => setError(errorMessage(e))) }
+  const load = () => { setError(''); setMembers(null); return api<Detail>('GET', `/api/groups/${encodeURIComponent(id)}`).then(setG, e => setError(errorMessage(e))) }
   useEffect(() => { void load() }, [id])   // eslint-disable-line react-hooks/exhaustive-deps
+  // members past the first page, or found by search (a group can hold thousands)
+  const [memberQ, setMemberQ] = useState('')
+  const [members, setMembers] = useState<Member[] | null>(null)          // null: the first page, as the group came
+  const [membersNext, setMembersNext] = useState<string | null>(null)
+  const memberPage = (cursor: string | null, query: string) =>
+    api<{ items: Member[]; next: string | null }>('GET', `/api/groups/${encodeURIComponent(id)}/members?limit=100&query=${encodeURIComponent(query)}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`)
+  useEffect(() => {
+    if (!memberQ.trim()) { setMembers(null); return }
+    const t = setTimeout(() => memberPage(null, memberQ.trim()).then(r => { setMembers(r.items); setMembersNext(r.next) }, e => toast(errorMessage(e), { tone: 'warn' })), 200)
+    return () => clearTimeout(t)
+  }, [memberQ])   // eslint-disable-line react-hooks/exhaustive-deps
+  const moreMembers = () => {
+    const from = members ? membersNext : g?.morePeople ?? null
+    return memberPage(from, memberQ.trim()).then(r => { setMembers([...(members ?? g?.people ?? []), ...r.items]); setMembersNext(r.next) }, e => toast(errorMessage(e), { tone: 'warn' }))
+  }
   if (error) return <LoadError error={error} onRetry={load} />
   if (!g) return <Loading rows={5} />
   const act = (p: Promise<unknown>, done: string) => p.then(() => { toast(done); void load(); onChanged() }, e => toast(errorMessage(e), { tone: 'warn' }))
@@ -112,11 +135,12 @@ function GroupDetail({ id, onChanged, onDeleted }: { id: string; onChanged: () =
       </>}
 
       <div className="section-title-row" style={{ marginTop: 14 }}>
-        <h3 className="subhead">Members · {g.people.filter(p => p.active).length}</h3>
+        <h3 className="subhead">Members · {g.members.toLocaleString()} active</h3>
         {g.canManage && <button className="btn btn-ghost btn-sm" onClick={() => setAdding('member')}><Plus size={14} />Add people</button>}
       </div>
+      {(g.morePeople || memberQ) && <input className="input" style={{ maxWidth: 320, marginBottom: 6 }} placeholder="Find a member" aria-label="Find a member" value={memberQ} onChange={e => setMemberQ(e.target.value)} />}
       <ul className="people">
-        {g.people.map(p => (
+        {(members ?? g.people).map(p => (
           <li key={p.id} className="person">
             <Avatar user={p as any} size={26} />
             <div className="person-text"><span className="strong">{p.name}</span><span className="muted sm">{p.email}{p.active ? '' : ' · deactivated'}</span></div>
@@ -127,6 +151,8 @@ function GroupDetail({ id, onChanged, onDeleted }: { id: string; onChanged: () =
           </li>
         ))}
       </ul>
+      {(members ? membersNext : !memberQ && g.morePeople) && <button className="btn btn-secondary btn-sm" onClick={() => void moreMembers()}>Show more members</button>}
+      {members && !members.length && <p className="muted sm">Nobody in it matches.</p>}
 
       <h3 className="subhead" style={{ marginTop: 14 }}>Roles in projects</h3>
       {g.projects.length === 0 ? <p className="muted sm">No project gives this group a role (among projects you can see). A project admin adds it under the project’s People and access.</p> : (

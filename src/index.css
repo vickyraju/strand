@@ -1496,3 +1496,32 @@ h2.empty-title, h2.section-title, h2.side-title { margin: 0 }
 @media (prefers-reduced-motion: reduce) { .skeleton { animation: none } }
 .load-error { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: var(--radius); background: var(--danger-soft); color: #991B1B; border: 1px solid #FECACA }
 .load-error span { flex: 1 }
+
+/* Long lists: a count that opens a side panel with a searchable, paged list */
+.count-link { padding: 0; background: none; border: 0; color: var(--brand-press); font: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 2px }
+.count-link:hover { color: var(--brand) }
+.side-scrim { position: fixed; inset: 0; z-index: 940; background: rgba(18,22,16,.32) }
+.side-panel { position: fixed; z-index: 950; top: 0; right: 0; bottom: 0; width: min(480px, 92vw); background: var(--surface); box-shadow: var(--shadow-lg); display: flex; flex-direction: column; outline: none }
+.side-panel-hdr { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--border) }
+.side-panel-body { flex: 1; min-height: 0; overflow-y: auto; padding: 16px 20px 24px }
+.paged { display: grid; gap: 10px; align-content: start }
+.paged-items { list-style: none; margin: 0; padding: 0; display: grid }
+.paged-items > li { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border) }
+.paged .btn { justify-self: start }
+.progress-row { display: grid; gap: 6px }
+.progress-bar { height: 8px; border-radius: 4px; background: var(--sunken); overflow: hidden }
+.progress-bar > div { height: 100%; background: var(--brand); transition: width .3s var(--ease) }
+.apply-banner { display: flex; align-items: center; gap: 16px; padding: 10px 14px; margin-bottom: 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--sunken) }
+.apply-banner > :first-child { flex: 1 }
+.apply-banner.warn { background: #FFFBEB; border-color: #FDE68A }
+.group-picker { position: relative; display: inline-block; min-width: 220px }
+.group-picker-menu { position: absolute; z-index: 30; left: 0; right: 0; top: calc(100% + 4px); list-style: none; margin: 0; padding: 4px; max-height: 280px; overflow-y: auto }
+.group-picker-menu .picker-item { cursor: pointer }
+.group-chosen { display: inline-flex; align-items: center; gap: 6px }
+
+/* Audit log: a change, in full */
+.audit-detail td { background: var(--sunken); white-space: normal; height: auto; padding: 10px 14px }
+.audit-detail dl { display: grid; grid-template-columns: 80px 1fr; gap: 6px 12px; margin: 0 }
+.audit-detail dt { color: var(--text-3); font-size: 12px }
+.audit-detail dd { margin: 0 }
+.audit-detail pre { margin: 0; font-size: 12px; white-space: pre-wrap; word-break: break-word }

@@ -106,9 +106,16 @@ const plugin: FastifyPluginAsyncZod = async app => {
   }
 
   // First 1000 only: use /users/search to find anyone else. (The app's people picker should move to the search.)
-  app.get('/users', { schema: { tags: T.me, summary: 'Active users in the workspace (first 1000 by name; use /users/search for more)' } }, async req => db.query(
-    `select u.id, u.name, u.initials, u.color, u.title, u.email, m.role from users u
-     join memberships m on m.user_id = u.id and m.workspace_id = $1 where u.active order by lower(u.name), u.id limit 1000`, [req.me.workspaceId]))
+  // The app asks for the people it shows by id (`ids`), so a name is never missing; without ids, the first 1000 by name
+  // (use /users/search to find anyone).
+  app.get('/users', { schema: { tags: T.me, summary: 'People in the workspace: those named in `ids` (also deactivated ones, so old work keeps its names), or the first 1000 active people by name',
+    querystring: z.object({ ids: z.string().max(200 * 37).optional().describe('Comma-separated user ids, up to 200') }) } }, async req => {
+    const ids = req.query.ids ? req.query.ids.split(',').filter(x => UUID.test(x)).slice(0, 200) : null
+    return db.query(
+      `select u.id, u.name, u.initials, u.color, u.title, u.email, m.role from users u
+       join memberships m on m.user_id = u.id and m.workspace_id = $1 where ${ids ? 'u.id = any($2::uuid[])' : 'u.active'} order by lower(u.name), u.id limit 1000`,
+      ids ? [req.me.workspaceId, ids] : [req.me.workspaceId])
+  })
 
   app.get('/users/search', { schema: { tags: T.me, summary: 'Find users by name or e-mail, in name order (keyset-paginated). With `project`, only people who can work in that project', querystring: searchQ.extend({ project: z.string().optional().describe('Project key or id: only its members (and workspace admins)') }) } }, async req => {
     const { query, limit } = req.query, cur = readCursor(req.query.cursor)
@@ -193,6 +200,8 @@ const plugin: FastifyPluginAsyncZod = async app => {
         `insert into projects (workspace_id, key, name, description, color, template, lead_id, workflow_scheme_id)
          values ($1, $2, $3, $4, coalesce($5, '#6366f1'), $6, $7, $8) returning id`,
         [req.me.workspaceId, b.key, b.name, b.description ?? '', b.color ?? null, b.template, b.leadId ?? req.me.id, sc.id])
+        // a key belongs to one project, also one this person can't see: say so instead of "already exists"
+        .catch(e => { if (e?.code === '23505') throw new HttpError(409, `${b.key} is already used by another project`, { key: 'Already used' }); throw e })
       // The creator administers the project from the start (and so does the lead, if that is someone else)
       for (const u of new Set([req.me.id, b.leadId ?? req.me.id]))
         await d.query(`insert into project_members (project_id, user_id, role, added_by) values ($1, $2, 'admin', $3) on conflict do nothing`, [p!.id, u, req.me.id])
