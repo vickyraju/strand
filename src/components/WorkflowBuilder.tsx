@@ -11,9 +11,9 @@ import WorkflowCanvas from './workflow/WorkflowCanvas'
 import { AddStatusDialog, CreateTransitionDialog, DeleteStatusDialog, type NewStatusInput, type NewTransition } from './workflow/dialogs'
 import { EmptyPanel, StatusPanel, TransitionPanel } from './workflow/Panels'
 import TextView from './workflow/TextView'
-import { PublishDialog, VersionsDialog, workflowOf, type Impact } from './workflow/Versions'
+import { PublishDialog, VersionsDialog, workflowOf, type Summary } from './workflow/Versions'
+import { CountLink, ProjectsUsing, useApplying } from './admin/scale'
 import { api, errorMessage } from '../api/client'
-import { sprintDeps } from '../api/sprints'
 import { sameSelection, type Selection } from './workflow/types'
 import type { Status } from '../data/store'
 
@@ -21,12 +21,14 @@ import type { Status } from '../data/store'
 // project whose scheme uses it, as in Jira; statuses taken out send their work items where the administrator chooses.
 
 type Dialog = null | { kind: 'transition'; initial: NewTransition } | { kind: 'status' } | { kind: 'delete'; id: string }
-interface LibWorkflow { id: string; name: string; version: number; updatedAt: string; statuses: any[]; transitions: any[]; layout: Workflow['layout']; projects: { key: string; name: string }[] }
+interface LibWorkflow { id: string; name: string; version: number; updatedAt: string; statuses: any[]; transitions: any[]; layout: Workflow['layout']; schemes: { id: string; name: string }[]; projectCount: number }
 
 export default function WorkflowBuilder({ id, onBack }: { id: string; onBack: () => void }) {
   const [lib, setLib] = useState<LibWorkflow | null>(null)
   const [known, setKnown] = useState<Status[]>([])
   const [error, setError] = useState('')
+  // outside the editor, which starts afresh after each publish: the change keeps being followed while it applies
+  const applying = useApplying()
   const load = () => {
     setError('')
     api<LibWorkflow>('GET', `/api/workflows/${encodeURIComponent(id)}`).then(setLib, e => setError(errorMessage(e)))
@@ -35,10 +37,10 @@ export default function WorkflowBuilder({ id, onBack }: { id: string; onBack: ()
   useEffect(load, [id])   // eslint-disable-line react-hooks/exhaustive-deps
   if (error) return <div style={{ padding: 24 }}><LoadError error={error} onRetry={load} /><button className="btn btn-ghost" style={{ marginTop: 12 }} onClick={onBack}>Back to workflows</button></div>
   if (!lib) return <div style={{ padding: 24 }}><Loading rows={6} /></div>
-  return <Editor key={`${lib.id}:${lib.updatedAt}`} lib={lib} known={known} onBack={onBack} onSaved={setLib} />
+  return <Editor key={`${lib.id}:${lib.updatedAt}`} lib={lib} known={known} onBack={onBack} onSaved={setLib} applying={applying} />
 }
 
-function Editor({ lib, known, onBack, onSaved }: { lib: LibWorkflow; known: Status[]; onBack: () => void; onSaved: (w: LibWorkflow) => void }) {
+function Editor({ lib, known, onBack, onSaved, applying }: { lib: LibWorkflow; known: Status[]; onBack: () => void; onSaved: (w: LibWorkflow) => void; applying: ReturnType<typeof useApplying> }) {
   const { toast } = useApp()
   const original = useMemo<Workflow>(() => workflowOf(lib, lib.layout ?? {}), [lib])
   const [hist, setHist] = useState(() => startHistory<Draft>({ workflow: original, moves: {} }))
@@ -51,7 +53,8 @@ function Editor({ lib, known, onBack, onSaved }: { lib: LibWorkflow; known: Stat
   const [leaving, setLeaving] = useState(false)
   const [panelOpen, setPanelOpen] = useState(true)
   const [focus, setFocus] = useState<{ id?: string; tick: number }>()
-  const [publishing, setPublishing] = useState<Impact[] | null | false>(false)   // false: closed; null: working out the projects
+  const [publishing, setPublishing] = useState<Summary | null | false>(false)   // false: closed; null: working out what it does
+  const [listing, setListing] = useState(false)
   const [versionsOpen, setVersionsOpen] = useState(false)
 
   const dirty = !sameWorkflow(workflow, original)
@@ -138,17 +141,16 @@ function Editor({ lib, known, onBack, onSaved }: { lib: LibWorkflow; known: Stat
     if (found.some(i => i.level === 'error')) return
     if (!found.length) setShowIssues(false)
     setPublishing(null)
-    api<{ projects: Impact[] }>('POST', `/api/admin/workflows/${lib.id}/publish`, body({ dryRun: true }))
-      .then(r => setPublishing(p => (p === false ? p : r.projects)), e => { setPublishing(false); toast(errorMessage(e), { tone: 'warn' }) })
+    api<{ summary: Summary }>('POST', `/api/admin/workflows/${lib.id}/publish`, body({ dryRun: true }))
+      .then(r => setPublishing(p => (p === false ? p : r.summary)), e => { setPublishing(false); toast(errorMessage(e), { tone: 'warn' }) })
   }
   const publish = async (note: string) => {
     setPublishing(false)
     try {
-      const r = await api<{ workflow: LibWorkflow; version: number; created: boolean; projects: Impact[] }>('POST', `/api/admin/workflows/${lib.id}/publish`, body({ note }))
-      toast(r.created ? `Workflow updated: version ${r.version}${r.projects.length ? `, in ${r.projects.length} project${r.projects.length === 1 ? '' : 's'}` : ''}` : 'Workflow updated')
+      const r = await api<{ workflow: LibWorkflow; version: number; created: boolean; summary: Summary; jobId: string | null }>('POST', `/api/admin/workflows/${lib.id}/publish`, body({ note }))
+      toast(r.created ? `Workflow updated: version ${r.version}${r.jobId ? `. Applying it to ${r.summary.projects.toLocaleString()} project${r.summary.projects === 1 ? '' : 's'}…` : ''}` : 'Workflow updated')
       onSaved(r.workflow)
-      // projects open here now have other statuses, and maybe items in other places
-      if (r.projects.length) { await sprintDeps.reloadAll(); for (const i of r.projects) await sprintDeps.reloadProject(i.project.id) }
+      if (r.jobId) applying.follow(r.jobId)
     } catch (e) { toast(errorMessage(e), { tone: 'warn' }) }
   }
   /** A published version into the editor, as an edit (undo goes back). Statuses it lacks send their items to one of its own. */
@@ -202,12 +204,12 @@ function Editor({ lib, known, onBack, onSaved }: { lib: LibWorkflow; known: Stat
       <div className="wf-bar">
         <button className="btn btn-ghost" onClick={() => (dirty ? setLeaving(true) : onBack())}><ArrowLeft size={15} />Workflows</button>
         <h2 className="wf-title">{lib.name}</h2>
-        <span className="muted sm">{lib.projects.length ? `Used by ${lib.projects.map(p => p.key).join(', ')}` : 'No project uses it yet'}</span>
+        <span className="muted sm">{lib.schemes.length ? <>Used by {lib.schemes.length === 1 ? lib.schemes[0]!.name : `${lib.schemes.length} schemes`} · <CountLink count={lib.projectCount} one="project" many="projects" onOpen={() => setListing(true)} /></> : 'No scheme uses it yet'}</span>
         {dirty && <span className="lozenge lozenge-in-progress">Unsaved changes</span>}
         <div style={{ flex: 1 }} />
         <button className="btn btn-ghost" onClick={() => setVersionsOpen(true)}><History size={15} />Versions</button>
         <button className="btn btn-secondary" onClick={discard} disabled={!dirty}>Discard changes</button>
-        <button className="btn btn-primary" onClick={save} disabled={!dirty}>Update workflow</button>
+        <button className="btn btn-primary" onClick={save} disabled={!dirty || applying.busy} title={applying.busy ? 'Wait for the last change to finish applying' : undefined}>Update workflow</button>
       </div>
       <div className="wf-tools">
         <div className="segmented" role="tablist" aria-label="Workflow view">
@@ -228,6 +230,7 @@ function Editor({ lib, known, onBack, onSaved }: { lib: LibWorkflow; known: Stat
         </button>
       </div>
 
+      {applying.bar && <div className="wf-errors">{applying.bar}</div>}
       {errors.length > 0 && (
         <div className="callout callout-danger wf-errors" role="alert">
           <AlertTriangle size={16} />
@@ -266,7 +269,9 @@ function Editor({ lib, known, onBack, onSaved }: { lib: LibWorkflow; known: Stat
         </aside>}
       </div>
 
+      {listing && <ProjectsUsing what="workflow" id={lib.id} name={lib.name} onClose={() => setListing(false)} />}
       {publishing !== false && <PublishDialog before={original} after={workflow} impact={publishing}
+        seeAll={publishing && publishing.projects > 1 ? <CountLink count={publishing.projects} one="project" many="projects" label="see them all" onOpen={() => setListing(true)} /> : undefined}
         moved={removed.map(s => ({ from: s.name, to: workflow.statuses.find(x => x.id === moveTarget(s.id))?.name ?? '' }))}
         onClose={() => setPublishing(false)} onPublish={note => void publish(note)} />}
       {versionsOpen && <VersionsDialog workflowId={lib.id} current={workflow} onClose={() => setVersionsOpen(false)} onRestore={loadVersion} />}

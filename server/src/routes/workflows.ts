@@ -3,10 +3,11 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
 import { db, tx, type Db } from '../db.ts'
-import { HttpError, requireAdmin, type Me } from '../auth.ts'
+import { HttpError, requireAdmin } from '../auth.ts'
 import { audit, changes } from '../audit.ts'
 import { rulesSchema } from '../transitions.ts'
-import { applyScheme, previewing, projectsUsing, type Impact } from '../workflows.ts'
+import { kickJobs } from '../jobs.ts'
+import { countUsing, enqueueApply, nothing, pageUsing, previewing, runningApply, someOf, summarize } from '../workflows.ts'
 
 const T = ['Workflows']
 const uuid = z.string().uuid()
@@ -25,24 +26,25 @@ const STATUS_ROW = `s.id, s.name, s.description, s.color, s.category, s.position
 const statusesOf = (d: Db, ids: string[]) => d.query<any>(
   `select s.id, s.name, s.description, s.color, s.category from unnest($1::uuid[]) with ordinality x(id, n) join wf_statuses s on s.id = x.id order by x.n`, [ids])
 
-/** One workflow in full, with the schemes and projects that use it (the projects only for system administrators: a
- *  project someone can't see stays unnamed). */
-async function workflowOut(d: Db, ws: string, id: string, admin = true) {
+/** One workflow in full, with the schemes that use it and how many projects that makes (which projects: page through
+ *  GET /admin/workflows/:id/projects, for system administrators). */
+async function workflowOut(d: Db, ws: string, id: string) {
   const [w] = await d.query<any>('select id, name, description, statuses, transitions, layout, version, updated_at from workflows where id = $1 and workspace_id = $2', [id, ws])
   if (!w) throw new HttpError(404, 'No such workflow')
   return {
     ...w, statuses: await statusesOf(d, w.statuses),
     schemes: await d.query(`select id, name from workflow_schemes where default_workflow_id = $1 or exists (select 1 from jsonb_each_text(mappings) m where m.value = $1::text) order by lower(name)`, [id]),
-    projects: admin ? (await projectsUsing(d, ws, { workflowId: id })).map(({ key, name }) => ({ key, name })) : [],
+    projectCount: await countUsing(d, ws, { workflowId: id }),
   }
 }
 
-/** Apply a scheme change to every project it reaches; what happened (or would) to each. */
-async function applyAll(d: Db, req: { me: Me; ip?: string }, projects: { id: string }[], map: Record<string, string>) {
-  const out: Impact[] = []
-  for (const p of projects) out.push(await applyScheme(d, req, p.id, { statusMap: map }))   // ponytail: in the request; a job if hundreds of projects share one
-  return out
+/** One change at a time: a change that reaches projects waits for the last one to finish applying. */
+async function notWhileApplying(d: Db, ws: string) {
+  const j = await runningApply(d, ws)
+  if (j) throw new HttpError(409, `The last workflow change is still being applied (${(j.progress?.done ?? 0).toLocaleString('en')} of ${(j.progress?.total ?? 0).toLocaleString('en')} projects). Try again when it has finished.`)
 }
+
+const pageQ = z.object({ query: z.string().max(100).optional(), cursor: z.string().max(40).optional().describe('`next` from the previous page'), limit: z.coerce.number().int().min(1).max(200).default(50) })
 
 const transitionIn = z.object({
   id: z.string().min(1).max(64).describe('Stable within the workflow'), name: z.string().trim().min(1).max(100),
@@ -74,8 +76,23 @@ const plugin: FastifyPluginAsyncZod = async app => {
                      (select count(*)::int from projects p join workflow_schemes sc on sc.id = p.workflow_scheme_id
                        where p.deleting_at is null and (sc.default_workflow_id = w.id or exists (select 1 from jsonb_each_text(sc.mappings) m where m.value = w.id::text))) as projects
                 from workflows w where w.workspace_id = $1 order by lower(w.name)`, [req.me.workspaceId]))
-  app.get('/workflows/:id', { schema: { tags: T, summary: 'One workflow: its statuses in order, transitions, diagram layout, and who uses it (the projects: for system administrators)', params: idP } }, async req =>
-    workflowOut(db, req.me.workspaceId, req.params.id, req.me.admin))
+  app.get('/workflows/:id', { schema: { tags: T, summary: 'One workflow: its statuses in order, transitions, diagram layout, the schemes using it and how many projects', params: idP } }, async req =>
+    workflowOut(db, req.me.workspaceId, req.params.id))
+
+  // Which projects a workflow or scheme reaches: a count, and the projects a page at a time (there can be thousands)
+  for (const [path, what] of [['/admin/workflows/:id/projects', 'workflow'], ['/admin/workflow-schemes/:id/projects', 'scheme']] as const)
+    app.get(path, { schema: { tags: T, summary: `Projects using a ${what}, by key, a page at a time; with query, those whose key or name contains it (system administrators)`, params: idP, querystring: pageQ } }, async req => {
+      requireAdmin(req)
+      const r = what === 'workflow' ? { workflowId: req.params.id } : { schemeId: req.params.id }
+      const page = await pageUsing(db, req.me.workspaceId, r, { query: req.query.query, after: req.query.cursor, limit: req.query.limit })
+      return { ...page, total: await countUsing(db, req.me.workspaceId, r) }
+    })
+  app.get('/admin/workflows/applying', { schema: { tags: T, summary: 'The workflow change being applied to projects right now, if any, and how far it has got (system administrators)' } }, async req => {
+    requireAdmin(req)
+    const j = await runningApply(db, req.me.workspaceId)
+    return j && { jobId: j.id, workflowId: j.payload.workflowId ?? null, schemeId: j.payload.schemeId ?? null, name: j.payload.name ?? null,
+      done: j.progress?.done ?? 0, total: j.progress?.total ?? 0, startedAt: j.createdAt }
+  })
 
   // ── Statuses ──
   app.get('/admin/statuses', { schema: { tags: T, summary: 'Global statuses and the workflows using each (system administrators)' } }, async req => {
@@ -167,11 +184,12 @@ const plugin: FastifyPluginAsyncZod = async app => {
   })
 
   app.post('/admin/workflows/:id/publish', { schema: { tags: T,
-    summary: 'Save a workflow’s statuses, transitions and layout, and apply it to every project using it (system administrators). With dryRun, only reports what would change. A changed workflow is recorded as a new version',
+    summary: 'Save a workflow’s statuses, transitions and layout (system administrators). A changed workflow is recorded as a new version, and a background job applies it to every project using it (follow it at GET /jobs/:id). With dryRun, only reports what would change',
     params: idP, body: publishBody } }, async req => {
     requireAdmin(req)
     const b = req.body, ws = req.me.workspaceId
-    return previewing(tx, b.dryRun, async d => {
+    if (!b.dryRun) await notWhileApplying(db, ws)
+    const out = await previewing(tx, b.dryRun, async d => {
       const [cur] = await d.query<any>('select id, name, statuses, transitions, version from workflows where id = $1 and workspace_id = $2 for update', [req.params.id, ws])
       if (!cur) throw new HttpError(404, 'No such workflow')
       // Statuses are global: one already known is updated everywhere; a new one with a known name is that one; else it's added
@@ -217,9 +235,12 @@ const plugin: FastifyPluginAsyncZod = async app => {
           [cur.id, version, JSON.stringify(await statusesOf(d, statuses)), JSON.stringify(transitions), b.note, req.me.id])
         await audit(d, req, { action: 'workflow.published', type: 'workflow', id: cur.id, name: `${cur.name} version ${version}`, after: { note: b.note, statuses: statuses.length, transitions: transitions.length } })
       }
-      const projects = changed ? await applyAll(d, req, await projectsUsing(d, ws, { workflowId: cur.id }), b.statusMap) : []
-      return { workflow: await workflowOut(d, ws, cur.id), version, created: changed, projects }
+      const summary = changed ? await summarize(d, ws, { workflowId: cur.id }, b.statusMap) : nothing()
+      const jobId = changed && !b.dryRun && summary.projects ? await enqueueApply(d, { ...req.me, ip: req.ip }, { workflowId: cur.id, name: cur.name }, b.statusMap, summary.projects) : null
+      return { workflow: await workflowOut(d, ws, cur.id), version, created: changed, summary, jobId }
     })
+    if (out.jobId) kickJobs(app.log)                                     // once the job is committed
+    return out
   })
 
   const versionP = idP.extend({ version: z.coerce.number().int().positive() })
@@ -257,11 +278,12 @@ const plugin: FastifyPluginAsyncZod = async app => {
     })
   })
   app.patch('/admin/workflow-schemes/:id', { schema: { tags: T,
-    summary: 'Change a workflow scheme, and apply it to every project using it (system administrators). With dryRun, only reports what would change',
+    summary: 'Change a workflow scheme (system administrators). A background job applies it to every project using it (follow it at GET /jobs/:id). With dryRun, only reports what would change',
     params: idP, body: z.object(schemeFields).partial().extend({ statusMap, dryRun }) } }, async req => {
     requireAdmin(req)
     const { statusMap: map, dryRun: dry, ...b } = req.body
-    return previewing(tx, dry, async d => {
+    if (!dry) await notWhileApplying(db, req.me.workspaceId)
+    const out = await previewing(tx, dry, async d => {
       const [before] = await d.query<any>('select name, description, default_workflow_id, mappings from workflow_schemes where id = $1 and workspace_id = $2 for update', [req.params.id, req.me.workspaceId])
       if (!before) throw new HttpError(404, 'No such workflow scheme')
       const next = { ...before, ...Object.fromEntries(Object.entries(b).filter(([, v]) => v !== undefined)) }
@@ -271,17 +293,20 @@ const plugin: FastifyPluginAsyncZod = async app => {
       const c = changes(before, next)
       if (c.changed) await audit(d, req, { action: 'workflow_scheme.updated', type: 'workflow scheme', id: req.params.id, name: next.name, before: c.before, after: c.after })
       const moved = before.defaultWorkflowId !== next.defaultWorkflowId || JSON.stringify(before.mappings) !== JSON.stringify(next.mappings)
-      const projects = moved ? await applyAll(d, req, await projectsUsing(d, req.me.workspaceId, { schemeId: req.params.id }), map) : []
-      return { scheme: await schemeOut(d, req.params.id), projects }
+      const summary = moved ? await summarize(d, req.me.workspaceId, { schemeId: req.params.id }, map) : nothing()
+      const jobId = moved && !dry && summary.projects ? await enqueueApply(d, { ...req.me, ip: req.ip }, { schemeId: req.params.id, name: next.name }, map, summary.projects) : null
+      return { scheme: await schemeOut(d, req.params.id), summary, jobId }
     })
+    if (out.jobId) kickJobs(app.log)
+    return out
   })
   app.delete('/admin/workflow-schemes/:id', { schema: { tags: T, summary: 'Remove a workflow scheme no project uses (system administrators)', params: idP } }, async (req, reply) => {
     requireAdmin(req)
     await tx(async d => {
       const [s] = await d.query<any>('select id, name from workflow_schemes where id = $1 and workspace_id = $2 for update', [req.params.id, req.me.workspaceId])
       if (!s) throw new HttpError(404, 'No such workflow scheme')
-      const used = await d.query<{ key: string }>('select key from projects where workflow_scheme_id = $1 order by key', [s.id])
-      if (used.length) throw new HttpError(409, `Projects use this scheme: ${used.map(p => p.key).join(', ')}`)
+      const used = await pageUsing(d, req.me.workspaceId, { schemeId: s.id }, { limit: 3 })
+      if (used.items.length) throw new HttpError(409, `Projects use this scheme: ${someOf(used.items.map(p => p.key), await countUsing(d, req.me.workspaceId, { schemeId: s.id }))}`)
       await d.query('delete from workflow_schemes where id = $1', [s.id])
       await audit(d, req, { action: 'workflow_scheme.deleted', type: 'workflow scheme', id: s.id, name: s.name })
     })

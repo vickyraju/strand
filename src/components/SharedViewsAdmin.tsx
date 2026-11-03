@@ -12,22 +12,37 @@ interface Row { id: string; name: string; ownerId: string; ownerName: string; ow
 export default function SharedViewsAdmin() {
   const { toast } = useApp()
   const [rows, setRows] = useState<Row[] | null>(null)
+  const [total, setTotal] = useState(0)
+  const [next, setNext] = useState<string | null>(null)
+  const [q, setQ] = useState('')
+  const [ownerLeft, setOwnerLeft] = useState(false)
   const [error, setError] = useState('')
   const [giving, setGiving] = useState<Row | null>(null)
   const [to, setTo] = useState<string>()
-  const load = () => { setError(''); return api<Row[]>('GET', '/api/admin/views').then(setRows, e => setError(errorMessage(e))) }
-  useEffect(() => { void load() }, [])
+  // a page at a time, those whose owner left first: there can be thousands of shared views
+  const load = (more = false) => {
+    setError('')
+    const p = new URLSearchParams({ limit: '50', ...(q.trim() ? { query: q.trim() } : {}), ...(ownerLeft ? { ownerLeft: '1' } : {}), ...(more && next ? { cursor: next } : {}) })
+    return api<{ items: Row[]; total: number; next: string | null }>('GET', `/api/admin/views?${p}`)
+      .then(r => { setRows(xs => (more ? [...(xs ?? []), ...r.items] : r.items)); setTotal(r.total); setNext(r.next) }, e => setError(errorMessage(e)))
+  }
+  useEffect(() => { const t = setTimeout(() => void load(), q ? 250 : 0); return () => clearTimeout(t) }, [q, ownerLeft])   // eslint-disable-line react-hooks/exhaustive-deps
   const sharedWith = (r: Row) => [r.shared ? 'the workspace' : '', ...['project', 'group', 'user'].map(k => {
     const n = r.share.filter(e => e.kind === k).length
     return n ? `${n} ${k === 'user' ? (n === 1 ? 'person' : 'people') : k + (n === 1 ? '' : 's')}` : ''
   })].filter(Boolean).join(', ') || 'nobody'
 
-  if (error) return <LoadError error={error} onRetry={load} />
-  if (!rows) return <Loading />
   return (
     <section>
-      {!rows.length ? <p className="muted">No shared views.</p> : (
-        <div className="card-table" style={{ marginInline: 0, marginTop: 12 }}>
+      <div className="people-filters">
+        <input className="input" style={{ maxWidth: 260 }} placeholder="Find a view or owner" aria-label="Find a view or owner" value={q} onChange={e => setQ(e.target.value)} />
+        <label className="check-row"><input type="checkbox" checked={ownerLeft} onChange={e => setOwnerLeft(e.target.checked)} /> Only views whose owner has left</label>
+      </div>
+      {error && <LoadError error={error} onRetry={() => void load(!!rows?.length && !!next)} />}
+      {!rows && !error && <Loading />}
+      {rows && !rows.length ? <p className="muted">{q || ownerLeft ? 'No shared view matches.' : 'No shared views.'}</p> : rows && (<>
+        <p className="muted sm" role="status" style={{ marginBottom: 6 }}>Showing {rows.length.toLocaleString()} of {total.toLocaleString()}</p>
+        <div className="card-table" style={{ marginInline: 0 }}>
           <table className="table">
             <thead><tr><th>View</th><th>Owner</th><th>Shared with</th><th /></tr></thead>
             <tbody>
@@ -42,7 +57,8 @@ export default function SharedViewsAdmin() {
             </tbody>
           </table>
         </div>
-      )}
+        {next && !error && <button className="btn btn-secondary btn-sm" style={{ marginTop: 10 }} onClick={() => void load(true)}>Show more views</button>}
+      </>)}
       {giving && (
         <Modal title={`Change the owner of “${giving.name}”`} onClose={() => setGiving(null)} footer={<>
           <button className="btn btn-secondary" onClick={() => setGiving(null)}>Cancel</button>

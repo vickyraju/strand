@@ -1205,6 +1205,10 @@ test('link types: Jira’s four (and test management’s Defect) to start with; 
   // rename: links keep their type
   assert.equal((await call('PATCH', '/api/v1/admin/link-types/causes', { inward: 'is the result of' })).body.inward, 'is the result of')
   // removing one in use needs a decision; moving merges with links already there; built-ins can't go
+  // how many links each type has: for system administrators (everyone else's list doesn't count them)
+  assert.equal((await call('GET', '/api/v1/link-types?uses=1')).body.find((t: any) => t.id === 'causes').uses, 2)
+  assert.equal((await call('GET', '/api/v1/link-types', undefined, 'lnk.member@x.com')).body.find((t: any) => t.id === 'causes').uses, null)
+  assert.equal((await call('GET', '/api/v1/link-types?uses=1', undefined, 'lnk.member@x.com')).status, 403)
   assert.equal((await call('DELETE', '/api/v1/admin/link-types/causes')).status, 409)
   assert.equal((await call('DELETE', '/api/v1/admin/link-types/causes?moveTo=duplicates')).status, 204)
   const links = (await call('GET', '/api/v1/issues/LNK-2?expand=links')).body.links.map((l: any) => [l.type, l.dir, l.key]).sort()
@@ -1295,11 +1299,16 @@ test('shared workflows: a system administrator’s change reaches every project 
   const cur = (await call('GET', `/api/v1/workflows/${wf}`)).body
   const [todo, doing, done] = cur.statuses
   const review = { id: crypto.randomUUID(), name: 'Review', color: '#a855f7', category: 'in-progress', description: '' }
-  const pub = (body: object, who?: string) => call('POST', `/api/v1/admin/workflows/${wf}/publish`, body, who)
+  const { runJobs } = await import('../src/jobs.ts')
+  // publishing queues a job that applies the change to every project; tests run jobs themselves
+  const pub = async (body: object, who?: string) => { const r = await call('POST', `/api/v1/admin/workflows/${wf}/publish`, body, who); if (r.body?.jobId) await runJobs(); return r }
   const withReview = { statuses: [todo, doing, review, done], transitions: [{ id: 'review', name: 'To review', fromIds: [doing.id], toId: review.id }, { id: 'back', name: 'Back', fromIds: [review.id], toId: todo.id }] }
   const r1 = await pub({ ...withReview, note: 'Review step' })
   assert.equal(r1.status, 200, JSON.stringify(r1.body)); assert.deepEqual([r1.body.version, r1.body.created], [cur.version + 1, true])
-  assert.deepEqual(r1.body.projects.map((x: any) => [x.project.key, x.added]), [['VEA', ['Review']], ['VER', ['Review']]])
+  assert.deepEqual([r1.body.summary.projects, r1.body.summary.changed, r1.body.summary.added], [2, 2, ['Review']])
+  assert.deepEqual(r1.body.summary.top.map((x: any) => x.project.key).sort(), ['VEA', 'VER'])
+  const job = (await call('GET', `/api/v1/jobs/${r1.body.jobId}`)).body
+  assert.deepEqual([job.status, job.progress.done, job.progress.total, job.result.applied], ['done', 2, 2, 2])
   for (const key of ['VER', 'VEA']) assert.deepEqual((await call('GET', `/api/v1/projects/${key}`)).body.statuses.map((s: any) => s.name), ['To do', 'In progress', 'Review', 'Done'])
   assert.equal((await pub(withReview)).body.created, false)                                // unchanged: no new version
   // items in Review (one of them deleted, which still counts)
@@ -1310,7 +1319,8 @@ test('shared workflows: a system administrator’s change reaches every project 
   // taking Review out: the preview says where its items go and changes nothing; publishing moves them, with history
   const without = { statuses: [todo, doing, done], transitions: [], statusMap: { [review.id]: done.id } }
   const pv = await pub({ ...without, dryRun: true })
-  assert.deepEqual(pv.body.projects.find((x: any) => x.project.key === 'VER').moves, [{ type: 'task', from: 'Review', to: 'Done', count: 3 }])
+  assert.deepEqual(pv.body.summary.top.find((x: any) => x.project.key === 'VER').moves, [{ type: 'task', from: 'Review', to: 'Done', count: 3 }])
+  assert.deepEqual([pv.body.summary.itemsMoved, pv.body.summary.moves, pv.body.summary.removed, pv.body.jobId], [3, [{ from: 'Review', to: 'Done', count: 3 }], ['Review'], null])
   assert.ok((await call('GET', '/api/v1/projects/VER')).body.statuses.some((s: any) => s.name === 'Review'))
   assert.equal((await call('GET', `/api/v1/workflows/${wf}`)).body.version, r1.body.version)
   assert.equal((await pub({ ...without, note: 'Without review' })).status, 200)
@@ -1328,7 +1338,8 @@ test('shared workflows: a system administrator’s change reaches every project 
   // only system administrators change workflows, statuses and schemes; a project admin can't
   await join('VER', 'ver.admin@x.com', 'admin')
   const seen = await call('GET', `/api/v1/workflows/${wf}`, undefined, 'ver.admin@x.com')
-  assert.deepEqual([seen.status, seen.body.projects], [200, []])                                     // which projects use it: only for system administrators
+  assert.deepEqual([seen.status, seen.body.projectCount], [200, 2])                                  // how many use it: anyone; which: only system administrators
+  assert.equal((await call('GET', `/api/v1/admin/workflows/${wf}/projects`, undefined, 'ver.admin@x.com')).status, 403)
   assert.equal((await pub(withReview, 'ver.admin@x.com')).status, 403)
   assert.equal((await call('POST', '/api/v1/admin/workflows', { name: 'Mine' }, 'ver.admin@x.com')).status, 403)
   assert.equal((await call('POST', '/api/v1/admin/statuses', { name: 'Mine', color: '#000000', category: 'todo' }, 'ver.admin@x.com')).status, 403)
@@ -1336,6 +1347,53 @@ test('shared workflows: a system administrator’s change reaches every project 
   // in use: a workflow a scheme names, and a scheme a project uses, can't be removed
   assert.equal((await call('DELETE', `/api/v1/admin/workflows/${wf}`)).status, 409)
   assert.equal((await call('DELETE', `/api/v1/admin/workflow-schemes/${ver.workflowSchemeId}`)).status, 409)
+})
+
+test('a workflow used by many projects: counted, listed a page at a time, previewed from the items that could move, applied by a job that carries on past a failing project', { skip, timeout: 120_000 }, async () => {
+  const { runJobs } = await import('../src/jobs.ts')
+  const keys = Array.from({ length: 30 }, (_, n) => `MNY${String(n).padStart(2, '0')}`)
+  for (const key of keys) await call('POST', '/api/v1/projects', { name: `Many ${key}`, key, template: 'kanban' })
+  const wfId = (await flow(keys[0]!, [])).workflows[0].workflowId
+  const schemeId = (await call('GET', `/api/v1/projects/${keys[0]}`)).body.workflowSchemeId
+  for (const key of keys.slice(1)) await call('PUT', `/api/v1/projects/${key}/workflow-scheme`, { schemeId })
+  for (const key of keys.slice(0, 5)) await call('POST', `/api/v1/projects/${key}/issues`, { title: 'doing', statusId: (await call('GET', `/api/v1/projects/${key}`)).body.statuses[1].id })
+  // how many, and which, a page at a time
+  assert.equal((await call('GET', `/api/v1/workflows/${wfId}`)).body.projectCount, 30)
+  const p1 = (await call('GET', `/api/v1/admin/workflows/${wfId}/projects?limit=20`)).body
+  const p2 = (await call('GET', `/api/v1/admin/workflows/${wfId}/projects?limit=20&cursor=${p1.next}`)).body
+  assert.deepEqual([p1.items.length, p2.items.length, p2.next, p1.total], [20, 10, null, 30])
+  assert.deepEqual([...p1.items, ...p2.items].map((p: any) => p.key), keys)
+  assert.deepEqual((await call('GET', `/api/v1/admin/workflow-schemes/${schemeId}/projects?query=MNY2`)).body.items.map((p: any) => p.key), keys.filter(k => k.startsWith('MNY2')))
+  // taking In progress out: the preview's counts are what applying then does
+  const cur = (await call('GET', `/api/v1/workflows/${wfId}`)).body
+  const body = { statuses: cur.statuses.filter((s: any) => s.category !== 'in-progress'), transitions: [] }
+  const pv = (await call('POST', `/api/v1/admin/workflows/${wfId}/publish`, { ...body, dryRun: true })).body.summary
+  assert.deepEqual([pv.projects, pv.changed, pv.itemsMoved, pv.removed, pv.moves], [30, 30, 5, ['In progress'], [{ from: 'In progress', to: 'To do', count: 5 }]])
+  assert.equal(pv.top.length, 10); assert.deepEqual(pv.top.slice(0, 5).map((t: any) => t.project.key), keys.slice(0, 5))   // the most changed first
+  // one project can't be changed (a fault on its statuses): the job records it and applies the rest
+  const bad = (await call('GET', `/api/v1/projects/${keys[7]}`)).body.id
+  await pool.query(`create function fail_one() returns trigger language plpgsql as $$ begin if old.project_id = '${bad}' then raise exception 'broken project'; end if; return old; end $$`)
+  await pool.query('create trigger fail_one before delete on statuses for each row execute function fail_one()')
+  try {
+    const r = await call('POST', `/api/v1/admin/workflows/${wfId}/publish`, body)
+    assert.ok(r.body.jobId)
+    // one change at a time: another while it waits is refused
+    const again = await call('POST', `/api/v1/admin/workflows/${wfId}/publish`, { ...body, note: 'again', statuses: cur.statuses })
+    assert.equal(again.status, 409); assert.match(again.body.error, /still being applied/)
+    assert.equal((await call('GET', '/api/v1/admin/workflows/applying')).body.total, 30)
+    await runJobs()
+    const job = (await call('GET', `/api/v1/jobs/${r.body.jobId}`)).body
+    assert.deepEqual([job.status, job.result.applied, job.result.failed.map((f: any) => f.key)], ['done', 29, [keys[7]]])
+    assert.match(job.result.failed[0].error, /broken project/)
+    assert.equal((await call('GET', '/api/v1/admin/workflows/applying')).body, null)
+  } finally { await pool.query('drop trigger fail_one on statuses; drop function fail_one()') }
+  for (const key of [keys[0], keys[29]]) assert.deepEqual((await call('GET', `/api/v1/projects/${key}`)).body.statuses.map((s: any) => s.name), ['To do', 'Done'])
+  assert.ok((await call('GET', `/api/v1/projects/${keys[7]}`)).body.statuses.some((s: any) => s.name === 'In progress'))      // left as it was
+  const moved = (await pool.query(`select count(*)::int as n from issues i join statuses s on s.id = i.status_id join projects p on p.id = i.project_id where p.key like 'MNY%' and s.name = 'To do'`)).rows[0].n
+  assert.equal(moved, 5)
+  // the message for a scheme in use stays short
+  const del = await call('DELETE', `/api/v1/admin/workflow-schemes/${schemeId}`)
+  assert.equal(del.status, 409); assert.match(del.body.error, /MNY00, MNY01, MNY02 and 27 more/)
 })
 
 test('workflow schemes: each work type follows its own workflow, new work starts at its start, a type change needs a status of the new one; project admins choose the scheme', { skip }, async () => {
@@ -1471,8 +1529,9 @@ test('saved views are shared as Jira filters are: with a project, a group or a p
   assert.equal((await call('POST', '/api/v1/views', { name: 'bad', share: [{ kind: 'user', id: '0192f0c0-0000-7000-8000-000000000000' }], filters: {} }, 'flt.ann@x.com')).status, 400)
   // Ann leaves: her shared views show in Administration, and an admin gives one to Pat
   await pool.query('update users set active = false where id = $1', [ann])
-  const admin = (await call('GET', '/api/v1/admin/views')).body
-  assert.ok(admin.some((v: any) => v.id === toProject.id && v.ownerActive === false))
+  const admin = (await call('GET', '/api/v1/admin/views?ownerLeft=1')).body
+  assert.ok(admin.items.some((v: any) => v.id === toProject.id && v.ownerActive === false))
+  assert.ok(admin.items.every((v: any) => v.ownerActive === false) && admin.total >= 1)
   assert.equal((await call('PATCH', `/api/v1/views/${toProject.id}`, { ownerId: ann })).status, 400)    // not to someone inactive
   const given = await call('PATCH', `/api/v1/views/${toProject.id}`, { ownerId: pat })
   assert.deepEqual([given.status, given.body.ownerId], [200, pat])
@@ -2131,7 +2190,7 @@ test('groups: anyone makes one and manages it; a project admin gives it a role; 
   assert.equal((await call('POST', '/api/v1/groups', { name: 'web-developers' })).status, 201)
   await call('PUT', '/api/v1/admin/settings/groups', { whoCanCreate: 'everyone' })
   // system groups: only system administrators change them; never deleted; never left without an administrator
-  const admins = (await call('GET', '/api/v1/groups?query=system-administrators')).body[0]
+  const admins = (await call('GET', '/api/v1/groups?query=system-administrators')).body.items[0]
   assert.equal(admins.kind, 'system')
   assert.equal((await call('POST', `/api/v1/groups/${admins.id}/members`, { userIds: [other] }, 'gr.lead@x.com')).status, 403)
   assert.equal((await call('DELETE', `/api/v1/groups/${admins.id}`)).status, 409)
@@ -2173,6 +2232,7 @@ test('license cleanup: inactive people lose their seat and get it back at sign-i
   const ourPeople = (xs: any[]) => xs.map((p: any) => p.userId).filter((u: string) => [idle, soon, lead, keep, fresh].includes(u)).sort()
   // the preview changes nothing: idle would lose the seat, soon would be warned; lead and keep are safe
   const pv = (await call('POST', '/api/v1/admin/license-cleanup/preview', {})).body
+  assert.equal(pv.changeCount, pv.change.length)
   assert.deepEqual([ourPeople(pv.change), ourPeople(pv.warn)], [[idle], [soon]])
   const seat = async (u: string) => (await pool.query(`select 1 from group_members gm join groups g on g.id = gm.group_id where g.system_role = 'default-users' and gm.user_id = $1`, [u])).rowCount === 1
   assert.equal(await seat(idle), true)
@@ -2190,7 +2250,8 @@ test('license cleanup: inactive people lose their seat and get it back at sign-i
   assert.equal(ourPeople((await call('POST', '/api/v1/admin/license-cleanup/preview', {})).body.warn).length, 0)    // warned once only
   // the run is kept, with who and why
   const page = (await call('GET', '/api/v1/admin/license-cleanup')).body
-  assert.ok(page.runs[0].changed.some((p: any) => p.userId === idle))
+  assert.equal(page.runs[0].changed, undefined)                                             // the list stays small: counts only
+  assert.ok((await call('GET', `/api/v1/admin/license-cleanup/runs/${page.runs[0].id}`)).body.changed.some((p: any) => p.userId === idle))
   assert.ok(page.seats.total >= 1)
   // idle signs in again: back in users-access (License Optimizer's rule)
   assert.equal((await call('POST', '/api/v1/me/sign-in', undefined, 'lc.idle@x.com')).status, 204)
@@ -2209,7 +2270,7 @@ test('license cleanup: inactive people lose their seat and get it back at sign-i
   const me = await id('owner@x.com')
   assert.equal((await call('POST', '/api/v1/admin/users/bulk', { userIds: [me], action: 'deactivate' })).status, 400)
   // the list shows last activity and groups
-  const row = (await call('GET', '/api/v1/admin/users')).body.find((u: any) => u.id === soon)
+  const row = (await call('GET', '/api/v1/admin/users?limit=200')).body.items.find((u: any) => u.id === soon)
   assert.ok(row.lastActiveAt && row.groups.some((g: any) => g.name === 'lc-keepers'))
   // activity is recorded on use, and clears a warning
   await pool.query('update users set last_active_at = null where id = $1', [fresh])
@@ -2363,8 +2424,12 @@ test('audit log: who changed people, settings, workflow and deletions is recorde
   const log = (await call('GET', '/api/v1/audit?project=AUD', undefined, 'aud.admin@x.com'))
   assert.equal(log.status, 200)
   const actions = log.body.items.map((x: any) => x.action).reverse()
-  assert.deepEqual(actions, ['project.created', 'project.member.added', 'project.member.role_changed', 'project.updated',
-    'project.workflow.applied', 'project.workflow_scheme.changed', 'issue.deleted', 'project.member.removed'])
+  // the scheme change and what applying it did are one transaction (one moment), so either may be listed first
+  const at = actions.indexOf('project.workflow_scheme.changed')
+  assert.deepEqual(actions.filter((a: string) => a !== 'project.workflow.applied' && a !== 'project.workflow_scheme.changed'),
+    ['project.created', 'project.member.added', 'project.member.role_changed', 'project.updated', 'issue.deleted', 'project.member.removed'])
+  assert.deepEqual(actions.filter((a: string) => a === 'project.workflow.applied' || a === 'project.workflow_scheme.changed').sort(), ['project.workflow.applied', 'project.workflow_scheme.changed'])
+  assert.equal(Math.abs(actions.indexOf('project.workflow.applied') - at), 1)
   const role = log.body.items.find((x: any) => x.action === 'project.member.role_changed')
   assert.deepEqual([role.actor, role.target, role.before, role.after], ['aud.admin@x.com', 'aud.member@x.com', { role: 'member' }, { role: 'viewer' }])
   assert.deepEqual(log.body.items.find((x: any) => x.action === 'project.updated').after, { name: 'Audited 2' })
@@ -2460,7 +2525,7 @@ test('project backups: deleting backs up everything first, restore brings it all
   assert.equal((await pool.query(`select count(*)::int as n from projects where key = 'BAK'`)).rows[0].n, 0)
 
   // the backup: listed, downloadable, and holds every part of the project
-  const b = (await call('GET', '/api/v1/admin/project-backups')).body.find((x: any) => x.projectKey === 'BAK')
+  const b = (await call('GET', '/api/v1/admin/project-backups?query=BAK')).body.items.find((x: any) => x.projectKey === 'BAK')
   assert.deepEqual([b.items, b.files, b.restoredAt], [2, 1, null])
   const doc = JSON.parse(objects.get(`files/${b.objectKey}`)!.toString())
   assert.deepEqual(Object.fromEntries(['issues', 'comments', 'worklogs', 'issue_links', 'attachments', 'field_defs', 'project_members'].map(k => [k, doc.tables[k].length])),
@@ -2509,7 +2574,7 @@ test('project backups: deleting backs up everything first, restore brings it all
   assert.equal((await call('PUT', '/api/v1/admin/settings/project-backups', { enabled: false })).body.enabled, false)
   assert.equal((await call('DELETE', '/api/v1/projects/BAK')).status, 202)
   await runJobs()
-  assert.equal((await call('GET', '/api/v1/admin/project-backups')).body.filter((x: any) => x.projectKey === 'BAK').length, 1)
+  assert.equal((await call('GET', '/api/v1/admin/project-backups?query=BAK')).body.items.filter((x: any) => x.projectKey === 'BAK').length, 1)
   await call('PUT', '/api/v1/admin/settings/project-backups', { enabled: true })
   const saved = process.env.S3_BUCKET; process.env.S3_BUCKET = ''
   await call('POST', '/api/v1/projects', { name: 'Nowhere', key: 'NOWH', template: 'kanban' })
@@ -2590,13 +2655,63 @@ test('administration: workspace admins list everyone with role, status and proje
   await join('ADV', 'adv.member@x.com')
   await call('GET', '/api/v1/me', undefined, 'adv.gone@x.com')
   await pool.query(`update users set active = false where email = 'adv.gone@x.com'`)
-  const r = await call('GET', '/api/v1/admin/users')
+  const r = await call('GET', '/api/v1/admin/users?limit=200')
   assert.equal(r.status, 200)
-  const by = Object.fromEntries(r.body.map((u: any) => [u.email, u]))
+  const by = Object.fromEntries(r.body.items.map((u: any) => [u.email, u]))
   assert.deepEqual([by['adv.member@x.com'].role, by['adv.member@x.com'].active, by['adv.member@x.com'].projects], ['member', true, 1])
   assert.equal(by['adv.gone@x.com'].active, false)
   assert.equal(by['owner@x.com'].role, 'owner')
   assert.equal((await call('GET', '/api/v1/admin/users', undefined, 'adv.member@x.com')).status, 403)
+})
+
+test('groups at scale: the list and a group’s members come a page at a time, searchable; nothing is cut off', { skip, timeout: 60_000 }, async () => {
+  const ws = (await call('GET', '/api/v1/me')).body.workspaceId
+  await pool.query(`insert into groups (display_name) select 'scale-group-' || lpad(n::text, 3, '0') from generate_series(1, 150) n`)
+  const g = (await pool.query(`select id from groups where display_name = 'scale-group-001'`)).rows[0].id
+  await pool.query(`insert into users (email, name, initials) select 'gm' || n || '@x.com', 'Group member ' || lpad(n::text, 3, '0'), 'GM' from generate_series(1, 120) n`)
+  await pool.query(`insert into memberships (workspace_id, user_id, role) select $1, id, 'member' from users where email like 'gm%@x.com' on conflict do nothing`, [ws])
+  await pool.query(`insert into group_members (group_id, user_id) select $1, id from users where email like 'gm%@x.com'`, [g])
+  const l1 = (await call('GET', '/api/v1/groups?query=scale-group&limit=100')).body
+  const l2 = (await call('GET', `/api/v1/groups?query=scale-group&limit=100&cursor=${l1.next}`)).body
+  assert.deepEqual([l1.items.length, l2.items.length, l2.next], [100, 50, null])
+  assert.equal(new Set([...l1.items, ...l2.items].map((x: any) => x.id)).size, 150)
+  const all = (await call('GET', '/api/v1/groups?limit=200')).body.items
+  assert.ok(all[0].kind === 'system')                                                         // system groups first
+  const d = (await call('GET', `/api/v1/groups/${g}`)).body
+  assert.equal(d.people.length, 50); assert.ok(d.morePeople)
+  const m2 = (await call('GET', `/api/v1/groups/${g}/members?cursor=${d.morePeople}&limit=100`)).body
+  assert.deepEqual([m2.items.length, m2.next], [70, null])
+  assert.deepEqual((await call('GET', `/api/v1/groups/${g}/members?query=member%2011`)).body.items.map((x: any) => x.name).sort(),
+    ['Group member 110', 'Group member 111', 'Group member 112', 'Group member 113', 'Group member 114', 'Group member 115', 'Group member 116', 'Group member 117', 'Group member 118', 'Group member 119'].sort())
+  assert.equal((await call('GET', '/api/v1/groups?cursor=nope')).status, 400)
+})
+
+test('people at scale: searched, filtered and paged on the server; everyone a filter matches changes in the background', { skip, timeout: 120_000 }, async () => {
+  const { runJobs } = await import('../src/jobs.ts')
+  const ws = (await call('GET', '/api/v1/me')).body.workspaceId
+  // 230 people called "Bulk person …", half of them idle for a year
+  await pool.query(`insert into users (email, name, initials, last_active_at) select 'bulk' || n || '@x.com', 'Bulk person ' || lpad(n::text, 3, '0'), 'BP',
+                      case when n % 2 = 0 then now() - interval '400 days' else now() end from generate_series(1, 230) n`)
+  await pool.query(`insert into memberships (workspace_id, user_id, role) select $1, id, 'member' from users where email like 'bulk%@x.com' on conflict do nothing`, [ws])
+  const page = (q: string) => call('GET', `/api/v1/admin/users?${q}`)
+  const p1 = (await page('query=bulk%20person&limit=100')).body
+  const p2 = (await page(`query=bulk%20person&limit=100&cursor=${p1.next}`)).body
+  const p3 = (await page(`query=bulk%20person&limit=100&cursor=${p2.next}`)).body
+  assert.deepEqual([p1.total, p1.items.length, p2.items.length, p3.items.length, p3.next], [230, 100, 100, 30, null])
+  const names = [...p1.items, ...p2.items, ...p3.items].map((u: any) => u.name)
+  assert.equal(new Set(names).size, 230); assert.deepEqual(names, [...names].sort())         // every one once, in name order
+  assert.equal((await page('query=bulk%20person&inactive=365')).body.total, 115)
+  assert.equal((await page('query=bulk%20person&status=deactivated')).body.total, 0)
+  assert.equal((await page('cursor=nonsense')).status, 400)
+  // deactivate everyone idle for a year: more than one request may name, so a background job, with progress
+  const r = await call('POST', '/api/v1/admin/users/bulk', { filter: { query: 'bulk person', inactive: '365' }, action: 'deactivate' })
+  assert.deepEqual([r.status, r.body.matched], [202, 115])
+  await runJobs()
+  const job = (await call('GET', `/api/v1/jobs/${r.body.jobId}`)).body
+  assert.deepEqual([job.status, job.result.changed, job.progress.done], ['done', 115, 115])
+  assert.equal((await page('query=bulk%20person&status=deactivated')).body.total, 115)
+  assert.equal((await call('POST', '/api/v1/admin/users/bulk', { action: 'reactivate' })).status, 400)       // people, or a filter
+  assert.equal((await call('POST', '/api/v1/admin/users/bulk', { filter: {}, action: 'reactivate' }, 'adv.member@x.com')).status, 403)
 })
 
 test('groups: SCIM provisions teams; a project role given to a group reaches everyone in it, and goes when they leave', { skip }, async () => {
@@ -2722,6 +2837,9 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     'POST /admin/workflows': ['gadmin', '/admin/workflows', { name: 'Matrix workflow' }],
     'PATCH /admin/workflows/{id}': ['gadmin', `/admin/workflows/${wf}`, { description: 'x' }],
     'DELETE /admin/workflows/{id}': ['gadmin', `/admin/workflows/${none}`],
+    'GET /admin/workflows/{id}/projects': ['gadmin', `/admin/workflows/${wf}/projects`],
+    'GET /admin/workflow-schemes/{id}/projects': ['gadmin', `/admin/workflow-schemes/${p.workflowSchemeId}/projects`],
+    'GET /admin/workflows/applying': ['gadmin', '/admin/workflows/applying'],
     'POST /admin/workflows/{id}/publish': ['gadmin', `/admin/workflows/${wf}/publish`, { statuses: [{ id: gs, name: 'To do', color: '#94a3b8', category: 'todo' }], transitions: [], dryRun: true }],
     'POST /admin/workflow-schemes': ['gadmin', '/admin/workflow-schemes', { name: 'Matrix scheme', defaultWorkflowId: wf }],
     'PATCH /admin/workflow-schemes/{id}': ['gadmin', `/admin/workflow-schemes/${p.workflowSchemeId}`, { description: 'x', dryRun: true }],
@@ -2806,8 +2924,10 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     'GET /admin/users/refused-sign-ins': ['gadmin', '/admin/users/refused-sign-ins'],
     'GET /admin/license-cleanup': ['gadmin', '/admin/license-cleanup'],
     'POST /admin/license-cleanup/preview': ['gadmin', '/admin/license-cleanup/preview', {}],
+    'GET /admin/license-cleanup/runs/{id}': ['gadmin', `/admin/license-cleanup/runs/${'00000000-0000-4000-8000-000000000000'}`],
     'POST /admin/license-cleanup/run': ['gadmin', '/admin/license-cleanup/run'],
     'GET /groups': ['any', '/groups'],
+    'GET /groups/{id}/members': ['any', `/groups/${mgroup}/members`],
     'GET /groups/{id}': ['any', `/groups/${mgroup}`],
     'POST /groups': ['any', '/groups', { name: 'Matrix made group' }],
     'PATCH /groups/{id}': ['own', `/groups/${mgroup}`, { description: 'x' }],

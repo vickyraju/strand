@@ -28,6 +28,7 @@ export default function CreateProjectModal({ onClose, onCreated }: {
   useEffect(() => { if (apiEnabled) api<typeof schemes>('GET', '/api/workflow-schemes').then(setSchemes, () => {}) }, [])
   const scheme = schemes.find(s => s.id === schemeId) ?? schemes.find(s => s.name.toLowerCase() === template) ?? schemes[0]
 
+  // the projects loaded here are only some of them: the server has the final word (and says so when the key is taken)
   const keyTaken = state.projects.some(p => p.key === key)
   const keyError = !key ? null
     : !isValidKey(key) ? 'Use 2–10 letters, A–Z only.'

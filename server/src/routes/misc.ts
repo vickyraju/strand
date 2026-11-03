@@ -360,9 +360,24 @@ const plugin: FastifyPluginAsyncZod = async app => {
     reply.code(204).send()
   })
   // Administration › Shared views (Jira's "Filters"): every view shared beyond its owner, and any owned by someone who left
-  app.get('/admin/views', { schema: { tags: ['Admin'], summary: 'Views shared with anyone, and views whose owner is deactivated (workspace admins)' } }, async req => {
+  app.get('/admin/views', { schema: { tags: ['Admin'], summary: 'Views shared with anyone, and views whose owner is deactivated, a page at a time: those whose owner left first, then by name; with query, by view or owner name; ownerLeft=1 for those only (system administrators)',
+    querystring: z.object({ query: z.string().max(100).optional(), ownerLeft: z.enum(['0', '1']).default('0'), cursor: z.string().max(400).optional(), limit: z.coerce.number().int().min(1).max(200).default(50) }) } }, async req => {
     requireAdmin(req)
-    return db.query(`${VIEW(req.me)} where v.workspace_id = $1 and (v.shared or jsonb_array_length(v.share) > 0 or not u.active) order by u.active, v.name`, viewArgs(req))
+    const args: unknown[] = viewArgs(req)
+    const where = ['v.workspace_id = $1', '(v.shared or jsonb_array_length(v.share) > 0 or not u.active)']
+    if (req.query.ownerLeft === '1') where.push('not u.active')
+    if (req.query.query) { args.push(`%${req.query.query.replace(/[\\%_]/g, '\\$&')}%`); where.push(`(v.name ilike $${args.length} or u.name ilike $${args.length})`) }
+    const [{ total }] = await db.query<{ total: number }>(`select count(*)::int as total from (${VIEW(req.me)} where ${where.join(' and ')}) x`, [...args]) as any
+    if (req.query.cursor) {
+      let c: [boolean, string, string]
+      try { c = JSON.parse(Buffer.from(req.query.cursor, 'base64url').toString()) } catch { throw new HttpError(400, 'Invalid cursor') }
+      args.push(c[0], c[1], c[2]); where.push(`(u.active, lower(v.name), v.id) > ($${args.length - 2}::boolean, $${args.length - 1}, $${args.length}::uuid)`)
+    }
+    args.push(req.query.limit + 1)
+    const rows = await db.query<any>(`${VIEW(req.me)} where ${where.join(' and ')} order by u.active, lower(v.name), v.id limit $${args.length}`, args)
+    const more = rows.length > req.query.limit, items = more ? rows.slice(0, req.query.limit) : rows
+    const last = items.at(-1)
+    return { items, total, next: more ? Buffer.from(JSON.stringify([last.ownerActive, last.name.toLowerCase(), last.id])).toString('base64url') : null }
   })
 }
 

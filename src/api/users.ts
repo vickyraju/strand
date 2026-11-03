@@ -2,6 +2,7 @@
 // (`/users` is capped at the first 1000), so the assignee/lead pickers query `/users/search` as the
 // user types instead of filtering a local array. Without an API the pickers keep working off the store.
 import { useEffect, useRef, useState } from 'react'
+import { useStore } from '../data/store'
 import { api, apiEnabled } from './client'
 import { mapUser, type Row } from './map'
 import type { User } from '../data/reducer'
@@ -77,4 +78,31 @@ export function useProjectPeople(projectId: string | undefined, local: User[]): 
     return () => { live = false }
   }, [projectId])
   return apiEnabled && people && people.id === projectId ? people.users : local
+}
+
+/** Fetches the people the screen shows but the app doesn't know yet (the workspace can have tens of thousands, so only
+ *  the first 1000 by name come at the start): assignees, reporters, watchers, comment authors and who did what. */
+export function useKnownPeople() {
+  const { state, dispatch } = useStore()
+  const asked = useRef(new Set<string>())
+  useEffect(() => {
+    if (!apiEnabled) return
+    const known = new Set(state.users.map(u => u.id))
+    const want = new Set<string>()
+    const add = (id?: string | null) => { if (id && id !== 'automation' && !known.has(id) && !asked.current.has(id)) want.add(id) }
+    for (const i of state.issues) { add(i.assigneeId); add(i.reporterId); for (const w of i.watcherIds) add(w) }
+    for (const c of state.comments) add(c.authorId)
+    for (const a of state.activity) add(a.actorId)
+    for (const p of state.projects) add(p.leadId)
+    if (!want.size) return
+    const ids = [...want]
+    ids.forEach(id => asked.current.add(id))
+    const t = setTimeout(async () => {
+      for (let i = 0; i < ids.length; i += 200) {
+        const rows = await api<Row[]>('GET', `/api/users?ids=${ids.slice(i, i + 200).join(',')}`).catch(() => [])
+        if (rows.length) dispatch({ type: 'knowUsers', users: rows.map(mapUser) })
+      }
+    }, 100)
+    return () => clearTimeout(t)
+  }, [state.issues, state.comments, state.activity, state.projects, state.users, dispatch])
 }

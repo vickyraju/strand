@@ -18,7 +18,7 @@ export default function LinkTypesAdmin() {
   const [error, setError] = useState('')
   const [adding, setAdding] = useState(false)
   const [removing, setRemoving] = useState<Row | null>(null)
-  const load = () => api<Row[]>('GET', '/api/link-types').then(r => {
+  const load = () => api<Row[]>('GET', '/api/link-types?uses=1').then(r => {
     setRows(r)
     dispatch({ type: 'setLinkTypes', linkTypes: r.map(({ id, name, outward, inward, builtin }) => ({ id, name, outward, inward, builtin })) })
   }, e => setError(errorMessage(e)))

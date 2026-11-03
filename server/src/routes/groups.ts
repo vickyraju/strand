@@ -12,6 +12,7 @@ import { HttpError, type Me } from '../auth.ts'
 import { visible } from '../access.ts'
 import { audit, changes } from '../audit.ts'
 import { getSetting } from '../settings.ts'
+import { someOf } from '../workflows.ts'
 
 const T = ['Groups']
 const uuid = z.string().uuid()
@@ -47,26 +48,63 @@ const shape = (me: Me) => (r: any) => ({
   canManage: !(r.directory && !r.systemRole) && (me.admin || (!r.systemRole && r.isOwner)), createdAt: r.createdAt,
 })
 
+/** A page of a group's members, by name (keyset on name and id). */
+async function memberPage(groupId: string, query: string, cursor: string | null, limit: number) {
+  const args: unknown[] = [groupId]
+  const where = ['gm.group_id = $1']
+  if (query) { args.push('%' + query.replace(/[%_\\]/g, '\\$&') + '%'); where.push(`(u.name ilike $${args.length} or u.email ilike $${args.length})`) }
+  if (cursor) {
+    let c: [string, string]
+    try { c = JSON.parse(Buffer.from(cursor, 'base64url').toString()) } catch { throw new HttpError(400, 'Invalid cursor') }
+    args.push(c[0], c[1]); where.push(`(lower(u.name), u.id) > ($${args.length - 1}, $${args.length}::uuid)`)
+  }
+  args.push(limit + 1)
+  const rows = await db.query<any>(`select u.id, u.name, u.email, u.initials, u.color, u.active from group_members gm join users u on u.id = gm.user_id
+                                     where ${where.join(' and ')} order by lower(u.name), u.id limit $${args.length}`, args)
+  const more = rows.length > limit, items = more ? rows.slice(0, limit) : rows
+  return { items, next: more ? Buffer.from(JSON.stringify([items.at(-1).name.toLowerCase(), items.at(-1).id])).toString('base64url') : null }
+}
+
 const plugin: FastifyPluginAsyncZod = async app => {
-  app.get('/groups', { schema: { tags: T, summary: 'Groups, with their owners and how many people are in each; `mine` for those I’m in or own', querystring: z.object({
+  // System groups first, then by name. A page at a time: thousands of groups come from the directory.
+  app.get('/groups', { schema: { tags: T, summary: 'Groups, with their owners and how many people are in each, a page at a time (system groups first, then by name); `mine` for those I’m in or own', querystring: z.object({
     query: z.string().max(100).default(''), mine: z.coerce.boolean().default(false),
+    cursor: z.string().max(300).optional().describe('`next` from the previous page'), limit: z.coerce.number().int().min(1).max(200).default(100),
   }) } }, async req => {
     const like = '%' + req.query.query.replace(/[%_\\]/g, '\\$&') + '%'
-    const rows = await db.query<any>(`${ROW} where g.display_name ilike $2 ${req.query.mine ? `and (exists (select 1 from group_members gm where gm.group_id = g.id and gm.user_id = $1)
-      or exists (select 1 from group_owners o where o.group_id = g.id and o.user_id = $1))` : ''}
-      order by g.system_role is null, lower(g.display_name) limit 500`, [req.me.id, like])
-    return rows.map(shape(req.me))
+    const args: unknown[] = [req.me.id, like]
+    let after = ''
+    if (req.query.cursor) {
+      let c: [boolean, string, string]
+      try { c = JSON.parse(Buffer.from(req.query.cursor, 'base64url').toString()) } catch { throw new HttpError(400, 'Invalid cursor') }
+      args.push(c[0], c[1], c[2]); after = `and (g.system_role is null, lower(g.display_name), g.id) > ($3::boolean, $4, $5::uuid)`
+    }
+    const mine = req.query.mine ? `and (exists (select 1 from group_members gm where gm.group_id = g.id and gm.user_id = $1)
+      or exists (select 1 from group_owners o where o.group_id = g.id and o.user_id = $1))` : ''
+    args.push(req.query.limit + 1)
+    const rows = await db.query<any>(`${ROW} where g.display_name ilike $2 ${mine} ${after}
+      order by g.system_role is null, lower(g.display_name), g.id limit $${args.length}`, args)
+    const more = rows.length > req.query.limit, items = more ? rows.slice(0, req.query.limit) : rows
+    const last = items.at(-1)
+    return { items: items.map(shape(req.me)), next: more ? Buffer.from(JSON.stringify([last.systemRole == null, last.name.toLowerCase(), last.id])).toString('base64url') : null }
   })
 
   app.get('/groups/:id', { schema: { tags: T, summary: 'A group: its members, owners, and the roles it has in projects you can see', params: idP } }, async req => {
     const [row] = await db.query<any>(`${ROW} where g.id = $2`, [req.me.id, req.params.id])
     if (!row) throw new HttpError(404, 'No such group')
-    const members = await db.query(`select u.id, u.name, u.email, u.initials, u.color, u.active from group_members gm join users u on u.id = gm.user_id
-                                     where gm.group_id = $1 order by u.active desc, lower(u.name) limit 5000`, [req.params.id])
+    // the first page of members; GET /groups/:id/members pages and searches the rest
+    const members = await memberPage(req.params.id, '', null, 50)
     const args: unknown[] = [req.params.id]
     const projects = await db.query(`select p.key, p.name, pg.role from project_group_roles pg join projects p on p.id = pg.project_id
                                       where pg.group_id = $1 and ${visible(req.me, 'p.id', args)} order by p.key`, args)
-    return { ...shape(req.me)(row), people: members, projects }
+    return { ...shape(req.me)(row), people: members.items, morePeople: members.next, projects }
+  })
+
+  app.get('/groups/:id/members', { schema: { tags: T, summary: 'A group’s members by name, a page at a time; with query, those whose name or email contains it', params: idP,
+    querystring: z.object({ query: z.string().max(100).default(''), cursor: z.string().max(300).optional(), limit: z.coerce.number().int().min(1).max(200).default(50) }) } }, async req => {
+    const [g] = await db.query('select 1 from groups where id = $1', [req.params.id])
+    if (!g) throw new HttpError(404, 'No such group')
+    return memberPage(req.params.id, req.query.query, req.query.cursor ?? null, req.query.limit)
   })
 
   app.post('/groups', { schema: { tags: T, summary: 'Make a group (everyone, or system administrators only, as System settings say). You become its owner and a member', body: z.object({
@@ -185,7 +223,7 @@ async function guardProjectAdmins(d: Db, groupId: string, userId: string | null)
                           where g2.project_id = p.id and g2.role = 'admin' and gm.user_id = pa.user_id and g2.group_id <> $1)
             end))`,
     [groupId, userId])
-  if (stuck.length) throw new HttpError(409, `${stuck.map(s => s.key).join(', ')} would have no admin left: give someone else the admin role there first`)
+  if (stuck.length) throw new HttpError(409, `${someOf(stuck.map(s => s.key))} would have no admin left: give someone else the admin role there first`)
 }
 
 export default plugin

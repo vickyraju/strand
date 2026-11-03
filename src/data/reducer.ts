@@ -395,6 +395,8 @@ export type Action =
   | { type: 'addUser'; name: string; title?: string }
   | { type: 'updateUser'; id: string; name?: string; title?: string }
   | { type: 'removeUser'; id: string }
+  /** People the server told us about (by id), added or refreshed */
+  | { type: 'knowUsers'; users: User[] }
   | { type: 'setWorkspaceName'; name: string }
   | { type: 'createProject'; project: Pick<Project, 'id' | 'name' | 'key' | 'color' | 'template'> }
   | { type: 'updateProject'; id: string; patch: ProjectPatch }
@@ -586,6 +588,10 @@ export function reducer(state: State, action: Action, now = Date.now()): State {
     }
     case 'addUser':
       return { ...state, users: [...state.users, makeUser(action.name, state.users.length, action.title)] }
+    case 'knowUsers': {
+      const fresh = new Map(action.users.map(u => [u.id, u]))
+      return { ...state, users: [...state.users.map(u => fresh.get(u.id) ?? u), ...action.users.filter(u => !state.users.some(x => x.id === u.id))] }
+    }
     case 'updateUser':
       return {
         ...state,

@@ -28,8 +28,9 @@ export function toErrorBody(err: any): { status: number; body: ErrorBody } {
     for (const i of issues) { const f = fieldOf(i.path, i.field); if (!(f in errors)) errors[f] = i.message ?? 'Invalid value' }
     return { status: 400, body: { error: 'Invalid input', code: 'invalid_input', errors } }
   }
+  // the code follows the status (a 409 with a field message is still a conflict); field messages ride along
   if (err instanceof HttpError) return { status: err.status, body: err.errors
-    ? { error: err.message, code: 'invalid_input', errors: err.errors }
+    ? { error: err.message, code: err.status === 400 ? 'invalid_input' : codeFor(err.status), errors: err.errors }
     : { error: err.message, code: codeFor(err.status) } }
   // Postgres constraint errors
   if (err.code === '23505') return { status: 409, body: { error: 'Already exists', code: 'conflict' } }

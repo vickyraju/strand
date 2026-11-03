@@ -3,6 +3,7 @@ import { Plus, Trash2 } from 'lucide-react'
 import { api, ApiError, errorMessage } from '../api/client'
 import { reloadPublicSettings } from '../api/settings-public'
 import { searchUsers } from '../api/users'
+import { mapUser, type Row } from '../api/map'
 import { useApp } from '../appContext'
 import { timeAgo, type User } from '../data/store'
 import { Avatar, LoadError, Loading, Toggle } from './ui'
@@ -186,7 +187,9 @@ function RateLimitingSection({ setting, save }: { setting: Setting<RateLimiting>
   useEffect(() => { api<any[]>('GET', '/api/admin/rate-limits/limited').then(setLimited, () => setLimited([])) }, [setting.value])
   useEffect(() => {   // names for the people already exempted
     if (!draft.exemptions.length) return
-    searchUsers('', 100).then(p => setPeople(m => new Map([...m, ...p.items.map(u => [u.id, u] as const)])), () => {})
+    // by id: an exempted person may be anywhere among tens of thousands
+    const ids = draft.exemptions.map(e => e.userId).filter(id => !people.has(id)).slice(0, 200)
+    if (ids.length) api<Row[]>('GET', `/api/users?ids=${ids.join(',')}`).then(rows => setPeople(m => new Map([...m, ...rows.map(r => [r.id, mapUser(r)] as const)])), () => {})
   }, [draft.exemptions.length])
   useEffect(() => {
     if (!query.trim()) { setFound([]); return }
@@ -196,6 +199,9 @@ function RateLimitingSection({ setting, save }: { setting: Setting<RateLimiting>
 
   const dirty = JSON.stringify(draft) !== JSON.stringify(setting.value)
   const set = (patch: Partial<RateLimiting>) => setDraft({ ...draft, ...patch })
+  const [active, setActive] = useState(0)
+  const offered = found.filter(u => !draft.exemptions.some(e => e.userId === u.id))
+  const exempt = (userId: string) => { set({ exemptions: [...draft.exemptions, { userId, mode: 'unlimited' }] }); setQuery('') }
   const setEx = (i: number, patch: Partial<Exemption>) => set({ exemptions: draft.exemptions.map((e, k) => (k === i ? { ...e, ...patch } : e)) })
   const unit = [...INTERVALS].reverse().find(u => draft.intervalSeconds % u.s === 0)!   // the largest unit that fits: 3600 s → 1 hour
   return (
@@ -217,16 +223,16 @@ function RateLimitingSection({ setting, save }: { setting: Setting<RateLimiting>
             <span className="muted sm">{MODES.find(m => m.id === draft.mode)!.hint}</span>
           </div>
           {draft.mode === 'limit' && <>
-            <label className="settings-row">
+            <div className="settings-row" role="group" aria-label="Requests allowed">
               <span className="settings-label">Requests allowed</span>
-              <input className="input" type="number" min={1} style={{ width: 110 }} value={draft.requests} onChange={e => set({ requests: Number(e.target.value) })} aria-invalid={!!errors.requests} />
+              <input className="input" type="number" min={1} style={{ width: 110 }} aria-label="Requests allowed" value={draft.requests} onChange={e => set({ requests: Number(e.target.value) })} aria-invalid={!!errors.requests} />
               <span>every</span>
               <input className="input" type="number" min={1} style={{ width: 80 }} aria-label="Interval" value={draft.intervalSeconds / unit.s}
                 onChange={e => set({ intervalSeconds: Math.max(1, Number(e.target.value)) * unit.s })} />
               <select className="input" style={{ width: 110 }} aria-label="Interval unit" value={unit.s} onChange={e => set({ intervalSeconds: (draft.intervalSeconds / unit.s) * Number(e.target.value) })}>
                 {INTERVALS.map(u => <option key={u.s} value={u.s}>{u.label}{draft.intervalSeconds / unit.s === 1 ? '' : 's'}</option>)}
               </select>
-            </label>
+            </div>
             <label className="settings-row">
               <span className="settings-label">Max requests<span className="muted sm">Unused requests build up to this. Same as “requests allowed”: no build-up.</span></span>
               <input className="input" type="number" min={1} style={{ width: 110 }} value={draft.burst} onChange={e => set({ burst: Number(e.target.value) })} aria-invalid={!!errors.burst} />
@@ -257,12 +263,19 @@ function RateLimitingSection({ setting, save }: { setting: Setting<RateLimiting>
                 )
               })}
               <div style={{ position: 'relative', maxWidth: 320 }}>
-                <input className="input" placeholder="Add a person…" aria-label="Add an exemption" value={query} onChange={e => setQuery(e.target.value)} />
-                {found.length > 0 && (
-                  <ul className="picker-menu" style={{ position: 'absolute', zIndex: 5, listStyle: 'none', margin: 0, padding: 4, width: '100%' }}>
-                    {found.filter(u => !draft.exemptions.some(e => e.userId === u.id)).map(u => (
-                      <li key={u.id}><button className="picker-item" onClick={() => { set({ exemptions: [...draft.exemptions, { userId: u.id, mode: 'unlimited' }] }); setQuery('') }}>
-                        <Plus size={14} /><Avatar user={u} size={18} />{u.name}</button></li>
+                <input className="input" placeholder="Add a person…" aria-label="Add an exemption" role="combobox" aria-expanded={offered.length > 0} aria-controls="exempt-list"
+                  value={query} onChange={e => { setQuery(e.target.value); setActive(0) }}
+                  onKeyDown={e => {
+                    if (e.key === 'ArrowDown') { e.preventDefault(); setActive(a => Math.min(a + 1, offered.length - 1)) }
+                    else if (e.key === 'ArrowUp') { e.preventDefault(); setActive(a => Math.max(a - 1, 0)) }
+                    else if (e.key === 'Enter' && offered[active]) { e.preventDefault(); exempt(offered[active]!.id) }
+                    else if (e.key === 'Escape') setQuery('')
+                  }} />
+                {offered.length > 0 && (
+                  <ul id="exempt-list" role="listbox" className="picker-menu" style={{ position: 'absolute', zIndex: 5, listStyle: 'none', margin: 0, padding: 4, width: '100%' }}>
+                    {offered.map((u, i) => (
+                      <li key={u.id} role="option" aria-selected={i === active} className={`picker-item${i === active ? ' active' : ''}`} onMouseDown={e => { e.preventDefault(); exempt(u.id) }}>
+                        <Plus size={14} /><Avatar user={u} size={18} />{u.name}</li>
                     ))}
                   </ul>
                 )}

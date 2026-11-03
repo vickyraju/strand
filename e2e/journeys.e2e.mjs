@@ -205,7 +205,8 @@ test('workflow versions: removing a status says which projects it reaches and wh
   assert.match(summary, /RFL[\s\S]*2 task items move from In review to In progress/)
   await o.fill('#pub-note', 'No review step')
   await o.click('.modal button:has-text("Update workflow")')
-  await o.waitForSelector('text=Workflow updated: version 2, in 1 project')
+  await o.waitForSelector('text=Workflow updated: version 2. Applying it to 1 project…')
+  await o.waitForSelector('.apply-banner >> text=Applied to 1 project.')                // followed in the background to its end
   const after = (await owner('GET', '/projects/RFL')).body
   for (const i of items) assert.equal((await owner('GET', `/issues/${i.key}`)).body.statusId, doing.id)
   assert.ok(!after.statuses.some(s => s.name === 'In review'))
@@ -234,7 +235,7 @@ test('shared workflows: a system admin copies one, adds a status and makes a sch
   await o.waitForSelector('.modal >> text=An existing status')                         // the shared one, not a second "In review"
   await o.click('.modal button:has-text("Add status")')
   await o.click('.wf-bar button:has-text("Update workflow")')
-  await o.waitForSelector('.modal >> text=No project uses this workflow yet')
+  await o.waitForSelector('.modal >> text=No project uses this yet')
   await o.click('.modal button:has-text("Update workflow")')
   await o.waitForSelector('text=Workflow updated')
   await o.click('.wf-bar button:has-text("Workflows")')
@@ -263,6 +264,47 @@ test('shared workflows: a system admin copies one, adds a status and makes a sch
   // only system administrators change workflows
   assert.equal((await maya('POST', '/admin/workflows', { name: 'Mine' })).status, 403)
   assert.deepEqual([...o.problems, ...m.problems], [])
+})
+
+test('a workflow used by many projects: a count opens them, searchable a page at a time; publishing summarises the change and shows it applying to the end', { skip, timeout: 180_000 }, async () => {
+  const keys = Array.from({ length: 60 }, (_, n) => `BIG${String(n).padStart(2, '0')}`)
+  for (const key of keys) await owner('POST', '/projects', { name: `Big ${key}`, key, template: 'kanban' })
+  const first = (await owner('GET', `/projects/${keys[0]}`)).body
+  const wf = await flow(first, first.statuses.map(s => ({ name: s.name, toId: s.id })))
+  const schemeId = (await owner('GET', `/projects/${keys[0]}`)).body.workflowSchemeId
+  for (const key of keys.slice(1)) await owner('PUT', `/projects/${key}/workflow-scheme`, { schemeId })
+  for (const key of keys.slice(0, 4)) {
+    const p = (await owner('GET', `/projects/${key}`)).body
+    await owner('POST', `/projects/${key}/issues`, { title: 'in progress', statusId: p.statuses.find(s => s.name === 'In progress').id })
+  }
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url(`/admin/workflows/${wf}`))
+  // the header counts the projects; the count opens them, 50 at a time, searchable
+  await o.click('.wf-bar button:has-text("60 projects")')
+  const panel = o.locator('aside[aria-label^="Projects using"]')
+  await panel.locator('text=Showing 50 of 60').waitFor()
+  await panel.locator('button:has-text("Load more")').click()
+  await panel.locator('text=Showing 60 of 60').waitFor()
+  await panel.locator('input').fill('BIG5')
+  await panel.locator('text=/^10 matching/').waitFor()
+  await o.keyboard.press('Escape')
+  // take In progress out: the dialog summarises (no line per project) and the change applies in the background
+  await o.click('.wf-tools [role="tab"]:has-text("List")')
+  await o.click('.wf-list tr:has-text("In progress")')
+  await o.click('.wf-panel button:has-text("Delete status")')
+  await o.selectOption('#ds-to', { label: 'To do' })
+  await o.click('.modal button:has-text("Delete status")')
+  await o.click('.wf-bar button:has-text("Update workflow")')
+  await o.waitForSelector('.modal >> text=Applies to 60 projects')
+  const text = await o.locator('.modal').innerText()
+  assert.match(text, /Every one changes: they lose In progress/)
+  assert.match(text, /4 work items move/); assert.match(text, /4 from In progress to To do/)
+  assert.match(text, /The 10 projects most changed/)
+  assert.equal(await o.locator('.modal .summary .change-list.sm li').count(), 10, 'the ten most changed, not a line per project')
+  await o.click('.modal button:has-text("Update workflow")')
+  await o.waitForSelector('.apply-banner >> text=Applied to 60 projects.', { timeout: 120_000 })
+  for (const key of [keys[0], keys[59]]) assert.deepEqual((await owner('GET', `/projects/${key}`)).body.statuses.map(s => s.name), ['To do', 'Done'])
+  assert.deepEqual(o.problems, [])
 })
 
 test('time tracking: logging work counts the remaining estimate down; it can be set instead', { skip, timeout: 60_000 }, async () => {
@@ -772,7 +814,7 @@ test('license cleanup: an admin previews who is idle, runs the cleanup, and the 
   assert.match(await o.locator('.modal').innerText(), /\d+ (person is|people are) changed now/)
   await o.click('.modal button:has-text("Change")')
   await o.waitForSelector('text=/Changed [1-9]/')
-  const seat = async () => (await as('owner@e2e.test')('GET', '/admin/users')).body.find(u => u.id === samId).groups.some(g => g.name === 'users-access')
+  const seat = async () => (await as('owner@e2e.test')('GET', '/admin/users?query=sam')).body.items.find(u => u.id === samId).groups.some(g => g.name === 'users-access')
   assert.equal(await seat(), false)
   // People: filter to the inactive, and see the change; Sam signs in and is back
   await o.goto(url('/admin/people'))
@@ -781,6 +823,36 @@ test('license cleanup: an admin previews who is idle, runs the cleanup, and the 
   await signIn('sam@e2e.test')
   await o.waitForTimeout(1000)
   assert.equal(await seat(), true)
+  assert.deepEqual(o.problems, [])
+})
+
+test('people at scale: searched and paged on the server; everyone a filter matches is changed in the background', { skip, timeout: 120_000 }, async () => {
+  const pg = (await import('node:module')).createRequire(new URL('../server/package.json', import.meta.url))('pg')
+  const c = new pg.Client({ connectionString: process.env.E2E_DATABASE_URL }); await c.connect()
+  const ws = (await owner('GET', '/me')).body.workspaceId
+  await c.query(`insert into users (email, name, initials) select 'paged' || n || '@e2e.test', 'Paged person ' || lpad(n::text, 2, '0'), 'PP' from generate_series(1, 70) n`)
+  await c.query(`insert into memberships (workspace_id, user_id, role) select $1, id, 'member' from users where email like 'paged%@e2e.test'`, [ws])
+  await c.end()
+  const team = (await owner('POST', '/groups', { name: 'paged-team' })).body
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url('/admin/people'))
+  await o.fill('[aria-label="Find a person"]', 'paged person')
+  await o.waitForSelector('text=Showing 50 of 70')
+  await o.click('button:has-text("Load 20 more")')
+  await o.waitForSelector('text=Showing 70 of 70')
+  await o.fill('[aria-label="Find a person"]', 'paged person 0')
+  await o.waitForSelector('text=Showing 9 of 9')
+  await o.fill('[aria-label="Find a person"]', 'paged person')
+  await o.waitForSelector('text=Showing 50 of 70')
+  // everyone shown, then everyone matching (70, more than the page), into a group found by search
+  await o.check('[aria-label="Select everyone shown"]')
+  await o.click('button:has-text("Select all 70 matching")')
+  await o.selectOption('[aria-label="Bulk action"]', 'add-to-group')
+  await o.fill('.modal [aria-label="Which group"]', 'paged-te')
+  await o.click('.modal [role="option"]:has-text("paged-team")')
+  await o.click('.modal button:text-is("Add to group")')
+  await o.waitForSelector('text=Changed 70', { timeout: 30_000 })
+  assert.equal((await owner('GET', `/groups/${team.id}`)).body.members, 71)                  // the 70, and its maker
   assert.deepEqual(o.problems, [])
 })
 

@@ -78,6 +78,18 @@ const { hashToken } = await import('../src/auth.ts')
 const token = 'jbp_' + randomBytes(32).toString('base64url').slice(0, 43)
 const [member] = (await sq(`select id from users where email = 'p2@perf.test'`)).rows
 await sq(`insert into personal_access_tokens (user_id, name, token_hash, hint, expires_at) values ($1, 'perf', $2, 'perf', now() + interval '1 day')`, [member.id, hashToken(token)])
+// …and a system administrator for Administration's pages, with groups (one per 20 people), people last active over
+// the past two years, and every project on the one Scrum workflow
+const adminToken = 'jbp_' + randomBytes(32).toString('base64url').slice(0, 43)
+const [boss] = (await sq(`select id from users where email = 'p1@perf.test'`)).rows
+await sq(`insert into group_members (group_id, user_id) select id, $1 from groups where system_role = 'system-admins' on conflict do nothing`, [boss.id])
+await sq(`insert into personal_access_tokens (user_id, name, token_hash, hint, expires_at) values ($1, 'perf admin', $2, 'perf', now() + interval '1 day')`, [boss.id, hashToken(adminToken)])
+await sq(`update users set last_active_at = now() - make_interval(days => (hashtext(email) & 1023) % 730)`)
+await sq(`insert into groups (display_name) select 'team-' || n from generate_series(1, greatest(1, $1 / 20)) n`, [PEOPLE])
+await sq(`insert into group_members (group_id, user_id) select g.id, u.id from users u join groups g on g.display_name = 'team-' || (1 + (hashtext(u.email) & 1048575) % greatest(1, $1 / 20)) on conflict do nothing`, [PEOPLE])
+await sq(`insert into group_members (group_id, user_id) select g.id, u.id from users u, groups g where g.system_role = 'default-users' on conflict do nothing`)
+const scrumWorkflow = (await sq(`select id from workflows where workspace_id = $1 and name = 'Scrum'`, [ws.id])).rows[0].id
+await sq('analyze')
 await s.end()
 
 const { build } = await import('../src/app.ts')
@@ -98,6 +110,17 @@ const CHECKS: [string, string, number][] = [
   ['Project summary counts', '/api/v1/projects/P1/summary', 1000],
   ['Notifications', '/api/v1/notifications', 300],
   ['Report data: a whole project', '/api/v1/projects/P1/report-data', 3000],
+  // Administration at the size of a large Jira (PERF_PEOPLE=40000 PERF_PROJECTS=6000): never a whole table
+  ['Admin › People: first page', '/api/v1/admin/users?limit=50', 1000],
+  ['Admin › People: search', '/api/v1/admin/users?limit=50&query=person%2012', 1000],
+  ['Admin › People: inactive a year', '/api/v1/admin/users?limit=50&inactive=365', 1000],
+  ['Admin › Groups: first page', '/api/v1/groups?limit=100', 800],
+  ['Admin › Workflows: the list', '/api/v1/workflows', 800],
+  ['Admin › Workflow schemes: the list', '/api/v1/workflow-schemes', 800],
+  ['Admin › Projects using a workflow: a page', `/api/v1/admin/workflows/${scrumWorkflow}/projects?limit=50`, 800],
+  ['Admin › Projects using a workflow: search', `/api/v1/admin/workflows/${scrumWorkflow}/projects?limit=50&query=P59`, 800],
+  ['Admin › Audit log: first page', '/api/v1/audit?limit=50', 800],
+  ['Admin › License cleanup: seats and runs', '/api/v1/admin/license-cleanup', 1500],
 ]
 const pct = (xs: number[], p: number) => xs.sort((a, b) => a - b)[Math.min(xs.length - 1, Math.floor(p * xs.length))]!
 let missed = 0
@@ -108,7 +131,7 @@ for (const [name, path, budget] of CHECKS) {
   let rows = 0
   for (let n = 0; n <= RUNS; n++) {
     const start = performance.now()
-    const r = await app.inject({ method: 'GET', url: path, headers: auth })
+    const r = await app.inject({ method: 'GET', url: path, headers: name.startsWith('Admin') ? { authorization: `Bearer ${adminToken}` } : auth })
     const ms = performance.now() - start
     if (r.statusCode !== 200) { console.error(`${name}: ${r.statusCode} ${r.body.slice(0, 200)}`); process.exit(1) }
     if (n === 0) { const b = JSON.parse(r.body); rows = Array.isArray(b) ? b.length : b.items?.length ?? b.issues?.length ?? 1; continue }
