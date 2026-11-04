@@ -436,7 +436,7 @@ export type Action =
   | { type: 'editComment'; id: string; body: string }
   | { type: 'deleteComment'; id: string }
   | { type: 'markViewed'; issueId: string }
-  | { type: 'createSprint'; projectId: string }
+  | { type: 'createSprint'; projectId: string; boardId?: string }
   | { type: 'updateSprint'; id: string; patch: Partial<Pick<Sprint, 'name' | 'goal' | 'endsAt'>> }
   | { type: 'startSprint'; id: string; endsAt: number }
   | { type: 'completeSprint'; id: string; moveTo?: string }
@@ -703,7 +703,8 @@ export function reducer(state: State, action: Action, now = Date.now()): State {
       // container: undefined = stay put, null = backlog, string = sprint id
       const sprintId = action.container === undefined ? issue.sprintId : action.container ?? undefined
       const list = state.issues
-        .filter(i => i.projectId === issue.projectId && i.id !== issue.id && i.type !== 'epic' && (i.sprintId ?? null) === (sprintId ?? null))
+        // a sprint is one list whatever the projects in it; the backlog, the item's project
+        .filter(i => (sprintId || i.projectId === issue.projectId) && i.id !== issue.id && i.type !== 'epic' && (i.sprintId ?? null) === (sprintId ?? null))
         .sort((a, b) => a.rank - b.rank)
       const at = action.beforeId ? list.findIndex(i => i.id === action.beforeId) : -1
       const rank = at < 0
@@ -875,14 +876,15 @@ export function reducer(state: State, action: Action, now = Date.now()): State {
       const project = state.projects.find(p => p.id === action.projectId)
       if (!project) return state
       const n = state.sprints.filter(s => s.projectId === action.projectId).length + 1
-      const sprint: Sprint = { id: uid(), projectId: action.projectId, name: `${project.key} Sprint ${n}`, goal: '', state: 'planned' }
+      const sprint: Sprint = { id: uid(), projectId: action.projectId, ...(action.boardId ? { boardId: action.boardId } : {}), name: `${project.key} Sprint ${n}`, goal: '', state: 'planned' }
       return { ...state, sprints: [...state.sprints, sprint] }
     }
     case 'updateSprint':
       return { ...state, sprints: state.sprints.map(s => s.id === action.id ? { ...s, ...action.patch } : s) }
     case 'startSprint': {
       const sprint = state.sprints.find(s => s.id === action.id)
-      if (!sprint || state.sprints.some(s => s.projectId === sprint.projectId && s.state === 'active')) return state
+      // one active sprint per board (a local workspace's sprints have no board: one per project)
+      if (!sprint || state.sprints.some(s => (s.boardId ?? s.projectId) === (sprint.boardId ?? sprint.projectId) && s.state === 'active')) return state
       const committed = state.issues.filter(i => i.sprintId === sprint.id).reduce((n, i) => n + (i.estimate ?? 0), 0)
       return {
         ...state,
@@ -891,17 +893,18 @@ export function reducer(state: State, action: Action, now = Date.now()): State {
     }
     case 'completeSprint': {
       const sprint = state.sprints.find(s => s.id === action.id)
-      const project = state.projects.find(p => p.id === sprint?.projectId)
-      if (!sprint || !project) return state
+      if (!sprint) return state
+      // each item is done by its own project's statuses (a board's sprint can hold several projects' work)
+      const done = (i: Issue) => isDone(state.projects.find(p => p.id === i.projectId), i)
       const items = state.issues.filter(i => i.sprintId === sprint.id)
-      const completed = items.filter(i => isDone(project, i)).reduce((n, i) => n + (i.estimate ?? 0), 0)
+      const completed = items.filter(done).reduce((n, i) => n + (i.estimate ?? 0), 0)
       return {
         ...state,
         sprints: state.sprints.map(s => s.id === action.id
           ? { ...s, state: 'closed', completedAt: now, completed, issueIds: items.map(i => i.id) } : s),
         // Unfinished work moves to the chosen sprint, or back to the backlog
         issues: state.issues.map(i =>
-          i.sprintId === sprint.id && !isDone(project, i) ? { ...i, sprintId: action.moveTo, updatedAt: now } : i),
+          i.sprintId === sprint.id && !done(i) ? { ...i, sprintId: action.moveTo, updatedAt: now } : i),
       }
     }
     case 'deleteSprint':

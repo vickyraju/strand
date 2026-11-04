@@ -168,7 +168,7 @@ export async function jqlToSql(d: Db, me: Me, q: Query, args: unknown[]): Promis
       case 'affectedVersion': return `exists (select 1 from releases r where r.id = any(i.affects_release_ids) and lower(r.name) = lower(${put(text(v, 'affectedVersion'))}))`
       case 'sprint':
         if (v.kind === 'fn' && (v.name === 'opensprints' || v.name === 'closedsprints')) return `i.sprint_id in (select id from sprints where state = '${v.name === 'opensprints' ? 'active' : 'closed'}')`
-        return `i.sprint_id in (select s.id from sprints s where s.project_id = i.project_id and lower(s.name) = lower(${put(text(v, 'sprint'))}))`
+        return `i.sprint_id in (select s.id from sprints s where s.workspace_id = i.workspace_id and lower(s.name) = lower(${put(text(v, 'sprint'))}))`   // a sprint may hold other projects' work
       case 'parent': return `i.parent_id in (select pi.id from issues pi join projects pp on pp.id = pi.project_id where pp.key || '-' || pi.number = upper(${put(text(v, 'parent'))}))`
       case 'resolution': {
         const t = text(v, 'resolution')

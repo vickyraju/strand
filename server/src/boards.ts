@@ -99,7 +99,8 @@ export async function boardWhere(d: Db, me: Me, b: Board, o: { quick?: string[];
   args.push(b.id)
   const boardArg = `$${args.length}`
   if (o.scope === 'board' && b.type === 'scrum') where.push(`i.sprint_id = (select id from sprints where board_id = ${boardArg} and state = 'active')`)
-  else if (o.scope === 'backlog') where.push(`st.category <> 'done' and (i.sprint_id is null or i.sprint_id in (select id from sprints where board_id = ${boardArg} and state <> 'closed'))`)
+  // the backlog: the board's open sprints (done work included, as it counts there) and unfinished work in no sprint
+  else if (o.scope === 'backlog') where.push(`(i.sprint_id in (select id from sprints where board_id = ${boardArg} and state <> 'closed') or (i.sprint_id is null and st.category <> 'done'))`)
   else where.push(`${boardArg}::uuid is not null`)                                        // keeps the parameter used
   if (o.scope === 'board' && b.type === 'kanban' && b.doneDays)
     { args.push(b.doneDays); where.push(`(st.category <> 'done' or i.updated_at > now() - make_interval(days => $${args.length}))`) }

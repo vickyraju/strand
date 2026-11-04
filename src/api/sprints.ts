@@ -33,7 +33,7 @@ export const sprintSync = createCollectionSync<Sprint>({
   // only fields the server stores from user input; point snapshots are the server's to compute
   changed: (a, b) => a.name !== b.name || a.goal !== b.goal || a.endsAt !== b.endsAt || a.state !== b.state,
   create: async s => {
-    await api('POST', `/api/projects/${keyOf(s.projectId)}/sprints`, { id: s.id, name: s.name, goal: s.goal, endsAt: iso(s.endsAt) })
+    await api('POST', `/api/projects/${keyOf(s.projectId)}/sprints`, { id: s.id, name: s.name, goal: s.goal, endsAt: iso(s.endsAt), ...(s.boardId ? { boardId: s.boardId } : {}) })
   },
   update: async (a, b) => {
     const base = `/api/projects/${keyOf(b.projectId)}/sprints/${b.id}`

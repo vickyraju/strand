@@ -4,10 +4,10 @@
 // saves on its own; the server checks every query and says which one is wrong.
 import { useEffect, useState } from 'react'
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Kanban, MoveHorizontal, Plus, Trash2, X } from 'lucide-react'
-import { DEFAULT_FIELDS, type Board, type Project } from '../../data/store'
+import { DEFAULT_FIELDS, useStore, type Board, type Project } from '../../data/store'
 import { canAdmin } from '../../data/access'
 import { api, ApiError, errorMessage } from '../../api/client'
-import { lastBoard, useBoard, useBoards, useJqlCount } from '../../api/boards'
+import { lastBoard, reloadBoards, useBoard, useBoards, useJqlCount } from '../../api/boards'
 import { href, navigate } from '../../router'
 import { useApp } from '../../appContext'
 import { FIELD_LABELS } from '../BoardView'
@@ -54,6 +54,7 @@ function SaveRow({ dirty, busy, message, onSave, onReset }: { dirty: boolean; bu
 
 export default function ConfigureBoard({ project, boardId }: { project: Project; boardId: string }) {
   const { toast } = useApp()
+  const { dispatch } = useStore()
   const { board, error, reload, replace } = useBoard(boardId)
   const [statuses, setStatuses] = useState<GStatus[] | null>(null)
   const [deleting, setDeleting] = useState(false)
@@ -108,6 +109,7 @@ export default function ConfigureBoard({ project, boardId }: { project: Project;
             await api('DELETE', `/api/boards/${encodeURIComponent(board.id)}`)
             if (lastBoard.get(project.id) === board.id) localStorage.removeItem(`strand:board:${project.id}`)
             toast(`${board.name} deleted`)
+            void reloadBoards(project.key, dispatch)
             navigate(href({ name: 'project', key: project.key, tab: 'board' }))
           }}>
           <p>The board goes for everyone; its work items, and completed sprints, stay in {project.name}.</p>
@@ -365,6 +367,7 @@ function CardLayout({ board, can, save }: { board: Board; can: boolean; save: Sa
 // ── The project's boards (Project settings, and /project/KEY/boards) ──
 
 export function BoardsPanel({ project }: { project: Project }) {
+  const { dispatch } = useStore()
   const [version, setVersion] = useState(0)
   const [creating, setCreating] = useState(false)
   const boards = useBoards(project, version)
@@ -393,7 +396,7 @@ export function BoardsPanel({ project }: { project: Project }) {
         </tbody>
       </table>
       {creating && <CreateBoard project={project} onClose={() => setCreating(false)}
-        onCreated={b => { setCreating(false); setVersion(v => v + 1); navigate(href({ name: 'project', key: project.key, tab: 'board', sub: b.id })) }} />}
+        onCreated={b => { setCreating(false); setVersion(v => v + 1); void reloadBoards(project.key, dispatch); navigate(href({ name: 'project', key: project.key, tab: 'board', sub: b.id })) }} />}
     </section>
   )
 }

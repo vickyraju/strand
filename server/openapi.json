@@ -1856,6 +1856,10 @@
                             "type": "string",
                             "description": "uuid"
                           },
+                          "boardId": {
+                            "type": "string",
+                            "description": "The board it belongs to"
+                          },
                           "name": {
                             "type": "string"
                           },
@@ -1910,6 +1914,7 @@
                           "id",
                           "workspaceId",
                           "projectId",
+                          "boardId",
                           "name",
                           "goal",
                           "state",
@@ -2893,6 +2898,10 @@
                             "type": "string",
                             "description": "uuid"
                           },
+                          "boardId": {
+                            "type": "string",
+                            "description": "The board it belongs to"
+                          },
                           "name": {
                             "type": "string"
                           },
@@ -2947,6 +2956,7 @@
                           "id",
                           "workspaceId",
                           "projectId",
+                          "boardId",
                           "name",
                           "goal",
                           "state",
@@ -3692,6 +3702,10 @@
                             "type": "string",
                             "description": "uuid"
                           },
+                          "boardId": {
+                            "type": "string",
+                            "description": "The board it belongs to"
+                          },
                           "name": {
                             "type": "string"
                           },
@@ -3746,6 +3760,7 @@
                           "id",
                           "workspaceId",
                           "projectId",
+                          "boardId",
                           "name",
                           "goal",
                           "state",
@@ -4491,6 +4506,10 @@
                             "type": "string",
                             "description": "uuid"
                           },
+                          "boardId": {
+                            "type": "string",
+                            "description": "The board it belongs to"
+                          },
                           "name": {
                             "type": "string"
                           },
@@ -4545,6 +4564,7 @@
                           "id",
                           "workspaceId",
                           "projectId",
+                          "boardId",
                           "name",
                           "goal",
                           "state",
@@ -5326,6 +5346,10 @@
                             "type": "string",
                             "description": "uuid"
                           },
+                          "boardId": {
+                            "type": "string",
+                            "description": "The board it belongs to"
+                          },
                           "name": {
                             "type": "string"
                           },
@@ -5380,6 +5404,7 @@
                           "id",
                           "workspaceId",
                           "projectId",
+                          "boardId",
                           "name",
                           "goal",
                           "state",
@@ -10823,6 +10848,12 @@
                     "type": "string",
                     "format": "uuid",
                     "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  "boardId": {
+                    "description": "The Scrum board it belongs to (one of this project’s; default its first)",
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                   }
                 },
                 "required": [
@@ -10862,6 +10893,10 @@
                     "projectId": {
                       "type": "string",
                       "description": "uuid"
+                    },
+                    "boardId": {
+                      "type": "string",
+                      "description": "The board it belongs to"
                     },
                     "name": {
                       "type": "string"
@@ -10917,6 +10952,7 @@
                     "id",
                     "workspaceId",
                     "projectId",
+                    "boardId",
                     "name",
                     "goal",
                     "state",
@@ -11090,6 +11126,10 @@
                       "type": "string",
                       "description": "uuid"
                     },
+                    "boardId": {
+                      "type": "string",
+                      "description": "The board it belongs to"
+                    },
                     "name": {
                       "type": "string"
                     },
@@ -11144,6 +11184,7 @@
                     "id",
                     "workspaceId",
                     "projectId",
+                    "boardId",
                     "name",
                     "goal",
                     "state",
@@ -11423,6 +11464,10 @@
                       "type": "string",
                       "description": "uuid"
                     },
+                    "boardId": {
+                      "type": "string",
+                      "description": "The board it belongs to"
+                    },
                     "name": {
                       "type": "string"
                     },
@@ -11477,6 +11522,7 @@
                     "id",
                     "workspaceId",
                     "projectId",
+                    "boardId",
                     "name",
                     "goal",
                     "state",
@@ -11648,6 +11694,10 @@
                       "type": "string",
                       "description": "uuid"
                     },
+                    "boardId": {
+                      "type": "string",
+                      "description": "The board it belongs to"
+                    },
                     "name": {
                       "type": "string"
                     },
@@ -11702,6 +11752,7 @@
                     "id",
                     "workspaceId",
                     "projectId",
+                    "boardId",
                     "name",
                     "goal",
                     "state",
@@ -43157,7 +43208,7 @@
     },
     "/api/v1/boards/{id}/issues": {
       "get": {
-        "summary": "A board’s work items in rank order, a page at a time: its filter AND the chosen quick filters, among what I may see. Scope `board`: what the board shows (Scrum: the active sprint; Kanban: without old Done items); `backlog` (Scrum): unfinished items not in a completed sprint; `all`: everything its filter finds",
+        "summary": "A board’s work items in rank order, a page at a time: its filter AND the chosen quick filters, among what I may see. Scope `board`: what the board shows (Scrum: the active sprint; Kanban: without old Done items); `backlog` (Scrum): the board’s open sprints and unfinished items in no sprint; `all`: everything its filter finds",
         "tags": [
           "Boards"
         ],

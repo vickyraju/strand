@@ -226,6 +226,7 @@ async function applyPatch(d: Db, me: Me, cur: any, patch: z.infer<typeof patchBo
   if ((moving || retyping) && !(await statusesFor(d, cur.projectId, patch.type ?? cur.type)).includes(patch.statusId ?? cur.statusId))
     throw new HttpError(400, retyping && !moving ? 'Its status isn’t in the workflow for that work type: choose a status too' : 'That status isn’t in the workflow for this work type', { statusId: 'Not in this type’s workflow' })
   await checkParts(d, cur.projectId, patch)
+  if (patch.sprintId !== undefined && patch.sprintId !== cur.sprintId) await checkSprint(d, me, patch.sprintId)
   if (patch.custom) await checkCustom(d, cur.projectId, patch.custom, cur.custom)
   checkSpec(patch.type ?? cur.type, patch.testSpec)
   if ((patch.testEnvironments?.length || patch.revision) && (patch.type ?? cur.type) !== 'test_execution') throw new HttpError(400, 'Only Test Executions have environments and a revision')
@@ -283,6 +284,16 @@ async function checkParts(d: Db, projectId: string, b: { componentIds?: string[]
   }
 }
 
+/** A sprint an item may go into: one of this workspace's, not completed, on a board in a project I can see (a sprint can
+ *  hold work from any project, as its board's filter may cover several). */
+async function checkSprint(d: Db, me: Me, sprintId: string | null | undefined) {
+  if (!sprintId) return
+  const args: unknown[] = [sprintId, me.workspaceId]
+  const [s] = await d.query<{ state: string }>(`select s.state from sprints s where s.id = $1 and s.workspace_id = $2 and ${visible(me, 's.project_id', args)}`, args)
+  if (!s) throw new HttpError(400, 'No such sprint', { sprintId: 'Unknown sprint' })
+  if (s.state === 'closed') throw new HttpError(400, 'That sprint is completed: choose an open one', { sprintId: 'Completed sprint' })
+}
+
 /** Jira's component default assignee: new work in a component, with nobody chosen, goes to the component's lead or the
  *  project's lead (the first component that says so). Only someone who can work in the project. */
 async function defaultAssignee(d: Db, projectId: string, componentIds: string[] | undefined) {
@@ -334,6 +345,7 @@ export async function insertIssue(d: Db, me: Me, projectId: string, b: Record<st
   checkSpec(b.type ?? 'task', b.testSpec)
   await checkFolder(d, projectId, b.type ?? 'task', b.testFolderId)
   await checkParts(d, projectId, b)
+  await checkSprint(d, me, b.sprintId)
   if (b.assigneeId === undefined && b.componentIds?.length) { const who = await defaultAssignee(d, projectId, b.componentIds); if (who) b = { ...b, assigneeId: who } }
   // new work starts where its type's workflow starts, or in a status of that workflow
   const allowed = await statusesFor(d, projectId, b.type ?? 'task')
@@ -422,7 +434,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
         type: i.type, title: i.title, description: i.description, priority: i.priority, labels: i.labels, estimate: i.estimate,
         timeEstimate: i.timeEstimate, dueDate: i.dueDate, startDate: i.startDate, releaseId: i.releaseId, custom: i.custom,
         assigneeId: i.assigneeId && (await canJoinWork(d, i.projectId, i.assigneeId)) ? i.assigneeId : null,
-        sprintId: include.sprint ? i.sprintId : null, ...over,
+        sprintId: include.sprint && i.sprintId && (await d.query(`select 1 from sprints where id = $1 and state <> 'closed'`, [i.sprintId])).length ? i.sprintId : null, ...over,   // a completed sprint stays behind
       }, `Cloned from ${i.key}`)
       const id = await copy(src, {
         title: req.body.title ?? `CLONE - ${src.title}`.slice(0, 500), parentId: src.parentId,

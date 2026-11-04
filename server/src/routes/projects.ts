@@ -551,16 +551,18 @@ const plugin: FastifyPluginAsyncZod = async app => {
 
   // ── Sprints ──
   const sprintBody = z.object({ name: z.string().min(1), goal: z.string(), endsAt: z.string().datetime().nullable() }).partial()
-  const sprintCreate = sprintBody.required({ name: true }).extend({ id: uuid.optional().describe('Client-chosen id') })
+  const sprintCreate = sprintBody.required({ name: true }).extend({ id: uuid.optional().describe('Client-chosen id'), boardId: uuid.optional().describe('The Scrum board it belongs to (one of this project’s; default its first)') })
 
   app.post('/projects/:key/sprints', { schema: { tags: T.sprints, summary: 'Create a sprint', params: keyP, body: sprintCreate } }, async req => {
     const p = await projectByKey(db, req, req.params.key)
     const b = req.body
+    // on a board of this project (sprints belong to boards): the one named, else its first Scrum board, else its first
+    const [board] = await db.query<{ id: string }>(
+      `select id from boards where project_id = $1 and ($2::uuid is null or id = $2) order by (type = 'scrum') desc, position, id limit 1`, [p.id, b.boardId ?? null])
+    if (!board) throw new HttpError(400, 'That board isn’t one of this project’s', { boardId: 'Unknown board' })
     const [s] = await db.query(
-      // on the project's first board (sprints belong to boards)
-      `insert into sprints (id, workspace_id, project_id, name, goal, ends_at, board_id) values (coalesce($6::uuid, uuid_v7()), $1, $2, $3, $4, $5,
-         (select id from boards where project_id = $2 order by position, id limit 1)) returning *`,
-      [req.me.workspaceId, p.id, b.name, b.goal ?? '', b.endsAt ?? null, b.id ?? null])
+      `insert into sprints (id, workspace_id, project_id, name, goal, ends_at, board_id) values (coalesce($6::uuid, uuid_v7()), $1, $2, $3, $4, $5, $7) returning *`,
+      [req.me.workspaceId, p.id, b.name, b.goal ?? '', b.endsAt ?? null, b.id ?? null, board.id])
     return s
   })
 
@@ -591,7 +593,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
         `update sprints set state = 'active', started_at = now(), ends_at = $3,
                 committed = (select coalesce(sum(estimate), 0) from issues where sprint_id = sprints.id and deleted_at is null)
           where id = $1 and project_id = $2 and state = 'planned' returning *`, [req.params.id, p.id, endsAt])
-      if (!s) throw new HttpError(409, 'Sprint is not planned, or another sprint is already active')
+      if (!s) throw new HttpError(409, 'Sprint is not planned, or another sprint is already active on its board')
       return s
     })
   })
@@ -610,10 +612,12 @@ const plugin: FastifyPluginAsyncZod = async app => {
                 issue_ids = array(select id from issues where sprint_id = sprints.id and deleted_at is null)
           where id = $1 and project_id = $2 and state = 'active' returning *`, [req.params.id, p.id])
       if (!s) throw new HttpError(409, 'Sprint is not active')
+      if (moveTo && !(await d.query(`select 1 from sprints where id = $1 and board_id = $2 and state = 'planned'`, [moveTo, s.boardId])).length)
+        throw new HttpError(400, 'Unfinished work can go to a planned sprint of the same board, or the backlog', { moveTo: 'Not a planned sprint of this board' })
       await d.query(
         `update issues set sprint_id = $2, version = version + 1, updated_at = now()
           where sprint_id = $1 and deleted_at is null
-            and status_id in (select id from statuses where project_id = $3 and category <> 'done')`, [s.id, moveTo, p.id])
+            and status_id in (select id from statuses where category <> 'done')`, [s.id, moveTo])   // unfinished work from every project in it
       return s
     })
   })
