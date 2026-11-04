@@ -12,8 +12,9 @@ const QUICK: { id: Quick; label: string }[] = [
 ]
 const WEEK = 7 * 86_400_000
 
-/** The filter toolbar shared by Board, List and Backlog: text search, people, quick filters and types. */
-export function useFilters(people: User[], project?: Project) {
+/** The filter toolbar shared by Board, List and Backlog: text search, people, quick filters and types. `mine: false`
+ *  leaves out "Only my items" (a board with quick filters has its own). */
+export function useFilters(people: User[], project?: Project, o: { mine?: boolean } = {}) {
   const { state } = useStore()
   const [query, setQuery]   = useState('')
   const [userIds, setUsers] = useState<Set<string>>(new Set())
@@ -75,9 +76,11 @@ export function useFilters(people: User[], project?: Project) {
         )}
       </div>
 
-      <button className={`chip${quick.has('mine') ? ' chip-on' : ''}`} aria-pressed={quick.has('mine')} onClick={() => toggle(quick, 'mine', setQuick)}>
-        Only my items
-      </button>
+      {o.mine !== false && (
+        <button className={`chip${quick.has('mine') ? ' chip-on' : ''}`} aria-pressed={quick.has('mine')} onClick={() => toggle(quick, 'mine', setQuick)}>
+          Only my items
+        </button>
+      )}
 
       <Popover title="Filter" align="left" width={260} className={`chip${extraCount ? ' chip-on' : ''}`}
         trigger={<><Filter size={13} />Filter{extraCount ? ` · ${extraCount}` : ''}</>}>

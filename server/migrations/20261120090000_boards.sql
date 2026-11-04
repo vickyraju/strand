@@ -33,12 +33,14 @@ create unique index on board_admins (board_id, group_id) where group_id is not n
 alter table board_admins enable row level security;
 
 -- Every project keeps the board it had: its statuses as columns (WIP limits as each column's maximum), its swimlanes
--- and card fields, and its project as the filter
-insert into boards (workspace_id, project_id, name, type, jql, columns, swimlanes, card_fields, done_days, created_by)
+-- and card fields, and its project as the filter; with Jira's two quick filters, as every new board has
+insert into boards (workspace_id, project_id, name, type, jql, columns, swimlanes, quick_filters, card_fields, done_days, created_by)
 select p.workspace_id, p.id, p.key || ' board', p.template, 'project = ' || p.key,
        coalesce((select jsonb_agg(jsonb_strip_nulls(jsonb_build_object('id', s.id, 'name', s.name, 'statusIds', jsonb_build_array(s.global_status_id), 'max', s.wip_limit)) order by s.position)
                    from statuses s where s.project_id = p.id and s.global_status_id is not null), '[]'),
        jsonb_build_object('by', coalesce(nullif(p.board_prefs->>'groupBy', ''), 'none')),
+       jsonb_build_array(jsonb_build_object('id', gen_random_uuid(), 'name', 'Only my issues', 'jql', 'assignee = currentUser()'),
+                         jsonb_build_object('id', gen_random_uuid(), 'name', 'Recently updated', 'jql', 'updated >= -1d')),
        coalesce(p.board_prefs->'fields', '{}'),
        case when p.template = 'kanban' then 14 end, p.lead_id
   from projects p;

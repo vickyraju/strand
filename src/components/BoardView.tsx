@@ -159,7 +159,7 @@ function BoardScreen({ project, board, switcher, quick: asked, onChanged }: {
   const people = [...new Set(boardItems.map(i => i.assigneeId).filter((x): x is string => !!x))]
     .map(id => userOf(state, id)!).filter(Boolean)
     .sort((a, b) => (a.id === state.me?.id ? -1 : b.id === state.me?.id ? 1 : a.name.localeCompare(b.name)))
-  const filters = useFilters(people, project)
+  const filters = useFilters(people, project, { mine: !board.quickFilters.length })
   const issues = filters.apply(boardItems).filter(i => colOf(i)).sort((a, b) => a.rank - b.rank)
   useNavList(columns.flatMap(c => issues.filter(i => colOf(i) === c.id).map(i => i.id)))
 
