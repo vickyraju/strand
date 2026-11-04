@@ -1313,6 +1313,25 @@ h2.empty-title, h2.section-title, h2.side-title { margin: 0 }
 .role-help dd { margin: 2px 0 0 }
 .plain-fieldset { border: 0; padding: 0; margin: 0; min-width: 0; display: contents }
 .radio-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; cursor: pointer }
+/* Configure board */
+.board-config { flex: 1; overflow-y: auto; padding: 16px 0 48px }
+.board-config .settings { padding: 0; overflow: visible; flex: 1; min-width: 0; max-width: 1100px }
+.chip-list { display: flex; flex-wrap: wrap; gap: 6px; align-items: center }
+.map-columns { display: flex; gap: 10px; overflow-x: auto; padding: 4px 2px 8px; align-items: flex-start; margin-top: 12px }
+.map-column { flex: 0 0 220px; background: var(--sunken); border-radius: var(--radius-lg); padding: 8px; display: flex; flex-direction: column; gap: 8px; min-height: 140px }
+.map-unmapped { background: transparent; border: 1px dashed var(--border) }
+.map-column-hdr { display: flex; align-items: center; gap: 2px }
+.map-column-hdr .input { height: 30px; font-weight: 600 }
+.map-limits { display: flex; gap: 8px; font-size: 12px; color: var(--text-2) }
+.map-limits label { display: flex; align-items: center; gap: 4px }
+.map-limits .input { width: 60px; height: 28px }
+.map-statuses { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px }
+.map-status { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 6px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); cursor: grab }
+.query-list { display: flex; flex-direction: column; gap: 8px; margin-top: 10px }
+.query-row { display: flex; gap: 6px; align-items: flex-start }
+.query-row > .input:first-child { width: 200px; flex-shrink: 0 }
+.lane-options { display: flex; flex-direction: column; margin-top: 8px }
+.card-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); column-gap: 24px; max-width: 720px }
 /* the window doesn't scroll (.content), so each page body scrolls itself */
 .admin { flex-direction: row }
 .admin-nav { width: 232px; flex-shrink: 0; border-right: 1px solid var(--border); overflow-y: auto; padding: 18px 8px 24px 16px }

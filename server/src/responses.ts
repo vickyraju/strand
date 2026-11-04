@@ -315,6 +315,7 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'GET /projects/:key/boards': z.array(z.object({ id, name: z.string(), type: z.enum(['kanban', 'scrum']), jql: z.string(), position: z.number(), canManage: z.boolean() })),
   'POST /projects/:key/boards': Board,
   'GET /boards/:id': Board,
+  'GET /boards/:id/statuses': z.array(z.object({ id, name: z.string(), category: z.enum(['todo', 'in-progress', 'done']), color: z.string() })),
   'PATCH /boards/:id': Board,
   'GET /boards/:id/issues': z.object({ items: z.array(IssueRow.extend({ lane: z.string().describe('The swimlane query it falls in ("" for none)'), projectKey: z.string() })),
     total: z.number().describe('Everything the board finds, on every page'), next: nullable(z.string()) }),

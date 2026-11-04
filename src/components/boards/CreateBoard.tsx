@@ -1,9 +1,10 @@
 // Create board (Jira's "Create board"): a name, Scrum or Kanban (fixed once made), and which work items it shows: this
 // project's, or whatever a filter (JQL, any projects) finds, with a count of matches while it is written.
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Columns2, ListChecks } from 'lucide-react'
 import type { Board, Project } from '../../data/store'
 import { api, errorMessage } from '../../api/client'
+import { useJqlCount } from '../../api/boards'
 import JqlBox from '../JqlBox'
 import { Modal, plural } from '../ui'
 
@@ -17,19 +18,10 @@ export default function CreateBoard({ project, onClose, onCreated }: { project: 
   const [type, setType] = useState<Board['type']>(project.template)
   const [source, setSource] = useState<'project' | 'filter'>('project')
   const [jql, setJql] = useState(`project = ${project.key}`)
-  const [check, setCheck] = useState<{ jql: string; count?: number; error?: string }>()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
-  // How many items the filter finds, a moment after typing stops (and at once on Check)
-  const run = (q: string) => api<{ count: number }>('POST', '/api/jql/check', { jql: q })
-    .then(r => setCheck({ jql: q, count: r.count }), e => setCheck({ jql: q, error: errorMessage(e) }))
-  useEffect(() => {
-    if (source !== 'filter' || !jql.trim()) return
-    const t = setTimeout(() => run(jql.trim()), 500)
-    return () => clearTimeout(t)
-  }, [jql, source])   // eslint-disable-line react-hooks/exhaustive-deps
-  const checked = check?.jql === jql.trim() ? check : undefined
+  const { checked, run } = useJqlCount(jql, source === 'filter')
 
   const ready = name.trim() && (source === 'project' || (jql.trim() && !checked?.error)) && !busy
   const submit = async () => {

@@ -6,11 +6,12 @@ import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
 import { db, tx, type Db } from '../db.ts'
 import { HttpError, type Me } from '../auth.ts'
-import { need } from '../access.ts'
+import { need, visible } from '../access.ts'
 import { audit, changes } from '../audit.ts'
 import { projectByKey } from './projects.ts'
 import { ISSUE_ROW } from './issues.ts'
 import { searchWhere } from './misc.ts'
+import { parseJql, type Node } from '../shared/jql.ts'
 import { DEFAULT_QUICK, boardFor, boardWhere, checkQueries, columnsOf, laneSql, type Board, type Lanes } from '../boards.ts'
 
 const T = ['Boards']
@@ -32,6 +33,10 @@ const settings = {
   doneDays: z.number().int().min(1).max(3650).nullable().describe('Kanban: leave out Done items not updated for this many days (null: show them all)'),
   admins: z.object({ userIds: z.array(uuid).max(100), groupIds: z.array(uuid).max(100) }).describe('The board’s administrators besides the project’s admins'),
 }
+/** The projects a query names in a `project =` or `project in` clause (keys upper-cased, names lower-cased), anywhere in it. */
+const namedProjects = (n: Node | null): string[] =>
+  !n ? [] : n.kind === 'not' ? namedProjects(n.item) : n.kind !== 'clause' ? n.items.flatMap(namedProjects)
+    : n.field.toLowerCase() === 'project' && (n.op === '=' || n.op === 'in') ? n.values.flatMap(v => v.kind === 'text' ? [v.text.toUpperCase(), v.text.toLowerCase()] : []) : []
 const withIds = <X extends { id?: string }>(xs: X[]) => xs.map(x => ({ ...x, id: x.id ?? randomUUID() }))
 /** Swimlanes with every query given an id. */
 const lanesOf = (l: { by: Lanes['by']; queries?: { id?: string; name: string; jql: string }[] }): Lanes => ({ by: l.by, ...(l.queries ? { queries: withIds(l.queries) } : {}) })
@@ -167,6 +172,21 @@ const plugin: FastifyPluginAsyncZod = async app => {
     const more = rows.length > q.limit, items = more ? rows.slice(0, q.limit) : rows
     const last = items.at(-1)
     return { items, total, next: more && last ? Buffer.from(`${last.rank}|${last.id}`).toString('base64url') : null }
+  })
+
+  // The statuses a board can show, for its Columns settings: those of its own project, of the projects its filter names
+  // or finds work in (among those I may see), and any a column already names
+  app.get('/boards/:id/statuses', { schema: { tags: T, summary: 'The statuses a board can map to columns: its project’s, those of the projects its filter names or finds work in, and any a column names', params: idP } }, async req => {
+    const { board: b } = await boardFor(db, req.me, req.params.id)
+    const args: unknown[] = []
+    const { where } = await searchWhere(req.me, { q: '', resolution: 'all', jql: b.jql }, args)
+    args.push(b.projectId, b.columns.flatMap(c => c.statusIds), namedProjects(parseJql(b.jql).where))
+    const n = args.length
+    return db.query(`select g.id, g.name, g.category, g.color from wf_statuses g where g.id = any($${n - 1}::uuid[]) or g.id in (
+        select s.global_status_id from statuses s where s.project_id = $${n - 2}
+          or s.project_id in (select p.id from projects p where p.workspace_id = $1 and (upper(p.key) = any($${n}::text[]) or lower(p.name) = any($${n}::text[])) and ${visible(req.me, 'p.id', args)})
+          or s.project_id in (select distinct i.project_id from issues i join projects p on p.id = i.project_id join statuses st on st.id = i.status_id where ${where.join(' and ')}))
+      order by case g.category when 'todo' then 0 when 'in-progress' then 1 else 2 end, g.name`, args)
   })
 
   // How many work items a query finds (among what I may see), or what is wrong with it: for the board filter, quick

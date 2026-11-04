@@ -21,7 +21,7 @@ import { CompleteSprintModal } from './BacklogView'
 import CreateBoard from './boards/CreateBoard'
 import { Avatar, Empty, Loading, LoadError, Picker, Popover, Toggle, PriorityIcon, PRIORITY_META, PRIORITIES, TypeIcon, StatusLozenge, plural } from './ui'
 
-const FIELD_LABELS: [CardField, string][] = [
+export const FIELD_LABELS: [CardField, string][] = [
   ['type', 'Work type'], ['key', 'Key'], ['epic', 'Epic'], ['labels', 'Labels'], ['due', 'Due date'],
   ['estimate', 'Story points'], ['priority', 'Priority'], ['assignee', 'Assignee'], ['subitems', 'Sub-item progress'],
 ]
@@ -59,7 +59,7 @@ function DroppableCell({ id, laneKey, collapsed, blocked, children }: {
   )
 }
 
-const CREATE = 'create-board'
+const CREATE = 'create-board', CONFIGURE = 'configure-board'
 
 /** The Board tab: the project's boards (Jira's boards: several per project, each with its own filter), the one chosen
  *  in the address (`sub`) or the one last used here, and its quick filters (`quick`, ids, kept in the address). */
@@ -86,9 +86,10 @@ export default function BoardView({ project, sub, quick }: { project: Project; s
         <Picker value={id} title="Boards" className="btn btn-secondary board-switch" search={boards.length > 8}
           options={[
             ...boards.map(b => ({ value: b.id as string | undefined, label: b.name, hint: b.type === 'scrum' ? 'Scrum' : 'Kanban' })),
+            ...(id ? [{ value: CONFIGURE as string | undefined, label: 'Configure board', icon: <Settings2 size={14} /> }] : []),
             ...(canAdmin(project) ? [{ value: CREATE as string | undefined, label: 'Create board', icon: <Plus size={14} /> }] : []),
           ]}
-          onChange={b => b === CREATE ? setCreating(true) : navigate(href({ name: 'project', key: project.key, tab: 'board', sub: b }))}
+          onChange={b => b === CREATE ? setCreating(true) : navigate(href({ name: 'project', key: project.key, tab: b === CONFIGURE ? 'boards' : 'board', sub: b === CONFIGURE ? id : b }))}
           trigger={<><Kanban size={15} /><b>{boards.find(b => b.id === id)?.name ?? 'Board'}</b><ChevronDown size={14} /></>} />
       )}
       {creating && (

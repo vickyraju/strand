@@ -964,3 +964,62 @@ test('a member collapses a board column for themselves: no error, nothing change
   await o.waitForSelector('[aria-label="Collapse To do column"]')                         // the owner's board is as it was
   assert.deepEqual([refused, m.problems, o.problems], [[], [], []])
 })
+
+test('configure a board: its admin narrows the filter, puts two statuses in one column with a maximum, adds a quick filter (a mistake shows where); a member can only read the settings', { skip, timeout: 90_000 }, async () => {
+  await owner('POST', '/projects', { name: 'Configured', key: 'CFG', template: 'kanban' })
+  await owner('POST', '/projects/CFG/members', { userIds: [await idOf('maya@e2e.test')], role: 'member' })
+  await owner('POST', '/projects/CFG/issues', { title: 'Urgent bug', type: 'bug', priority: 'urgent' })
+  await owner('POST', '/projects/CFG/issues', { title: 'Calm bug', type: 'bug', priority: 'low' })
+  const board = (await owner('POST', '/projects/CFG/boards', { name: 'Bugs', type: 'kanban', jql: 'project = CFG AND type = bug' })).body
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url(`/project/CFG/board/${board.id}`))
+  await o.waitForSelector('text=Calm bug')
+  await o.click('.board-switch')
+  await o.click('.picker-menu .picker-item:has-text("Configure board")')
+  await o.waitForSelector('h1:has-text("Configure Bugs")')
+  assert.match(o.url(), new RegExp(`/project/CFG/boards/${board.id}$`))
+
+  // the filter, with a count while it is written
+  await o.fill('#general textarea[aria-label="JQL query"]', 'project = CFG AND type = bug AND priority = urgent')
+  await o.waitForSelector('#general >> text=1 work item matches now.')
+  await o.click('#general button:has-text("Save")')
+  await o.waitForSelector('#general button:has-text("Save"):disabled')
+
+  // In progress joins To do in one column, renamed Open, with a maximum of 1; the emptied column goes
+  await o.click('[aria-label="Move In progress to…"]')
+  await o.click('[role="menu"] button:has-text("To do")')
+  await o.click('[aria-label="Remove In progress"]')
+  await o.fill('#columns [aria-label="Column name"] >> nth=0', 'Open')
+  await o.fill('[aria-label="Maximum for Open"]', '1')
+  await o.click('#columns button:has-text("Save")')
+  await o.waitForSelector('#columns button:has-text("Save"):disabled')
+  const cols = (await owner('GET', `/boards/${board.id}`)).body.columns
+  assert.deepEqual(cols.map(c => [c.name, c.statusIds.length, c.max ?? null]), [['Open', 2, 1], ['Done', 1, null]])
+
+  // a quick filter: a mistake in its query is shown on its row, then fixed
+  await o.click('#quick-filters button:has-text("Add quick filter")')
+  await o.fill('#quick-filters [aria-label="Quick filter name"] >> nth=2', 'Low')
+  await o.fill('[aria-label="Low JQL"]', 'priority = = low')
+  await o.click('#quick-filters button:has-text("Save")')
+  await o.waitForSelector('#quick-filters .query-row [role="alert"]')
+  await o.fill('[aria-label="Low JQL"]', 'priority = low')
+  await o.click('#quick-filters button:has-text("Save")')
+  await o.waitForSelector('#quick-filters button:has-text("Save"):disabled')
+
+  // the board follows: only the urgent bug, in Open, with its limit; the new quick filter is there
+  await o.click('button:has-text("Open board")')
+  await o.waitForSelector('text=Urgent bug')
+  assert.equal(await o.locator('text=Calm bug').count(), 0)
+  await o.waitForSelector('.col-hdr:has-text("Open") >> text=Max 1')
+  await o.waitForSelector('.quick-filters button:has-text("Low")')
+
+  // a member reads the settings but can't change them
+  const m = await signIn('maya@e2e.test')
+  await m.goto(url(`/project/CFG/boards/${board.id}`))
+  await m.waitForSelector('text=Only its administrators and the project’s admins can change it.')
+  await m.waitForSelector('#general >> text=priority = urgent')
+  assert.equal(await m.locator('.board-config button:has-text("Save")').count(), 0)
+  assert.equal(await m.locator('#delete').count(), 0)
+  assert.equal((await maya('PATCH', `/boards/${board.id}`, { name: 'Mine' })).status, 403)
+  assert.deepEqual([...o.problems.filter(p => !/status of 400/.test(p)), ...m.problems], [])   // the 400 is the mistake made on purpose
+})
