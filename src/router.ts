@@ -13,7 +13,8 @@ export type Route =
   | { name: 'settings' }
   /** `item`: a page within the section (a group, a workflow, a settings page, a Workflows tab) */
   | { name: 'admin'; section?: AdminSection; item?: string }
-  | { name: 'project'; key: string; tab?: ProjectTab; sub?: string }
+  /** `quick`: a board's quick filters that are on (ids, comma-separated), so a filtered board can be shared */
+  | { name: 'project'; key: string; tab?: ProjectTab; sub?: string; quick?: string }
   | { name: 'issue'; key: string }
   | { name: 'not-found' }
 
@@ -36,7 +37,7 @@ export function parse(pathname: string, search: string): { route: Route; peek?: 
   else if (a === 'admin' && (!b || (ADMIN as string[]).includes(b))) route = { name: 'admin', section: b as AdminSection | undefined, ...(b && c ? { item: c } : {}) }
   else if (a === 'i' && b)        route = { name: 'issue', key: b.toUpperCase() }
   else if ((a === 'project' || a === 'p') && b &&(!c || (TABS as string[]).includes(c)))
-    route = { name: 'project', key: b.toUpperCase(), tab: c as ProjectTab | undefined, sub: d }
+    route = { name: 'project', key: b.toUpperCase(), tab: c as ProjectTab | undefined, sub: d, ...(params.get('quick') ? { quick: params.get('quick')! } : {}) }
   return { route, peek }
 }
 
@@ -57,7 +58,13 @@ export function href(route: Route, peek?: string): string {
     case 'settings':  return `/settings${q}`
     case 'admin':     return `/admin${route.section ? `/${route.section}` : ''}${route.section && route.item ? `/${route.item}` : ''}`
     case 'issue':     return `/i/${route.key}`
-    case 'project':   return `/project/${route.key}${route.tab ? `/${route.tab}` : ''}${route.sub ? `/${route.sub}` : ''}${q}`
+    case 'project': {
+      const qs = new URLSearchParams()
+      if (route.quick) qs.set('quick', route.quick)
+      if (peek) qs.set('peek', peek)
+      const str = qs.toString()
+      return `/project/${route.key}${route.tab ? `/${route.tab}` : ''}${route.sub ? `/${route.sub}` : ''}${str ? `?${str}` : ''}`
+    }
     case 'not-found': return '/'
   }
 }

@@ -1303,6 +1303,9 @@ test('shared workflows: a system administrator’s change reaches every project 
   // publishing queues a job that applies the change to every project; tests run jobs themselves
   const pub = async (body: object, who?: string) => { const r = await call('POST', `/api/v1/admin/workflows/${wf}/publish`, body, who); if (r.body?.jobId) await runJobs(); return r }
   const withReview = { statuses: [todo, doing, review, done], transitions: [{ id: 'review', name: 'To review', fromIds: [doing.id], toId: review.id }, { id: 'back', name: 'Back', fromIds: [review.id], toId: todo.id }] }
+  const both = (await call('POST', '/api/v1/projects/VER/boards', { name: 'Both', type: 'kanban', jql: 'project in (VER, VEA)' })).body
+  const cols = async (id: string) => (await call('GET', `/api/v1/boards/${id}`)).body.columns.map((c: any) => c.name)
+  const verBoard = (await call('GET', '/api/v1/projects/VER')).body.boards[0].id
   const r1 = await pub({ ...withReview, note: 'Review step' })
   assert.equal(r1.status, 200, JSON.stringify(r1.body)); assert.deepEqual([r1.body.version, r1.body.created], [cur.version + 1, true])
   assert.deepEqual([r1.body.summary.projects, r1.body.summary.changed, r1.body.summary.added], [2, 2, ['Review']])
@@ -1311,6 +1314,8 @@ test('shared workflows: a system administrator’s change reaches every project 
   assert.deepEqual([job.status, job.progress.done, job.progress.total, job.result.applied], ['done', 2, 2, 2])
   for (const key of ['VER', 'VEA']) assert.deepEqual((await call('GET', `/api/v1/projects/${key}`)).body.statuses.map((s: any) => s.name), ['To do', 'In progress', 'Review', 'Done'])
   assert.equal((await pub(withReview)).body.created, false)                                // unchanged: no new version
+  // the projects' boards gain a column for the new status, in its place
+  for (const id of [verBoard, both.id]) assert.deepEqual(await cols(id), ['To do', 'In progress', 'Review', 'Done'])
   // items in Review (one of them deleted, which still counts)
   const rev = (await call('GET', '/api/v1/projects/VER')).body.statuses.find((s: any) => s.name === 'Review')
   const items = []
@@ -1329,6 +1334,8 @@ test('shared workflows: a system administrator’s change reaches every project 
   assert.ok((await pool.query('select status_id from issues where id = any($1::uuid[])', [items.map(i => i.id)])).rows.every(r => r.status_id === doneId))
   assert.ok((await pool.query(`select 1 from activity where issue_id = $1 and text = 'Changed status (workflow change)'`, [items[0].id])).rows.length)
   assert.deepEqual([ver.statuses.length, ver.transitions.length], [3, 0])
+  // the project's own board loses the column; a board across projects keeps its columns (another project may use the status)
+  assert.deepEqual([await cols(verBoard), await cols(both.id)], [['To do', 'In progress', 'Done'], ['To do', 'In progress', 'Review', 'Done']])
   // versions: read by anyone signed in
   const list = (await call('GET', `/api/v1/workflows/${wf}/versions`)).body
   assert.deepEqual(list.slice(0, 2).map((v: any) => v.note), ['Without review', 'Review step'])

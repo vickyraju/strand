@@ -4,7 +4,8 @@ import { parseJql, JqlError } from '../../server/src/shared/jql.ts'
 import { Popover } from './ui'
 
 /** Jira's advanced search: a JQL query, checked as it is typed (the same parser as the server), run on Enter. */
-export default function JqlBox({ value, onRun, serverError }: { value: string; onRun: (jql: string) => void; serverError?: string }) {
+/** `action`: what the button does (Search; Check, where the query is being written for a board). */
+export default function JqlBox({ value, onRun, serverError, action = 'Search', onChange }: { value: string; onRun: (jql: string) => void; serverError?: string; action?: string; onChange?: (jql: string) => void }) {
   const [text, setText] = useState(value)
   useEffect(() => setText(value), [value])
   let mistake: { message: string; at: number } | null = null
@@ -15,9 +16,9 @@ export default function JqlBox({ value, onRun, serverError }: { value: string; o
       <div className="jql-row">
         <textarea className="input mono jql-input" rows={2} spellCheck={false} value={text} aria-label="JQL query" aria-invalid={!!mistake || !!serverError}
           placeholder='project = PAY AND status != Done AND assignee = currentUser() ORDER BY priority DESC'
-          onChange={e => setText(e.target.value)}
+          onChange={e => { setText(e.target.value); onChange?.(e.target.value) }}
           onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); run() } }} />
-        <button className="btn btn-primary" disabled={!!mistake} onClick={run}>Search</button>
+        <button className="btn btn-primary" disabled={!!mistake} onClick={run}>{action}</button>
         <Popover title="JQL help" className="icon-btn" align="right" width={420} trigger={<HelpCircle size={16} />}>
           <div className="jql-help">
             <p><b>Fields</b>: project, type, status, statusCategory, priority, assignee, reporter, labels, component, fixVersion, affectedVersion, sprint, parent, resolution, summary, description, text, created, updated, resolved, due, start, estimate, and any custom field by its name (in quotes if it has spaces).</p>
@@ -30,7 +31,7 @@ export default function JqlBox({ value, onRun, serverError }: { value: string; o
       </div>
       {mistake ? <p className="hint error" role="alert">{mistake.message} (at character {mistake.at + 1})</p>
         : serverError ? <p className="hint error" role="alert">{serverError.replace(/^JQL: /, '')}</p>
-        : <p className="hint">Press Enter to search. Shift+Enter for a new line.</p>}
+        : <p className="hint">Press Enter to {action.toLowerCase()}. Shift+Enter for a new line.</p>}
     </div>
   )
 }

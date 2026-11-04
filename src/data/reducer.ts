@@ -68,6 +68,8 @@ export interface Status {
   /** What the status means, shown in the workflow editor and as a tooltip on the board. */
   description?: string
   wipLimit?: number
+  /** The global status it is (Administration › Workflows): what a board column names (unset in a local workspace) */
+  globalStatusId?: string
 }
 
 /** A move into `to`. `from: 'any'` means every status may move here. `to: null` is a loop: the item stays in its status
@@ -126,6 +128,22 @@ export interface Project {
    *  new work starting in the first (from the server; unset for a local workspace, where every type uses every status) */
   workflowSchemeId?: string
   workflows?:  { typeKey: string; workflowId: string; workflow: string; statusIds: string[] }[]
+  /** Its boards (from the server; a local workspace has the one built from its statuses) */
+  boards?:     BoardRef[]
+}
+
+/** A board in a project's list (Jira's boards): which one, its kind, and its filter. */
+export interface BoardRef { id: string; name: string; type: 'kanban' | 'scrum'; jql: string; position: number }
+/** A board in full: its columns (global statuses mapped to columns), swimlanes, quick filters and card fields. */
+export interface Board extends BoardRef {
+  projectId: string; projectKey: string
+  columns: { id: string; name: string; statusIds: string[]; min?: number; max?: number }[]
+  swimlanes: { by: 'none' | 'assignee' | 'epic' | 'priority' | 'project' | 'queries'; queries?: { id: string; name: string; jql: string }[] }
+  quickFilters: { id: string; name: string; jql: string }[]
+  cardFields: Partial<Record<CardField, boolean>>
+  doneDays: number | null
+  canManage: boolean
+  admins: { kind: 'user' | 'group'; id: string; name: string }[]
 }
 
 /** Automation: "When <trigger> then <actions>". */
@@ -306,6 +324,8 @@ export interface Issue {
 export interface Sprint {
   id:           string
   projectId:    string
+  /** The board it belongs to (from the server) */
+  boardId?:     string
   name:         string
   goal:         string
   state:        'planned' | 'active' | 'closed'
@@ -437,6 +457,8 @@ export type Action =
   | { type: 'checkDue'; now: number }
   /** Replaces one project's issues with a fresh copy from the server. Not undoable. */
   | { type: 'loadIssues'; projectId: string; issues: Issue[] }
+  /** Work items a board found (from any project): added, or refreshed where already loaded */
+  | { type: 'mergeIssues'; issues: Issue[] }
   /** Notifications as the server has them (it creates them when others assign, mention or comment). */
   | { type: 'setNotifications'; notifications: Notification[] }
   /** A project fetched on demand (opened by link or from search): add or replace it, and replace its sprints. */
@@ -955,6 +977,11 @@ export function reducer(state: State, action: Action, now = Date.now()): State {
       return { ...state, projects: state.projects.some(p => p.id === action.project.id)
         ? state.projects.map(p => (p.id === action.project.id ? action.project : p))
         : [...state.projects, action.project] }
+    case 'mergeIssues': {
+      const fresh = new Map(action.issues.map(i => [i.id, i]))
+      const keep = (i: Issue) => { const f = fresh.get(i.id); return f ? { ...f, watcherIds: i.watcherIds, links: i.links, attachments: i.attachments, worklogs: i.worklogs } : i }
+      return { ...state, issues: [...state.issues.map(keep), ...action.issues.filter(i => !state.issues.some(x => x.id === i.id))] }
+    }
     case 'loadIssues': {
       // list rows carry no links, watchers, work logs or attachments: keep the ones an item's detail already loaded
       const had = new Map(state.issues.filter(i => i.projectId === action.projectId).map(i => [i.id, i]))

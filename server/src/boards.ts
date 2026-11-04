@@ -40,6 +40,28 @@ export async function firstBoard(d: Db, p: { id: string; workspaceId: string; ke
   return b!.id
 }
 
+/** A project's boards follow its workflow (Jira: new statuses appear on its boards): a status the project gains gets a
+ *  column, after the column of the status before it; on a board of only this project, a status it loses leaves its
+ *  column, and a column that leaves empty goes (unless it is the last). A status an admin took off a board stays off. */
+export async function followStatuses(d: Db, p: { id: string; key: string }, order: string[], gained: string[], lost: string[]) {
+  if (!gained.length && !lost.length) return
+  const names = new Map((await d.query<{ globalStatusId: string; name: string }>('select global_status_id, name from statuses where project_id = $1', [p.id])).map(s => [s.globalStatusId, s.name]))
+  for (const b of await d.query<Board>('select * from boards where project_id = $1 for update', [p.id])) {
+    let cols = b.columns
+    if (lost.length && b.jql.trim().toLowerCase() === `project = ${p.key}`.toLowerCase()) {
+      const kept = cols.map(c => ({ ...c, statusIds: c.statusIds.filter(g => !lost.includes(g)) }))
+      cols = kept.filter((c, i) => c.statusIds.length || !cols[i]!.statusIds.length)
+      if (!cols.length) cols = kept.slice(0, 1)
+    }
+    for (const g of gained) {
+      if (cols.some(c => c.statusIds.includes(g))) continue
+      const before = order.slice(0, order.indexOf(g)).reverse().map(x => cols.findIndex(c => c.statusIds.includes(x))).find(i => i >= 0) ?? -1
+      cols = [...cols.slice(0, before + 1), { id: randomUUID(), name: names.get(g) ?? 'New status', statusIds: [g] }, ...cols.slice(before + 1)]
+    }
+    if (JSON.stringify(cols) !== JSON.stringify(b.columns)) await d.query('update boards set columns = $2, updated_at = now() where id = $1', [b.id, JSON.stringify(cols)])
+  }
+}
+
 /** A board I may see (read access to its project), with my role there and whether I may change it. 404 otherwise. */
 export async function boardFor(d: Db, me: Me, id: string, opts: { manage?: boolean; lock?: boolean } = {}) {
   const [b] = await d.query<Board>(`select * from boards where id = $1 and workspace_id = $2 ${opts.lock ? 'for update' : ''}`, [id, me.workspaceId])

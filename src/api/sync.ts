@@ -176,6 +176,10 @@ export function createIssueSync(initial?: SyncDeps) {
   return {
     configure(next: SyncDeps) { deps = next },
     load, flush,
+    /** Some issues arrived (a board's): they become the base, leaving the project's other issues as they are. */
+    merge(issues: (Issue & { version?: number })[]) {
+      for (const i of issues) { base.set(i.id, i); keys.set(i.id, i.key); if (i.version != null) versions.set(i.id, i.version) }
+    },
     /** An issue the server changed through another route (a transition): it becomes the base, so it is not sent back. */
     adopt(row: any) {
       const issue = mapIssue(row)

@@ -896,3 +896,67 @@ test('someone removed from a project loses it at once, even with it open on scre
   await m.waitForSelector('text=not found')
   assert.equal((await maya('GET', `/issues/${item.key}`)).status, 404)
 })
+
+test('boards: a project admin adds a board with its own filter; quick filters narrow it and stay in the address; a board can span projects', { skip, timeout: 90_000 }, async () => {
+  await owner('POST', '/projects', { name: 'Boards', key: 'BRD', template: 'kanban' })
+  await owner('POST', '/projects', { name: 'Neighbours', key: 'BRX', template: 'kanban' })
+  const me = await idOf('owner@e2e.test')
+  await owner('POST', '/projects/BRD/issues', { title: 'Crash on save', type: 'bug' })
+  await owner('POST', '/projects/BRD/issues', { title: 'Mine to fix', type: 'bug', assigneeId: me })
+  await owner('POST', '/projects/BRD/issues', { title: 'Write the docs' })
+  await owner('POST', '/projects/BRX/issues', { title: 'Next door work' })
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url('/project/BRD/board'))
+  await o.waitForSelector('text=Write the docs')
+  await o.waitForURL(/\/project\/BRD\/board\/[0-9a-f-]{36}$/)                             // the address names the board
+
+  await o.click('button:has-text("Create board")')
+  await o.fill('#cb-name', 'Bugs board')
+  await o.click('.modal >> text=Work items a filter finds')
+  await o.fill('.modal textarea[aria-label="JQL query"]', 'project = BRD AND type = bug')
+  await o.waitForSelector('.modal >> text=2 work items match now.')
+  await o.click('.modal button:has-text("Create board")')
+  await o.waitForSelector('.board-switch:has-text("Bugs board")')
+  await o.waitForSelector('text=Crash on save')
+  assert.equal(await o.locator('text=Write the docs').count(), 0)
+  const bugs = (await owner('GET', '/projects/BRD/boards')).body.find(b => b.name === 'Bugs board')
+  assert.equal(bugs.jql, 'project = BRD AND type = bug')
+
+  // Only my issues: the address keeps it, so a reload (or a shared link) shows the same
+  await o.click('.quick-filters button:has-text("Only my issues")')
+  await o.waitForURL(/quick=/)
+  await o.reload()
+  await o.waitForSelector('text=Mine to fix')
+  assert.equal(await o.locator('text=Crash on save').count(), 0)
+  assert.equal(await o.locator('.quick-filters button[aria-pressed="true"]').count(), 1)
+
+  // one board across both projects, chosen from the switcher
+  await owner('POST', '/projects/BRD/boards', { name: 'Both teams', type: 'kanban', jql: 'project in (BRD, BRX)' })
+  await o.goto(url('/project/BRD/board'))                                                  // the board last used here
+  await o.waitForSelector('.board-switch:has-text("Bugs board")')
+  await o.click('.board-switch')
+  await o.click('.picker-menu .picker-item:has-text("Both teams")')
+  await o.waitForSelector('text=Next door work')
+  await o.waitForSelector('text=Write the docs')
+  assert.deepEqual(o.problems, [])
+})
+
+test('a member collapses a board column for themselves: no error, nothing changes for anyone else, and it stays collapsed', { skip, timeout: 60_000 }, async () => {
+  await owner('POST', '/projects', { name: 'Collapse', key: 'CLP', template: 'kanban' })
+  await owner('POST', '/projects/CLP/members', { userIds: [await idOf('maya@e2e.test')], role: 'member' })
+  await owner('POST', '/projects/CLP/issues', { title: 'Something to do' })
+  const m = await signIn('maya@e2e.test')
+  const refused = []
+  m.on('response', r => { if (r.status() >= 400) refused.push(`${r.request().method()} ${r.url()} ${r.status()}`) })
+  await m.goto(url('/project/CLP/board'))
+  await m.waitForSelector('text=Something to do')
+  assert.equal(await m.locator('button:has-text("Create board")').count(), 0)            // members don't add boards
+  await m.click('[aria-label="Collapse To do column"]')
+  await m.waitForSelector('[aria-label="Expand To do column"]')
+  await m.reload()
+  await m.waitForSelector('[aria-label="Expand To do column"]')
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url('/project/CLP/board'))
+  await o.waitForSelector('[aria-label="Collapse To do column"]')                         // the owner's board is as it was
+  assert.deepEqual([refused, m.problems, o.problems], [[], [], []])
+})

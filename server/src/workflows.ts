@@ -8,6 +8,7 @@ import { db, tx, type Db } from './db.ts'
 import { HttpError, type Me } from './auth.ts'
 import { audit, type Actor } from './audit.ts'
 import { publish } from './events.ts'
+import { followStatuses } from './boards.ts'
 import { enqueue, registerJob } from './jobs.ts'
 import type { TransitionRules } from './shared/transitionRules.ts'
 
@@ -170,6 +171,8 @@ export async function applyScheme(d: Db, who: Actor, projectId: string, o: { sch
   }
   await d.query('delete from transitions where project_id = $1 and (source is null or not (source = any($2)))', [projectId, sources])
   await d.query('delete from statuses where project_id = $1 and not (id = any($2))', [projectId, [...ids.values()]])
+  if (current.length) await followStatuses(d, project, p.order,
+    p.order.filter(g => !current.some(s => s.globalStatusId === g)), current.map(s => s.globalStatusId).filter((g): g is string => !!g && !p.order.includes(g)))
 
   const impact: Impact = {
     project, added: p.added, removed: p.removed,

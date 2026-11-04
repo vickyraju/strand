@@ -11,16 +11,27 @@ import type { RuleCtx } from '../data/transitionRules.ts'
 
 export type DropPlan = { patch: IssuePatch } | { blocked: string }
 
-/** What dropping a card into a cell does: change its status when the workflow allows that move (for this person, given
- *  `ctx`: a transition's Restrict rules), and, when the cell is in another swimlane, also change the field the board is
- *  grouped by. A move the workflow forbids does nothing at all. */
-export function planDrop(o: { project: Project; issue: Issue; statusId: string; lanePatch?: IssuePatch; moveLane: boolean; ctx?: RuleCtx }): DropPlan {
+/** A board column: the global statuses it shows (in a local workspace, the project's own statuses stand for themselves). */
+export interface BoardColumn { name: string; statusIds: string[] }
+
+/** The statuses of `project` a column shows, in the project's order. */
+export const statusesIn = (project: Project, col: BoardColumn) =>
+  project.statuses.filter(s => col.statusIds.includes(s.globalStatusId ?? s.id)).map(s => s.id)
+
+/** What dropping a card into a cell does: move it into the first of the column's statuses that its own project's workflow
+ *  allows (for this person, given `ctx`: a transition's Restrict rules), and, when the cell is in another swimlane, also
+ *  change the field the board is grouped by. A move the workflow forbids does nothing at all. */
+export function planDrop(o: { project: Project; issue: Issue; column: BoardColumn; lanePatch?: IssuePatch; moveLane: boolean; ctx?: RuleCtx }): DropPlan {
   const patch: IssuePatch = {}
-  if (o.issue.status !== o.statusId) {
-    if (!canTransition(o.project, o.issue.status, o.statusId, o.ctx)) {
-      return { blocked: `The ${o.project.name} workflow doesn’t allow ${statusOf(o.project, o.issue.status)?.name} → ${statusOf(o.project, o.statusId)?.name}` }
+  const targets = statusesIn(o.project, o.column)
+  if (!targets.includes(o.issue.status)) {
+    const to = targets.find(t => canTransition(o.project, o.issue.status, t, o.ctx))
+    if (!to) {
+      return { blocked: targets.length
+        ? `The ${o.project.name} workflow doesn’t allow ${statusOf(o.project, o.issue.status)?.name} → ${o.column.name}`
+        : `${o.column.name} has no status of the ${o.project.name} workflow` }
     }
-    patch.status = o.statusId
+    patch.status = to
   }
   if (o.moveLane && o.lanePatch) Object.assign(patch, o.lanePatch)
   return { patch }

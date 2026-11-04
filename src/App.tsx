@@ -276,7 +276,7 @@ function Shell() {
               : issuesLoad.status === 'error' ? (
                 <Empty icon={<SearchX size={20} strokeWidth={1.5} />} title="Could not load work items" body="The server did not respond."
                   action={<button className="btn btn-primary" onClick={issuesLoad.retry}>Try again</button>} />)
-              : route.tab && <ProjectView project={project} tab={route.tab} sub={route.sub} />
+              : route.tab && <ProjectView project={project} tab={route.tab} sub={route.sub} quick={route.quick} />
               : onDemand === 'loading' ? <div className="loading" role="status">Loading project…</div> : notFound('Project'))}
             {route.name === 'issue' && (fullIssue
               ? <div className="detail-page"><WorkItemDetail issueId={fullIssue.id} mode="full" navList={navList.current} /></div>
