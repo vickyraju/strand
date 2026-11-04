@@ -86,3 +86,16 @@ export function useBoardView(boardId: string | undefined) {
   const save = (v: { cols: string[]; lanes: string[] }) => { setView(v); localStorage.setItem(k, JSON.stringify(v)) }
   return { view, save }
 }
+
+/** How many items a JQL query finds (or what is wrong with it), a moment after typing stops; `run` checks at once. */
+export function useJqlCount(jql: string, on = true) {
+  const [check, setCheck] = useState<{ jql: string; count?: number; error?: string }>()
+  const run = (q: string) => api<{ count: number }>('POST', '/api/jql/check', { jql: q })
+    .then(r => setCheck({ jql: q, count: r.count }), e => setCheck({ jql: q, error: errorMessage(e) }))
+  useEffect(() => {
+    if (!on || !jql.trim()) return
+    const t = setTimeout(() => run(jql.trim()), 500)
+    return () => clearTimeout(t)
+  }, [jql, on])   // eslint-disable-line react-hooks/exhaustive-deps
+  return { checked: check?.jql === jql.trim() ? check : undefined, run }
+}

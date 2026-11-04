@@ -12,6 +12,7 @@ import { navigate, href, type ProjectTab } from '../router'
 import { api, apiEnabled } from '../api/client'
 import { useProjectEvents } from '../api/presence'
 import BoardView from './BoardView'
+import ConfigureBoard, { BoardsPanel } from './boards/ConfigureBoard'
 import BacklogView from './BacklogView'
 import IssueTable, { type TableGroup } from './IssueTable'
 import SummaryView from './SummaryView'
@@ -31,7 +32,7 @@ const AutomationView  = lazy(() => import('./AutomationView'))
 const ProjectPeople   = lazy(() => import('./ProjectPeople'))
 
 export const TAB_LABEL: Record<ProjectTab, string> = {
-  summary: 'Summary', backlog: 'Backlog', board: 'Board', list: 'List', timeline: 'Timeline', calendar: 'Calendar', releases: 'Releases', reports: 'Reports', tests: 'Tests', settings: 'Settings',
+  summary: 'Summary', backlog: 'Backlog', board: 'Board', boards: 'Boards', list: 'List', timeline: 'Timeline', calendar: 'Calendar', releases: 'Releases', reports: 'Reports', tests: 'Tests', settings: 'Settings',
 }
 
 // ── Shared bits ────────────────────────────────────────────
@@ -236,7 +237,7 @@ export function ProjectView({ project, tab, sub, quick }: { project: Project; ta
 
       <div className="tabs" role="tablist" aria-label={`${project.name} views`}>
         {tabs.map(({ id, Icon }) => (
-          <button key={id} role="tab" aria-selected={tab === id} className={`tab${tab === id ? ' active' : ''}`} onClick={() => openProject(project.id, id)}>
+          <button key={id} role="tab" aria-selected={tab === id || (tab === 'boards' && id === 'board')} className={`tab${tab === id || (tab === 'boards' && id === 'board') ? ' active' : ''}`} onClick={() => openProject(project.id, id)}>
             <Icon size={15} strokeWidth={1.75} />{TAB_LABEL[id]}
           </button>
         ))}
@@ -245,6 +246,7 @@ export function ProjectView({ project, tab, sub, quick }: { project: Project; ta
       <Suspense fallback={<div className="loading" role="status">Loading…</div>}>
       {tab === 'summary'  && <SummaryView project={project} />}
       {tab === 'board'    && <BoardView project={project} sub={sub} quick={quick} />}
+      {tab === 'boards'   && (sub ? <ConfigureBoard key={sub} project={project} boardId={sub} /> : <div className="settings"><BoardsPanel project={project} /></div>)}
       {tab === 'backlog'  && (project.template === 'scrum' ? <BacklogView project={project} /> : <Empty icon={<ListChecks size={22} />} title="Backlog is for Scrum projects" body="Kanban projects plan work directly on the board." />)}
       {tab === 'list'     && <ListTab project={project} />}
       {tab === 'timeline' && <TimelineView project={project} />}
@@ -349,6 +351,7 @@ function ProjectSettings({ project }: { project: Project }) {
       </section>
 
       <WorkflowPanel project={project} />
+      {apiEnabled && <BoardsPanel project={project} />}
 
       {apiEnabled && <TestingPanel project={project} admin={canAdmin(project)} />}
       <WorkTypesPanel project={project} />

@@ -1489,6 +1489,11 @@ test('boards: several per project, each with its own filter (across projects too
   const narrowed = await call('PATCH', `/api/v1/boards/${bugs.id}`, { jql: 'project in (BRD, BRE) AND type = Bug AND priority in (high, urgent)' })
   assert.equal(narrowed.status, 200)
   assert.deepEqual((await items(bugs.id)).items.map((i: any) => i.key), [bug.key])
+  // the statuses its columns can name: its project's and those of the projects its filter finds work in
+  await flow('BRE', [], { add: [{ id: crypto.randomUUID(), name: 'Triage', color: '#a855f7', category: 'todo' }] })
+  const can = async (who?: string) => (await call('GET', `/api/v1/boards/${bugs.id}/statuses`, undefined, who)).body.map((x: any) => x.name)
+  assert.ok((await can()).includes('Triage'))
+  assert.ok(!(await can('brd.member@x.com')).includes('Triage'))                        // not from a project they can't see
   // quick filters AND the board filter
   const mine = first.quickFilters.find((q: any) => q.name === 'Only my issues').id
   assert.deepEqual((await items(p.boards[0].id, `?quick=${mine}`)).items.map((i: any) => i.key), [task.key])
@@ -2932,6 +2937,7 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     'PATCH /boards/{id}': ['padmin', `/boards/${board}`, { name: 'Matrix board' }],
     'DELETE /boards/{id}': ['padmin', `/boards/${board}`],
     'GET /boards/{id}/issues': ['read', `/boards/${board}/issues`],
+    'GET /boards/{id}/statuses': ['read', `/boards/${board}/statuses`],
     'POST /jql/check': ['any', '/jql/check', { jql: 'project = MTX' }],
     'POST /admin/workflows/{id}/publish': ['gadmin', `/admin/workflows/${wf}/publish`, { statuses: [{ id: gs, name: 'To do', color: '#94a3b8', category: 'todo' }], transitions: [], dryRun: true }],
     'POST /admin/workflow-schemes': ['gadmin', '/admin/workflow-schemes', { name: 'Matrix scheme', defaultWorkflowId: wf }],

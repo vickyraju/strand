@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react'
 
-export type ProjectTab = 'summary' | 'board' | 'backlog' | 'list' | 'timeline' | 'calendar' | 'releases' | 'reports' | 'tests' | 'settings'
+/** `boards`: a board's settings (Configure board), or the list of the project's boards; not a tab of its own */
+export type ProjectTab = 'summary' | 'board' | 'boards' | 'backlog' | 'list' | 'timeline' | 'calendar' | 'releases' | 'reports' | 'tests' | 'settings'
 
 export type AdminSection = 'people' | 'groups' | 'license' | 'workflows' | 'link-types' | 'test-statuses' | 'settings' | 'audit' | 'backups' | 'views'
 const ADMIN: AdminSection[] = ['people', 'groups', 'license', 'workflows', 'link-types', 'test-statuses', 'settings', 'audit', 'backups', 'views']
@@ -18,7 +19,7 @@ export type Route =
   | { name: 'issue'; key: string }
   | { name: 'not-found' }
 
-const TABS: ProjectTab[] = ['summary', 'board', 'backlog', 'list', 'timeline', 'calendar', 'releases', 'reports', 'tests', 'settings']
+const TABS: ProjectTab[] = ['summary', 'board', 'boards', 'backlog', 'list', 'timeline', 'calendar', 'releases', 'reports', 'tests', 'settings']
 
 export function parse(pathname: string, search: string): { route: Route; peek?: string } {
   const parts = pathname.split('/').filter(Boolean).map(decodeURIComponent)

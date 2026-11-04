@@ -6,6 +6,7 @@ import { canAdmin, isGlobalAdmin } from '../data/access'
 import { href, navigate } from '../router'
 import { api, apiEnabled, errorMessage } from '../api/client'
 import { sprintDeps } from '../api/sprints'
+import { useBoards } from '../api/boards'
 import { Modal, plural } from './ui'
 import { impactLine, type Impact } from './workflow/Versions'
 
@@ -69,7 +70,7 @@ export default function ProjectWorkflow({ project }: { project: Project }) {
         </div>
       </div>
       <Workflows project={project} />
-      <section className="panel">
+      {apiEnabled ? <ColumnLimits project={project} /> : <section className="panel">
         <h2 className="panel-title">WIP limits</h2>
         <p className="muted">How many work items each board column should hold at most (the board warns above it).</p>
         <div className="wip-grid">
@@ -81,9 +82,28 @@ export default function ProjectWorkflow({ project }: { project: Project }) {
             </label>
           ))}
         </div>
-      </section>
+      </section>}
       {changing && <ChangeScheme project={project} onClose={() => setChanging(false)} />}
     </div>
+  )
+}
+
+/** With a server, limits belong to each board's columns (a minimum and a maximum), as in Jira. */
+function ColumnLimits({ project }: { project: Project }) {
+  const boards = useBoards(project)
+  return (
+    <section className="panel">
+      <h2 className="panel-title">WIP limits</h2>
+      <p className="muted">Each board sets a minimum and a maximum for its own columns, in its settings.</p>
+      <div className="btn-row" style={{ marginTop: 8, flexWrap: 'wrap' }}>
+        {boards.map(b => (
+          <a key={b.id} className="btn btn-secondary btn-sm" href={`${href({ name: 'project', key: project.key, tab: 'boards', sub: b.id })}#columns`}
+            onClick={e => { e.preventDefault(); navigate(e.currentTarget.getAttribute('href')!) }}>
+            {b.name}: columns
+          </a>
+        ))}
+      </div>
+    </section>
   )
 }
 
