@@ -124,16 +124,16 @@ const plugin: FastifyPluginAsyncZod = async app => {
     })
   })
 
-  app.patch('/groups/:id', { schema: { tags: T, summary: 'Rename a group or change its description (its owners and system administrators)', params: idP,
-    body: z.object({ name, description: z.string().max(500) }).partial() } }, async req => {
+  app.patch('/groups/:id', { schema: { tags: T, summary: 'Change a group’s description (its owners and system administrators). A group’s name is fixed once it is made, as in Jira (queries such as membersOf("name") find it by name)', params: idP,
+    body: z.object({ name: name.optional().describe('Only its current name is accepted'), description: z.string().max(500).optional() }) } }, async req => {
     return tx(async d => {
       const g = await groupFor(d, req.me, req.params.id, true, true)
-      const next = { name: req.body.name ?? g.displayName, description: req.body.description ?? g.description }
-      if (req.body.name && (await d.query('select 1 from groups where lower(display_name) = lower($1) and id <> $2', [req.body.name, g.id])).length)
-        throw new HttpError(409, 'There is already a group with that name', { name: 'Already used' })
-      await d.query('update groups set display_name = $2, description = $3 where id = $1', [g.id, next.name, next.description])
-      const c = changes({ name: g.displayName, description: g.description }, next)
-      if (c.changed) await audit(d, req, { action: 'group.updated', type: 'group', id: g.id, name: next.name, before: c.before, after: c.after })
+      if (req.body.name !== undefined && req.body.name !== g.displayName)
+        throw new HttpError(400, 'A group’s name can’t be changed once it is made: make a new group instead', { name: 'Can’t be changed' })
+      const description = req.body.description ?? g.description
+      await d.query('update groups set description = $2 where id = $1', [g.id, description])
+      const c = changes({ description: g.description }, { description })
+      if (c.changed) await audit(d, req, { action: 'group.updated', type: 'group', id: g.id, name: g.displayName, before: c.before, after: c.after })
       return shape(req.me)((await d.query<any>(`${ROW} where g.id = $2`, [req.me.id, g.id]))[0])
     })
   })

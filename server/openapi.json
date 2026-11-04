@@ -37946,7 +37946,7 @@
         }
       },
       "patch": {
-        "summary": "Rename a group or change its description (its owners and system administrators)",
+        "summary": "Change a group’s description (its owners and system administrators). A group’s name is fixed once it is made, as in Jira (queries such as membersOf(\"name\") find it by name)",
         "tags": [
           "Groups"
         ],
@@ -37958,6 +37958,7 @@
                 "type": "object",
                 "properties": {
                   "name": {
+                    "description": "Only its current name is accepted",
                     "type": "string",
                     "minLength": 1,
                     "maxLength": 100
