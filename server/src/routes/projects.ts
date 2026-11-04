@@ -9,6 +9,7 @@ import { audit, changes } from '../audit.ts'
 import { enqueue, kickJobs } from '../jobs.ts'
 import { backupBucket, backupSettings } from '../backups.ts'
 import { applyScheme, previewing, typeWorkflows } from '../workflows.ts'
+import { firstBoard } from '../boards.ts'
 import { dryRun } from '../rules.ts'
 import { TEST_TYPES } from './issues.ts'
 import { checkImport } from '../csvImport.ts'
@@ -207,6 +208,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
         await d.query(`insert into project_members (project_id, user_id, role, added_by) values ($1, $2, 'admin', $3) on conflict do nothing`, [p!.id, u, req.me.id])
       await audit(d, req, { action: 'project.created', type: 'project', id: p!.id, name: b.key, project: { id: p!.id, key: b.key }, after: { name: b.name, template: b.template, workflowSchemeId: sc.id } })
       await applyScheme(d, req, p!.id)
+      await firstBoard(d, { id: p!.id, workspaceId: req.me.workspaceId, key: b.key, template: b.template }, req.me.id)
       return projectDetail(d, req.me.workspaceId, b.key, 'admin')
     })
   })
@@ -555,7 +557,9 @@ const plugin: FastifyPluginAsyncZod = async app => {
     const p = await projectByKey(db, req, req.params.key)
     const b = req.body
     const [s] = await db.query(
-      'insert into sprints (id, workspace_id, project_id, name, goal, ends_at) values (coalesce($6::uuid, uuid_v7()), $1, $2, $3, $4, $5) returning *',
+      // on the project's first board (sprints belong to boards)
+      `insert into sprints (id, workspace_id, project_id, name, goal, ends_at, board_id) values (coalesce($6::uuid, uuid_v7()), $1, $2, $3, $4, $5,
+         (select id from boards where project_id = $2 order by position, id limit 1)) returning *`,
       [req.me.workspaceId, p.id, b.name, b.goal ?? '', b.endsAt ?? null, b.id ?? null])
     return s
   })
@@ -635,7 +639,8 @@ export async function projectDetail(d: Db, ws: string, key: string, role: Projec
   const fields = await by('field_defs', 'position'), templates = await by('item_templates', 'name')
   const rules = await by('rules', 'id'), releases = await by('releases', 'release_date nulls last, id'), components = await by('components', 'lower(name)')
   const sprints = await by('sprints', 'created_at'), workflows = await typeWorkflowList(d, p.id)
-  return { ...project, role, statuses, transitions, types, fields, templates, rules, releases, components, sprints, workflows }
+  const boards = await d.query('select id, name, type, jql, position from boards where project_id = $1 order by position, lower(name), id', [p.id])
+  return { ...project, role, statuses, transitions, types, fields, templates, rules, releases, components, sprints, workflows, boards }
 }
 
 export default plugin

@@ -80,6 +80,14 @@ export const ApplySummary = z.object({
   top: z.array(Impact).describe('The projects most changed (at most 10)'),
 })
 const ProjectsPage = z.object({ items: z.array(z.object({ id, key: z.string(), name: z.string(), scheme: z.string() })), next: nullable(z.string()), total: z.number() })
+const BoardColumn = z.object({ id: z.string(), name: z.string(), statusIds: z.array(id).describe('Global statuses shown in this column'), min: z.number().optional(), max: z.number().optional() })
+const NamedQuery = z.object({ id: z.string(), name: z.string(), jql: z.string() })
+export const Board = z.object({
+  id, projectId: id, projectKey: z.string(), name: z.string(), type: z.enum(['kanban', 'scrum']), jql: z.string().describe('The board filter'),
+  columns: z.array(BoardColumn), swimlanes: z.object({ by: z.enum(['none', 'assignee', 'epic', 'priority', 'project', 'queries']), queries: z.array(NamedQuery).optional() }),
+  quickFilters: z.array(NamedQuery), cardFields: z.record(z.string(), z.boolean()), doneDays: nullable(z.number()), position: z.number(),
+  canManage: z.boolean().describe('I may change it'), admins: z.array(z.object({ kind: z.enum(['user', 'group']), id, name: z.string() })),
+})
 export const ProjectDetail = z.object({
   id, workspaceId: id, key: z.string(), name: z.string(), description: z.string(), color: z.string(), template: z.enum(['kanban', 'scrum']),
   leadId: nullable(id), archivedAt: nullable(ts), nextNumber: z.number(), testing: z.boolean().describe('Test management is on'), requirementTypes: nullable(z.array(z.string())).describe('Work types counted as requirements (null: all but testing types and Bug)'), boardPrefs: z.record(z.string(), z.unknown()), layout: z.record(z.string(), z.unknown()),
@@ -87,6 +95,7 @@ export const ProjectDetail = z.object({
   statuses: z.array(Status), transitions: z.array(Transition), types: z.array(WorkType), components: z.array(Component), fields: z.array(Field), templates: z.array(Template),
   rules: z.array(Rule), releases: z.array(Release), sprints: z.array(Sprint),
   workflowSchemeId: id.describe('Its workflow scheme'), workflows: z.array(TypeWorkflow),
+  boards: z.array(z.object({ id, name: z.string(), type: z.enum(['kanban', 'scrum']), jql: z.string(), position: z.number() })).describe('Its boards, in order'),
 })
 
 const issueFields = {
@@ -195,7 +204,7 @@ const kindRow = { fields: Field, templates: Template, rules: Rule, releases: Rel
 export const CREATED = new Set([
   'POST /projects', 'POST /projects/:key/issues', 'POST /issues/:key/comments', 'POST /issues/:key/worklogs', 'POST /projects/:key/sprints',
   'POST /views', 'POST /issues/:key/attachments', 'POST /me/tokens',
-  'POST /admin/statuses', 'POST /admin/workflows', 'POST /admin/workflow-schemes',
+  'POST /admin/statuses', 'POST /admin/workflows', 'POST /admin/workflow-schemes', 'POST /projects/:key/boards',
   ...['fields', 'templates', 'rules', 'releases', 'components'].map(k => `POST /projects/:key/${k}`),
 ])
 
@@ -296,6 +305,13 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'GET /projects/:key/automation/runs': z.array(z.object({ id, ruleId: id, rule: z.string(), issueId: nullable(id), issueKey: nullable(z.string()), trigger: z.record(z.string(), z.unknown()),
     result: z.enum(['success', 'some_skipped', 'no_change', 'failed']), steps: z.array(Step), error: nullable(z.string()), at: ts })),
   'POST /projects/:key/automation/dry-run': z.object({ steps: z.array(Step), error: nullable(z.string()) }),
+  'GET /projects/:key/boards': z.array(z.object({ id, name: z.string(), type: z.enum(['kanban', 'scrum']), jql: z.string(), position: z.number(), canManage: z.boolean() })),
+  'POST /projects/:key/boards': Board,
+  'GET /boards/:id': Board,
+  'PATCH /boards/:id': Board,
+  'GET /boards/:id/issues': z.object({ items: z.array(IssueRow.extend({ lane: z.string().describe('The swimlane query it falls in ("" for none)'), projectKey: z.string() })),
+    total: z.number().describe('Everything the board finds, on every page'), next: nullable(z.string()) }),
+  'POST /jql/check': z.object({ count: z.number().describe('Work items it finds among those I may see') }),
   'GET /projects/:key/workflow': z.object({ scheme: z.object({ id, name: z.string(), description: z.string() }), types: z.array(TypeWorkflow) }),
   'PUT /projects/:key/workflow-scheme': Impact,
   'PATCH /projects/:key/statuses/:id': Status,
