@@ -197,7 +197,7 @@ export function ProjectsView({ onCreate }: { onCreate: () => void }) {
 
 // ── Single project ─────────────────────────────────────────
 
-export function ProjectView({ project, tab, sub }: { project: Project; tab: ProjectTab; sub?: string }) {
+export function ProjectView({ project, tab, sub, quick }: { project: Project; tab: ProjectTab; sub?: string; quick?: string }) {
   useProjectEvents(project.id, project.key, apiEnabled, true)   // other people's changes appear here as they happen
   const { state } = useStore()
   const { openProject } = useApp()
@@ -244,7 +244,7 @@ export function ProjectView({ project, tab, sub }: { project: Project; tab: Proj
 
       <Suspense fallback={<div className="loading" role="status">Loading…</div>}>
       {tab === 'summary'  && <SummaryView project={project} />}
-      {tab === 'board'    && <BoardView project={project} />}
+      {tab === 'board'    && <BoardView project={project} sub={sub} quick={quick} />}
       {tab === 'backlog'  && (project.template === 'scrum' ? <BacklogView project={project} /> : <Empty icon={<ListChecks size={22} />} title="Backlog is for Scrum projects" body="Kanban projects plan work directly on the board." />)}
       {tab === 'list'     && <ListTab project={project} />}
       {tab === 'timeline' && <TimelineView project={project} />}

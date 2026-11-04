@@ -16,6 +16,7 @@ export const mapUser = (u: Row): User => ({
 const mapStatus = (s: Row): Status => ({
   id: s.id, name: s.name, color: s.color, category: s.category,
   ...(s.description ? { description: s.description } : {}), ...(s.wipLimit ? { wipLimit: s.wipLimit } : {}),
+  ...(s.globalStatusId ? { globalStatusId: s.globalStatusId } : {}),
 })
 const mapTransition = (t: Row): Transition => ({
   id: t.id, name: t.name, from: t.fromIds ?? 'any', to: t.toId ?? null, ...(t.rules && Object.keys(t.rules).length ? { rules: t.rules } : {}),
@@ -38,6 +39,7 @@ const mapTemplate = (t: Row): ItemTemplate => ({
 
 export const mapSprint = (s: Row): Sprint => ({
   id: s.id, projectId: s.projectId, name: s.name, goal: s.goal ?? '', state: s.state,
+  ...(s.boardId ? { boardId: s.boardId } : {}),
   startedAt: ms(s.startedAt), endsAt: ms(s.endsAt), completedAt: ms(s.completedAt),
   ...(s.committed != null ? { committed: s.committed } : {}), ...(s.completed != null ? { completed: s.completed } : {}),
   ...(s.issueIds ? { issueIds: s.issueIds } : {}),
@@ -65,6 +67,7 @@ export function mapProject(p: Row): Project {
     ...(p.types?.length ? { types: p.types.map((t: Row) => ({ key: t.key, name: t.name, color: t.color, icon: t.icon })) } : {}),
     ...(p.role ? { role: p.role } : {}),
     ...(p.workflowSchemeId ? { workflowSchemeId: p.workflowSchemeId, workflows: p.workflows ?? [] } : {}),
+    ...(p.boards ? { boards: p.boards.map((b: Row) => ({ id: b.id, name: b.name, type: b.type, jql: b.jql, position: b.position })) } : {}),
   }
 }
 

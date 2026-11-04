@@ -5,6 +5,12 @@ import assert from 'node:assert/strict'
 Object.assign(globalThis, { window: { addEventListener() {} }, location: { pathname: '/', search: '' } })
 const { parse, href } = await import('./router.ts')
 
+test('a board and its quick filters round-trip, and opening a card keeps them', () => {
+  const route = { name: 'project' as const, key: 'PAY', tab: 'board' as const, sub: 'b1', quick: 'q1,q2' }
+  assert.equal(href(route, 'PAY-7'), '/project/PAY/board/b1?quick=q1%2Cq2&peek=PAY-7')
+  assert.deepEqual(parse('/project/PAY/board/b1', '?quick=q1%2Cq2&peek=PAY-7'), { route, peek: 'PAY-7' })
+})
+
 test('project url round-trips as /project/KEY/tab', () => {
   const route = { name: 'project' as const, key: 'PAY', tab: 'list' as const, sub: undefined }
   assert.equal(href(route), '/project/PAY/list')

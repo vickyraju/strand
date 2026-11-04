@@ -9,31 +9,48 @@ const project = {
   transitions: [{ id: 't1', name: 'Start', from: ['todo'], to: 'doing' }, { id: 't2', name: 'Finish', from: ['doing'], to: 'done' }],
 } as unknown as Project
 const card = (status: string) => ({ id: 'c', status }) as unknown as Issue
+const col = (...statusIds: string[]) => ({ name: ({ todo: 'To do', doing: 'In progress', done: 'Done' } as Record<string, string>)[statusIds[0]!] ?? 'Review', statusIds })
 
 // ── what a drop does ──
 
 test('a drop into a column the workflow allows changes the status, and nothing else', () => {
-  assert.deepEqual(planDrop({ project, issue: card('todo'), statusId: 'doing', moveLane: false }), { patch: { status: 'doing' } })
+  assert.deepEqual(planDrop({ project, issue: card('todo'), column: col('doing'), moveLane: false }), { patch: { status: 'doing' } })
 })
 
 test('a drop into the same column changes nothing', () => {
-  assert.deepEqual(planDrop({ project, issue: card('todo'), statusId: 'todo', moveLane: false }), { patch: {} })
+  assert.deepEqual(planDrop({ project, issue: card('todo'), column: col('todo'), moveLane: false }), { patch: {} })
 })
 
 test('a move the workflow does not allow is refused with the reason, names included', () => {
-  const plan = planDrop({ project, issue: card('todo'), statusId: 'done', moveLane: false })
+  const plan = planDrop({ project, issue: card('todo'), column: col('done'), moveLane: false })
   assert.deepEqual(plan, { blocked: 'The Payments workflow doesn’t allow To do → Done' })
+})
+
+test('a column of several statuses takes the first one the workflow allows; already in one of them, nothing changes', () => {
+  assert.deepEqual(planDrop({ project, issue: card('doing'), column: col('todo', 'done'), moveLane: false }), { patch: { status: 'done' } })
+  assert.deepEqual(planDrop({ project, issue: card('done'), column: col('doing', 'done'), moveLane: false }), { patch: {} })
+})
+
+test('a column that names no status of the item’s workflow (another project’s board) refuses the drop', () => {
+  assert.deepEqual(planDrop({ project, issue: card('todo'), column: { name: 'Review', statusIds: ['g-review'] }, moveLane: false }),
+    { blocked: 'Review has no status of the Payments workflow' })
+})
+
+test('columns name global statuses: a project status counts as the global status it is', () => {
+  const p = { ...project, statuses: project.statuses.map(s => ({ ...s, globalStatusId: `g-${s.id}` })) } as Project
+  assert.deepEqual(planDrop({ project: p, issue: card('todo'), column: { name: 'In progress', statusIds: ['g-doing'] }, moveLane: false }), { patch: { status: 'doing' } })
+  assert.deepEqual(planDrop({ project: p, issue: card('todo'), column: col('doing'), moveLane: false }), { blocked: 'In progress has no status of the Payments workflow' })
 })
 
 test('moving to another swimlane also changes the grouped field, with or without a status change', () => {
   const lanePatch = { assigneeId: 'ann' }
-  assert.deepEqual(planDrop({ project, issue: card('todo'), statusId: 'todo', lanePatch, moveLane: true }), { patch: { assigneeId: 'ann' } })
-  assert.deepEqual(planDrop({ project, issue: card('todo'), statusId: 'doing', lanePatch, moveLane: true }), { patch: { status: 'doing', assigneeId: 'ann' } })
-  assert.deepEqual(planDrop({ project, issue: card('todo'), statusId: 'todo', lanePatch, moveLane: false }), { patch: {} })   // same lane: no field change
+  assert.deepEqual(planDrop({ project, issue: card('todo'), column: col('todo'), lanePatch, moveLane: true }), { patch: { assigneeId: 'ann' } })
+  assert.deepEqual(planDrop({ project, issue: card('todo'), column: col('doing'), lanePatch, moveLane: true }), { patch: { status: 'doing', assigneeId: 'ann' } })
+  assert.deepEqual(planDrop({ project, issue: card('todo'), column: col('todo'), lanePatch, moveLane: false }), { patch: {} })   // same lane: no field change
 })
 
 test('a refused move changes nothing, not even the swimlane field', () => {
-  const plan = planDrop({ project, issue: card('todo'), statusId: 'done', lanePatch: { assigneeId: 'ann' }, moveLane: true })
+  const plan = planDrop({ project, issue: card('todo'), column: col('done'), lanePatch: { assigneeId: 'ann' }, moveLane: true })
   assert.ok('blocked' in plan)
 })
 
