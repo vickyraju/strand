@@ -59,6 +59,8 @@ function DroppableCell({ id, laneKey, collapsed, blocked, children }: {
   )
 }
 
+const CREATE = 'create-board'
+
 /** The Board tab: the project's boards (Jira's boards: several per project, each with its own filter), the one chosen
  *  in the address (`sub`) or the one last used here, and its quick filters (`quick`, ids, kept in the address). */
 export default function BoardView({ project, sub, quick }: { project: Project; sub?: string; quick?: string }) {
@@ -82,11 +84,13 @@ export default function BoardView({ project, sub, quick }: { project: Project; s
     <>
       {boards.length > 0 && (
         <Picker value={id} title="Boards" className="btn btn-secondary board-switch" search={boards.length > 8}
-          options={boards.map(b => ({ value: b.id as string | undefined, label: b.name, hint: b.type === 'scrum' ? 'Scrum' : 'Kanban' }))}
-          onChange={b => navigate(href({ name: 'project', key: project.key, tab: 'board', sub: b }))}
+          options={[
+            ...boards.map(b => ({ value: b.id as string | undefined, label: b.name, hint: b.type === 'scrum' ? 'Scrum' : 'Kanban' })),
+            ...(canAdmin(project) ? [{ value: CREATE as string | undefined, label: 'Create board', icon: <Plus size={14} /> }] : []),
+          ]}
+          onChange={b => b === CREATE ? setCreating(true) : navigate(href({ name: 'project', key: project.key, tab: 'board', sub: b }))}
           trigger={<><Kanban size={15} /><b>{boards.find(b => b.id === id)?.name ?? 'Board'}</b><ChevronDown size={14} /></>} />
       )}
-      {canAdmin(project) && <button className="btn btn-secondary" onClick={() => setCreating(true)}><Plus size={15} />Create board</button>}
       {creating && (
         <CreateBoard project={project} onClose={() => setCreating(false)}
           onCreated={b => { setCreating(false); setMade(m => [...m, b]); setListVersion(v => v + 1); navigate(href({ name: 'project', key: project.key, tab: 'board', sub: b.id })) }} />

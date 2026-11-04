@@ -885,7 +885,8 @@ test('boards: a project admin adds a board with its own filter; quick filters na
   await o.waitForSelector('text=Write the docs')
   await o.waitForURL(/\/project\/BRD\/board\/[0-9a-f-]{36}$/)                             // the address names the board
 
-  await o.click('button:has-text("Create board")')
+  await o.click('.board-switch')
+  await o.click('.picker-menu .picker-item:has-text("Create board")')
   await o.fill('#cb-name', 'Bugs board')
   await o.click('.modal >> text=Work items a filter finds')
   await o.fill('.modal textarea[aria-label="JQL query"]', 'project = BRD AND type = bug')
@@ -925,7 +926,10 @@ test('a member collapses a board column for themselves: no error, nothing change
   m.on('response', r => { if (r.status() >= 400) refused.push(`${r.request().method()} ${r.url()} ${r.status()}`) })
   await m.goto(url('/project/CLP/board'))
   await m.waitForSelector('text=Something to do')
-  assert.equal(await m.locator('button:has-text("Create board")').count(), 0)            // members don't add boards
+  await m.click('.board-switch')
+  await m.waitForSelector('.picker-menu .picker-item:has-text("CLP board")')
+  assert.equal(await m.locator('.picker-menu .picker-item:has-text("Create board")').count(), 0)   // members don't add boards
+  await m.keyboard.press('Escape')
   await m.click('[aria-label="Collapse To do column"]')
   await m.waitForSelector('[aria-label="Expand To do column"]')
   await m.reload()
