@@ -5,6 +5,7 @@ import { tx, type Db } from '../db.ts'
 import { requireAdmin } from '../auth.ts'
 import { audit } from '../audit.ts'
 import { applyScheme } from '../workflows.ts'
+import { columnsOf, firstBoard } from '../boards.ts'
 
 // One-time import of a client-side `forge:v1` state (reducer v4) into the shared workspace.
 // Local users are placeholders, so everything they authored is attributed to the importing admin.
@@ -33,6 +34,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
       }
       const issues: any[] = s.issues ?? []
       const done = new Set<string>()
+      const boardOf = new Map<string, string>()                  // project → its first board
 
       for (const p of s.projects) {
         const exists = await d.query('select 1 from projects where workspace_id = $1 and key = $2', [me.workspaceId, p.key])
@@ -64,9 +66,12 @@ const plugin: FastifyPluginAsyncZod = async app => {
             : a.kind === 'assign' && !['reporter', 'lead', 'unassign'].includes(a.to) ? { ...a, to: 'lead' } : a)
           await ins('rules', { id: nid(r.id), project_id: pid, name: r.name, enabled: r.enabled, trigger: JSON.stringify(trigger), actions: JSON.stringify(actions), runs: r.runs ?? 0 })
         }
+        // a board for it (columns follow once its workflow scheme applies, below), holding its sprints
+        const boardId = await firstBoard(d, { id: pid, workspaceId: me.workspaceId, key: p.key, template: p.template === 'scrum' ? 'scrum' : 'kanban' }, me.id)
+        boardOf.set(pid, boardId)
         for (const sp of (s.sprints ?? []).filter((x: any) => x.projectId === p.id))
           await ins('sprints', {
-            id: nid(sp.id), workspace_id: me.workspaceId, project_id: pid, name: sp.name, goal: sp.goal ?? '', state: sp.state,
+            id: nid(sp.id), workspace_id: me.workspaceId, project_id: pid, board_id: boardId, name: sp.name, goal: sp.goal ?? '', state: sp.state,
             started_at: ms(sp.startedAt), ends_at: ms(sp.endsAt), completed_at: ms(sp.completedAt), committed: sp.committed ?? null, completed: sp.completed ?? null,
           })
         report.projects++
@@ -112,7 +117,10 @@ const plugin: FastifyPluginAsyncZod = async app => {
 
       // the statuses came in as they were, so items could land; now the project's workflow scheme takes over (a status
       // of the same name is kept, items in the others move to the first of their category)
-      for (const old of done) await applyScheme(d, req, nid(old))
+      for (const old of done) {
+        await applyScheme(d, req, nid(old))
+        await d.query('update boards set columns = $2 where id = $1', [boardOf.get(nid(old)), JSON.stringify(await columnsOf(d, nid(old)))])
+      }
       await importViews(d, s, me, id, done)
       await audit(d, req, { action: 'workspace.imported', type: 'workspace', id: me.workspaceId, after: report })
     })

@@ -1396,6 +1396,80 @@ test('a workflow used by many projects: counted, listed a page at a time, previe
   assert.equal(del.status, 409); assert.match(del.body.error, /MNY00, MNY01, MNY02 and 27 more/)
 })
 
+test('boards: several per project, each with its own filter (across projects too), columns, quick filters and swimlanes; project admins and named board admins change them', { skip, timeout: 120_000 }, async () => {
+  // a new project starts with one board: its own items, a column per status, Jira's two quick filters
+  const p = (await call('POST', '/api/v1/projects', { name: 'Boarded', key: 'BRD', template: 'kanban' })).body
+  assert.deepEqual(p.boards.map((b: any) => [b.name, b.type, b.jql]), [['BRD board', 'kanban', 'project = BRD']])
+  const first = (await call('GET', `/api/v1/boards/${p.boards[0].id}`)).body
+  assert.deepEqual(first.columns.map((c: any) => c.name), p.statuses.map((s: any) => s.name))
+  assert.deepEqual(first.quickFilters.map((q: any) => q.name), ['Only my issues', 'Recently updated'])
+  assert.equal(first.doneDays, 14)
+  // work in two projects
+  await call('POST', '/api/v1/projects', { name: 'Boarded too', key: 'BRE', template: 'kanban' })
+  const me = (await call('GET', '/api/v1/me')).body.id
+  const mk = (key: string, title: string, extra: object = {}) => call('POST', `/api/v1/projects/${key}/issues`, { title, ...extra }).then(r => r.body)
+  const bug = await mk('BRD', 'A bug', { type: 'bug', priority: 'high' }), task = await mk('BRD', 'A task', { assigneeId: me }), other = await mk('BRE', 'Elsewhere', { type: 'bug' })
+  // a second board: bugs from both projects, created with a filter and later edited
+  await join('BRD', 'brd.member@x.com', 'member'); await join('BRD', 'brd.boss@x.com', 'member')
+  assert.equal((await call('POST', '/api/v1/projects/BRD/boards', { name: 'Bugs', type: 'kanban', jql: 'type = Bug' }, 'brd.member@x.com')).status, 403)   // members don't create boards
+  const bad = await call('POST', '/api/v1/projects/BRD/boards', { name: 'Bugs', type: 'kanban', jql: 'type = = Bug' })
+  assert.equal(bad.status, 400); assert.ok(bad.body.errors.jql)
+  const made = await call('POST', '/api/v1/projects/BRD/boards', { name: 'Bugs', type: 'kanban', jql: 'project in (BRD, BRE) AND type = Bug' })
+  assert.equal(made.status, 201)
+  const bugs = made.body
+  const items = async (id: string, q = '', who?: string) => (await call('GET', `/api/v1/boards/${id}/issues${q}`, undefined, who)).body
+  assert.deepEqual((await items(bugs.id)).items.map((i: any) => i.key).sort(), [bug.key, other.key].sort())                  // across projects
+  assert.deepEqual((await items(p.boards[0].id)).items.map((i: any) => i.key).sort(), [bug.key, task.key].sort())         // the first board is unchanged
+  // only what the viewer may see: a member of BRD only doesn't see BRE's bug
+  assert.deepEqual((await items(bugs.id, '', 'brd.member@x.com')).items.map((i: any) => i.key), [bug.key])
+  // edit the filter later
+  const narrowed = await call('PATCH', `/api/v1/boards/${bugs.id}`, { jql: 'project in (BRD, BRE) AND type = Bug AND priority in (high, urgent)' })
+  assert.equal(narrowed.status, 200)
+  assert.deepEqual((await items(bugs.id)).items.map((i: any) => i.key), [bug.key])
+  // quick filters AND the board filter
+  const mine = first.quickFilters.find((q: any) => q.name === 'Only my issues').id
+  assert.deepEqual((await items(p.boards[0].id, `?quick=${mine}`)).items.map((i: any) => i.key), [task.key])
+  assert.equal((await call('GET', `/api/v1/boards/${p.boards[0].id}/issues?quick=nope`)).status, 400)
+  // swimlane queries: each item in the first that matches
+  const lanes = await call('PATCH', `/api/v1/boards/${p.boards[0].id}`, { swimlanes: { by: 'queries', queries: [{ name: 'Bugs', jql: 'type = Bug' }, { name: 'High', jql: 'priority = high' }] } })
+  const bugLane = lanes.body.swimlanes.queries[0].id
+  const lanedR = await items(p.boards[0].id)
+  assert.ok(lanedR.items, JSON.stringify(lanedR))
+  const laned = lanedR.items
+  assert.equal(laned.find((i: any) => i.key === bug.key).lane, bugLane)                 // a high-priority bug: in "Bugs", the first match
+  assert.equal(laned.find((i: any) => i.key === task.key).lane, '')
+  // Kanban: Done items not updated for longer than doneDays are left out
+  const done = p.statuses.find((s: any) => s.category === 'done')
+  const old = await mk('BRD', 'Long done', { statusId: done.id })
+  await pool.query(`update issues set updated_at = now() - interval '30 days' where id = $1`, [old.id])
+  assert.ok(!(await items(p.boards[0].id)).items.some((i: any) => i.key === old.key))
+  assert.ok((await items(p.boards[0].id, '?scope=all')).items.some((i: any) => i.key === old.key))
+  // columns: statuses mapped, two to one column; a status twice or an unknown one is refused
+  const [todoG, doingG, doneG] = p.statuses.map((s: any) => s.globalStatusId)
+  assert.equal((await call('PATCH', `/api/v1/boards/${bugs.id}`, { columns: [{ name: 'Open', statusIds: [todoG, doingG], max: 3 }, { name: 'Closed', statusIds: [doneG] }] })).status, 200)
+  assert.equal((await call('PATCH', `/api/v1/boards/${bugs.id}`, { columns: [{ name: 'A', statusIds: [todoG] }, { name: 'B', statusIds: [todoG] }] })).status, 400)
+  assert.equal((await call('PATCH', `/api/v1/boards/${bugs.id}`, { columns: [{ name: 'A', statusIds: ['00000000-0000-4000-8000-000000000000'] }] })).status, 400)
+  assert.equal((await call('PATCH', `/api/v1/boards/${bugs.id}`, { columns: [{ name: 'A', statusIds: [todoG], min: 5, max: 2 }] })).status, 400)
+  // a named board admin (here, through a group) may change it; a member may not; the project's admins may
+  assert.equal((await call('PATCH', `/api/v1/boards/${bugs.id}`, { name: 'x' }, 'brd.boss@x.com')).status, 403)
+  const team = (await call('POST', '/api/v1/groups', { name: 'brd-board-admins' })).body
+  await call('POST', `/api/v1/groups/${team.id}/members`, { userIds: [(await call('GET', '/api/v1/me', undefined, 'brd.boss@x.com')).body.id] })
+  await call('PATCH', `/api/v1/boards/${bugs.id}`, { admins: { userIds: [me], groupIds: [team.id] } })
+  const renamed = await call('PATCH', `/api/v1/boards/${bugs.id}`, { name: 'Bug triage' }, 'brd.boss@x.com')
+  assert.deepEqual([renamed.status, renamed.body.name, renamed.body.canManage], [200, 'Bug triage', true])
+  assert.equal((await call('GET', '/api/v1/projects/BRD/boards', undefined, 'brd.boss@x.com')).body.find((b: any) => b.id === bugs.id).canManage, true)
+  assert.equal((await call('GET', `/api/v1/boards/${bugs.id}`, undefined, 'brd.member@x.com')).body.canManage, false)
+  assert.equal((await call('GET', `/api/v1/boards/${bugs.id}`, undefined, 'brd.outsider@x.com')).status, 404)
+  // checking a query: how many it finds, or where it is wrong
+  assert.equal((await call('POST', '/api/v1/jql/check', { jql: 'project = BRD AND type = Bug' })).body.count, 1)
+  assert.equal((await call('POST', '/api/v1/jql/check', { jql: 'project = (' })).status, 400)
+  // deleting: not a project's last board
+  assert.equal((await call('DELETE', `/api/v1/boards/${bugs.id}`, undefined, 'brd.member@x.com')).status, 403)
+  assert.equal((await call('DELETE', `/api/v1/boards/${bugs.id}`)).status, 204)
+  assert.equal((await call('DELETE', `/api/v1/boards/${p.boards[0].id}`)).status, 409)
+  assert.ok((await call('GET', '/api/v1/audit?action=board.')).body.items.some((x: any) => x.action === 'board.created'))
+})
+
 test('workflow schemes: each work type follows its own workflow, new work starts at its start, a type change needs a status of the new one; project admins choose the scheme', { skip }, async () => {
   const p = (await call('POST', '/api/v1/projects', { name: 'Schemed', key: 'WFS', template: 'kanban' })).body
   const [todo, doing, done] = p.statuses
@@ -2775,6 +2849,7 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
   const ownerId = await id('owner@x.com')
   const make = async (kind: string, body: object) => (await call('POST', `/api/v1/projects/MTX/${kind}`, body)).body.id as string
   const wf = p.workflows[0].workflowId, gs = p.statuses[0].globalStatusId, none = '00000000-0000-4000-8000-000000000000'
+  const board = p.boards[0].id
   const field = await make('fields', { name: 'Team', kind: 'text', options: null, position: 0 })
   const template = await make('templates', { name: 'Bug', type: 'bug', title: 'Bug:' })
   const rule = await make('rules', { name: 'Rule', trigger: { kind: 'created' }, actions: [] })
@@ -2840,6 +2915,13 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     'GET /admin/workflows/{id}/projects': ['gadmin', `/admin/workflows/${wf}/projects`],
     'GET /admin/workflow-schemes/{id}/projects': ['gadmin', `/admin/workflow-schemes/${p.workflowSchemeId}/projects`],
     'GET /admin/workflows/applying': ['gadmin', '/admin/workflows/applying'],
+    'GET /projects/{key}/boards': ['read', `/projects/${K}/boards`],
+    'POST /projects/{key}/boards': ['padmin', `/projects/${K}/boards`, { name: 'Matrix board', type: 'kanban' }],
+    'GET /boards/{id}': ['read', `/boards/${board}`],
+    'PATCH /boards/{id}': ['padmin', `/boards/${board}`, { name: 'Matrix board' }],
+    'DELETE /boards/{id}': ['padmin', `/boards/${board}`],
+    'GET /boards/{id}/issues': ['read', `/boards/${board}/issues`],
+    'POST /jql/check': ['any', '/jql/check', { jql: 'project = MTX' }],
     'POST /admin/workflows/{id}/publish': ['gadmin', `/admin/workflows/${wf}/publish`, { statuses: [{ id: gs, name: 'To do', color: '#94a3b8', category: 'todo' }], transitions: [], dryRun: true }],
     'POST /admin/workflow-schemes': ['gadmin', '/admin/workflow-schemes', { name: 'Matrix scheme', defaultWorkflowId: wf }],
     'PATCH /admin/workflow-schemes/{id}': ['gadmin', `/admin/workflow-schemes/${p.workflowSchemeId}`, { description: 'x', dryRun: true }],
