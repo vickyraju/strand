@@ -1023,3 +1023,42 @@ test('configure a board: its admin narrows the filter, puts two statuses in one 
   assert.equal((await maya('PATCH', `/boards/${board.id}`, { name: 'Mine' })).status, 403)
   assert.deepEqual([...o.problems.filter(p => !/status of 400/.test(p)), ...m.problems], [])   // the 400 is the mistake made on purpose
 })
+
+test('a Scrum board across two projects: its backlog has both projects’ work; a sprint planned there holds both, starts on its own board, and the board shows it', { skip, timeout: 90_000 }, async () => {
+  await owner('POST', '/projects', { name: 'Team one', key: 'SBA', template: 'scrum' })
+  await owner('POST', '/projects', { name: 'Team two', key: 'SBB', template: 'scrum' })
+  const one = (await owner('POST', '/projects/SBA/issues', { title: 'Work from one' })).body
+  const two = (await owner('POST', '/projects/SBB/issues', { title: 'Work from two' })).body
+  const board = (await owner('POST', '/projects/SBA/boards', { name: 'Release train', type: 'scrum', jql: 'project in (SBA, SBB)' })).body
+  // the project's own board already runs a sprint: another board can still start one
+  const ownSprint = (await owner('POST', '/projects/SBA/sprints', { name: 'Own sprint' })).body
+  await owner('POST', '/projects/SBA/issues', { title: 'Own work', sprintId: ownSprint.id })
+  await owner('POST', `/projects/SBA/sprints/${ownSprint.id}/start`, { endsAt: new Date(Date.now() + 7 * 864e5).toISOString() })
+
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url(`/project/SBA/backlog/${board.id}`))
+  await o.waitForSelector('text=Work from one')
+  await o.waitForSelector('text=Work from two')
+  assert.equal(await o.locator('text=Own sprint').count(), 0)                                // another board's sprint isn't here
+  await o.click('.toolbar button:has-text("Create sprint")')
+  await o.waitForSelector('.sprint-name:has-text("SBA Sprint")')
+  for (const key of [one.key, two.key]) {
+    await o.click(`[aria-label="Move ${key}"]`)
+    await o.click('[role="menu"] button:has-text("Move to SBA Sprint")')
+  }
+  await o.waitForSelector('button:has-text("Start sprint"):not([disabled])')
+  await o.click('button:has-text("Start sprint")')
+  await o.click('.modal button:has-text("Start sprint")')
+  await o.waitForSelector('button:has-text("Complete sprint")')
+  const sprints = (await owner('GET', '/projects/SBA')).body.sprints
+  const train = sprints.find(s => s.boardId === board.id)
+  assert.equal(train.state, 'active')
+  assert.equal(sprints.find(s => s.id === ownSprint.id).state, 'active')                     // both boards have an active sprint
+  assert.equal((await owner('GET', `/issues/${two.key}`)).body.sprintId, train.id)            // another project's work in it
+
+  await o.goto(url(`/project/SBA/board/${board.id}`))
+  await o.waitForSelector('text=Work from two')
+  await o.waitForSelector('text=Work from one')
+  assert.equal(await o.locator('text=Own work').count(), 0)
+  assert.deepEqual(o.problems, [])
+})

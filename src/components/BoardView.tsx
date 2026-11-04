@@ -9,7 +9,7 @@ import {
 } from '../data/store'
 import { canAdmin, canEdit } from '../data/access'
 import { api, apiEnabled, errorMessage } from '../api/client'
-import { lastBoard, useBoard, useBoardItems, useBoards, useBoardView } from '../api/boards'
+import { lastBoard, reloadBoards, useBoard, useBoardItems, useBoards, useBoardView } from '../api/boards'
 import { useEnsureProjects } from '../api/useEnsureProjects'
 import { href, navigate, useLocation } from '../router'
 import { useApp, useNavList } from '../appContext'
@@ -65,6 +65,7 @@ const CREATE = 'create-board', CONFIGURE = 'configure-board'
  *  in the address (`sub`) or the one last used here, and its quick filters (`quick`, ids, kept in the address). */
 export default function BoardView({ project, sub, quick }: { project: Project; sub?: string; quick?: string }) {
   const [listVersion, setListVersion] = useState(0)
+  const { dispatch } = useStore()
   const [creating, setCreating] = useState(false)
   const [made, setMade] = useState<Board[]>([])                    // boards made here, until the list from the server has them
   const listed = useBoards(project, listVersion)
@@ -94,7 +95,7 @@ export default function BoardView({ project, sub, quick }: { project: Project; s
       )}
       {creating && (
         <CreateBoard project={project} onClose={() => setCreating(false)}
-          onCreated={b => { setCreating(false); setMade(m => [...m, b]); setListVersion(v => v + 1); navigate(href({ name: 'project', key: project.key, tab: 'board', sub: b.id })) }} />
+          onCreated={b => { setCreating(false); setMade(m => [...m, b]); setListVersion(v => v + 1); void reloadBoards(project.key, dispatch); navigate(href({ name: 'project', key: project.key, tab: 'board', sub: b.id })) }} />
       )}
     </>
   )
@@ -371,7 +372,7 @@ function BoardScreen({ project, board, switcher, quick: asked, onChanged }: {
           icon={<ListChecks size={22} strokeWidth={1.5} />}
           title="No active sprint"
           body="The board shows the work in the active sprint. Plan a sprint in the backlog and start it to see it here."
-          action={<button className="btn btn-primary" onClick={() => openProject(project.id, 'backlog')}>Go to backlog</button>}
+          action={<button className="btn btn-primary" onClick={() => openProject(project.id, 'backlog', local ? undefined : board.id)}>Go to backlog</button>}
         />
       </div>
     )
@@ -491,7 +492,7 @@ function BoardScreen({ project, board, switcher, quick: asked, onChanged }: {
 
       {completing && sprint && (
         <CompleteSprintModal sprint={sprint} project={project}
-          others={state.sprints.filter(s => s.projectId === project.id && s.state === 'planned')}
+          others={state.sprints.filter(s => (s.boardId ? s.boardId === board.id : s.projectId === project.id) && s.state === 'planned')}
           onClose={() => setCompleting(false)} />
       )}
     </div>

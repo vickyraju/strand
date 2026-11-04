@@ -203,9 +203,11 @@ export function ProjectView({ project, tab, sub, quick }: { project: Project; ta
   useProjectEvents(project.id, project.key, apiEnabled, true)   // other people's changes appear here as they happen
   const { state } = useStore()
   const { openProject } = useApp()
+  // a Scrum project, or one with a Scrum board, has a backlog
+  const scrum = project.template === 'scrum' || !!project.boards?.some(b => b.type === 'scrum')
   const tabs: { id: ProjectTab; Icon: typeof List }[] = [
     { id: 'summary', Icon: Gauge },
-    ...(project.template === 'scrum' ? [{ id: 'backlog' as const, Icon: ListChecks }] : []),
+    ...(scrum ? [{ id: 'backlog' as const, Icon: ListChecks }] : []),
     { id: 'board',    Icon: Columns2 },
     { id: 'list',     Icon: List },
     { id: 'timeline', Icon: GanttChart },
@@ -248,7 +250,7 @@ export function ProjectView({ project, tab, sub, quick }: { project: Project; ta
       {tab === 'summary'  && <SummaryView project={project} />}
       {tab === 'board'    && <BoardView project={project} sub={sub} quick={quick} />}
       {tab === 'boards'   && (sub ? <ConfigureBoard key={sub} project={project} boardId={sub} /> : <div className="settings"><BoardsPanel project={project} /></div>)}
-      {tab === 'backlog'  && (project.template === 'scrum' ? <BacklogView project={project} /> : <Empty icon={<ListChecks size={22} />} title="Backlog is for Scrum projects" body="Kanban projects plan work directly on the board." />)}
+      {tab === 'backlog'  && (scrum ? <BacklogView project={project} sub={sub} /> : <Empty icon={<ListChecks size={22} />} title="Backlog is for Scrum boards" body="Kanban boards plan work directly on the board. A project admin can create a Scrum board from the board menu." />)}
       {tab === 'list'     && <ListTab project={project} />}
       {tab === 'timeline' && <TimelineView project={project} />}
       {tab === 'calendar' && <CalendarView project={project} />}

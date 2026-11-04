@@ -1486,6 +1486,47 @@ test('boards: several per project, each with its own filter (across projects too
   assert.ok((await call('GET', '/api/v1/audit?action=board.')).body.items.some((x: any) => x.action === 'board.created'))
 })
 
+test('scrum boards: each has its own sprints, one active at a time; a sprint holds work from every project its board covers; its backlog is its filter’s unfinished work', { skip }, async () => {
+  const p = (await call('POST', '/api/v1/projects', { name: 'Sprinted', key: 'SPB', template: 'scrum' })).body
+  await call('POST', '/api/v1/projects', { name: 'Sprinted too', key: 'SPC', template: 'scrum' })
+  const both = (await call('POST', '/api/v1/projects/SPB/boards', { name: 'Both', type: 'scrum', jql: 'project in (SPB, SPC)' })).body
+  const own = p.boards[0].id
+  const mk = (key: string, title: string, extra: object = {}) => call('POST', `/api/v1/projects/${key}/issues`, { title, ...extra }).then(r => r.body)
+  // sprints on each board; without one named, a sprint goes on the project's first Scrum board
+  const s1 = (await call('POST', '/api/v1/projects/SPB/sprints', { name: 'Own 1' })).body
+  const s2 = (await call('POST', '/api/v1/projects/SPB/sprints', { name: 'Both 1', boardId: both.id })).body
+  const s3 = (await call('POST', '/api/v1/projects/SPB/sprints', { name: 'Both 2', boardId: both.id })).body
+  assert.deepEqual([s1.boardId, s2.boardId], [own, both.id])
+  assert.equal((await call('POST', '/api/v1/projects/SPB/sprints', { name: 'x', boardId: '00000000-0000-4000-8000-000000000000' })).status, 400)
+  // a sprint holds work from both projects
+  const a = await mk('SPB', 'Here', { sprintId: s2.id, estimate: 3 }), b = await mk('SPC', 'There', { sprintId: s2.id, estimate: 5 })
+  const loose = await mk('SPC', 'In the backlog')
+  // one active sprint per board, not per project
+  const start = (id: string) => call('POST', `/api/v1/projects/SPB/sprints/${id}/start`, { endsAt: new Date(Date.now() + 7 * 864e5).toISOString() })
+  assert.equal((await start(s1.id)).status, 200)
+  assert.equal((await start(s2.id)).status, 200)
+  assert.equal((await start(s3.id)).status, 409)
+  const shown = async (id: string, scope = 'board') => (await call('GET', `/api/v1/boards/${id}/issues?scope=${scope}`)).body.items.map((i: any) => i.key).sort()
+  assert.deepEqual(await shown(both.id), [a.key, b.key].sort())                                  // the active sprint, both projects
+  assert.deepEqual(await shown(own), [])                                                        // its own sprint is empty
+  assert.deepEqual(await shown(both.id, 'backlog'), [a.key, b.key, loose.key].sort())           // unfinished, not in a completed sprint
+  // a completed sprint can't take work; completing moves unfinished work from both projects
+  const doneB = (await call('GET', '/api/v1/projects/SPC')).body.statuses.find((x: any) => x.category === 'done').id
+  await call('PATCH', `/api/v1/issues/${b.key}`, { statusId: doneB })
+  assert.equal((await call('POST', `/api/v1/projects/SPB/sprints/${s2.id}/complete`, { moveTo: s1.id })).status, 400)   // another board's sprint
+  const closed = await call('POST', `/api/v1/projects/SPB/sprints/${s2.id}/complete`, { moveTo: s3.id })
+  assert.equal(closed.status, 200); assert.deepEqual([closed.body.committed, closed.body.completed], [8, 5])
+  assert.equal((await call('GET', `/api/v1/issues/${a.key}`)).body.sprintId, s3.id)
+  assert.equal((await call('GET', `/api/v1/issues/${b.key}`)).body.sprintId, s2.id)
+  assert.equal((await call('PATCH', `/api/v1/issues/${loose.key}`, { sprintId: s2.id })).status, 400)
+  // only a sprint I can see
+  await join('SPC', 'spc.member@x.com', 'member')
+  assert.equal((await call('PATCH', `/api/v1/issues/${loose.key}`, { sprintId: s3.id }, 'spc.member@x.com')).status, 400)
+  assert.equal((await call('PATCH', `/api/v1/issues/${loose.key}`, { sprintId: s3.id })).status, 200)
+  // JQL finds a sprint's work by name in every project
+  assert.equal((await call('POST', '/api/v1/jql/check', { jql: 'sprint = "Both 2"' })).body.count, 2)
+})
+
 test('workflow schemes: each work type follows its own workflow, new work starts at its start, a type change needs a status of the new one; project admins choose the scheme', { skip }, async () => {
   const p = (await call('POST', '/api/v1/projects', { name: 'Schemed', key: 'WFS', template: 'kanban' })).body
   const [todo, doing, done] = p.statuses

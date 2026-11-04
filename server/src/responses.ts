@@ -50,7 +50,7 @@ export const Rule = z.object({ id, projectId: id, name: z.string(), enabled: z.b
 const Step = z.object({ action: z.string(), outcome: z.enum(['done', 'skipped', 'unchanged', 'failed']), note: z.string().optional() })
 export const Release = z.object({ id, workspaceId: id, projectId: id, name: z.string(), description: z.string(), startDate: nullable(day), releaseDate: nullable(day), released: z.boolean(), releasedAt: nullable(ts) })
 export const Sprint = z.object({
-  id, workspaceId: id, projectId: id, name: z.string(), goal: z.string(), state: z.enum(['planned', 'active', 'closed']),
+  id, workspaceId: id, projectId: id, boardId: id.describe('The board it belongs to'), name: z.string(), goal: z.string(), state: z.enum(['planned', 'active', 'closed']),
   startedAt: nullable(ts), endsAt: nullable(ts), completedAt: nullable(ts), committed: nullable(z.number()), completed: nullable(z.number()),
   issueIds: nullable(z.array(id)), createdAt: ts,
 })

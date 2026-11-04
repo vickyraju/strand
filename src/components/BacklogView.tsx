@@ -1,7 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { DndContext, DragOverlay, useDraggable, useDroppable, type DragEndEvent, type DragOverEvent, type DragStartEvent } from '@dnd-kit/core'
-import { ChevronDown, ChevronRight, Plus, MoreHorizontal, ArrowRightLeft, Pencil, Trash2, Play, ArrowUpToLine, ArrowDownToLine } from 'lucide-react'
-import { useStore, isDone, userOf, type Project, type Sprint, type Issue } from '../data/store'
+import { ChevronDown, ChevronRight, Kanban, ListChecks, Plus, MoreHorizontal, ArrowRightLeft, Pencil, Trash2, Play, ArrowUpToLine, ArrowDownToLine } from 'lucide-react'
+import { useStore, isDone, userOf, indexOf, type Board, type Project, type Sprint, type Issue } from '../data/store'
+import { apiEnabled } from '../api/client'
+import { lastBoard, useBoard, useBoardItems, useBoards } from '../api/boards'
+import { useEnsureProjects } from '../api/useEnsureProjects'
+import { href, navigate } from '../router'
 import { canEdit } from '../data/access'
 import { useApp, useNavList } from '../appContext'
 import { useFilters } from './filters'
@@ -9,13 +13,37 @@ import IssueRow from './IssueRow'
 import { BACKLOG, backlogAnnouncements, backlogCollision, backlogKeyboard, boxTarget, endTarget, planBacklogDrop, rowTarget } from './backlogDnd'
 import { useBoardSensors } from './boardDnd'
 import BulkBar from './BulkBar'
-import { Menu, Modal, plural } from './ui'
+import { Empty, Loading, LoadError, Menu, Modal, Picker, plural } from './ui'
 
 const DAY = 86_400_000
 
 const fmt = (ts?: number) => ts ? new Date(ts).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : ''
 
-export default function BacklogView({ project }: { project: Project }) {
+/** The Backlog tab: a Scrum board's backlog (the board in the address, else the one last used here, else the project's
+ *  first Scrum board). A local workspace has one, the project's. */
+export default function BacklogView({ project, sub }: { project: Project; sub?: string }) {
+  const boards = useBoards(project).filter(b => b.type === 'scrum')
+  const remembered = lastBoard.get(project.id)
+  const id = apiEnabled ? (boards.find(b => b.id === sub) ?? boards.find(b => b.id === remembered) ?? boards[0])?.id : undefined
+  const { board, error, reload } = useBoard(id)
+  useEffect(() => {
+    if (!id) return
+    lastBoard.set(project.id, id)
+    if (sub !== id) navigate(href({ name: 'project', key: project.key, tab: 'backlog', sub: id }), { replace: true })
+  }, [id, sub])   // eslint-disable-line react-hooks/exhaustive-deps
+  if (!apiEnabled) return <Backlog project={project} />
+  if (!boards.length) return <Empty icon={<ListChecks size={22} />} title="No Scrum board" body="The backlog belongs to a Scrum board. A project admin can create one from the board menu." />
+  if (error) return <LoadError error={error} onRetry={reload} />
+  if (!board) return <Loading rows={4} />
+  const switcher = boards.length > 1 && (
+    <Picker value={board.id} title="Boards" className="btn btn-secondary board-switch" options={boards.map(b => ({ value: b.id, label: b.name }))}
+      onChange={b => navigate(href({ name: 'project', key: project.key, tab: 'backlog', sub: b }))}
+      trigger={<><Kanban size={15} /><b>{board.name}</b><ChevronDown size={14} /></>} />
+  )
+  return <Backlog key={board.id} project={project} board={board} switcher={switcher} />
+}
+
+function Backlog({ project, board, switcher }: { project: Project; board?: Board; switcher?: React.ReactNode }) {
   const { state, dispatch } = useStore()
   const { createIssue } = useApp()
   const [dragging, setDragging] = useState<string | null>(null)   // id of the row being carried
@@ -26,18 +54,29 @@ export default function BacklogView({ project }: { project: Project }) {
   const [selected, setSelected]     = useState<Set<string>>(new Set())
   const [anchor, setAnchor]         = useState<string | null>(null)
 
-  const items = state.issues.filter(i => i.projectId === project.id && i.type !== 'epic')
+  const ofBoard = (s: Sprint) => (board ? (s.boardId ? s.boardId === board.id : s.projectId === board.projectId) : s.projectId === project.id)
+  // the board's items (its open sprints and unfinished work in no sprint), from the server; a local workspace's project's
+  const found = useBoardItems(board ?? null, { quick: [], scope: 'backlog' })
+  const [loadedAt] = useState(() => Date.now())
+  const onBoard = new Set(found.ids)
+  const { byId } = indexOf(state)
+  const items = (board
+    ? [...found.ids.map(id => byId.get(id)).filter((i): i is Issue => !!i),
+        ...state.issues.filter(i => i.createdAt > loadedAt && i.projectId === board.projectId && !onBoard.has(i.id))]   // made here since it loaded
+    : state.issues.filter(i => i.projectId === project.id)).filter(i => i.type !== 'epic')
+  useEnsureProjects([...new Set(items.map(i => i.key.split('-')[0]!))])
+  const projectOf = (i: Issue) => state.projects.find(p => p.id === i.projectId) ?? project
   const people = [...new Set(items.map(i => i.assigneeId).filter((x): x is string => !!x))].map(id => userOf(state, id)!).filter(Boolean)
   const filters = useFilters(people, project)
 
   const sprints = state.sprints
-    .filter(s => s.projectId === project.id && s.state !== 'closed')
+    .filter(s => ofBoard(s) && s.state !== 'closed')
     .sort((a, b) => (a.state === 'active' ? -1 : b.state === 'active' ? 1 : 0))
   const hasActive = sprints.some(s => s.state === 'active')
   const issues = filters.apply(items).sort((a, b) => a.rank - b.rank)
   const inSprint = (s: Sprint) => issues.filter(i => i.sprintId === s.id)
   // Items still in a closed sprint were completed there; they live in the sprint report, not the backlog
-  const closedIds = new Set(state.sprints.filter(s => s.projectId === project.id && s.state === 'closed').map(s => s.id))
+  const closedIds = new Set(state.sprints.filter(s => s.state === 'closed').map(s => s.id))
   const backlogItems = issues.filter(i => (!i.sprintId || !sprints.some(s => s.id === i.sprintId)) && !(i.sprintId && closedIds.has(i.sprintId)))
   const ordered = [...sprints.flatMap(inSprint), ...backlogItems]
   useNavList(ordered.map(i => i.id))
@@ -124,7 +163,7 @@ export default function BacklogView({ project }: { project: Project }) {
   }
 
   const row = (i: Issue, list: Issue[], listId: string) => (
-    <RowSlot key={i.id} issue={i} project={project} selected={selected.has(i.id)} onSelect={(on, shift) => select(i.id, on, shift)}
+    <RowSlot key={i.id} issue={i} project={projectOf(i)} selected={selected.has(i.id)} onSelect={(on, shift) => select(i.id, on, shift)}
       dragging={carried.has(i.id)} showLineBefore={overId === rowTarget(i.id) && !carried.has(i.id)}
       endOf={list.at(-1)?.id === i.id ? listId : undefined} showLineAtEnd={overId === endTarget(listId)}
       onKeyDown={e => {
@@ -145,9 +184,11 @@ export default function BacklogView({ project }: { project: Project }) {
     />
   )
 
+  const newSprint = () => dispatch({ type: 'createSprint', projectId: project.id, ...(board ? { boardId: board.id } : {}) })
+
   const summary = (list: Issue[]) => {
     const pts = list.reduce((n, i) => n + (i.estimate ?? 0), 0)
-    const byCat = (c: string) => list.filter(i => project.statuses.find(s => s.id === i.status)?.category === c).reduce((n, i) => n + (i.estimate ?? 0), 0)
+    const byCat = (c: string) => list.filter(i => projectOf(i).statuses.find(s => s.id === i.status)?.category === c).reduce((n, i) => n + (i.estimate ?? 0), 0)
     return (
       <span className="pts-summary" title="Story points: to do · in progress · done">
         <span className="muted">{plural(list.length, 'item')}</span>
@@ -163,9 +204,10 @@ export default function BacklogView({ project }: { project: Project }) {
   return (
     <div className="page-col">
       <div className="toolbar">
+        {switcher}
         {filters.toolbar}
         <div style={{ flex: 1 }} />
-        <button className="btn btn-secondary" onClick={() => dispatch({ type: 'createSprint', projectId: project.id })}>
+        <button className="btn btn-secondary" onClick={newSprint}>
           <Plus size={15} />Create sprint
         </button>
       </div>
@@ -205,7 +247,7 @@ export default function BacklogView({ project }: { project: Project }) {
             <span className="sprint-name">Backlog</span>
             {summary(backlogItems)}
             <div style={{ flex: 1 }} />
-            {sprints.length === 0 && <button className="btn btn-secondary btn-sm" onClick={() => dispatch({ type: 'createSprint', projectId: project.id })}>Create sprint</button>}
+            {sprints.length === 0 && <button className="btn btn-secondary btn-sm" onClick={newSprint}>Create sprint</button>}
           </div>
           {backlogItems.length === 0
             ? <div className="drop-hint">{filters.active ? 'No backlog items match the filters.' : 'Your backlog is empty. Create work items to plan them into sprints.'}</div>
@@ -214,7 +256,7 @@ export default function BacklogView({ project }: { project: Project }) {
         </BacklogBox>
       </div>
       <DragOverlay dropAnimation={null}>
-        {dragging && (() => { const i = items.find(x => x.id === dragging); return i && <IssueRow issue={i} project={project} ghost ghostCount={carried.size} /> })()}
+        {dragging && (() => { const i = items.find(x => x.id === dragging); return i && <IssueRow issue={i} project={projectOf(i)} ghost ghostCount={carried.size} /> })()}
       </DragOverlay>
       </DndContext>
 
@@ -333,9 +375,10 @@ export function CompleteSprintModal({ sprint, project, others, onClose }: {
   const { state, dispatch } = useStore()
   const { toast } = useApp()
   const items = state.issues.filter(i => i.sprintId === sprint.id)
-  const open = items.filter(i => !isDone(project, i))
+  const done = (i: Issue) => isDone(state.projects.find(p => p.id === i.projectId) ?? project, i)   // by each item's own project
+  const open = items.filter(i => !done(i))
   const [target, setTarget] = useState<string>(others.find(s => s.state === 'planned')?.id ?? BACKLOG)
-  const donePts = items.filter(i => isDone(project, i)).reduce((n, i) => n + (i.estimate ?? 0), 0)
+  const donePts = items.filter(done).reduce((n, i) => n + (i.estimate ?? 0), 0)
 
   return (
     <Modal title={`Complete ${sprint.name}`} onClose={onClose}

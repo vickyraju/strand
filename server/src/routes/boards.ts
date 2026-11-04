@@ -150,7 +150,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
 
   // The board's work items, in rank order, a page at a time: its filter AND the quick filters chosen, among what I may see
   app.get('/boards/:id/issues', { schema: { tags: T,
-    summary: 'A board’s work items in rank order, a page at a time: its filter AND the chosen quick filters, among what I may see. Scope `board`: what the board shows (Scrum: the active sprint; Kanban: without old Done items); `backlog` (Scrum): unfinished items not in a completed sprint; `all`: everything its filter finds',
+    summary: 'A board’s work items in rank order, a page at a time: its filter AND the chosen quick filters, among what I may see. Scope `board`: what the board shows (Scrum: the active sprint; Kanban: without old Done items); `backlog` (Scrum): the board’s open sprints and unfinished items in no sprint; `all`: everything its filter finds',
     params: idP, querystring: z.object({
       quick: z.string().max(2000).optional().describe('Comma-separated quick filter ids'), scope: z.enum(['board', 'backlog', 'all']).default('board'),
       cursor: z.string().max(200).optional(), limit: z.coerce.number().int().min(1).max(500).default(200),

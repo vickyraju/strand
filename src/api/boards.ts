@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from 'react'
 import { api, apiEnabled, errorMessage } from './client'
 import { mapIssue, type Row } from './map'
 import { issueSync } from './sync'
-import { useStore, type Board, type BoardRef, type Project } from '../data/store'
+import { useStore, type Board, type BoardRef, type Project, type Sprint } from '../data/store'
+import { loadProjectByKey } from './load'
 
 /** At most this many items on one board (as in Jira, a board is for work in flight; narrow the filter for more). */
 export const BOARD_CAP = 5000
@@ -99,3 +100,7 @@ export function useJqlCount(jql: string, on = true) {
   }, [jql, on])   // eslint-disable-line react-hooks/exhaustive-deps
   return { checked: check?.jql === jql.trim() ? check : undefined, run }
 }
+
+/** After a board is made or removed: the project again (its board list decides whether it has a backlog). */
+export const reloadBoards = (key: string, dispatch: (a: { type: 'loadProject'; project: Project; sprints: Sprint[] }) => void) =>
+  loadProjectByKey(key).then(({ project, sprints }) => dispatch({ type: 'loadProject', project, sprints }), () => {})
