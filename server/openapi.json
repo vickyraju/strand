@@ -44638,6 +44638,11 @@
                               "description": "uuid"
                             }
                           },
+                          "securityLevelId": {
+                            "nullable": true,
+                            "type": "string",
+                            "description": "uuid"
+                          },
                           "testSpec": {
                             "nullable": true,
                             "description": "Test steps, Gherkin or definition (Tests and Pre-Conditions)"
@@ -44753,6 +44758,7 @@
                           "timeRemaining",
                           "componentIds",
                           "affectsReleaseIds",
+                          "securityLevelId",
                           "testSpec",
                           "testFolderId",
                           "testEnvironments",

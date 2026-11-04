@@ -1455,6 +1455,10 @@ test('boards: several per project, each with its own filter (across projects too
   const team = (await call('POST', '/api/v1/groups', { name: 'brd-board-admins' })).body
   await call('POST', `/api/v1/groups/${team.id}/members`, { userIds: [(await call('GET', '/api/v1/me', undefined, 'brd.boss@x.com')).body.id] })
   await call('PATCH', `/api/v1/boards/${bugs.id}`, { admins: { userIds: [me], groupIds: [team.id] } })
+  // administrators must be real: an unknown person or group is refused, not skipped
+  const ghost = '00000000-0000-4000-8000-000000000000'
+  assert.equal((await call('PATCH', `/api/v1/boards/${bugs.id}`, { admins: { userIds: [me, ghost], groupIds: [] } })).status, 400)
+  assert.equal((await call('PATCH', `/api/v1/boards/${bugs.id}`, { admins: { userIds: [me], groupIds: [ghost] } })).status, 400)
   const renamed = await call('PATCH', `/api/v1/boards/${bugs.id}`, { name: 'Bug triage' }, 'brd.boss@x.com')
   assert.deepEqual([renamed.status, renamed.body.name, renamed.body.canManage], [200, 'Bug triage', true])
   assert.equal((await call('GET', '/api/v1/projects/BRD/boards', undefined, 'brd.boss@x.com')).body.find((b: any) => b.id === bugs.id).canManage, true)

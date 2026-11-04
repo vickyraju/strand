@@ -55,10 +55,16 @@ async function checkColumns(d: Db, ws: string, columns: { statusIds: string[] }[
     throw new HttpError(400, 'A column names a status that doesn’t exist', { columns: 'Unknown status' })
 }
 
-async function setAdmins(d: Db, boardId: string, a: { userIds: string[]; groupIds: string[] }) {
+/** A board's administrators: active people of this workspace, and groups that exist. Anyone else is refused, not skipped. */
+async function setAdmins(d: Db, ws: string, boardId: string, a: { userIds: string[]; groupIds: string[] }) {
+  const users = [...new Set(a.userIds)], groups = [...new Set(a.groupIds)]
+  const okUsers = await d.query<{ id: string }>('select u.id from users u join memberships m on m.user_id = u.id where m.workspace_id = $1 and u.active and u.id = any($2::uuid[])', [ws, users])
+  if (okUsers.length !== users.length) throw new HttpError(400, 'Board administrators must be active people in this workspace', { admins: 'Unknown or deactivated person' })
+  const okGroups = await d.query<{ id: string }>('select id from groups where id = any($1::uuid[])', [groups])
+  if (okGroups.length !== groups.length) throw new HttpError(400, 'A group named as an administrator doesn’t exist', { admins: 'Unknown group' })
   await d.query('delete from board_admins where board_id = $1', [boardId])
-  for (const u of new Set(a.userIds)) await d.query('insert into board_admins (board_id, user_id) select $1, id from users where id = $2', [boardId, u])
-  for (const g of new Set(a.groupIds)) await d.query('insert into board_admins (board_id, group_id) select $1, id from groups where id = $2', [boardId, g])
+  for (const u of users) await d.query('insert into board_admins (board_id, user_id) values ($1, $2)', [boardId, u])
+  for (const g of groups) await d.query('insert into board_admins (board_id, group_id) values ($1, $2)', [boardId, g])
 }
 
 const plugin: FastifyPluginAsyncZod = async app => {
@@ -89,7 +95,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, (select coalesce(max(position), -1) + 1 from boards where project_id = $2), $11) returning id`,
         [req.me.workspaceId, p.id, b.name, b.type, draft.jql, JSON.stringify(draft.columns), JSON.stringify(draft.swimlanes), JSON.stringify(draft.quickFilters),
           JSON.stringify(draft.cardFields), draft.doneDays, req.me.id])
-      await setAdmins(d, row!.id, b.admins ?? { userIds: [req.me.id], groupIds: [] })
+      await setAdmins(d, req.me.workspaceId, row!.id, b.admins ?? { userIds: [req.me.id], groupIds: [] })
       await audit(d, req, { action: 'board.created', type: 'board', id: row!.id, name: b.name, project: p, after: { type: b.type, jql: draft.jql } })
       reply.code(201)
       return boardOut(d, req.me, row!.id)
@@ -113,7 +119,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     if (b.columns) await checkColumns(d, req.me.workspaceId, next.columns)
     await d.query(`update boards set name = $2, jql = $3, columns = $4, swimlanes = $5, quick_filters = $6, card_fields = $7, done_days = $8, updated_at = now() where id = $1`,
       [before.id, next.name, next.jql, JSON.stringify(next.columns), JSON.stringify(next.swimlanes), JSON.stringify(next.quickFilters), JSON.stringify(next.cardFields), next.doneDays])
-    if (b.admins) await setAdmins(d, before.id, b.admins)
+    if (b.admins) await setAdmins(d, req.me.workspaceId, before.id, b.admins)
     const c = changes({ name: before.name, jql: before.jql }, { name: next.name, jql: next.jql })
     const what = Object.keys(b).filter(k => k !== 'name' && k !== 'jql')
     const [p] = await d.query<{ id: string; key: string }>('select id, key from projects where id = $1', [before.projectId])
