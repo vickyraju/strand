@@ -2294,6 +2294,11 @@ test('groups: anyone makes one and manages it; a project admin gives it a role; 
   assert.deepEqual((await call('POST', `/api/v1/groups/${g.id}/members`, { userIds: [dev1, dev2] }, 'gr.lead@x.com')).body, { added: 2 })
   assert.equal((await call('POST', `/api/v1/groups/${g.id}/members`, { userIds: [other] }, 'gr.other@x.com')).status, 403)
   assert.equal((await call('PATCH', `/api/v1/groups/${g.id}`, { name: 'hijacked' }, 'gr.dev1@x.com')).status, 403)
+  // its name is fixed once made (as in Jira); its description can change
+  const renamed = await call('PATCH', `/api/v1/groups/${g.id}`, { name: 'phone-developers' }, 'gr.lead@x.com')
+  assert.deepEqual([renamed.status, renamed.body.errors?.name], [400, 'Can’t be changed'])
+  assert.equal((await call('PATCH', `/api/v1/groups/${g.id}`, { name: g.name, description: 'The mobile team' }, 'gr.lead@x.com')).body.description, 'The mobile team')
+  assert.equal((await call('GET', `/api/v1/groups/${g.id}`)).body.name, g.name)
   // a project admin gives the group Member: its people can now work there; the grant shows who manages the group
   assert.equal((await call('POST', '/api/v1/issues', undefined, 'gr.dev1@x.com')).status, 404)
   assert.equal((await call('GET', '/api/v1/projects/MOBX', undefined, 'gr.dev1@x.com')).status, 404)

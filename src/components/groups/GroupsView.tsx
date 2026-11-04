@@ -104,13 +104,12 @@ function GroupDetail({ id, onChanged, onDeleted }: { id: string; onChanged: () =
   const act = (p: Promise<unknown>, done: string) => p.then(() => { toast(done); void load(); onChanged() }, e => toast(errorMessage(e), { tone: 'warn' }))
   const meId = state.me?.id
   const K = KIND[g.kind]
-  const save = (patch: { name?: string; description?: string }) => act(api('PATCH', `/api/groups/${g.id}`, patch), 'Saved')
+  const save = (patch: { description: string }) => act(api('PATCH', `/api/groups/${g.id}`, patch), 'Saved')
 
   return (
     <section aria-label={`Group ${g.name}`}>
       <div className="groups-head">
-        {g.canManage ? <input className="input groups-name" aria-label="Group name" defaultValue={g.name} onBlur={e => e.target.value.trim() && e.target.value.trim() !== g.name && save({ name: e.target.value.trim() })} />
-          : <h2 className="panel-title">{g.name}</h2>}
+        <h2 className="groups-name" title={g.canManage ? 'A group’s name can’t be changed once it is made' : undefined}>{g.name}</h2>
         <span className="lozenge lozenge-todo" title={K.hint}><K.Icon size={11} /> {K.label}</span>
         {g.canManage && g.kind === 'strand' && (
           <button className="icon-btn" aria-label="Delete group" title="Delete group" onClick={() => setConfirm({ kind: 'delete' })}><Trash2 size={15} /></button>
@@ -210,7 +209,8 @@ function MakeGroup({ onClose, onMade }: { onClose: () => void; onMade: (g: Group
       <button className="btn btn-primary" disabled={!name.trim()} onClick={make}>Make group</button>
     </>}>
       <label className="label" htmlFor="gr-name">Name</label>
-      <input id="gr-name" className="input" autoFocus placeholder="e.g. mobile-developers" value={name} onChange={e => setName(e.target.value)} onKeyDown={e => e.key === 'Enter' && name.trim() && make()} />
+      <input id="gr-name" className="input" autoFocus placeholder="e.g. mobile-developers" value={name} aria-describedby="gr-name-hint" onChange={e => setName(e.target.value)} onKeyDown={e => e.key === 'Enter' && name.trim() && make()} />
+      <div id="gr-name-hint" className="hint">The name can’t be changed once the group is made.</div>
       <label className="label" htmlFor="gr-desc" style={{ marginTop: 10 }}>Description</label>
       <input id="gr-desc" className="input" placeholder="Who is in it" value={description} onChange={e => setDescription(e.target.value)} />
       <p className="muted sm" style={{ marginTop: 10 }}>You’ll own it and be in it. Project admins can then give it a role in their projects.</p>
