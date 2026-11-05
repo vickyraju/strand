@@ -1,6 +1,6 @@
 # 0102 Archived projects are read-only; only global admins archive
 
-Status: In review
+Status: Ported (aws-jira `d67f694`, strand `43deede`), approved by the PO on 5 Nov 2026; awaiting verification
 Parity rows: PRJ-01
 
 ## Context and Jira reference
@@ -112,4 +112,4 @@ Same rules. Issue security levels of an archived project can't be changed (R2). 
 
 ## Changelog
 
-—
+- 5 Nov 2026, while building (within the approved rules): starring an archived project, recording that an item was opened and closing its edit presence are allowed (they change no work, and R4's "opens by key" needs them).
