@@ -1,6 +1,6 @@
-# 0104 Groups from the directory: unique names, directory groups only, renames that keep their grants
+# 0104 Groups from the directory are read-only in Strand; unique group names
 
-Status: In review
+Status: Approved (PO, 5 Nov 2026)
 Parity rows: PRM-17, PRM-18
 
 ## Context and Jira reference
@@ -19,6 +19,10 @@ Groups made in Strand have a fixed name since `20bfae4`. Groups from Entra (SCIM
   - **Group names:** Jira's own groups can't be renamed ([JRASERVER-1391](https://jira.atlassian.com/browse/JRASERVER-1391)).
   - **Deleting a group** ([View, create or delete a group](https://confluence.atlassian.com/adminjiraserver110/view-create-or-delete-a-group-1627460049.html), DC 11.0, checked 5 Nov 2026): members are removed, and "the users themselves will not be deleted". Admins should check where the group is used (permission schemes, notification schemes, security levels, saved filters) before deleting it. The only default group of an application can't be deleted.
   - **Directories are separate:** a directory sync never changes groups of Jira's internal directory.
+  - **Read-only directory groups** ([Connecting to an LDAP directory](https://confluence.atlassian.com/adminjiraserver/connecting-to-an-ldap-directory-938847052.html), DC 11.3, checked 5 Nov 2026):
+    - "LDAP users, groups and memberships are retrieved from your directory server and can only be modified via your directory server. You cannot modify LDAP users, groups or memberships via the application administration screens."
+    - With "Read Only, with Local Groups", "you can add groups to the internal directory and add LDAP users to those groups".
+    - Jira's data is brought back in line with the directory at each sync (every 60 minutes by default) and at sign-in.
 - **Strand today:**
   - **SCIM group routes** are in `server/src/routes/scim.ts`. They list, change and delete every group that isn't a system group, Strand-made ones included. `POST /Groups` doesn't check the name. `PATCH` "replace displayName" renames in place.
   - **Kind of group:** it's worked out from `external_id` (`kindOf` in `server/src/routes/groups.ts`).
@@ -33,8 +37,8 @@ Groups made in Strand have a fixed name since `20bfae4`. Groups from Entra (SCIM
 - **R3:** SCIM sees and changes only directory groups.
   - Groups made in Strand and system groups aren't listed by `GET /Groups`. Reading, changing or deleting one returns 404.
   - The directory never changes Strand's own groups, as Jira's directory sync never changes its internal groups.
-- **R4:** SCIM `POST /Groups` with a name that's already taken is refused with 409 (SCIM `uniqueness`), and nothing is made. Entra then matches the existing directory group by name, as it does for users.
-- **R5:** A rename from the directory (SCIM "replace displayName") keeps the group, its members and the roles it gives:
+- **R4:** SCIM `POST /Groups` with a name that's already taken is refused with 409 (SCIM's status for a uniqueness conflict), and nothing is made. Entra then matches the existing directory group by name, as it does for users.
+- **R5:** A rename from the directory (SCIM "replace displayName") isn't expected; the product owner confirmed groups aren't renamed in the directory. If one comes, the group takes the directory's name and keeps its members and roles:
   - **New name taken:** if the new name already belongs to another group, the rename is refused with 409, and nothing changes.
   - **Searches:** `membersOf("old name")` stops matching and `membersOf("new name")` matches, as in Jira after a directory rename.
   - **Audit:** the rename is recorded (`group.renamed`, before and after).
@@ -42,6 +46,12 @@ Groups made in Strand have a fixed name since `20bfae4`. Groups from Entra (SCIM
 - **R6:** A delete from the directory (SCIM `DELETE /Groups/:id`) removes the group, as in Jira: the directory is the source.
   - **Effect:** its members lose the roles it gave and are not removed from Strand.
   - **Audit:** it's recorded with the projects where the group had a role, and those left with no project admin, so a system administrator can fix them. It is not refused, because Entra would keep retrying.
+- **R7:** A directory group and its memberships can't be changed in Strand, by anyone, global admins included, as with a read-only directory in Jira. Only the directory adds or removes its members, renames it or deletes it.
+  - **Groups page:** a directory group can't be deleted, and people can't be added to it or removed from it (as today).
+  - **People › bulk changes:** "add to group" and "remove from group" refuse a directory group (as today).
+  - **License cleanup:** its "remove from groups" action takes people out of groups made in Strand only. Choosing a directory group for it is refused (400), and a directory group named in an existing rule is skipped.
+  - **Why:** Jira undoes such a change at its next sync. Entra sends Strand only its own changes, so a change made in Strand would never be undone. Refusing it keeps Strand the same as the directory, which is what Jira's sync achieves.
+  - **Groups made in Strand:** directory users can be added to them, as Jira's local groups allow.
 
 ## Permissions
 
@@ -60,7 +70,7 @@ Groups made in Strand have a fixed name since `20bfae4`. Groups from Entra (SCIM
 
 SCIM (`/scim/v2/Groups`):
 - `GET`, `GET :id`, `PATCH :id` and `DELETE :id`: directory groups only (R3).
-- `POST`: 409 `uniqueness` for a taken name (R4).
+- `POST`: 409 for a taken name (R4).
 - `PATCH` with a taken name: 409 (R5).
 
 Strand's own `/groups` API shows `kind` from `source` instead of `external_id`, with no change of shape. `POST /groups` with a taken name stays a 409, now backed by the database.
@@ -85,9 +95,10 @@ None.
 | R1 | Migration test: two groups named "Ops" and "ops" become "Ops" and "ops (2)", with an audit row. Server test: making a group in Strand with a taken name is refused by the database too |
 | R2 | Migration test: groups with an `externalId`, or made with no creator, are directory groups; a SCIM group made without `externalId` is a directory group |
 | R3 | Server test: a Strand-made group and a system group are absent from SCIM's list; SCIM `GET`, `PATCH` and `DELETE` on them return 404 and change nothing |
-| R4 | Server test: SCIM `POST` with a name taken by a Strand group returns 409 (`uniqueness`) |
+| R4 | Server test: SCIM `POST` with a name taken by a Strand group returns 409 |
 | R5 | Server test: a SCIM rename keeps members and project roles; `membersOf` matches the new name and not the old; a rename to a taken name returns 409; the audit has `group.renamed` |
 | R6 | Server test: SCIM deleting the only group giving a project admin removes it; the audit lists that project as left without an admin; members are still in Strand |
+| R7 | Server tests: a global admin can't delete a directory group or change its members (403 or 400); license cleanup refuses a directory group in "remove from groups", and a run leaves directory memberships untouched |
 
 ## Strand branch
 
@@ -95,14 +106,14 @@ Same rules. Security levels that name a deleted group stop letting its members i
 
 ## Out of scope and deliberate divergences
 
-- **R5 keeps the grants**, where Jira breaks every permission on the old name. This does automatically what Atlassian's workaround does by hand (grant the new name, remove the old). The group's members and roles stay; searches by name behave as in Jira. Recorded in `../jira-parity.md` (PRM-17).
 - **Comments restricted to a deleted group:** today they become visible to their author only. Jira's documentation doesn't say what happens, so this is left as it is (PRM-18).
 - **Default groups of an application:** Strand's system groups already can't be deleted.
+- **No pull sync:** Jira polls the directory; Entra pushes changes to Strand. A full re-sync is started in Entra (restart provisioning), not in Strand.
 
 ## Open questions
 
-1. **R5, a rename from the directory.** Jira way: the renamed group is treated as new, and every role given to the old name is lost until someone grants the new one. Proposed: keep the group and its roles under the new name. It's what Atlassian advises admins to arrange by hand, and searches by name end up the same as in Jira. Choose the Jira way if you'd rather a directory rename never carries access over.
+None. The product owner decided on 5 Nov 2026: the directory is the source of truth for its groups and their members (R7), and groups aren't renamed there (R5).
 
 ## Changelog
 
-—
+- 5 Nov 2026, in review: R7 added (directory groups and memberships are read-only in Strand, as Jira's read-only directory); R5 reworded (renames aren't expected); the open question closed.

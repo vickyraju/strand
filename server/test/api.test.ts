@@ -2511,7 +2511,7 @@ test('system groups: everyone is in users-access and rejoins at sign-in; system-
   // directory provisioning (SCIM) can't see or change the system groups
   const scim = await app.inject({ method: 'GET', url: '/scim/v2/Groups', headers: { authorization: `Bearer ${process.env.SCIM_TOKEN}` } })
   assert.ok(!JSON.parse(scim.body).Resources.some((g: any) => g.id === admins.id || g.id === users.id))
-  assert.equal((await app.inject({ method: 'DELETE', url: `/scim/v2/Groups/${admins.id}`, headers: { authorization: `Bearer ${process.env.SCIM_TOKEN}` } })).statusCode, 204)
+  assert.equal((await app.inject({ method: 'DELETE', url: `/scim/v2/Groups/${admins.id}`, headers: { authorization: `Bearer ${process.env.SCIM_TOKEN}` } })).statusCode, 404)   // spec 0104 R3
   assert.ok(await sys('system-admins'))
 })
 
@@ -2572,7 +2572,7 @@ test('groups: anyone makes one and manages it; a project admin gives it a role; 
   assert.match((await call('DELETE', `/api/v1/groups/${admins.id}/members/${adminIds[0]}`)).body.error, /at least one system administrator/)
   for (const a of adminIds.slice(1)) await call('POST', `/api/v1/groups/${admins.id}/members`, { userIds: [a] })
   // a directory group (from Entra) is read-only here
-  const [{ id: dir }] = (await pool.query(`insert into groups (display_name, external_id) values ('Entra Mobile', 'ext-mobile') returning id`)).rows
+  const [{ id: dir }] = (await pool.query(`insert into groups (display_name, external_id, source) values ('Entra Mobile', 'ext-mobile', 'directory') returning id`)).rows
   assert.equal((await call('POST', `/api/v1/groups/${dir}/members`, { userIds: [other] })).status, 403)
   assert.equal((await call('GET', `/api/v1/groups/${dir}`)).body.kind, 'directory')
   // every change is in the audit log
@@ -3084,6 +3084,61 @@ test('people at scale: searched, filtered and paged on the server; everyone a fi
   assert.equal((await page('query=bulk%20person&status=deactivated')).body.total, 115)
   assert.equal((await call('POST', '/api/v1/admin/users/bulk', { action: 'reactivate' })).status, 400)       // people, or a filter
   assert.equal((await call('POST', '/api/v1/admin/users/bulk', { filter: {}, action: 'reactivate' }, 'adv.member@x.com')).status, 403)
+})
+
+test('[0104.R1][0104.R2][0104.R3][0104.R4][0104.R5][0104.R6][0104.R7] directory groups are the directory’s: names unique, read-only in Strand, deletes go through and are audited; Strand’s own groups are out of SCIM’s reach', { skip }, async () => {
+  const scim = (method: string, path: string, body?: unknown) =>
+    app.inject({ method: method as any, url: `/scim/v2${path}`, payload: body as any, headers: { authorization: 'Bearer scim-secret', 'content-type': 'application/scim+json' } })
+  await call('GET', '/api/v1/me')
+  const uid = async (who: string) => (await call('GET', '/api/v1/me', undefined, `${who}@x.com`)).body.id as string
+  const [dee, eve] = [await uid('dg.dee'), await uid('dg.eve')]
+  // R2: made by SCIM without the directory's id, it is still a directory group; R3: Strand's own groups are invisible to SCIM
+  const made = await scim('POST', '/Groups', { displayName: 'Directory ops', members: [{ value: dee }] })
+  assert.equal(made.statusCode, 201)
+  const dg = JSON.parse(made.body)
+  assert.equal((await call('GET', `/api/v1/groups/${dg.id}`)).body.kind, 'directory')
+  const own = (await call('POST', '/api/v1/groups', { name: 'Strand crew' })).body
+  const list = JSON.parse((await scim('GET', '/Groups')).body).Resources.map((g: any) => g.id)
+  assert.ok(list.includes(dg.id) && !list.includes(own.id))
+  for (const [m, b] of [['GET', undefined], ['PATCH', { Operations: [{ op: 'Add', path: 'members', value: [{ value: eve }] }] }], ['DELETE', undefined]] as const)
+    assert.equal((await scim(m, `/Groups/${own.id}`, b)).statusCode, 404, m)
+  assert.equal((await call('GET', `/api/v1/groups/${own.id}`)).body.members, 1)
+  // R1 + R4: names are unique ignoring case, for SCIM and in Strand
+  assert.equal((await scim('POST', '/Groups', { displayName: 'strand CREW' })).statusCode, 409)
+  assert.equal((await call('POST', '/api/v1/groups', { name: 'DIRECTORY OPS' })).status, 409)
+  // R5: a rename from the directory keeps members and roles, and is audited; to a taken name, refused
+  await call('POST', '/api/v1/projects', { name: 'Dir groups', key: 'DGP', template: 'kanban' })
+  assert.equal((await call('POST', '/api/v1/projects/DGP/groups', { groupId: dg.id, role: 'admin' })).status, 200)
+  await pool.query(`delete from project_members where project_id = (select id from projects where key = 'DGP')`)   // the group is the only admin route
+  assert.equal((await scim('PATCH', `/Groups/${dg.id}`, { Operations: [{ op: 'Replace', path: 'displayName', value: 'Strand Crew' }] })).statusCode, 409)
+  assert.equal((await scim('PATCH', `/Groups/${dg.id}`, { Operations: [{ op: 'Replace', path: 'displayName', value: 'Platform ops' }] })).statusCode, 204)
+  assert.equal((await call('GET', '/api/v1/projects/DGP', undefined, 'dg.dee@x.com')).body.role, 'admin')
+  await call('POST', '/api/v1/projects/DGP/issues', { title: 'Dee’s work', assigneeId: dee })
+  const count = async (q: string) => (await call('POST', '/api/v1/jql/check', { jql: q })).body.count
+  assert.deepEqual([await count('project = DGP AND assignee in membersOf("Platform ops")'), await count('project = DGP AND assignee in membersOf("Directory ops")')], [1, 0])
+  assert.ok((await call('GET', '/api/v1/audit?action=group.renamed')).body.items.some((x: any) => x.targetId === dg.id))
+  // R7: nobody in Strand changes a directory group or who is in it, global admins included
+  assert.equal((await call('DELETE', `/api/v1/groups/${dg.id}`)).status, 403)
+  assert.equal((await call('POST', `/api/v1/groups/${dg.id}/members`, { userIds: [eve] })).status, 403)
+  assert.equal((await call('DELETE', `/api/v1/groups/${dg.id}/members/${dee}`)).status, 403)
+  assert.equal((await call('POST', '/api/v1/admin/users/bulk', { userIds: [eve], action: 'add-to-group', groupId: dg.id })).status, 400)
+  const rule = { enabled: false, inactiveDays: 90, action: 'remove-groups', groupIds: [dg.id], warnDays: 7, excludedGroupIds: [], protectLeads: true, reportTo: [] }
+  const refused = await call('PUT', '/api/v1/admin/settings/licenseCleanup', rule)
+  assert.equal(refused.status, 400); assert.ok(refused.body.errors.groupIds)
+  // …and a rule that already names one (saved before this rule existed) leaves its members where they are
+  const { setSetting, getSetting } = await import('../src/settings.ts')
+  const ws = (await call('GET', '/api/v1/me')).body.workspaceId
+  const before = await getSetting(ws, 'licenseCleanup')
+  await setSetting(pool as any, ws, 'licenseCleanup', rule, (await call('GET', '/api/v1/me')).body.id)
+  await pool.query(`update users set last_active_at = now() - interval '400 days' where id = $1`, [dee])
+  await call('POST', '/api/v1/admin/license-cleanup/run')
+  assert.equal((await pool.query('select 1 from group_members where group_id = $1 and user_id = $2', [dg.id, dee])).rows.length, 1)
+  await setSetting(pool as any, ws, 'licenseCleanup', before, (await call('GET', '/api/v1/me')).body.id)
+  // R6: deleting from the directory goes through and says which project was left without an admin; people stay
+  assert.equal((await scim('DELETE', `/Groups/${dg.id}`)).statusCode, 204)
+  const del = (await call('GET', '/api/v1/audit?action=group.deleted')).body.items.find((x: any) => x.targetId === dg.id)
+  assert.deepEqual([del.before.roles, del.after.projectsWithoutAdmin], [['DGP: admin'], ['DGP']])
+  assert.equal((await call('GET', '/api/v1/me', undefined, 'dg.dee@x.com')).status, 200)
 })
 
 test('groups: SCIM provisions teams; a project role given to a group reaches everyone in it, and goes when they leave', { skip }, async () => {
