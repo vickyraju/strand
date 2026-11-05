@@ -1622,7 +1622,7 @@ test('[0102.R1][0102.R2][0102.R3][0102.R4][0102.R6][0102.R7][0102.R8][0102.R9] a
   const keys = (r: any) => (r.body.items ?? r.body).map((x: any) => x.key)
   assert.ok(!keys(await call('GET', '/api/v1/search?q=Shelved')).includes(item.key))
   assert.equal((await call('POST', '/api/v1/jql/check', { jql: 'project = ARC' })).body.count, 0)
-  assert.ok(!(await app.inject({ method: 'GET', url: '/api/v1/search/export.csv?q=Shelved', headers: await bearer('owner@x.com') })).body.includes(item.key))
+  assert.ok(!(await app.inject({ method: 'GET', url: '/api/v1/search/export.csv?q=Shelved', headers: { 'x-dev-user': 'owner@x.com' } })).body.includes(item.key))
   assert.deepEqual(keys(await call('GET', `/api/v1/boards/${both.id}/issues`)), [other.key])
   assert.ok(!keys(await call('GET', '/api/v1/me/work', undefined, mem)).includes(item.key))
   assert.ok(!(await call('GET', '/api/v1/projects')).body.some((x: any) => x.key === 'ARC'))
