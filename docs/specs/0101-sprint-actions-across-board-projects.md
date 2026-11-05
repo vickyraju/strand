@@ -113,4 +113,8 @@ None. Both questions raised in review were answered the Jira way (5 Nov 2026): t
 
 ## Changelog
 
+- 5 Nov 2026, while building (wording and a fix within the approved rules, no change of behaviour):
+  - R5: when none of the missing projects can be named, the message reads "…every project it covers, including one you can't see" (or the number).
+  - R9: after a sprint is completed, the web app reloads every project that had work in it, not only the board's. Without this, the moved items of another project were saved again with an old version and refused (409).
+  - R9: in one change the app sends new sprints before updates, so a sprint completed into a new one reaches the server after it.
 - 5 Nov 2026, in review: the product owner asked for Jira's handling. R1 no longer adds the board's own project; R4 withdrawn; R8 clarified; R9 (backlog, future sprint or new sprint) and R10 (Done parents with unfinished sub-items block completion) added from Jira's [Completing a sprint](https://confluence.atlassian.com/jirasoftwareserver/completing-a-sprint-938845450.html) (DC 11.3, checked 5 Nov 2026).

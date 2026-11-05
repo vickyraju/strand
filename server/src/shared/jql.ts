@@ -182,3 +182,24 @@ export function filtersToJql(f: { projectKey?: string; assignee?: string | null;
   if (f.q?.trim()) parts.push(`text ~ ${q(f.q.trim())}`)
   return parts.join(' AND ')
 }
+
+/** The projects a query names (Jira: a board's filter decides the projects its sprints need permission in), lower-cased
+ *  keys or names as written; null when it can't be told (a part without a project clause, `!=`, `not in`, NOT, a function), when any
+ *  project could match. AND keeps what its project-naming parts share; OR needs every branch to name projects. */
+export function filterProjects(jql: string): string[] | null {
+  type Cover = Set<string> | null                      // null: any project
+  const walk = (n: Node | null): Cover => {
+    if (!n) return null
+    if (n.kind === 'not') return null
+    if (n.kind === 'clause') {
+      if (n.field.toLowerCase() !== 'project' || (n.op !== '=' && n.op !== 'in') || n.values.some(v => v.kind !== 'text')) return null
+      return new Set(n.values.map(v => (v as { text: string }).text.toLowerCase()))
+    }
+    const parts = n.items.map(walk)
+    if (n.kind === 'or') return parts.some(x => x === null) ? null : new Set(parts.flatMap(x => [...x!]))
+    const named = parts.filter((x): x is Set<string> => x !== null)
+    return named.length ? named.reduce((a, b) => new Set([...a].filter(x => b.has(x)))) : null
+  }
+  const cover = walk(parseJql(jql).where)
+  return cover && [...cover]
+}

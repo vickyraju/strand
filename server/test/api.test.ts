@@ -1542,6 +1542,94 @@ test('boards: several per project, each with its own filter (across projects too
   assert.ok((await call('GET', '/api/v1/audit?action=board.')).body.items.some((x: any) => x.action === 'board.created'))
 })
 
+test('[0101.R2][0101.R5][0101.R6][0101.R7][0101.R8] sprint actions need the right to change work in every project the board’s filter names; a refusal names what is missing and changes nothing', { skip }, async () => {
+  for (const key of ['SMA', 'SMB', 'SMC']) await call('POST', '/api/v1/projects', { name: `Sprint mgmt ${key}`, key, template: 'scrum' })
+  const board = (await call('POST', '/api/v1/projects/SMA/boards', { name: 'Two teams', type: 'scrum', jql: 'project in (SMA, SMB)' })).body
+  const one = 'sm.one@x.com', both = 'sm.both@x.com', viewerA = 'sm.viewer@x.com'
+  await join('SMA', one); await join('SMB', one, 'viewer'); await join('SMA', both); await join('SMB', both)
+  await join('SMA', viewerA, 'viewer'); await join('SMB', viewerA); await join('SMC', viewerA)
+  const item = (await call('POST', '/api/v1/projects/SMB/issues', { title: 'From B' })).body
+  const s = (await call('POST', '/api/v1/projects/SMA/sprints', { name: 'Train 1', boardId: board.id })).body
+  await call('PATCH', `/api/v1/issues/${item.key}`, { sprintId: s.id })
+  const base = `/api/v1/projects/SMA/sprints/${s.id}`
+  const ends = { endsAt: new Date(Date.now() + 7 * 864e5).toISOString() }
+  // R2 + R5: a member of only the board's project is refused each action, with SMB named; nothing changes
+  for (const [m, path, body] of [['POST', '/api/v1/projects/SMA/sprints', { name: 'x', boardId: board.id }], ['PATCH', base, { name: 'x' }], ['POST', `${base}/start`, ends], ['DELETE', base, undefined]] as const) {
+    const r = await call(m, path, body, one)
+    assert.equal(r.status, 403, `${m} ${path}`); assert.match(r.body.error, /every project it covers: SMB$/)
+  }
+  assert.equal((await call('GET', `/api/v1/boards/${board.id}`)).body.name, 'Two teams')
+  assert.equal((await pool.query('select name, state from sprints where id = $1', [s.id])).rows[0].name, 'Train 1')
+  // R7: who may manage sprints is on the board and in the board list
+  assert.equal((await call('GET', `/api/v1/boards/${board.id}`, undefined, one)).body.canManageSprints, false)
+  assert.equal((await call('GET', '/api/v1/projects/SMA/boards', undefined, both)).body.find((b: any) => b.id === board.id).canManageSprints, true)
+  // R8: a viewer of the board's project who is a member of every project its filter names may manage them
+  const bOnly = (await call('POST', '/api/v1/projects/SMA/boards', { name: 'B only', type: 'scrum', jql: 'project = SMB' })).body
+  assert.equal((await call('POST', '/api/v1/projects/SMA/sprints', { name: 'B sprint', boardId: bOnly.id }, viewerA)).status, 201)
+  assert.equal((await call('POST', '/api/v1/projects/SMA/sprints', { name: 'x', boardId: board.id }, viewerA)).status, 403)   // not for a board naming SMA
+  assert.equal((await call('POST', `${base}/start`, ends, both)).status, 200)
+  // R6: reading is unchanged: the viewer and the one-project member see the sprint and the board
+  assert.equal((await call('GET', `/api/v1/boards/${board.id}/issues?scope=backlog`, undefined, one)).status, 200)
+  assert.ok((await call('GET', '/api/v1/projects/SMA', undefined, one)).body.sprints.some((x: any) => x.id === s.id))
+  // R2: completing as the one-project member is refused, and B's item stays in the sprint; a member of both completes it
+  const refused = await call('POST', `${base}/complete`, { moveTo: null }, one)
+  assert.equal(refused.status, 403)
+  assert.deepEqual([(await pool.query('select state from sprints where id = $1', [s.id])).rows[0].state, (await call('GET', `/api/v1/issues/${item.key}`)).body.sprintId], ['active', s.id])
+  assert.equal((await call('POST', `${base}/complete`, { moveTo: null }, both)).status, 200)
+  assert.equal((await call('GET', `/api/v1/issues/${item.key}`)).body.sprintId, null)
+  // R5: projects the person can't see are counted, not named
+  const wide = (await call('POST', '/api/v1/projects/SMA/boards', { name: 'Three', type: 'scrum', jql: 'project in (SMA, SMB, SMC)' })).body
+  const r = await call('POST', '/api/v1/projects/SMA/sprints', { name: 'y', boardId: wide.id }, one)
+  assert.equal(r.status, 403); assert.match(r.body.error, /: SMB and 1 more$/)
+  await join('SMC', 'sm.c@x.com'); await join('SMA', 'sm.c@x.com')
+  assert.match((await call('POST', '/api/v1/projects/SMA/sprints', { name: 'z', boardId: board.id }, 'sm.c@x.com')).body.error, /covers, including one you can’t see$/)
+})
+
+test('[0101.R3] a board whose filter can include any project: only someone who can change work in every project manages its sprints', { skip }, async () => {
+  await call('POST', '/api/v1/projects', { name: 'Open filter', key: 'SMO', template: 'scrum' })
+  const board = (await call('POST', '/api/v1/projects/SMO/boards', { name: 'Bugs anywhere', type: 'scrum', jql: 'project = SMO OR type = Bug' })).body
+  await join('SMO', 'sm.open@x.com', 'admin')
+  const r = await call('POST', '/api/v1/projects/SMO/sprints', { name: 'x', boardId: board.id }, 'sm.open@x.com')
+  assert.equal(r.status, 403); assert.match(r.body.error, /can include any project/)
+  assert.equal((await call('GET', `/api/v1/boards/${board.id}`, undefined, 'sm.open@x.com')).body.canManageSprints, false)
+  assert.equal((await call('POST', '/api/v1/projects/SMO/sprints', { name: 'x', boardId: board.id })).status, 201)   // a global admin
+})
+
+test('[0101.R9][0101.R10] completing a sprint: unfinished work to the backlog, a future sprint of the board or a new sprint; a Done item with unfinished sub-items blocks it', { skip }, async () => {
+  const p = (await call('POST', '/api/v1/projects', { name: 'Completing', key: 'CMP', template: 'scrum' })).body
+  const done = p.statuses.find((x: any) => x.category === 'done').id
+  const other = (await call('POST', '/api/v1/projects/CMP/boards', { name: 'Other', type: 'scrum', jql: 'project = CMP' })).body
+  const ends = { endsAt: new Date(Date.now() + 7 * 864e5).toISOString() }
+  const sprint = async (name: string, boardId?: string) => (await call('POST', '/api/v1/projects/CMP/sprints', { name, ...(boardId ? { boardId } : {}) })).body
+  const mk = (title: string, extra: object = {}) => call('POST', '/api/v1/projects/CMP/issues', { title, ...extra }).then(r => r.body)
+  const s1 = await sprint('Sprint A'), elsewhere = await sprint('Elsewhere', other.id)
+  const parent = await mk('Parent', { sprintId: s1.id }), child = await mk('Child', { sprintId: s1.id, parentId: parent.id })
+  const open = await mk('Open', { sprintId: s1.id })
+  await call('POST', `/api/v1/projects/CMP/sprints/${s1.id}/start`, ends)
+  // R10: the parent is Done, its sub-item isn't: refused, nothing changes
+  await call('PATCH', `/api/v1/issues/${parent.key}`, { statusId: done })
+  const blocked = await call('POST', `/api/v1/projects/CMP/sprints/${s1.id}/complete`, { moveTo: null })
+  assert.equal(blocked.status, 409); assert.equal(blocked.body.error, `Complete the sub-items first: ${parent.key}`)
+  assert.equal((await pool.query('select state from sprints where id = $1', [s1.id])).rows[0].state, 'active')
+  // R9: another board's sprint is refused; "new" makes a planned sprint on the same board and moves the unfinished work there
+  await call('PATCH', `/api/v1/issues/${child.key}`, { statusId: done })
+  assert.equal((await call('POST', `/api/v1/projects/CMP/sprints/${s1.id}/complete`, { moveTo: elsewhere.id })).status, 400)
+  const made = await call('POST', `/api/v1/projects/CMP/sprints/${s1.id}/complete`, { moveTo: 'new' })
+  assert.equal(made.status, 200, JSON.stringify(made.body))
+  assert.deepEqual([made.body.state, made.body.newSprint.state, made.body.newSprint.boardId, made.body.newSprint.name], ['closed', 'planned', s1.boardId, 'CMP Sprint 3'])
+  assert.equal((await call('GET', `/api/v1/issues/${open.key}`)).body.sprintId, made.body.newSprint.id)
+  assert.equal((await call('GET', `/api/v1/issues/${parent.key}`)).body.sprintId, s1.id)               // finished work stays
+  // R9: a future sprint of the board, then the backlog; a completed sprint can't take work
+  const s3 = await sprint('Sprint C')
+  await call('POST', `/api/v1/projects/CMP/sprints/${made.body.newSprint.id}/start`, ends)
+  assert.equal((await call('POST', `/api/v1/projects/CMP/sprints/${made.body.newSprint.id}/complete`, { moveTo: s1.id })).status, 400)
+  assert.equal((await call('POST', `/api/v1/projects/CMP/sprints/${made.body.newSprint.id}/complete`, { moveTo: s3.id })).status, 200)
+  assert.equal((await call('GET', `/api/v1/issues/${open.key}`)).body.sprintId, s3.id)
+  await call('POST', `/api/v1/projects/CMP/sprints/${s3.id}/start`, ends)
+  await call('POST', `/api/v1/projects/CMP/sprints/${s3.id}/complete`, { moveTo: null })
+  assert.equal((await call('GET', `/api/v1/issues/${open.key}`)).body.sprintId, null)
+})
+
 test('scrum boards: each has its own sprints, one active at a time; a sprint holds work from every project its board covers; its backlog is its filter’s unfinished work', { skip }, async () => {
   const p = (await call('POST', '/api/v1/projects', { name: 'Sprinted', key: 'SPB', template: 'scrum' })).body
   await call('POST', '/api/v1/projects', { name: 'Sprinted too', key: 'SPC', template: 'scrum' })
@@ -3002,11 +3090,11 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     'PATCH /projects/{key}/releases/{id}': ['padmin', `/projects/${K}/releases/${release}`, { name: 'x' }],
     'DELETE /projects/{key}/releases/{id}': ['padmin', `/projects/${K}/releases/${release}`],
     'POST /projects/{key}/releases/{id}/release': ['padmin', `/projects/${K}/releases/${release}/release`, {}],
-    'POST /projects/{key}/sprints': ['write', `/projects/${K}/sprints`, { name: 's' }],
-    'PATCH /projects/{key}/sprints/{id}': ['write', `/projects/${K}/sprints/${sprint}`, { name: 'x' }],
-    'DELETE /projects/{key}/sprints/{id}': ['write', `/projects/${K}/sprints/${sprint}`],
-    'POST /projects/{key}/sprints/{id}/start': ['write', `/projects/${K}/sprints/${sprint}/start`, { endsAt: '2026-12-01T00:00:00.000Z' }],
-    'POST /projects/{key}/sprints/{id}/complete': ['write', `/projects/${K}/sprints/${sprint}/complete`, {}],
+    'POST /projects/{key}/sprints': ['write', `/projects/${K}/sprints`, { name: 's' }],   // 0101.R8
+    'PATCH /projects/{key}/sprints/{id}': ['write', `/projects/${K}/sprints/${sprint}`, { name: 'x' }],   // 0101.R8
+    'DELETE /projects/{key}/sprints/{id}': ['write', `/projects/${K}/sprints/${sprint}`],   // 0101.R8
+    'POST /projects/{key}/sprints/{id}/start': ['write', `/projects/${K}/sprints/${sprint}/start`, { endsAt: '2026-12-01T00:00:00.000Z' }],   // 0101.R8
+    'POST /projects/{key}/sprints/{id}/complete': ['write', `/projects/${K}/sprints/${sprint}/complete`, {}],   // 0101.R8
     'GET /projects/{key}/members': ['read', `/projects/${K}/members`],
     'POST /projects/{key}/members': ['padmin', `/projects/${K}/members`, { userIds: [viewerId], role: 'member' }],
     'PATCH /projects/{key}/members/{userId}': ['padmin', `/projects/${K}/members/${viewerId}`, { role: 'member' }],

@@ -1037,3 +1037,36 @@ test('a Scrum board across two projects: its backlog has both projects’ work; 
   assert.equal(await o.locator('text=Own work').count(), 0)
   assert.deepEqual(o.problems, [])
 })
+
+test('[0101.R7][0101.R9] sprints on a board across two projects: someone who can change only one of them sees the sprint actions off; the owner completes into a new sprint', { skip, timeout: 90_000 }, async () => {
+  await owner('POST', '/projects', { name: 'Sprint rights one', key: 'SRA', template: 'scrum' })
+  await owner('POST', '/projects', { name: 'Sprint rights two', key: 'SRB', template: 'scrum' })
+  await owner('POST', '/projects/SRA/members', { userIds: [await idOf('maya@e2e.test')], role: 'member' })
+  const board = (await owner('POST', '/projects/SRA/boards', { name: 'Both rights', type: 'scrum', jql: 'project in (SRA, SRB)' })).body
+  const sprint = (await owner('POST', '/projects/SRA/sprints', { name: 'Rights sprint', boardId: board.id })).body
+  const left = (await owner('POST', '/projects/SRB/issues', { title: 'Still open', sprintId: sprint.id })).body
+  await owner('POST', `/projects/SRA/sprints/${sprint.id}/start`, { endsAt: new Date(Date.now() + 7 * 864e5).toISOString() })
+
+  const m = await signIn('maya@e2e.test')
+  await m.goto(url(`/project/SRA/backlog/${board.id}`))
+  await m.waitForSelector('.sprint-name:has-text("Rights sprint")')
+  for (const label of ['Create sprint', 'Complete sprint']) {
+    const b = m.locator(`button:has-text("${label}")`).first()
+    assert.equal(await b.isDisabled(), true, label)
+    assert.equal(await b.getAttribute('title'), 'You need to be able to change work in every project this board covers')
+  }
+
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url(`/project/SRA/backlog/${board.id}`))
+  await o.click('button:has-text("Complete sprint")')
+  await o.selectOption('#cs-target', { label: 'New sprint' })
+  await o.click('.modal button:has-text("Complete sprint")')
+  const sprintOf = async () => (await owner('GET', `/issues/${left.key}`)).body.sprintId
+  for (let i = 0; i < 40 && (await sprintOf()) === sprint.id; i++) await new Promise(r => setTimeout(r, 250))
+  const made = (await owner('GET', '/projects/SRA')).body.sprints.find(s => s.boardId === board.id && s.state === 'planned')
+  assert.ok(made, 'a new planned sprint on the board')
+  assert.equal(await sprintOf(), made.id)
+  assert.equal((await owner('GET', '/projects/SRA')).body.sprints.find(s => s.id === sprint.id).state, 'closed')
+  await o.waitForSelector(`.sprint-name:has-text("${made.name}")`)
+  assert.deepEqual([...m.problems, ...o.problems], [])
+})

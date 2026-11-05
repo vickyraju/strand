@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { parseJql, relative, filtersToJql, JqlError } from '../src/shared/jql.ts'
+import { parseJql, relative, filtersToJql, filterProjects, JqlError } from '../src/shared/jql.ts'
 
 test('jql: clauses, AND binds tighter than OR, parentheses, NOT, lists, functions, sorting', () => {
   const q = parseJql('project = PAY AND (status = "In progress" OR priority in (high, urgent)) AND NOT assignee = currentUser() ORDER BY created DESC, priority')
@@ -49,4 +49,18 @@ test('jql: a function that stands for a list (issue in testPlanTests("PAY-9", "F
     { kind: 'clause', field: 'sprint', op: 'in', values: [{ kind: 'fn', name: 'opensprints' }] },
     { kind: 'clause', field: 'key', op: 'not in', values: [{ kind: 'fn', name: 'requirementtests', arg: 'PAY-1' }] },
   ] })
+})
+
+test('[0101.R1] a board filter’s projects: named by project = / in, narrowed by AND, joined by OR only when every branch names projects; otherwise open', () => {
+  const p = (q: string) => { const r = filterProjects(q); return r && r.sort() }
+  assert.deepEqual(p('project = A'), ['a'])
+  assert.deepEqual(p('project in (A, B)'), ['a', 'b'])
+  assert.deepEqual(p('project = A AND type = Bug'), ['a'])
+  assert.deepEqual(p('project in (A, B) AND project = B'), ['b'])
+  assert.deepEqual(p('project = A OR project = B'), ['a', 'b'])
+  assert.deepEqual(p('"Payments Platform" = x OR project = "Payments Platform"'), null)   // a branch without a project clause
+  assert.deepEqual(p('project = "Payments Platform" ORDER BY rank'), ['payments platform'])  // names count as written
+  for (const open of ['project = A OR type = Bug', 'assignee = x', 'project != A', 'project not in (A)', 'NOT project = A',
+    '(project = A OR assignee = x) AND (project = B OR assignee = y)'])
+    assert.equal(p(open), null, open)
 })

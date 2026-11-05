@@ -264,6 +264,8 @@ export interface MenuItem {
   danger?: boolean
   hint?:   string
   divider?: boolean
+  /** Why it can't be chosen now (shown as its tooltip); unset when it can */
+  disabled?: string
 }
 
 export function Menu({ items, trigger, title, className = 'icon-btn', align = 'right' }: {
@@ -294,7 +296,7 @@ export function Menu({ items, trigger, title, className = 'icon-btn', align = 'r
             {items.map((it, i) => (
               <span key={i} style={{ display: 'contents' }}>
                 {it.divider && <div className="menu-divider" />}
-                <button type="button" role="menuitem" className={`picker-item${it.danger ? ' danger' : ''}`}
+                <button type="button" role="menuitem" className={`picker-item${it.danger ? ' danger' : ''}`} disabled={!!it.disabled} title={it.disabled}
                   onClick={() => { setOpen(false); it.onClick() }}>
                   {it.icon}
                   <span className="picker-label">{it.label}</span>
