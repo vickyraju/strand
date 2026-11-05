@@ -4,7 +4,7 @@ import ComponentsPanel from './ComponentsPanel'
 import TestingPanel from './testing/TestingPanel'
 import { WorkflowPanel } from './ProjectWorkflow'
 const TestRepository = lazy(() => import('./testing/TestRepository'))
-import { Plus, Star, FolderPlus, Columns2, List, ListChecks, Settings, Gauge, BarChart3, GanttChart, CalendarDays, Rocket, Check, Info, Zap, Users, FlaskConical } from 'lucide-react'
+import { Plus, Star, FolderPlus, Columns2, List, ListChecks, Settings, Gauge, BarChart3, GanttChart, CalendarDays, Rocket, Check, Info, Zap, Users, FlaskConical, Archive } from 'lucide-react'
 import { useStore, userOf, isDone, timeAgo, PROJECT_COLORS, type Project, type ProjectPatch } from '../data/store'
 import { useApp } from '../appContext'
 import { canAdmin, isGlobalAdmin } from '../data/access'
@@ -19,7 +19,8 @@ import SummaryView from './SummaryView'
 import { FieldsPanel } from './CustomFields'
 import { TemplatesPanel, ImportPanel } from './TemplatesImport'
 import { useFilters } from './filters'
-import { Avatar, Empty, Modal, plural } from './ui'
+import { Avatar, ConfirmDialog, Empty, Modal, plural } from './ui'
+import { loadProjectByKey } from '../api/load'
 import { UserPicker } from './UserPicker'
 
 // Screens most people don't open first load on demand to keep the first page fast
@@ -62,14 +63,13 @@ export function StarButton({ projectId }: { projectId: string }) {
 /** Search every project in the workspace on the server (the screen below lists only the ones loaded: starred and recent). */
 function RemoteProjectSearch() {
   const [q, setQ] = useState('')
-  const [rows, setRows] = useState<{ id: string; key: string; name: string; template: string; openCount: number; archivedAt: string | null }[]>([])
+  const [rows, setRows] = useState<{ id: string; key: string; name: string; template: string; openCount: number }[]>([])
   const [next, setNext] = useState<string | null>(null)
   const [status, setStatus] = useState<'idle' | 'loading' | 'error'>('idle')
-  const [showArchived, setShowArchived] = useState(false)
   const term = q.trim()
 
   const url = (cursor?: string) =>
-    `/api/projects/search?query=${encodeURIComponent(term)}&limit=20${showArchived ? '&archived=1' : ''}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`
+    `/api/projects/search?query=${encodeURIComponent(term)}&limit=20${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`
 
   useEffect(() => {
     if (!term) { setRows([]); setNext(null); setStatus('idle'); return }
@@ -82,7 +82,7 @@ function RemoteProjectSearch() {
       )
     }, 300)
     return () => { cancelled = true; window.clearTimeout(t) }
-  }, [term, showArchived]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [term]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const more = () => {
     if (!next) return
@@ -96,9 +96,6 @@ function RemoteProjectSearch() {
       <div className="form-row" style={{ alignItems: 'center' }}>
         <input className="input" style={{ flex: 1, maxWidth: 420 }} type="search" aria-label="Search all projects" placeholder="Search all projects by name or key…"
           value={q} onChange={e => setQ(e.target.value)} />
-        <label className="cell-flex sm" style={{ gap: 6 }}>
-          <input type="checkbox" checked={showArchived} onChange={e => setShowArchived(e.target.checked)} />Archived
-        </label>
       </div>
       {term && (
         <div className="card-table" style={{ marginTop: 10, marginInline: 0 }} role="region" aria-label="Project search results" aria-live="polite">
@@ -111,7 +108,7 @@ function RemoteProjectSearch() {
                 <tbody>
                   {rows.map(p => (
                     <tr key={p.id} tabIndex={0} onClick={() => navigate(href({ name: 'project', key: p.key }))} onKeyDown={e => e.key === 'Enter' && navigate(href({ name: 'project', key: p.key }))}>
-                      <td className="strong">{p.name}{p.archivedAt && <span className="muted sm"> · archived</span>}</td>
+                      <td className="strong">{p.name}</td>
                       <td className="mono">{p.key}</td>
                       <td>{p.template === 'scrum' ? 'Scrum' : 'Kanban'}</td>
                       <td className="muted">{p.openCount}</td>
@@ -198,6 +195,31 @@ export function ProjectsView({ onCreate }: { onCreate: () => void }) {
 
 // ── Single project ─────────────────────────────────────────
 
+/** An archived project (spec 0102): nothing of it shows, as in Jira; a system administrator can restore it here. */
+function ArchivedProject({ project }: { project: Project }) {
+  const { state, dispatch } = useStore()
+  const { toast } = useApp()
+  const [restoring, setRestoring] = useState(false)
+  return (
+    <>
+      <Empty icon={<Archive size={22} strokeWidth={1.5} />} title={`${project.key} is archived`}
+        body={`${project.name} is read-only and hidden from lists, search and boards. Its work items still open from links.`}
+        action={isGlobalAdmin(state) ? <button className="btn btn-primary" onClick={() => setRestoring(true)}>Restore project</button> : undefined} />
+      {restoring && (
+        <ConfirmDialog title={`Restore ${project.name}?`} action="Restore project" danger={false} onClose={() => setRestoring(false)}
+          onConfirm={async () => {
+            await api('POST', `/api/projects/${encodeURIComponent(project.key)}/restore`)
+            const { project: p, sprints } = await loadProjectByKey(project.key)
+            dispatch({ type: 'loadProject', project: p, sprints })
+            toast(`${project.name} restored`)
+          }}>
+          <p>It comes back as it was: in project lists, search and boards, and its members can change its work again.</p>
+        </ConfirmDialog>
+      )}
+    </>
+  )
+}
+
 export function ProjectView({ project, tab, sub, quick }: { project: Project; tab: ProjectTab; sub?: string; quick?: string }) {
   useProjectEvents(project.id, project.key, apiEnabled, true)   // other people's changes appear here as they happen
   const { state } = useStore()
@@ -237,6 +259,7 @@ export function ProjectView({ project, tab, sub, quick }: { project: Project; ta
         </div>
       </div>
 
+      {project.archivedAt ? <ArchivedProject project={project} /> : <>
       <div className="tabs" role="tablist" aria-label={`${project.name} views`}>
         {tabs.map(({ id, Icon }) => (
           <button key={id} role="tab" aria-selected={tab === id || (tab === 'boards' && id === 'board')} className={`tab${tab === id || (tab === 'boards' && id === 'board') ? ' active' : ''}`} onClick={() => openProject(project.id, id)}>
@@ -258,6 +281,7 @@ export function ProjectView({ project, tab, sub, quick }: { project: Project; ta
       {tab === 'tests'    && (project.testing ? <TestRepository project={project} /> : <Empty icon={<FlaskConical size={22} />} title="Testing is off" body="A project admin can turn it on in Project settings › Testing." />)}
       {tab === 'settings' && (sub === 'workflow' ? <ProjectWorkflow project={project} /> : !canAdmin(project) ? <ProjectPeople project={project} /> : sub === 'automation' ? <AutomationView project={project} /> : sub === 'people' ? <ProjectPeople project={project} /> : <ProjectSettings project={project} />)}
       </Suspense>
+      </>}
     </div>
   )
 }
@@ -306,6 +330,7 @@ function ProjectSettings({ project }: { project: Project }) {
   const [name, setName] = useState(project.name)
   const [description, setDescription] = useState(project.description)
   const [deleting, setDeleting] = useState(false)
+  const [archiving, setArchiving] = useState(false)
   const [confirm, setConfirm] = useState('')
   const update = (patch: ProjectPatch) => dispatch({ type: 'updateProject', id: project.id, patch })
   const lead = userOf(state, project.leadId)
@@ -382,6 +407,12 @@ function ProjectSettings({ project }: { project: Project }) {
         </div>
       </section>
 
+      {isGlobalAdmin(state) && apiEnabled && <section className="panel">
+        <h2 className="panel-title">Archive project</h2>
+        <p className="muted">Archiving makes {project.name} read-only for everyone and hides it from project lists, search and boards. Its work items still open from links. A system administrator can restore it from Administration › Archived projects.</p>
+        <button className="btn btn-secondary" style={{ marginTop: 10 }} onClick={() => setArchiving(true)}><Archive size={14} />Archive project</button>
+      </section>}
+
       {isGlobalAdmin(state) && <section className="panel panel-danger">
         <h2 className="panel-title">Delete project</h2>
         <p className="muted">{apiEnabled
@@ -389,6 +420,19 @@ function ProjectSettings({ project }: { project: Project }) {
           : <>Permanently deletes {project.name} with its {plural(count, 'work item')}, sprints and comments. This can’t be undone.</>}</p>
         <button className="btn btn-danger" style={{ marginTop: 10 }} onClick={() => setDeleting(true)}>Delete project</button>
       </section>}
+
+      {archiving && (
+        <ConfirmDialog title={`Archive ${project.name}?`} action="Archive project" danger={false} onClose={() => setArchiving(false)}
+          onConfirm={async () => {
+            await api('POST', `/api/projects/${encodeURIComponent(project.key)}/archive`)
+            const { project: p, sprints } = await loadProjectByKey(project.key)
+            dispatch({ type: 'loadProject', project: p, sprints })
+            toast(`${project.name} archived`)
+            goTo('projects')
+          }}>
+          <p>Nobody, admins included, can change its {plural(count, 'work item')}, sprints, boards or settings while it is archived, and it leaves project lists, search and every board. Its work items still open from links, read-only.</p>
+        </ConfirmDialog>
+      )}
 
       {deleting && (
         <Modal title={`Delete ${project.name}?`} onClose={() => setDeleting(false)}

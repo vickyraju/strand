@@ -44,7 +44,7 @@ export default function NavRail({ collapsed, onCollapseToggle, onCmdK, route, dr
   const currentKey = route.name === 'project' ? route.key : undefined
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set(currentKey ? [currentKey] : []))
   const unread = state.notifications.filter(n => n.userId === state.me?.id && !n.read && !n.archived).length
-  const starred = state.projects.filter(p => state.starred.includes(p.id))
+  const starred = state.projects.filter(p => state.starred.includes(p.id) && !p.archivedAt)
   const views = state.views
   const recentIssues = state.viewed.slice(0, 5).map(id => state.issues.find(i => i.id === id)).filter(i => !!i)
 
@@ -136,7 +136,7 @@ export default function NavRail({ collapsed, onCollapseToggle, onCmdK, route, dr
             if (i && !recentProjectIds.has(i.projectId)) {
               recentProjectIds.add(i.projectId)
               const p = state.projects.find(pr => pr.id === i.projectId)
-              if (p) recentProjects.push(p)
+              if (p && !p.archivedAt) recentProjects.push(p)
             }
             if (recentProjects.length >= 4) break
           }

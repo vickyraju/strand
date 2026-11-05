@@ -32,7 +32,7 @@ export default function CommandPalette({ onClose, onCreateProject }: { onClose: 
   ].filter(i => i.id === 'search-all' || match(String(i.label)))
 
   const projects: Item[] = state.projects
-    .filter(p => match(p.name, p.key))
+    .filter(p => !p.archivedAt && match(p.name, p.key))
     .map(p => ({ id: p.id, section: 'Projects', icon: <ProjectIcon project={p} size={14} />, label: p.name, hint: p.key, run: () => openProject(p.id) }))
 
   const recentFirst = [...state.viewed.map(id => state.issues.find(i => i.id === id)).filter(Boolean), ...state.issues]

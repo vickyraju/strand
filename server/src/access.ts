@@ -7,22 +7,41 @@ import type { Db } from './db.ts'
 export type ProjectRole = 'admin' | 'member' | 'viewer'
 const RANK: Record<ProjectRole, number> = { viewer: 1, member: 2, admin: 3 }
 
-/** My role in a project, or null when I cannot see it. A project being deleted (its backup is running) is seen by nobody. */
-export async function roleOf(d: Db, me: Me, projectId: string): Promise<ProjectRole | null> {
-  const [r] = await d.query<{ role: ProjectRole | null }>(
-    `select pa.role from projects p left join project_access pa on pa.project_id = p.id and pa.user_id = $2
+/** Why nothing in an archived project can change (spec 0102: archived projects are read-only for everyone, as in Jira). */
+export const ARCHIVED = 'This project is archived. A system administrator can restore it to change it.'
+
+/** My role in a project and whether it is archived, or null when I cannot see it. A project being deleted (its backup is
+ *  running) is seen by nobody. In an archived project everyone, global admins included, is at most a viewer. */
+export async function accessTo(d: Db, me: Me, projectId: string): Promise<{ role: ProjectRole; archived: boolean } | null> {
+  const [r] = await d.query<{ role: ProjectRole | null; archived: boolean }>(
+    `select pa.role, p.archived_at is not null as archived from projects p left join project_access pa on pa.project_id = p.id and pa.user_id = $2
       where p.id = $1 and p.deleting_at is null`, [projectId, me.id])
-  if (!r) return null
-  return me.admin ? 'admin' : r.role
+  const role = r && (me.admin ? 'admin' : r.role)
+  if (!r || !role) return null
+  return { role: r.archived ? 'viewer' : role, archived: r.archived }
 }
 
-/** Projects that can be seen at all (not being deleted). */
-const LIVE = 'select id from projects where deleting_at is null'
+/** My role in a project, or null when I cannot see it (at most viewer in an archived project). */
+export async function roleOf(d: Db, me: Me, projectId: string): Promise<ProjectRole | null> {
+  return (await accessTo(d, me, projectId))?.role ?? null
+}
+
+/** 403 when the project is archived: for changes that don't go through a project role (a comment, a work log). */
+export async function notArchived(d: Db, projectId: string) {
+  if ((await d.query('select 1 from projects where id = $1 and archived_at is not null', [projectId])).length) throw new HttpError(403, ARCHIVED)
+}
+
+/** Projects that can be seen at all: not being deleted, and not archived (an archived project is hidden from lists, search and
+ *  boards; its items open only by their key). */
+const LIVE = 'select id from projects where deleting_at is null and archived_at is null'
 
 /** Throws 403 unless `role` is at least `min`. */
 export function need(role: ProjectRole, min: ProjectRole) {
   if (RANK[role] < RANK[min]) throw new HttpError(403, min === 'admin' ? 'Project admin only' : 'Read-only access')
 }
+
+/** Requests that only read. */
+export const READS = new Set(['GET', 'HEAD'])
 
 /** What a request needs by default: reading is for anyone who can see the project, changing things is for members and admins. */
 export const minFor = (method: string): ProjectRole => (method === 'GET' || method === 'HEAD' ? 'viewer' : 'member')

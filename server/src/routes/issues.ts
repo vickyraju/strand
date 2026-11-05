@@ -2,7 +2,7 @@ import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
 import { db, tx, pick, type Db } from '../db.ts'
 import { HttpError, type Me } from '../auth.ts'
-import { canJoinWork, commentShown, minFor, need, roleOf, visible, visibleAs, type ProjectRole } from '../access.ts'
+import { canJoinWork, commentShown, minFor, need, roleOf, visible, visibleAs, type ProjectRole, ARCHIVED, READS, accessTo, notArchived } from '../access.ts'
 import { publish } from '../events.ts'
 import { audit } from '../audit.ts'
 import { getSetting } from '../settings.ts'
@@ -56,7 +56,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /** "PAY-12" or the issue's uuid → the issue, or 404 when it does not exist or I cannot see its project (Jira calls this issueIdOrKey).
  *  `min` is the project role the request needs: by default reading needs any role and changing things needs member. */
-export async function issueByKey(d: Db, req: { me: Me; method: string }, ref: string, includeDeleted = false, min?: ProjectRole) {
+export async function issueByKey(d: Db, req: { me: Me; method: string }, ref: string, includeDeleted = false, min?: ProjectRole, o: { archivedOk?: boolean } = {}) {
   const live = includeDeleted ? '' : 'and i.deleted_at is null'
   const byId = UUID.test(ref)
   const m = byId ? null : /^([A-Za-z][A-Za-z0-9]*)-(\d+)$/.exec(ref)
@@ -65,9 +65,11 @@ export async function issueByKey(d: Db, req: { me: Me; method: string }, ref: st
   const [i] = byId
     ? await d.query<any>(`${ISSUE_ROW} where i.workspace_id = $1 and i.id = $2 ${live}`, [ws, ref])
     : await d.query<any>(`${ISSUE_ROW} where i.workspace_id = $1 and p.key = $2 and i.number = $3 ${live}`, [ws, m![1]!.toUpperCase(), Number(m![2])])
-  const role = i ? await roleOf(d, req.me, i.projectId) : null
-  if (!i || !role) throw new HttpError(404, 'Issue not found')
-  need(role, min ?? minFor(req.method))
+  const a = i ? await accessTo(d, req.me, i.projectId) : null
+  if (!i || !a) throw new HttpError(404, 'Issue not found')
+  // an archived project's items open by their key, read-only (spec 0102); opening one may still record the view
+  if (a.archived && !READS.has(req.method) && !o.archivedOk) throw new HttpError(403, ARCHIVED)
+  need(a.role, min ?? minFor(req.method))
   return i
 }
 
@@ -590,7 +592,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
   })
   // Opening a work item records it for "Your work → Viewed". Anyone who can see the item may record that they did (read-only users too).
   app.post('/issues/:key/view', { schema: { tags: TAG, summary: 'Record that I opened this work item (Your work → Viewed keeps my newest 50)', params: keyP } }, async (req, reply) => {
-    const i = await issueByKey(db, req, req.params.key, false, 'viewer')
+    const i = await issueByKey(db, req, req.params.key, false, 'viewer', { archivedOk: true })
     await tx(async d => {
       await d.query('insert into issue_views (user_id, issue_id) values ($1, $2) on conflict (user_id, issue_id) do update set viewed_at = now()', [req.me.id, i.id])
       await d.query('delete from issue_views where user_id = $1 and issue_id in (select issue_id from issue_views where user_id = $1 order by viewed_at desc offset 50)', [req.me.id])
@@ -655,7 +657,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     reply.code(204).send()
   })
   app.delete('/issues/:key/presence', { schema: { tags: TAG, summary: 'I stopped editing this issue (panel closed).', params: keyP } }, async (req, reply) => {
-    const i = await issueByKey(db, req, req.params.key, false, 'viewer')
+    const i = await issueByKey(db, req, req.params.key, false, 'viewer', { archivedOk: true })
     await db.query('delete from issue_editors where issue_id = $1 and user_id = $2', [i.id, req.me.id])
     await publish(db, i.projectId, { type: 'issue.editing', key: i.key, editors: await editorsOf(db, i.id) })
     reply.code(204).send()
@@ -695,7 +697,13 @@ const plugin: FastifyPluginAsyncZod = async app => {
       return c
     })
   })
+  /** A comment in an archived project can't change (spec 0102). */
+  const commentWritable = async (id: string) => {
+    const [c] = await db.query<{ projectId: string }>('select i.project_id from comments c join issues i on i.id = c.issue_id where c.id = $1', [id])
+    if (c) await notArchived(db, c.projectId)
+  }
   app.patch('/comments/:id', { schema: { tags: ['Comments & work logs'], summary: 'Edit your own comment', params: idP, body } }, async req => {
+    await commentWritable(req.params.id)
     const args: unknown[] = [req.params.id, req.me.id, req.body.body]
     const see = visible(req.me, 'i.project_id', args)
     const [c] = await db.query(
@@ -705,6 +713,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     return c
   })
   app.delete('/comments/:id', { schema: { tags: ['Comments & work logs'], summary: 'Delete your own comment', params: idP } }, async (req, reply) => {
+    await commentWritable(req.params.id)
     const args: unknown[] = [req.params.id, req.me.id]
     const see = visible(req.me, 'i.project_id', args)
     const r = await db.query(`delete from comments where id = $1 and author_id = $2 and exists (select 1 from issues i where i.id = comments.issue_id and ${see}) returning id`, args)
@@ -733,6 +742,8 @@ const plugin: FastifyPluginAsyncZod = async app => {
   }
   /** A work log I may change: my own, or anyone's in a project I administer. */
   const worklogFor = async (d: Db, req: { me: Me; method: string }, id: string) => {
+    const [own] = await d.query<{ projectId: string }>('select i.project_id from worklogs w join issues i on i.id = w.issue_id where w.id = $1', [id])
+    if (own) await notArchived(d, own.projectId)
     const args: unknown[] = [id]
     const see = visible(req.me, 'i.project_id', args)
     const [w] = await d.query<any>(`select w.*, i.project_id, p.key as project_key from worklogs w join issues i on i.id = w.issue_id join projects p on p.id = i.project_id

@@ -68,7 +68,7 @@ export default function YourWork({ onCreateProject }: { onCreateProject: () => v
     ? recent.items.map(i => ({ issue: i, ts: i.updatedAt }))
     : localWorked
   const viewed = apiEnabled ? viewedServer.items : state.viewed.map(id => state.issues.find(i => i.id === id)).filter((i): i is Issue => !!i)
-  const starred = state.projects.filter(p => state.starred.includes(p.id))
+  const starred = state.projects.filter(p => state.starred.includes(p.id) && !p.archivedAt)
 
   // Rows from the server can belong to projects that are not loaded: load their workflows so status and grouping are right
   useEnsureProjects([...assigned, ...worked.map(w => w.issue), ...viewed].map(i => projectKeyOf(i.key)).concat((serverProjects ?? []).map(p => p.key)))

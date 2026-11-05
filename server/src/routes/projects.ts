@@ -3,7 +3,7 @@ import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
 import { db, tx, pick, type Db } from '../db.ts'
 import { HttpError, requireAdmin, signedIn, type Me } from '../auth.ts'
-import { minFor, need, roleOf, visible, type ProjectRole } from '../access.ts'
+import { ARCHIVED, READS, accessTo, minFor, need, visible, type ProjectRole } from '../access.ts'
 import { publish, subscribe } from '../events.ts'
 import { audit, changes } from '../audit.ts'
 import { enqueue, kickJobs } from '../jobs.ts'
@@ -21,15 +21,17 @@ const color = z.string().regex(/^#[0-9a-fA-F]{6}$/)
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /** Project key (PAY) or id (uuid). A project I cannot see is "not found" (its existence is not revealed). `min` is the role the
- *  request needs; by default reading needs any role and changing things needs member. Returns my role in it. */
-export async function projectByKey(d: Db, req: { me: Me; method: string }, ref: string, min?: ProjectRole) {
+ *  request needs; by default reading needs any role and changing things needs member. Returns my role in it. An archived
+ *  project refuses every change (spec 0102) unless `archivedOk` (restoring it, deleting it, starring it). */
+export async function projectByKey(d: Db, req: { me: Me; method: string }, ref: string, min?: ProjectRole, o: { archivedOk?: boolean } = {}) {
   const byId = UUID.test(ref)
   const [p] = await d.query<{ id: string; leadId: string | null; key: string }>(
     `select id, lead_id, key from projects where workspace_id = $1 and ${byId ? 'id = $2' : 'key = $2'}`, [req.me.workspaceId, byId ? ref : ref.toUpperCase()])
-  const role = p ? await roleOf(d, req.me, p.id) : null
-  if (!p || !role) throw new HttpError(404, 'Project not found')
-  need(role, min ?? minFor(req.method))
-  return { ...p, role }
+  const a = p ? await accessTo(d, req.me, p.id) : null
+  if (!p || !a) throw new HttpError(404, 'Project not found')
+  if (a.archived && !READS.has(req.method) && !o.archivedOk) throw new HttpError(403, ARCHIVED)
+  need(a.role, min ?? minFor(req.method))
+  return { ...p, role: a.role }
 }
 
 /** Project settings (workflow, fields, rules, people…) are for project admins. */
@@ -152,11 +154,11 @@ const plugin: FastifyPluginAsyncZod = async app => {
 
   app.get('/projects/search', { schema: {
     tags: T.projects, summary: 'Find projects by name or key, in name order (keyset-paginated)',
-    querystring: searchQ.extend({ archived: z.enum(['0', '1']).default('0').describe('1 = archived projects instead of active ones'), starred: z.enum(['0', '1']).optional().describe('1 = only my starred projects') }),
+    querystring: searchQ.extend({ starred: z.enum(['0', '1']).optional().describe('1 = only my starred projects') }),
   } }, async req => {
     const { query, limit } = req.query, cur = readCursor(req.query.cursor)
     const args: unknown[] = [req.me.workspaceId, req.me.id]
-    const where = ['p.workspace_id = $1', req.query.archived === '1' ? 'p.archived_at is not null' : 'p.archived_at is null', visible(req.me, 'p.id', args)]
+    const where = ['p.workspace_id = $1', 'p.archived_at is null', visible(req.me, 'p.id', args)]
     if (query) { args.push(like(query)); where.push(`(p.name ilike $${args.length} or p.key ilike $${args.length})`) }
     if (req.query.starred === '1') where.push('s.user_id is not null')
     if (cur) { args.push(cur[0].toLowerCase(), cur[1]); where.push(`(lower(p.name), p.id) > ($${args.length - 1}, $${args.length}::uuid)`) }
@@ -168,23 +170,45 @@ const plugin: FastifyPluginAsyncZod = async app => {
     return { items, next: more ? cursorOf(items.at(-1).name, items.at(-1).id) : null }
   })
 
-  app.post('/projects/:key/archive', { schema: { tags: T.projects, summary: 'Archive a project: hidden from lists, data kept, can be restored', params: keyP } }, async req => {
-    const p = await projectByKey(db, req, req.params.key)
-    await requireProjectAdmin(req, p)
+  // Archiving (spec 0102, as in Jira): global admins only. An archived project is read-only for everyone and hidden from
+  // lists, search and boards; its items still open by their key. Restoring brings it back as it was.
+  app.post('/projects/:key/archive', { schema: { tags: T.projects, summary: 'Archive a project (global admins): read-only and hidden, data kept, can be restored', params: keyP } }, async req => {
+    requireAdmin(req)
+    const p = await projectByKey(db, req, req.params.key, 'viewer', { archivedOk: true })
     await tx(async d => {
-      const [r] = await d.query('update projects set archived_at = now() where id = $1 and archived_at is null returning id', [p.id])
+      const [r] = await d.query('update projects set archived_at = now(), archived_by = $2 where id = $1 and archived_at is null returning id', [p.id, req.me.id])
       if (r) await audit(d, req, { action: 'project.archived', type: 'project', id: p.id, name: p.key, project: p })
     })
-    return projectDetail(db, req.me.workspaceId, p.key, p.role)
+    return projectDetail(db, req.me.workspaceId, p.key, 'viewer')
   })
-  app.post('/projects/:key/restore', { schema: { tags: T.projects, summary: 'Restore an archived project', params: keyP } }, async req => {
-    const p = await projectByKey(db, req, req.params.key)
-    await requireProjectAdmin(req, p)
+  app.post('/projects/:key/restore', { schema: { tags: T.projects, summary: 'Restore an archived project (global admins)', params: keyP } }, async req => {
+    requireAdmin(req)
+    const p = await projectByKey(db, req, req.params.key, 'viewer', { archivedOk: true })
     await tx(async d => {
-      const [r] = await d.query('update projects set archived_at = null where id = $1 and archived_at is not null returning id', [p.id])
+      const [r] = await d.query('update projects set archived_at = null, archived_by = null where id = $1 and archived_at is not null returning id', [p.id])
       if (r) await audit(d, req, { action: 'project.restored', type: 'project', id: p.id, name: p.key, project: p })
     })
-    return projectDetail(db, req.me.workspaceId, p.key, p.role)
+    return projectDetail(db, req.me.workspaceId, p.key, 'admin')
+  })
+  app.get('/admin/archived-projects', { schema: { tags: T.projects, summary: 'Archived projects, newest archived first, a page at a time (global admins)',
+    querystring: z.object({ query: z.string().max(200).optional(), cursor: z.string().max(200).optional(), limit: z.coerce.number().int().min(1).max(100).default(50) }) } }, async req => {
+    requireAdmin(req)
+    const { query, limit } = req.query
+    const args: unknown[] = [req.me.workspaceId]
+    const where = ['p.workspace_id = $1', 'p.archived_at is not null', 'p.deleting_at is null']
+    if (query) { args.push(like(query)); where.push(`(p.name ilike $${args.length} or p.key ilike $${args.length})`) }
+    if (req.query.cursor) {
+      const [at, id] = Buffer.from(req.query.cursor, 'base64url').toString().split('|')
+      if (!id || Number.isNaN(Date.parse(at!))) throw new HttpError(400, 'Invalid cursor')
+      args.push(at, id); where.push(`(p.archived_at, p.id) < ($${args.length - 1}::timestamptz, $${args.length}::uuid)`)
+    }
+    args.push(limit + 1)
+    const rows = await db.query<any>(
+      `select p.id, p.key, p.name, p.archived_at, u.name as archived_by from projects p left join users u on u.id = p.archived_by
+        where ${where.join(' and ')} order by p.archived_at desc, p.id desc limit $${args.length}`, args)
+    const more = rows.length > limit, items = more ? rows.slice(0, limit) : rows
+    const last = items.at(-1)
+    return { items, next: more && last ? Buffer.from(`${new Date(last.archivedAt).toISOString()}|${last.id}`).toString('base64url') : null }
   })
 
   const createProject = projectBody.required({ name: true }).extend({
@@ -237,7 +261,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
   app.delete('/projects/:key', { schema: { tags: T.projects, summary: 'Delete a project (global admins). Backs it up first when backups are on; answers 202 with the job to follow', params: keyP,
     response: { 202: z.object({ jobId: z.string().uuid().describe('Follow it at GET /jobs/{id}') }) } } }, async (req, reply) => {
     requireAdmin(req)
-    const p = await projectByKey(db, req, req.params.key)
+    const p = await projectByKey(db, req, req.params.key, 'viewer', { archivedOk: true })   // an archived project can be deleted too
     const jobId = await tx(async d => {
       const settings = await backupSettings(d, req.me.workspaceId)
       if (settings.enabled && !backupBucket(settings))
@@ -254,12 +278,12 @@ const plugin: FastifyPluginAsyncZod = async app => {
   })
 
   app.put('/projects/:key/star', { schema: { tags: T.projects, summary: 'Star a project', params: keyP } }, async (req, reply) => {
-    const p = await projectByKey(db, req, req.params.key, 'viewer')
+    const p = await projectByKey(db, req, req.params.key, 'viewer', { archivedOk: true })
     await db.query('insert into stars (user_id, project_id) values ($1, $2) on conflict do nothing', [req.me.id, p.id])
     reply.code(204).send()
   })
   app.delete('/projects/:key/star', { schema: { tags: T.projects, summary: 'Unstar a project', params: keyP } }, async (req, reply) => {
-    const p = await projectByKey(db, req, req.params.key, 'viewer')
+    const p = await projectByKey(db, req, req.params.key, 'viewer', { archivedOk: true })
     await db.query('delete from stars where user_id = $1 and project_id = $2', [req.me.id, p.id])
     reply.code(204).send()
   })
@@ -643,7 +667,8 @@ const plugin: FastifyPluginAsyncZod = async app => {
       await d.query(
         `update issues set sprint_id = $2, version = version + 1, updated_at = now()
           where sprint_id = $1 and deleted_at is null
-            and status_id in (select id from statuses where category <> 'done')`, [cur.id, moveTo])   // unfinished work from every project in it
+            and status_id in (select id from statuses where category <> 'done')
+            and project_id not in (select id from projects where archived_at is not null)`, [cur.id, moveTo])   // unfinished work from every project in it, except archived ones (read-only)
       return newSprint ? { ...s, newSprint } : s
     })
   })
