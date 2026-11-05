@@ -100,22 +100,19 @@ export function AddStatusDialog({ existing, known = [], onAdd, onClose }: { exis
 
 // ── Delete status ────────────────────────────────────────
 
-/** Asked only when work items are in the status: where should they go? */
+/** Asked for a published status: as in Jira, one with work items in any project using the workflow can't leave it
+ *  (spec 0103); Update workflow says so, and where they are. */
 export function DeleteStatusDialog({ status, transitions, others, onConfirm, onClose }: {
   status: Status; transitions: Transition[]; others: Status[]; onConfirm: (moveTo: string) => void; onClose: () => void
 }) {
-  const [moveTo, setMoveTo] = useState(others[0]!.id)
+  const moveTo = others[0]!.id
   return (
     <Modal title={`Delete “${status.name}”?`} onClose={onClose}
       footer={<>
         <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
         <button className="btn btn-danger" onClick={() => onConfirm(moveTo)}>Delete status</button>
       </>}>
-      <p>Work items in this status, in every project using this workflow, need somewhere to go. Choose where:</p>
-      <label className="label" htmlFor="ds-to" style={{ marginTop: 12 }}>Move work items to</label>
-      <select id="ds-to" className="input" value={moveTo} autoFocus onChange={e => setMoveTo(e.target.value)}>
-        {others.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-      </select>
+      <p>A status can leave the workflow only when no project using it has work items in it. If some do, Update workflow tells you where they are, and they need moving to another status first.</p>
       <p className="hint">
         {transitions.length > 0 ? `${plural(transitions.length, 'transition')} into and out of it will be removed too. ` : ''}
         Nothing changes until you choose Update workflow, and you can undo until then.

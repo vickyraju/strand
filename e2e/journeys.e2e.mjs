@@ -184,7 +184,7 @@ test('work types: an admin adds one in settings; items of that type follow its o
   assert.deepEqual(o.problems, [])
 })
 
-test('workflow versions: removing a status says which projects it reaches and where their items go; each update is a version that can be loaded back', { skip, timeout: 90_000 }, async () => {
+test('[0103.R3][0103.R7] workflow versions: a status with work items can’t leave an active workflow (the update says where they are); once moved, it can; each update is a version that can be loaded back', { skip, timeout: 90_000 }, async () => {
   const p = (await owner('POST', '/projects', { name: 'Releases flow', key: 'RFL', template: 'scrum' })).body
   const review = p.statuses.find(s => s.name === 'In review'), doing = p.statuses.find(s => s.name === 'In progress')
   const items = []
@@ -195,21 +195,22 @@ test('workflow versions: removing a status says which projects it reaches and wh
   await o.click('.wf-tools [role="tab"]:has-text("List")')
   await o.click('.wf-list tr:has-text("In review")')
   await o.click('.wf-panel button:has-text("Delete status")')
-  await o.selectOption('#ds-to', { label: 'In progress' })
   await o.click('.modal button:has-text("Delete status")')
   await o.click('.wf-bar button:has-text("Update workflow")')
+  await o.waitForSelector('.modal >> text=A status with work items can’t be removed.')
+  assert.match(await o.locator('.modal').innerText(), /In review has 2 work items in RFL/)
+  assert.equal(await o.locator('.modal button:has-text("Update workflow")').isDisabled(), true)
+  await o.click('.modal button:has-text("Keep editing")')
+  // move the work out, then the update goes through
+  for (const i of items) await owner('PATCH', `/issues/${i.key}`, { statusId: doing.id })
+  await o.click('.wf-bar button:has-text("Update workflow")')
   await o.waitForSelector('.modal >> text=Applies to 1 project')
-  const summary = await o.locator('.modal').innerText()
-  assert.match(summary, /Removes the status “In review”/)
-  assert.match(summary, /move to “In progress”/)
-  assert.match(summary, /RFL[\s\S]*2 task items move from In review to In progress/)
+  assert.match(await o.locator('.modal').innerText(), /Removes the status “In review”/)
   await o.fill('#pub-note', 'No review step')
   await o.click('.modal button:has-text("Update workflow")')
   await o.waitForSelector('text=Workflow updated: version 2. Applying it to 1 project…')
   await o.waitForSelector('.apply-banner >> text=Applied to 1 project.')                // followed in the background to its end
-  const after = (await owner('GET', '/projects/RFL')).body
-  for (const i of items) assert.equal((await owner('GET', `/issues/${i.key}`)).body.statusId, doing.id)
-  assert.ok(!after.statuses.some(s => s.name === 'In review'))
+  assert.ok(!(await owner('GET', '/projects/RFL')).body.statuses.some(s => s.name === 'In review'))
   // version 2 is the workflow without the review step: compare it with the editor (the same)
   const versions = (await owner('GET', `/workflows/${wf}/versions`)).body
   assert.deepEqual(versions.map(v => [v.version, v.note]), [[2, 'No review step'], [1, '']])
@@ -220,7 +221,7 @@ test('workflow versions: removing a status says which projects it reaches and wh
   assert.deepEqual(o.problems, [])
 })
 
-test('shared workflows: a system admin copies one, adds a status and makes a scheme; a project admin switches to it and the board gets the column; nobody else edits workflows', { skip, timeout: 120_000 }, async () => {
+test('[0103.R7] shared workflows: a system admin copies one, adds a status, makes a scheme and switches a project to it; the board gets the column; the project admin only reads it', { skip, timeout: 120_000 }, async () => {
   await owner('POST', '/projects', { name: 'Switching', key: 'WFJ', template: 'kanban' })
   await owner('POST', '/projects/WFJ/members', { userIds: [await idOf('maya@e2e.test')], role: 'admin' })
   await owner('POST', '/projects/WFJ/issues', { title: 'Already started' })
@@ -248,16 +249,19 @@ test('shared workflows: a system admin copies one, adds a status and makes a sch
   await o.waitForSelector('td:has-text("Reviewed")')
   const scheme = (await owner('GET', '/workflow-schemes')).body.find(x => x.name === 'Reviewed')
 
-  // Maya, the project's admin, sees the workflow read-only and switches it: the preview first, then Apply
+  // Maya, the project's admin, reads the workflow but can't switch it (spec 0103: Jira administrators do)
   const m = await signIn('maya@e2e.test')
   await m.goto(url('/project/WFJ/settings/workflow'))
   await m.waitForSelector('h1:has-text("Workflow")')
   assert.equal(await m.locator('.wf-bar').count(), 0)                                    // nothing to edit here
-  await m.click('button:has-text("Change workflow")')
-  await m.selectOption('#cw-scheme', scheme.id)
-  await m.waitForSelector('.modal >> text=adds In review')
-  await m.click('.modal button:has-text("Apply")')
-  await m.waitForSelector('text=WFJ now uses Reviewed')
+  assert.equal(await m.locator('button:has-text("Change workflow")').count(), 0)
+  // the owner switches it: the preview first, then Apply
+  await o.goto(url('/project/WFJ/settings/workflow'))
+  await o.click('button:has-text("Change workflow")')
+  await o.selectOption('#cw-scheme', scheme.id)
+  await o.waitForSelector('.modal >> text=adds In review')
+  await o.click('.modal button:has-text("Apply")')
+  await o.waitForSelector('text=WFJ now uses Reviewed')
   await m.goto(url('/project/WFJ/board'))
   await m.waitForSelector('main >> text=In review')
   assert.equal((await owner('GET', '/projects/WFJ')).body.workflowSchemeId, scheme.id)
@@ -275,7 +279,7 @@ test('a workflow used by many projects: a count opens them, searchable a page at
   for (const key of keys.slice(1)) await owner('PUT', `/projects/${key}/workflow-scheme`, { schemeId })
   for (const key of keys.slice(0, 4)) {
     const p = (await owner('GET', `/projects/${key}`)).body
-    await owner('POST', `/projects/${key}/issues`, { title: 'in progress', statusId: p.statuses.find(s => s.name === 'In progress').id })
+    await owner('POST', `/projects/${key}/issues`, { title: 'done already', statusId: p.statuses.find(s => s.name === 'Done').id })   // work, but not in the status that goes
   }
   const o = await signIn('owner@e2e.test')
   await o.goto(url(`/admin/workflows/${wf}`))
@@ -288,17 +292,15 @@ test('a workflow used by many projects: a count opens them, searchable a page at
   await panel.locator('input').fill('BIG5')
   await panel.locator('text=/^10 matching/').waitFor()
   await o.keyboard.press('Escape')
-  // take In progress out: the dialog summarises (no line per project) and the change applies in the background
+  // take In progress out (no work is in it): the dialog summarises (no line per project) and the change applies in the background
   await o.click('.wf-tools [role="tab"]:has-text("List")')
   await o.click('.wf-list tr:has-text("In progress")')
   await o.click('.wf-panel button:has-text("Delete status")')
-  await o.selectOption('#ds-to', { label: 'To do' })
   await o.click('.modal button:has-text("Delete status")')
   await o.click('.wf-bar button:has-text("Update workflow")')
   await o.waitForSelector('.modal >> text=Applies to 60 projects')
   const text = await o.locator('.modal').innerText()
   assert.match(text, /Every one changes: they lose In progress/)
-  assert.match(text, /4 work items move/); assert.match(text, /4 from In progress to To do/)
   assert.match(text, /The 10 projects most changed/)
   assert.equal(await o.locator('.modal .summary .change-list.sm li').count(), 10, 'the ten most changed, not a line per project')
   await o.click('.modal button:has-text("Update workflow")')

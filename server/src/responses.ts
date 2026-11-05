@@ -80,6 +80,7 @@ export const Impact = z.object({
 export const ApplySummary = z.object({
   projects: z.number().describe('Projects it reaches'), changed: z.number().describe('Projects that gain or lose a status, or have items that move'),
   itemsMoved: z.number(), added: z.array(z.string()), removed: z.array(z.string()),
+  blocked: z.array(z.object({ status: z.string(), items: z.number(), projects: z.array(z.string()), more: z.number() })).optional().describe('Statuses that can’t leave the workflow: work items are in them (move them first)'),
   moves: z.array(z.object({ from: z.string(), to: z.string(), count: z.number() })).describe('Where items go, over every project, biggest first (at most 10)'),
   top: z.array(Impact).describe('The projects most changed (at most 10)'),
 })

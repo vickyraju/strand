@@ -35,6 +35,8 @@ export interface Summary {
   moves: { from: string; to: string; count: number }[]
   /** The projects most changed (at most 10) */
   top: Impact[]
+  /** Statuses that can't leave the workflow: work items are in them (spec 0103) */
+  blocked?: { status: string; items: number; projects: string[]; more: number }[]
 }
 
 const CAT: Record<string, number> = { todo: 0, 'in-progress': 1, done: 2 }
@@ -192,6 +194,26 @@ const reachSql = (r: Reach, n: number) => ('workflowId' in r ? usesWorkflow(n) :
 const reachArg = (r: Reach) => ('workflowId' in r ? r.workflowId : r.schemeId)
 
 /** How many projects a workflow or scheme reaches. */
+/** Live work items of the types a workflow is for, in projects using it, that are in any of these global statuses: what
+ *  stops a status leaving an active workflow (spec 0103, as Jira: "You can't delete a workflow status if any issue has
+ *  that status"). One row per status, with the projects they are in. Deleted items don't count. */
+export async function itemsIn(d: Db, ws: string, workflowId: string, statusIds: string[]) {
+  if (!statusIds.length) return []
+  const rows = await d.query<{ statusId: string; name: string; key: string; n: number }>(
+    `select st.global_status_id as status_id, max(st.name) as name, p.key, count(*)::int as n
+       from issues i join statuses st on st.id = i.status_id join projects p on p.id = i.project_id
+       join workflow_schemes sc on sc.id = p.workflow_scheme_id
+      where p.workspace_id = $1 and p.deleting_at is null and i.deleted_at is null and st.global_status_id = any($3::uuid[])
+        and coalesce(sc.mappings ->> i.type, sc.default_workflow_id::text) = $2::text
+      group by 1, 3 order by 1, 4 desc, 3`, [ws, workflowId, statusIds])
+  const by = new Map<string, { status: string; items: number; projects: string[] }>()
+  for (const r of rows) {
+    const b = by.get(r.statusId) ?? { status: r.name, items: 0, projects: [] }
+    b.items += r.n; b.projects.push(r.key); by.set(r.statusId, b)
+  }
+  return [...by.values()].map(b => ({ status: b.status, items: b.items, projects: b.projects.slice(0, 3), more: Math.max(0, b.projects.length - 3) }))
+}
+
 export async function countUsing(d: Db, ws: string, r: Reach) {
   const [{ n }] = await d.query<{ n: number }>(`select count(*)::int as n from projects p where p.workspace_id = $1 and p.deleting_at is null and ${reachSql(r, 2)}`, [ws, reachArg(r)]) as any
   return n as number

@@ -523,13 +523,13 @@ const plugin: FastifyPluginAsyncZod = async app => {
     return { scheme: sc, types: await typeWorkflowList(db, p.id) }
   })
   app.put('/projects/:key/workflow-scheme', { schema: { tags: T.config,
-    summary: 'Use another workflow scheme (project admins). Items in statuses their type’s new workflow lacks move by statusMap, else to the first status of the same category. With dryRun, only reports what would change',
+    summary: 'Use another workflow scheme (global admins, as in Jira). Items in statuses their type’s new workflow lacks move by statusMap, else to the first status of the same category. With dryRun, only reports what would change',
     params: keyP, body: z.object({
       schemeId: uuid, dryRun: z.boolean().default(false),
       statusMap: z.record(uuid, uuid).default({}).describe('The project’s status id (or a global status id) → global status id to move its items to'),
     }) } }, async req => {
+    requireAdmin(req)                                                    // spec 0103 R5: Jira administrators switch a project's scheme
     const p = await projectByKey(db, req, req.params.key)
-    await requireProjectAdmin(req, p)
     return previewing(tx, req.body.dryRun, async d => {
       const [sc] = await d.query<{ id: string; name: string }>('select id, name from workflow_schemes where id = $1 and workspace_id = $2', [req.body.schemeId, req.me.workspaceId])
       if (!sc) throw new HttpError(400, 'No such workflow scheme', { schemeId: 'Not found' })

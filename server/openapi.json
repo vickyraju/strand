@@ -10919,7 +10919,7 @@
     },
     "/api/v1/projects/{key}/workflow-scheme": {
       "put": {
-        "summary": "Use another workflow scheme (project admins). Items in statuses their type’s new workflow lacks move by statusMap, else to the first status of the same category. With dryRun, only reports what would change",
+        "summary": "Use another workflow scheme (global admins, as in Jira). Items in statuses their type’s new workflow lacks move by statusMap, else to the first status of the same category. With dryRun, only reports what would change",
         "tags": [
           "Project settings"
         ],
@@ -41805,20 +41805,13 @@
                     "type": "string",
                     "maxLength": 500
                   },
-                  "statusMap": {
-                    "default": {},
-                    "description": "Where items go from a status they can no longer be in: global status id → global status id (else the first of the same category)",
-                    "type": "object",
-                    "additionalProperties": {
-                      "type": "string",
-                      "format": "uuid",
-                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-                    }
-                  },
                   "dryRun": {
                     "default": false,
                     "description": "Report what would change, and change nothing",
                     "type": "boolean"
+                  },
+                  "statusMap": {
+                    "description": "Not accepted (spec 0103): a status with work items can’t leave an active workflow; move them first, or copy the workflow and switch the projects’ scheme"
                   }
                 },
                 "required": [
@@ -42020,6 +42013,37 @@
                           "type": "array",
                           "items": {
                             "type": "string"
+                          }
+                        },
+                        "blocked": {
+                          "description": "Statuses that can’t leave the workflow: work items are in them (move them first)",
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "status": {
+                                "type": "string"
+                              },
+                              "items": {
+                                "type": "number"
+                              },
+                              "projects": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "more": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "status",
+                              "items",
+                              "projects",
+                              "more"
+                            ],
+                            "additionalProperties": false
                           }
                         },
                         "moves": {
@@ -42940,6 +42964,37 @@
                           "type": "array",
                           "items": {
                             "type": "string"
+                          }
+                        },
+                        "blocked": {
+                          "description": "Statuses that can’t leave the workflow: work items are in them (move them first)",
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "status": {
+                                "type": "string"
+                              },
+                              "items": {
+                                "type": "number"
+                              },
+                              "projects": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "more": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "status",
+                              "items",
+                              "projects",
+                              "more"
+                            ],
+                            "additionalProperties": false
                           }
                         },
                         "moves": {

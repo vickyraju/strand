@@ -7,7 +7,7 @@ import { HttpError, requireAdmin } from '../auth.ts'
 import { audit, changes } from '../audit.ts'
 import { rulesSchema } from '../transitions.ts'
 import { kickJobs } from '../jobs.ts'
-import { countUsing, enqueueApply, nothing, pageUsing, previewing, runningApply, someOf, summarize } from '../workflows.ts'
+import { countUsing, enqueueApply, itemsIn, nothing, pageUsing, previewing, runningApply, someOf, summarize } from '../workflows.ts'
 
 const T = ['Workflows']
 const uuid = z.string().uuid()
@@ -55,7 +55,8 @@ const publishBody = z.object({
     .describe('In order: new work starts in the first. A new status whose name matches a global one uses it'),
   transitions: z.array(transitionIn).max(500),
   layout: z.record(z.string(), z.object({ x: z.number(), y: z.number() })).default({}),
-  note: z.string().max(500).default(''), statusMap, dryRun,
+  note: z.string().max(500).default(''), dryRun,
+  statusMap: z.unknown().optional().describe('Not accepted (spec 0103): a status with work items can’t leave an active workflow; move them first, or copy the workflow and switch the projects’ scheme'),
 })
 
 const schemeFields = {
@@ -166,6 +167,9 @@ const plugin: FastifyPluginAsyncZod = async app => {
       const [before] = await d.query<any>('select name, description from workflows where id = $1 and workspace_id = $2 for update', [req.params.id, req.me.workspaceId])
       if (!before) throw new HttpError(404, 'No such workflow')
       const next = { name: req.body.name ?? before.name, description: req.body.description ?? before.description }
+      // As in Jira, an active workflow (one a project uses) keeps its name; its description can change (spec 0103 R2)
+      if (next.name !== before.name && await countUsing(d, req.me.workspaceId, { workflowId: req.params.id }))
+        throw new HttpError(400, 'A workflow’s name can’t change while projects use it. Copy it to make one with another name.', { name: 'In use' })
       await d.query('update workflows set name = $2, description = $3, updated_at = now(), updated_by = $4 where id = $1', [req.params.id, next.name, next.description, req.me.id]).catch(taken('workflow'))
       const c = changes(before, next)
       if (c.changed) await audit(d, req, { action: 'workflow.updated', type: 'workflow', id: req.params.id, name: next.name, before: c.before, after: c.after })
@@ -188,6 +192,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     params: idP, body: publishBody } }, async req => {
     requireAdmin(req)
     const b = req.body, ws = req.me.workspaceId
+    if (b.statusMap !== undefined) throw new HttpError(400, 'Items aren’t moved by publishing a workflow: move them to another status first, or copy the workflow and switch the projects to it', { statusMap: 'Not accepted' })
     if (!b.dryRun) await notWhileApplying(db, ws)
     const out = await previewing(tx, b.dryRun, async d => {
       const [cur] = await d.query<any>('select id, name, statuses, transitions, version from workflows where id = $1 and workspace_id = $2 for update', [req.params.id, ws])
@@ -227,6 +232,10 @@ const plugin: FastifyPluginAsyncZod = async app => {
       // jsonb keeps keys in its own order, so compare with keys sorted
       const keyOf = (v: unknown) => JSON.stringify(v, (_k, x) => (x && typeof x === 'object' && !Array.isArray(x) ? Object.fromEntries(Object.entries(x).sort(([a], [b]) => a.localeCompare(b))) : x))
       const changed = keyOf(cur.statuses) !== keyOf(statuses) || keyOf(cur.transitions) !== keyOf(transitions)
+      // As in Jira, a status with work items can't leave an active workflow (spec 0103 R3)
+      const blocked = await itemsIn(d, ws, cur.id, (cur.statuses as string[]).filter(g => !statuses.includes(g)))
+      const why = blocked.map(x => `${x.status} has ${x.items.toLocaleString('en')} work item${x.items === 1 ? '' : 's'} in ${someOf(x.projects, x.projects.length + x.more)}`).join('; ')
+      if (blocked.length && !b.dryRun) throw new HttpError(409, `${why}. Move them to another status first, or copy the workflow and switch the projects to the copy.`, { statuses: 'Work items are in a removed status' })
       const version = changed ? cur.version + 1 : cur.version
       await d.query('update workflows set statuses = $2, transitions = $3, layout = $4, version = $5, updated_at = now(), updated_by = $6 where id = $1',
         [cur.id, statuses, JSON.stringify(transitions), JSON.stringify(layout), version, req.me.id])
@@ -235,8 +244,8 @@ const plugin: FastifyPluginAsyncZod = async app => {
           [cur.id, version, JSON.stringify(await statusesOf(d, statuses)), JSON.stringify(transitions), b.note, req.me.id])
         await audit(d, req, { action: 'workflow.published', type: 'workflow', id: cur.id, name: `${cur.name} version ${version}`, after: { note: b.note, statuses: statuses.length, transitions: transitions.length } })
       }
-      const summary = changed ? await summarize(d, ws, { workflowId: cur.id }, b.statusMap) : nothing()
-      const jobId = changed && !b.dryRun && summary.projects ? await enqueueApply(d, { ...req.me, ip: req.ip }, { workflowId: cur.id, name: cur.name }, b.statusMap, summary.projects) : null
+      const summary = { ...(changed ? await summarize(d, ws, { workflowId: cur.id }) : nothing()), blocked }
+      const jobId = changed && !b.dryRun && summary.projects ? await enqueueApply(d, { ...req.me, ip: req.ip }, { workflowId: cur.id, name: cur.name }, {}, summary.projects) : null
       return { workflow: await workflowOut(d, ws, cur.id), version, created: changed, summary, jobId }
     })
     if (out.jobId) kickJobs(app.log)                                     // once the job is committed

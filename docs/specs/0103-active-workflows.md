@@ -1,6 +1,6 @@
 # 0103 Active workflows keep their name and statuses with work; only global admins switch a project's scheme
 
-Status: In review
+Status: Approved (PO, 5 Nov 2026)
 Parity rows: WF-01, WF-02, PRJ-09
 
 ## Context and Jira reference
@@ -94,8 +94,9 @@ Same rules.
 
 ## Open questions
 
-1. **R3/R4 remove something Strand does today.** A system admin can remove a status and say where its items go in one step, and the change reaches every project as a background job. Jira refuses this: the items must be moved first, or the workflow copied and the projects switched. Jira way: refuse, as written. If you'd rather keep Strand's one-step removal, R3 and R4 go and this becomes a recorded deliberate divergence.
+None. The product owner chose the Jira way for R3 and R4 on 5 Nov 2026: core work behaves as in Jira, and Strand-only conveniences must not change how Jira works.
 
 ## Changelog
 
-—
+- 5 Nov 2026, while building (within the approved rules): the editor's Delete status dialog no longer asks where items go; it explains that a status with work items can't leave, and Update workflow says where they are. Changing a workflow scheme in Administration still takes a status map (Jira's scheme migration).
+- 5 Nov 2026, in review: the open question was answered the Jira way (refuse removing a status with work; no status map on publish).
