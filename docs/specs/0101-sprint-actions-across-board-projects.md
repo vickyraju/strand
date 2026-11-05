@@ -1,6 +1,6 @@
 # 0101 Sprint actions need a role in every project the board covers; completing as in Jira
 
-Status: Ported (aws-jira `d0b10c8`, strand `007550c`), approved by the PO on 5 Nov 2026; awaiting verification
+Status: Verified (PO, 5 Nov 2026). Approved 5 Nov 2026; aws-jira `d0b10c8`, strand `007550c`
 Parity rows: PRM-03
 
 ## Context and Jira reference
