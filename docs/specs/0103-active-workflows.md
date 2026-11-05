@@ -1,6 +1,6 @@
 # 0103 Active workflows keep their name and statuses with work; only global admins switch a project's scheme
 
-Status: Approved (PO, 5 Nov 2026)
+Status: Ported (aws-jira `ffb3f6f`, strand `0139ee1`), approved by the PO on 5 Nov 2026; awaiting verification
 Parity rows: WF-01, WF-02, PRJ-09
 
 ## Context and Jira reference
