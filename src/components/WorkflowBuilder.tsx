@@ -4,7 +4,7 @@ import { useApp } from '../appContext'
 import { Checkbox, Loading, LoadError, Modal } from './ui'
 import {
   addStatus, addTransition, autoLayout, canRedo, canUndo, deleteStatusMoving, moveStatus, pushHistory, reconnectSource, reconnectTarget, redo, removeTransition,
-  resolveMove, sameWorkflow, setGlobal, setStart, startHistory, transitionsTouching, undo, updateStatus, updateTransition, validateWorkflow,
+  sameWorkflow, setGlobal, setStart, startHistory, transitionsTouching, undo, updateStatus, updateTransition, validateWorkflow,
   type Draft, type Pos, type Workflow, type WorkflowIssue,
 } from '../data/workflow'
 import WorkflowCanvas from './workflow/WorkflowCanvas'
@@ -44,7 +44,7 @@ function Editor({ lib, known, onBack, onSaved, applying }: { lib: LibWorkflow; k
   const { toast } = useApp()
   const original = useMemo<Workflow>(() => workflowOf(lib, lib.layout ?? {}), [lib])
   const [hist, setHist] = useState(() => startHistory<Draft>({ workflow: original, moves: {} }))
-  const { workflow, moves } = hist.present
+  const { workflow } = hist.present
   const [selected, setSelected] = useState<Selection>(null)
   const [view, setView] = useState<'diagram' | 'list'>('diagram')
   const [showLabels, setShowLabels] = useState(true)
@@ -109,7 +109,7 @@ function Editor({ lib, known, onBack, onSaved, applying }: { lib: LibWorkflow; k
     setSelected(null)
     setDialog(null)
   }
-  /** A published status may hold work items in some project: ask where they go. One added since needs no answer. */
+  /** A published status may hold work items in some project: say what that means. One added since needs no question. */
   const requestDeleteStatus = (id: string) => {
     if (workflow.statuses.length <= 1) return
     if (original.statuses.some(s => s.id === id)) setDialog({ kind: 'delete', id })
@@ -126,13 +126,10 @@ function Editor({ lib, known, onBack, onSaved, applying }: { lib: LibWorkflow; k
 
   // ── Save and discard ──
   const exists = (id: string) => workflow.statuses.some(s => s.id === id)
-  const moveTarget = (id: string) => resolveMove(moves, id, exists) ?? workflow.statuses[0]!.id
-  const removed = original.statuses.filter(s => !exists(s.id))
   const body = (o: { note?: string; dryRun?: boolean }) => ({
     statuses: workflow.statuses.map(s => ({ id: s.id, name: s.name, color: s.color, category: s.category, description: s.description ?? '' })),
     transitions: workflow.transitions.map(t => ({ id: t.id, name: t.name, fromIds: t.from === 'any' ? null : t.from, toId: t.to, rules: t.rules ?? {} })),
-    layout: Object.fromEntries(Object.entries(workflow.layout).filter(([id]) => exists(id))),
-    statusMap: Object.fromEntries(removed.map(s => [s.id, moveTarget(s.id)])), ...o,
+    layout: Object.fromEntries(Object.entries(workflow.layout).filter(([id]) => exists(id))), ...o,
   })
   /** Check first; then "Update workflow" says what changes, and for which projects, before anything is saved. */
   const save = () => {
@@ -272,7 +269,6 @@ function Editor({ lib, known, onBack, onSaved, applying }: { lib: LibWorkflow; k
       {listing && <ProjectsUsing what="workflow" id={lib.id} name={lib.name} onClose={() => setListing(false)} />}
       {publishing !== false && <PublishDialog before={original} after={workflow} impact={publishing}
         seeAll={publishing && publishing.projects > 1 ? <CountLink count={publishing.projects} one="project" many="projects" label="see them all" onOpen={() => setListing(true)} /> : undefined}
-        moved={removed.map(s => ({ from: s.name, to: workflow.statuses.find(x => x.id === moveTarget(s.id))?.name ?? '' }))}
         onClose={() => setPublishing(false)} onPublish={note => void publish(note)} />}
       {versionsOpen && <VersionsDialog workflowId={lib.id} current={workflow} onClose={() => setVersionsOpen(false)} onRestore={loadVersion} />}
       {dialog?.kind === 'transition' && <CreateTransitionDialog statuses={workflow.statuses} initial={dialog.initial} onCreate={createTransition} onClose={() => setDialog(null)} />}

@@ -11,8 +11,8 @@ import { Modal, plural } from './ui'
 import { impactLine, type Impact } from './workflow/Versions'
 
 // Project settings › Workflow: what this project's workflow scheme gives each work type, read-only. System
-// administrators keep workflows (Administration › Workflows); a project admin may switch to another scheme, and sets
-// the board's WIP limits.
+// administrators keep workflows (Administration › Workflows) and switch a project to another scheme (spec 0103, as in
+// Jira); WIP limits are each board's.
 
 interface Scheme { id: string; name: string; description: string; defaultWorkflowId: string; defaultWorkflow: string; mappings: Record<string, string> }
 
@@ -62,11 +62,11 @@ export default function ProjectWorkflow({ project }: { project: Project }) {
         <div>
           <button className="btn btn-ghost" onClick={() => openProject(project.id, 'settings')}><ArrowLeft size={15} />Settings</button>
           <h1 className="page-title">Workflow{scheme ? `: ${scheme}` : ''}</h1>
-          <p className="muted">Workflows are shared and kept by system administrators, so every project using one works the same way.{admin && apiEnabled ? ' You can switch this project to another workflow scheme.' : ''}</p>
+          <p className="muted">Workflows are shared and kept by system administrators, so every project using one works the same way.{sysAdmin && apiEnabled ? ' As a system administrator you can switch this project to another workflow scheme.' : ''}</p>
         </div>
         <div className="btn-row">
           {sysAdmin && project.workflows?.[0] && <button className="btn btn-ghost" onClick={() => navigate(href({ name: 'admin', section: 'workflows', item: project.workflows![0]!.workflowId }))}>Edit in Administration</button>}
-          {admin && apiEnabled && <button className="btn btn-secondary" onClick={() => setChanging(true)}><Repeat size={14} />Change workflow</button>}
+          {sysAdmin && apiEnabled && <button className="btn btn-secondary" onClick={() => setChanging(true)}><Repeat size={14} />Change workflow</button>}
         </div>
       </div>
       <Workflows project={project} />

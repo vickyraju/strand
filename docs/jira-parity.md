@@ -67,7 +67,7 @@ Checked against Atlassian's Data Center documentation on 5 November 2026 (Jira S
 | PRJ-06 | Templates | Scrum, Kanban, Basic, Business templates | Scrum, Kanban | partial | open | — | |
 | PRJ-07 | Project roles to people and groups | Roles with default members | Admin, member and viewer, to people and groups | partial | diverge | 0201 | Fixed roles (PRM-01). |
 | PRJ-08 | Project names | Unique, case-insensitive ([JRASERVER-3582](https://jira.atlassian.com/browse/JRASERVER-3582)) | Not unique | diverges | match | 0309 | JQL `project = "Name"` is ambiguous otherwise. |
-| PRJ-09 | Who switches a project's workflow scheme | Jira admins ([managing workflows](https://confluence.atlassian.com/adminjiraserver/managing-your-workflows-938847410.html)) | Project admins (`projects.ts`) | diverges | open | 0103 | Jira way: global admins only. |
+| PRJ-09 | Who switches a project's workflow scheme | Jira admins ([managing workflows](https://confluence.atlassian.com/adminjiraserver/managing-your-workflows-938847410.html)) | Global admins | match | match | 0103 | |
 
 ## Work items and fields
 
@@ -103,8 +103,8 @@ Checked against Atlassian's Data Center documentation on 5 November 2026 (Jira S
 
 | ID | Jira capability | Jira DC | Strand | Status | Decision | Spec | Notes |
 |---|---|---|---|---|---|---|---|
-| WF-01 | Name of an active workflow | Fixed while active; edited as a draft ([wf]) | Can be renamed (`routes/workflows.ts`) | diverges | match | 0103 | Same kind of rule as the group rename. |
-| WF-02 | Remove a status that has issues from an active workflow | Refused in the draft ([wf]) | Allowed, with the items moved by a status map | diverges | open | 0103 | Jira way: refuse. |
+| WF-01 | Name of an active workflow | Fixed while active; edited as a draft ([wf]) | Fixed while any project uses it; description can change | match | match | 0103 | |
+| WF-02 | Remove a status that has issues from an active workflow | Refused in the draft ([wf]) | Refused (409), saying where the items are | match | match | 0103 | |
 | WF-03 | Conditions, validators, post functions | Conditions and post functions; core validators are permission only ([wfadv]) | Nested all/any conditions, required/changed/parent validators, post functions | better | diverge | — | Keep: transition rules tests. |
 | WF-04 | Workflow schemes per issue type | Yes | Yes | match | match | — | |
 | WF-05 | Versions | Draft and publish, with a backup copy | Versions that can be loaded back; changes applied to every project as a job | better | diverge | — | Keep: "shared workflows" test. |

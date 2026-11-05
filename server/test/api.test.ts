@@ -1377,18 +1377,18 @@ test('shared workflows: a system administrator’s change reaches every project 
   const items = []
   for (let n = 0; n < 3; n++) items.push((await call('POST', '/api/v1/projects/VER/issues', { title: `r${n}`, statusId: rev.id })).body)
   await call('DELETE', `/api/v1/issues/${items[2].key}`)
-  // taking Review out: the preview says where its items go and changes nothing; publishing moves them, with history
-  const without = { statuses: [todo, doing, done], transitions: [], statusMap: { [review.id]: done.id } }
+  // taking Review out: as in Jira, its work items must leave it first (spec 0103); the deleted one doesn't count, and moves
+  const without = { statuses: [todo, doing, done], transitions: [] }
   const pv = await pub({ ...without, dryRun: true })
-  assert.deepEqual(pv.body.summary.top.find((x: any) => x.project.key === 'VER').moves, [{ type: 'task', from: 'Review', to: 'Done', count: 3 }])
-  assert.deepEqual([pv.body.summary.itemsMoved, pv.body.summary.moves, pv.body.summary.removed, pv.body.jobId], [3, [{ from: 'Review', to: 'Done', count: 3 }], ['Review'], null])
-  assert.ok((await call('GET', '/api/v1/projects/VER')).body.statuses.some((s: any) => s.name === 'Review'))
+  assert.deepEqual([pv.body.summary.blocked, pv.body.summary.removed, pv.body.jobId], [[{ status: 'Review', items: 2, projects: ['VER'], more: 0 }], ['Review'], null])
+  assert.equal((await pub(without)).status, 409)
   assert.equal((await call('GET', `/api/v1/workflows/${wf}`)).body.version, r1.body.version)
+  const todoP = (await call('GET', '/api/v1/projects/VER')).body.statuses.find((s: any) => s.name === 'To do')
+  for (const it of items.slice(0, 2)) assert.equal((await call('PATCH', `/api/v1/issues/${it.key}`, { statusId: todoP.id })).status, 200)
   assert.equal((await pub({ ...without, note: 'Without review' })).status, 200)
   const ver = (await call('GET', '/api/v1/projects/VER')).body
-  const doneId = ver.statuses.find((s: any) => s.name === 'Done').id
-  assert.ok((await pool.query('select status_id from issues where id = any($1::uuid[])', [items.map(i => i.id)])).rows.every(r => r.status_id === doneId))
-  assert.ok((await pool.query(`select 1 from activity where issue_id = $1 and text = 'Changed status (workflow change)'`, [items[0].id])).rows.length)
+  const doingId = ver.statuses.find((s: any) => s.name === 'In progress').id
+  assert.equal((await pool.query('select status_id from issues where id = $1', [items[2].id])).rows[0].status_id, doingId)   // the first of its kind
   assert.deepEqual([ver.statuses.length, ver.transitions.length], [3, 0])
   // the project's own board loses the column; a board across projects keeps its columns (another project may use the status)
   assert.deepEqual([await cols(verBoard), await cols(both.id)], [['To do', 'In progress', 'Done'], ['To do', 'In progress', 'Review', 'Done']])
@@ -1419,7 +1419,8 @@ test('a workflow used by many projects: counted, listed a page at a time, previe
   const wfId = (await flow(keys[0]!, [])).workflows[0].workflowId
   const schemeId = (await call('GET', `/api/v1/projects/${keys[0]}`)).body.workflowSchemeId
   for (const key of keys.slice(1)) await call('PUT', `/api/v1/projects/${key}/workflow-scheme`, { schemeId })
-  for (const key of keys.slice(0, 5)) await call('POST', `/api/v1/projects/${key}/issues`, { title: 'doing', statusId: (await call('GET', `/api/v1/projects/${key}`)).body.statuses[1].id })
+  const doing: { key: string }[] = []
+  for (const key of keys.slice(0, 5)) doing.push((await call('POST', `/api/v1/projects/${key}/issues`, { title: 'doing', statusId: (await call('GET', `/api/v1/projects/${key}`)).body.statuses[1].id })).body)
   // how many, and which, a page at a time
   assert.equal((await call('GET', `/api/v1/workflows/${wfId}`)).body.projectCount, 30)
   const p1 = (await call('GET', `/api/v1/admin/workflows/${wfId}/projects?limit=20`)).body
@@ -1430,9 +1431,17 @@ test('a workflow used by many projects: counted, listed a page at a time, previe
   // taking In progress out: the preview's counts are what applying then does
   const cur = (await call('GET', `/api/v1/workflows/${wfId}`)).body
   const body = { statuses: cur.statuses.filter((s: any) => s.category !== 'in-progress'), transitions: [] }
+  // as in Jira, the 5 items in it stop it leaving (spec 0103): the preview says where, kept short; then they move out
+  const blocked = (await call('POST', `/api/v1/admin/workflows/${wfId}/publish`, { ...body, dryRun: true })).body.summary
+  assert.deepEqual(blocked.blocked, [{ status: 'In progress', items: 5, projects: keys.slice(0, 3), more: 2 }])
+  assert.match((await call('POST', `/api/v1/admin/workflows/${wfId}/publish`, body)).body.error, /^In progress has 5 work items in MNY00, MNY01, MNY02 and 2 more\./)
+  for (const i of doing) {
+    const todo = (await call('GET', `/api/v1/projects/${i.key.split('-')[0]}`)).body.statuses.find((x: any) => x.name === 'To do')
+    await call('PATCH', `/api/v1/issues/${i.key}`, { statusId: todo.id })
+  }
   const pv = (await call('POST', `/api/v1/admin/workflows/${wfId}/publish`, { ...body, dryRun: true })).body.summary
-  assert.deepEqual([pv.projects, pv.changed, pv.itemsMoved, pv.removed, pv.moves], [30, 30, 5, ['In progress'], [{ from: 'In progress', to: 'To do', count: 5 }]])
-  assert.equal(pv.top.length, 10); assert.deepEqual(pv.top.slice(0, 5).map((t: any) => t.project.key), keys.slice(0, 5))   // the most changed first
+  assert.deepEqual([pv.projects, pv.changed, pv.itemsMoved, pv.removed, pv.blocked], [30, 30, 0, ['In progress'], []])
+  assert.equal(pv.top.length, 10)
   // one project can't be changed (a fault on its statuses): the job records it and applies the rest
   const bad = (await call('GET', `/api/v1/projects/${keys[7]}`)).body.id
   await pool.query(`create function fail_one() returns trigger language plpgsql as $$ begin if old.project_id = '${bad}' then raise exception 'broken project'; end if; return old; end $$`)
@@ -1708,16 +1717,59 @@ test('[0102.R1][0102.R2][0102.R3][0102.R4][0102.R6][0102.R7][0102.R8][0102.R9] a
   assert.equal(del.status, 202, JSON.stringify(del.body))
 })
 
-test('[0102.R10] a system administrator’s workflow change still reaches an archived project, moving its items out of a removed status', { skip }, async () => {
+test('[0103.R1][0103.R2][0103.R3][0103.R4][0103.R5][0103.R6] active workflows keep their name and any status with work; only global admins switch a project’s scheme; copy and switch moves the work', { skip }, async () => {
+  // R1: a new workflow, in a scheme no project uses yet, is inactive: it can be renamed
+  const wf = (await call('POST', '/api/v1/admin/workflows', { name: 'Act flow' })).body
+  const base = (await call('GET', `/api/v1/workflows/${wf.id}`)).body
+  const review = { id: crypto.randomUUID(), name: 'Act review', color: '#a855f7', category: 'in-progress', description: '' }
+  const [first, last] = base.statuses
+  assert.equal((await call('POST', `/api/v1/admin/workflows/${wf.id}/publish`, { statuses: [first, review, last], transitions: [] })).status, 200)
+  const sc = (await call('POST', '/api/v1/admin/workflow-schemes', { name: 'Act scheme', defaultWorkflowId: wf.id, mappings: {} })).body
+  assert.equal((await call('PATCH', `/api/v1/admin/workflows/${wf.id}`, { name: 'Act flow 2' })).status, 200)
+  // R5: a project admin can't switch their project's scheme, not even to preview it; a global admin does
+  await call('POST', '/api/v1/projects', { name: 'Activated', key: 'ACT', template: 'kanban' })
+  await join('ACT', 'act.admin@x.com', 'admin')
+  for (const body of [{ schemeId: sc.id }, { schemeId: sc.id, dryRun: true }])
+    assert.equal((await call('PUT', '/api/v1/projects/ACT/workflow-scheme', body, 'act.admin@x.com')).status, 403)
+  assert.equal((await call('PUT', '/api/v1/projects/ACT/workflow-scheme', { schemeId: sc.id })).status, 200)
+  // R2: now active: the name stays, the description changes
+  const renamed = await call('PATCH', `/api/v1/admin/workflows/${wf.id}`, { name: 'Act flow 3' })
+  assert.deepEqual([renamed.status, renamed.body.errors?.name], [400, 'In use'])
+  assert.equal((await call('PATCH', `/api/v1/admin/workflows/${wf.id}`, { description: 'For the act team' })).body.description, 'For the act team')
+  // R3: a status with work can't leave; nothing is saved
+  const p = (await call('GET', '/api/v1/projects/ACT')).body
+  const inReview = (await call('POST', '/api/v1/projects/ACT/issues', { title: 'Under review', statusId: p.statuses.find((x: any) => x.name === 'Act review').id })).body
+  const v = (await call('GET', `/api/v1/workflows/${wf.id}`)).body.version
+  const refused = await call('POST', `/api/v1/admin/workflows/${wf.id}/publish`, { statuses: [first, last], transitions: [] })
+  assert.equal(refused.status, 409)
+  assert.equal(refused.body.error, 'Act review has 1 work item in ACT. Move them to another status first, or copy the workflow and switch the projects to the copy.')
+  assert.equal((await call('GET', `/api/v1/workflows/${wf.id}`)).body.version, v)
+  // R4: a status map is no longer taken; a dry run lists what blocks
+  assert.equal((await call('POST', `/api/v1/admin/workflows/${wf.id}/publish`, { statuses: [first, last], transitions: [], statusMap: { [review.id]: first.id } })).status, 400)
+  assert.deepEqual((await call('POST', `/api/v1/admin/workflows/${wf.id}/publish`, { statuses: [first, last], transitions: [], dryRun: true })).body.summary.blocked,
+    [{ status: 'Act review', items: 1, projects: ['ACT'], more: 0 }])
+  // R6: copy the workflow, take the status out of the copy, switch the project to a scheme using it: the work moves as mapped
+  const copy = (await call('POST', '/api/v1/admin/workflows', { name: 'Act lean', copyFrom: wf.id })).body
+  assert.equal((await call('POST', `/api/v1/admin/workflows/${copy.id}/publish`, { statuses: [first, last], transitions: [] })).status, 200)
+  const lean = (await call('POST', '/api/v1/admin/workflow-schemes', { name: 'Act lean scheme', defaultWorkflowId: copy.id, mappings: {} })).body
+  assert.equal((await call('PUT', '/api/v1/projects/ACT/workflow-scheme', { schemeId: lean.id, statusMap: { [review.id]: last.id } })).status, 200)
+  const q = (await call('GET', '/api/v1/projects/ACT')).body
+  assert.equal((await call('GET', `/api/v1/issues/${inReview.key}`)).body.statusId, q.statuses.find((x: any) => x.name === last.name).id)
+  assert.ok((await call('GET', `/api/v1/workflows/${wf.id}`)).body.statuses.some((x: any) => x.name === 'Act review'))   // the original is untouched
+})
+
+test('[0102.R10] a system administrator’s scheme change still reaches an archived project, moving its items out of a status the new workflow lacks', { skip }, async () => {
   await call('POST', '/api/v1/projects', { name: 'Shelved flow', key: 'ARF', template: 'kanban' })
   const p = await flow('ARF', [])
-  const wf = p.workflows[0].workflowId
   const doing = p.statuses.find((x: any) => x.name === 'In progress')
   const item = (await call('POST', '/api/v1/projects/ARF/issues', { title: 'Half done', statusId: doing.id })).body
   await call('POST', '/api/v1/projects/ARF/archive')
-  const cur = (await call('GET', `/api/v1/workflows/${wf}`)).body
+  // a workflow without In progress (inactive, so free to change), then the project's scheme switched to it with a map
+  const cur = (await call('GET', `/api/v1/workflows/${p.workflows[0].workflowId}`)).body
   const [todo, mid, done] = cur.statuses
-  const r = await call('POST', `/api/v1/admin/workflows/${wf}/publish`, { statuses: [todo, done], transitions: [], statusMap: { [mid.id]: todo.id } })
+  const lean = (await call('POST', '/api/v1/admin/workflows', { name: 'ARF lean' })).body
+  assert.equal((await call('POST', `/api/v1/admin/workflows/${lean.id}/publish`, { statuses: [todo, done], transitions: [] })).status, 200)
+  const r = await call('PATCH', `/api/v1/admin/workflow-schemes/${p.workflowSchemeId}`, { defaultWorkflowId: lean.id, statusMap: { [mid.id]: todo.id } })
   assert.equal(r.status, 200, JSON.stringify(r.body))
   const { runJobs } = await import('../src/jobs.ts'); await runJobs()
   const now = (await call('GET', `/api/v1/issues/${item.key}`)).body
@@ -1780,10 +1832,11 @@ test('workflow schemes: each work type follows its own workflow, new work starts
   // a project admin chooses it (a member can't); the preview says the bug moves to Triage and changes nothing
   await join('WFS', 'wfs.admin@x.com', 'admin'); await join('WFS', 'wfs.member@x.com', 'member')
   assert.equal((await call('PUT', '/api/v1/projects/WFS/workflow-scheme', { schemeId: sc.id }, 'wfs.member@x.com')).status, 403)
-  const pv = await call('PUT', '/api/v1/projects/WFS/workflow-scheme', { schemeId: sc.id, dryRun: true }, 'wfs.admin@x.com')
+  const pv = await call('PUT', '/api/v1/projects/WFS/workflow-scheme', { schemeId: sc.id, dryRun: true })
   assert.deepEqual(pv.body.moves, [{ type: 'bug', from: 'To do', to: 'Triage', count: 1 }], JSON.stringify(pv))
   assert.equal((await call('GET', '/api/v1/projects/WFS')).body.workflowSchemeId, p.workflowSchemeId)
-  assert.equal((await call('PUT', '/api/v1/projects/WFS/workflow-scheme', { schemeId: sc.id }, 'wfs.admin@x.com')).status, 200)
+  assert.equal((await call('PUT', '/api/v1/projects/WFS/workflow-scheme', { schemeId: sc.id }, 'wfs.admin@x.com')).status, 403)   // spec 0103: Jira administrators switch schemes
+  assert.equal((await call('PUT', '/api/v1/projects/WFS/workflow-scheme', { schemeId: sc.id })).status, 200)
   const q = (await call('GET', '/api/v1/projects/WFS')).body
   assert.deepEqual(q.statuses.map((s: any) => s.name), ['To do', 'Triage', 'In progress', 'Done'])          // board columns by category
   const tri = q.statuses.find((s: any) => s.name === 'Triage')
@@ -2735,7 +2788,7 @@ test('audit log: who changed people, settings, workflow and deletions is recorde
   await call('PATCH', '/api/v1/projects/AUD', { boardPrefs: { groupBy: 'none' } }, 'aud.admin@x.com')       // presentation only: not recorded
   const scrum = (await call('GET', '/api/v1/workflow-schemes')).body.find((x: any) => x.name === 'Scrum')
   assert.notEqual(scrum.id, p.workflowSchemeId)
-  await call('PUT', '/api/v1/projects/AUD/workflow-scheme', { schemeId: scrum.id }, 'aud.admin@x.com')
+  await call('PUT', '/api/v1/projects/AUD/workflow-scheme', { schemeId: scrum.id })
   const i = (await call('POST', '/api/v1/projects/AUD/issues', { title: 'to delete' })).body
   await call('DELETE', `/api/v1/issues/${i.key}`, undefined, 'aud.admin@x.com')
   await call('DELETE', `/api/v1/projects/AUD/members/${memberId}`, undefined, 'aud.admin@x.com')
@@ -3147,7 +3200,7 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     'GET /projects/{key}/events': ['read', `/projects/${K}/events`],
     'PATCH /projects/{key}/statuses/{id}': ['padmin', `/projects/${K}/statuses/${p.statuses[0].id}`, { wipLimit: 2 }],
     'GET /projects/{key}/workflow': ['read', `/projects/${K}/workflow`],
-    'PUT /projects/{key}/workflow-scheme': ['padmin', `/projects/${K}/workflow-scheme`, { schemeId: p.workflowSchemeId, dryRun: true }],
+    'PUT /projects/{key}/workflow-scheme': ['gadmin', `/projects/${K}/workflow-scheme`, { schemeId: p.workflowSchemeId, dryRun: true }],   // 0103.R5
     'GET /workflow-schemes': ['any', '/workflow-schemes'], 'GET /workflows': ['any', '/workflows'], 'GET /workflows/{id}': ['any', `/workflows/${wf}`],
     'GET /workflows/{id}/versions': ['any', `/workflows/${wf}/versions`], 'GET /workflows/{id}/versions/{version}': ['any', `/workflows/${wf}/versions/1`],
     'GET /admin/statuses': ['gadmin', '/admin/statuses'],

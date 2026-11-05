@@ -2,6 +2,14 @@
 
 Strand is built spec first. Every change of behaviour starts as a spec in this folder, which the product owner approves before any code is written. Strand replaces Jira Data Center, so a spec starts from what Jira does: it follows Jira, or it says why not. `../jira-parity.md` lists every Jira capability with Strand's status and decision, and links each one to the spec that deals with it.
 
+## Principles
+
+Set by the product owner on 5 November 2026; every spec follows them.
+
+- **Core work behaves as in Jira.** People moving from Jira Data Center should find the same rules and the same flow for their everyday work. Where Strand does something Jira doesn't, Jira's behaviour wins.
+- **Extras only add.** A Strand-only feature is welcome when it improves the experience on top of Jira's behaviour (Undo, a live count, a dry run). It must never replace or change how Jira works.
+- **Jira data must move in without loss.** Every data model and rule is designed so that data from Jira DC can be migrated into Strand directly, without reshaping it or dropping anything (multi-valued fields, keys, ranks, resolutions, history).
+
 ## How a spec moves
 
 | Status | Meaning |
@@ -37,7 +45,7 @@ The roadmap, in order. Bugs come first, then the permission model, then the data
 | — | Practice and register (this folder, `../jira-parity.md`) | 0 | Approved (PO, 5 Nov 2026) |
 | [0101](0101-sprint-actions-across-board-projects.md) | Sprint actions need a role in every project the board covers; completing as in Jira | 1 | Verified |
 | [0102](0102-archived-projects-read-only.md) | Archived projects are read-only; only global admins archive | 1 | Ported |
-| [0103](0103-active-workflows.md) | Active workflows keep their name and statuses with work; only global admins switch a project's scheme | 1 | In review |
+| [0103](0103-active-workflows.md) | Active workflows keep their name and statuses with work; only global admins switch a project's scheme | 1 | Approved |
 | 0104 | Groups from the directory: no rename, no duplicate names, last-admin guard on delete | 1 | Planned |
 | 0105 | Custom fields: type fixed, options kept by id | 1 | Planned |
 | 0201 | One table of Jira's default permissions for the three roles | 2 | Planned |

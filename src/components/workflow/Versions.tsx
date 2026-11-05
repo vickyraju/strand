@@ -19,7 +19,9 @@ export const impactLine = (i: Impact) => [
 ].filter(Boolean).join('; ') || 'nothing else changes'
 
 /** What a change does across every project it reaches (the server's summary: never a line per project). */
-export interface Summary { projects: number; changed: number; itemsMoved: number; added: string[]; removed: string[]; moves: { from: string; to: string; count: number }[]; top: Impact[] }
+export interface Summary { projects: number; changed: number; itemsMoved: number; added: string[]; removed: string[]; moves: { from: string; to: string; count: number }[]; top: Impact[]
+  /** Statuses that can't leave the workflow: work items are in them (spec 0103) */
+  blocked?: { status: string; items: number; projects: string[]; more: number }[] }
 
 /** A change's reach, readable at any size: how many projects, how many change and how many items move (and where), and
  *  the projects most affected. `children`: where to see every project (a count that opens the list). */
@@ -44,8 +46,8 @@ export function SummaryView({ s, children }: { s: Summary; children?: ReactNode 
 }
 
 /** "Update workflow": what changes, where work items go, what it does to the projects using it (null while that's worked out), and a note. */
-export function PublishDialog({ before, after, moved, impact, onClose, onPublish, seeAll }: {
-  before: Workflow; after: Workflow; moved: { from: string; to: string }[]; impact: Summary | null; seeAll?: ReactNode
+export function PublishDialog({ before, after, impact, onClose, onPublish, seeAll }: {
+  before: Workflow; after: Workflow; impact: Summary | null; seeAll?: ReactNode
   onClose: () => void; onPublish: (note: string) => void
 }) {
   const [note, setNote] = useState('')
@@ -53,14 +55,18 @@ export function PublishDialog({ before, after, moved, impact, onClose, onPublish
   return (
     <Modal title="Update workflow" onClose={onClose} width={540} footer={<>
       <button className="btn btn-secondary" onClick={onClose}>Keep editing</button>
-      <button className="btn btn-primary" disabled={!impact} onClick={() => onPublish(note.trim())}>Update workflow</button>
+      <button className="btn btn-primary" disabled={!impact || !!impact.blocked?.length} onClick={() => onPublish(note.trim())}>Update workflow</button>
     </>}>
       {changes.length ? <ul className="change-list">{changes.map(c => <li key={c}>{c}</li>)}</ul> : <p className="muted">Only the layout changes.</p>}
-      {moved.length > 0 && (
-        <div className="callout callout-warn" role="status" style={{ marginTop: 12 }}>
-          <ul style={{ margin: 0, paddingLeft: 18 }}>
-            {moved.map(m => <li key={m.from}>Work items in “{m.from}” move to “{m.to}”, in every project</li>)}
-          </ul>
+      {!!impact?.blocked?.length && (
+        <div className="callout callout-warn" role="alert" style={{ marginTop: 12 }}>
+          <div>
+            <b>A status with work items can’t be removed.</b>
+            <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
+              {impact.blocked.map(b => <li key={b.status}>{b.status} has {b.items.toLocaleString()} work item{b.items === 1 ? '' : 's'} in {b.projects.join(', ')}{b.more ? ` and ${b.more} more` : ''}</li>)}
+            </ul>
+            <p style={{ margin: '6px 0 0' }}>Move them to another status first, or copy the workflow and switch the projects to the copy.</p>
+          </div>
         </div>
       )}
       <div className="wf-impact" role="region" aria-label="Projects">
