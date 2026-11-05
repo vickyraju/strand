@@ -37,7 +37,7 @@ The roadmap, in order. Bugs come first, then the permission model, then the data
 | — | Practice and register (this folder, `../jira-parity.md`) | 0 | Approved (PO, 5 Nov 2026) |
 | [0101](0101-sprint-actions-across-board-projects.md) | Sprint actions need a role in every project the board covers; completing as in Jira | 1 | Verified |
 | [0102](0102-archived-projects-read-only.md) | Archived projects are read-only; only global admins archive | 1 | Ported |
-| 0103 | A workflow's name is fixed while projects use it; who switches a scheme | 1 | Planned |
+| [0103](0103-active-workflows.md) | Active workflows keep their name and statuses with work; only global admins switch a project's scheme | 1 | In review |
 | 0104 | Groups from the directory: no rename, no duplicate names, last-admin guard on delete | 1 | Planned |
 | 0105 | Custom fields: type fixed, options kept by id | 1 | Planned |
 | 0201 | One table of Jira's default permissions for the three roles | 2 | Planned |
