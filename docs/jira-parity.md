@@ -59,7 +59,7 @@ Checked against Atlassian's Data Center documentation on 5 November 2026 (Jira S
 
 | ID | Jira capability | Jira DC | Strand | Status | Decision | Spec | Notes |
 |---|---|---|---|---|---|---|---|
-| PRJ-01 | Archive a project | Jira admins only; archived data is read-only ([archiving](https://confluence.atlassian.com/adminjiraserver/archiving-a-project-938847621.html)) | Project admins can archive; **still writable**; no button in the web app (`access.ts`, `projects.ts`) | diverges | match | 0102 | Bug. |
+| PRJ-01 | Archive a project | Jira admins only; archived data is read-only and hidden ([archiving](https://confluence.atlassian.com/adminjiraserver/archiving-a-project-938847621.html)) | Global admins only; read-only for everyone; hidden from lists, search and boards; Administration › Archived projects | match | match | 0102 | |
 | PRJ-02 | Project key change | Admins can change it; old keys keep working ([key](https://confluence.atlassian.com/adminjiraserver/editing-a-project-key-938847080.html)) | Key fixed | absent | match | 0703 | Needs key history (0501). |
 | PRJ-03 | Project key format | Uppercase letters by default ([key]) | Letters and digits (`projects.ts`) | diverges | match | 0308 | A System setting; existing keys kept. |
 | PRJ-04 | Categories, avatars | Yes | Colour only | absent | match | 0703 | |
