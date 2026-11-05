@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { DndContext, DragOverlay, useDraggable, useDroppable, type DragEndEvent, type DragOverEvent, type DragStartEvent } from '@dnd-kit/core'
 import { ChevronDown, ChevronRight, Kanban, ListChecks, Plus, MoreHorizontal, ArrowRightLeft, Pencil, Trash2, Play, ArrowUpToLine, ArrowDownToLine } from 'lucide-react'
-import { useStore, isDone, userOf, indexOf, type Board, type Project, type Sprint, type Issue } from '../data/store'
+import { useStore, isDone, userOf, indexOf, uid, type Board, type Project, type Sprint, type Issue } from '../data/store'
 import { apiEnabled } from '../api/client'
 import { lastBoard, useBoard, useBoardItems, useBoards } from '../api/boards'
 import { useEnsureProjects } from '../api/useEnsureProjects'
@@ -16,6 +16,7 @@ import BulkBar from './BulkBar'
 import { Empty, Loading, LoadError, Menu, Modal, Picker, plural } from './ui'
 
 const DAY = 86_400_000
+const NEW = 'new-sprint'
 
 const fmt = (ts?: number) => ts ? new Date(ts).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : ''
 
@@ -185,6 +186,8 @@ function Backlog({ project, board, switcher }: { project: Project; board?: Board
   )
 
   const newSprint = () => dispatch({ type: 'createSprint', projectId: project.id, ...(board ? { boardId: board.id } : {}) })
+  /** Why this person can't manage this board's sprints (spec 0101), or '' when they can */
+  const cantManage = board?.canManageSprints === false ? NO_SPRINTS : ''
 
   const summary = (list: Issue[]) => {
     const pts = list.reduce((n, i) => n + (i.estimate ?? 0), 0)
@@ -207,7 +210,7 @@ function Backlog({ project, board, switcher }: { project: Project; board?: Board
         {switcher}
         {filters.toolbar}
         <div style={{ flex: 1 }} />
-        <button className="btn btn-secondary" onClick={newSprint}>
+        <button className="btn btn-secondary" onClick={newSprint} disabled={!!cantManage} title={cantManage || undefined}>
           <Plus size={15} />Create sprint
         </button>
       </div>
@@ -223,14 +226,14 @@ function Backlog({ project, board, switcher }: { project: Project; board?: Board
               summary={summary(list)}
               actions={<>
                 {sprint.state === 'planned' && (
-                  <button className="btn btn-secondary btn-sm" disabled={hasActive || list.length === 0}
-                    title={hasActive ? 'Complete the active sprint first' : list.length === 0 ? 'Add work items to start this sprint' : undefined}
+                  <button className="btn btn-secondary btn-sm" disabled={!!cantManage || hasActive || list.length === 0}
+                    title={cantManage || (hasActive ? 'Complete the active sprint first' : list.length === 0 ? 'Add work items to start this sprint' : undefined)}
                     onClick={() => setStarting(sprint)}><Play size={13} />Start sprint</button>
                 )}
-                {sprint.state === 'active' && <button className="btn btn-secondary btn-sm" onClick={() => setCompleting(sprint)}>Complete sprint</button>}
+                {sprint.state === 'active' && <button className="btn btn-secondary btn-sm" disabled={!!cantManage} title={cantManage || undefined} onClick={() => setCompleting(sprint)}>Complete sprint</button>}
                 <Menu title="Sprint actions" className="icon-btn sm" trigger={<MoreHorizontal size={15} />} items={[
-                  { label: 'Edit sprint', icon: <Pencil size={14} />, onClick: () => setEditing(sprint) },
-                  ...(sprint.state === 'planned' ? [{ label: 'Delete sprint', icon: <Trash2 size={14} />, danger: true, onClick: () => dispatch({ type: 'deleteSprint', id: sprint.id }) }] : []),
+                  { label: 'Edit sprint', icon: <Pencil size={14} />, disabled: cantManage || undefined, onClick: () => setEditing(sprint) },
+                  ...(sprint.state === 'planned' ? [{ label: 'Delete sprint', icon: <Trash2 size={14} />, danger: true, disabled: cantManage || undefined, onClick: () => dispatch({ type: 'deleteSprint', id: sprint.id }) }] : []),
                 ]} />
               </>}
               onCreate={() => createIssue({ projectId: project.id, sprintId: sprint.id })}
@@ -247,7 +250,7 @@ function Backlog({ project, board, switcher }: { project: Project; board?: Board
             <span className="sprint-name">Backlog</span>
             {summary(backlogItems)}
             <div style={{ flex: 1 }} />
-            {sprints.length === 0 && <button className="btn btn-secondary btn-sm" onClick={newSprint}>Create sprint</button>}
+            {sprints.length === 0 && <button className="btn btn-secondary btn-sm" onClick={newSprint} disabled={!!cantManage} title={cantManage || undefined}>Create sprint</button>}
           </div>
           {backlogItems.length === 0
             ? <div className="drop-hint">{filters.active ? 'No backlog items match the filters.' : 'Your backlog is empty. Create work items to plan them into sprints.'}</div>
@@ -262,12 +265,15 @@ function Backlog({ project, board, switcher }: { project: Project; board?: Board
 
       <BulkBar ids={[...selected].filter(id => ordered.some(i => i.id === id))} onClear={() => setSelected(new Set())} />
 
-      {completing && <CompleteSprintModal sprint={completing} project={project} others={sprints.filter(s => s.id !== completing.id)} onClose={() => setCompleting(null)} />}
+      {completing && <CompleteSprintModal sprint={completing} project={project} boardId={board?.id} others={sprints.filter(s => s.id !== completing.id)} onClose={() => setCompleting(null)} />}
       {starting && <SprintDialog sprint={starting} mode="start" onClose={() => setStarting(null)} />}
       {editing && <SprintDialog sprint={editing} mode="edit" onClose={() => setEditing(null)} />}
     </div>
   )
 }
+
+/** Spec 0101 R7: why the sprint actions are off for someone who can't change work in every project the board covers */
+export const NO_SPRINTS = 'You need to be able to change work in every project this board covers'
 
 const BACKLOG_INSTRUCTIONS = 'To move a work item, focus its title and press Space, use the up and down arrow keys to choose where it goes, then press Space to drop it. Press Escape to cancel. A selected item takes the whole selection with it.'
 
@@ -369,37 +375,54 @@ function SprintDialog({ sprint, mode, onClose }: { sprint: Sprint; mode: 'start'
   )
 }
 
-export function CompleteSprintModal({ sprint, project, others, onClose }: {
-  sprint: Sprint; project: Project; others: Sprint[]; onClose: () => void
+export function CompleteSprintModal({ sprint, project, boardId, others, onClose }: {
+  sprint: Sprint; project: Project; boardId?: string; others: Sprint[]; onClose: () => void
 }) {
   const { state, dispatch } = useStore()
   const { toast } = useApp()
   const items = state.issues.filter(i => i.sprintId === sprint.id)
   const done = (i: Issue) => isDone(state.projects.find(p => p.id === i.projectId) ?? project, i)   // by each item's own project
   const open = items.filter(i => !done(i))
-  const [target, setTarget] = useState<string>(others.find(s => s.state === 'planned')?.id ?? BACKLOG)
+  const future = others.filter(s => s.state === 'planned')
+  const [target, setTarget] = useState<string>(future[0]?.id ?? BACKLOG)
   const donePts = items.filter(done).reduce((n, i) => n + (i.estimate ?? 0), 0)
+  // Jira: a Done item whose sub-items in the sprint aren't Done blocks completing it (spec 0101 R10)
+  const blocked = items.filter(p => done(p) && items.some(c => c.parentId === p.id && !done(c)))
+
+  const complete = () => {
+    let moveTo = target === BACKLOG ? undefined : target
+    if (target === NEW) {
+      // a new sprint on the same board takes the unfinished work (sent to the server before the completion)
+      moveTo = uid()
+      dispatch({ type: 'createSprint', projectId: sprint.projectId, ...(boardId ?? sprint.boardId ? { boardId: boardId ?? sprint.boardId } : {}), id: moveTo })
+    }
+    dispatch({ type: 'completeSprint', id: sprint.id, moveTo })
+    toast(`${sprint.name} completed`, { undo: 'completeSprint' })
+    onClose()
+  }
 
   return (
     <Modal title={`Complete ${sprint.name}`} onClose={onClose}
       footer={<>
         <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
-        <button className="btn btn-primary" autoFocus onClick={() => {
-          dispatch({ type: 'completeSprint', id: sprint.id, moveTo: target === BACKLOG ? undefined : target })
-          toast(`${sprint.name} completed`, { undo: 'completeSprint' })
-          onClose()
-        }}>Complete sprint</button>
+        <button className="btn btn-primary" autoFocus disabled={blocked.length > 0} onClick={complete}>Complete sprint</button>
       </>}>
       <div className="stat-pair">
         <div><b>{items.length - open.length}</b><span>completed items</span></div>
         <div><b>{open.length}</b><span>open items</span></div>
         <div><b>{donePts}</b><span>points done</span></div>
       </div>
+      {blocked.length > 0 && (
+        <p role="alert" className="text-danger" style={{ marginTop: 14 }}>
+          Complete the sub-items first: {blocked.map(i => i.key).join(', ')} {blocked.length === 1 ? 'is' : 'are'} done but {blocked.length === 1 ? 'has' : 'have'} unfinished sub-items in this sprint.
+        </p>
+      )}
       {open.length > 0 && (
         <>
           <label className="label" htmlFor="cs-target" style={{ marginTop: 16 }}>Move open items to</label>
           <select id="cs-target" className="input" value={target} onChange={e => setTarget(e.target.value)}>
-            {others.filter(s => s.state === 'planned').map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            {future.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            <option value={NEW}>New sprint</option>
             <option value={BACKLOG}>Backlog</option>
           </select>
         </>

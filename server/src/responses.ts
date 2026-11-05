@@ -90,7 +90,7 @@ export const Board = z.object({
   id, projectId: id, projectKey: z.string(), name: z.string(), type: z.enum(['kanban', 'scrum']), jql: z.string().describe('The board filter'),
   columns: z.array(BoardColumn), swimlanes: z.object({ by: z.enum(['none', 'assignee', 'epic', 'priority', 'project', 'queries']), queries: z.array(NamedQuery).optional() }),
   quickFilters: z.array(NamedQuery), cardFields: z.record(z.string(), z.boolean()), doneDays: nullable(z.number()), position: z.number(),
-  canManage: z.boolean().describe('I may change it'), admins: z.array(z.object({ kind: z.enum(['user', 'group']), id, name: z.string() })),
+  canManage: z.boolean().describe('I may change it'), canManageSprints: z.boolean().describe('I may create, start, complete and delete its sprints'), admins: z.array(z.object({ kind: z.enum(['user', 'group']), id, name: z.string() })),
 })
 export const ProjectDetail = z.object({
   id, workspaceId: id, key: z.string(), name: z.string(), description: z.string(), color: z.string(), template: z.enum(['kanban', 'scrum']),
@@ -237,7 +237,7 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'POST /projects/:key/sprints': Sprint,
   'PATCH /projects/:key/sprints/:id': Sprint,
   'POST /projects/:key/sprints/:id/start': Sprint,
-  'POST /projects/:key/sprints/:id/complete': Sprint,
+  'POST /projects/:key/sprints/:id/complete': Sprint.extend({ newSprint: Sprint.optional().describe('The sprint made for unfinished work (moveTo "new")') }),
   'POST /projects/:key/releases/:id/release': Release,
   'GET /issues/:key': IssueDetail,
   'GET /issues/:key/development': Development,
@@ -312,7 +312,7 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'GET /projects/:key/automation/runs': z.array(z.object({ id, ruleId: id, rule: z.string(), issueId: nullable(id), issueKey: nullable(z.string()), trigger: z.record(z.string(), z.unknown()),
     result: z.enum(['success', 'some_skipped', 'no_change', 'failed']), steps: z.array(Step), error: nullable(z.string()), at: ts })),
   'POST /projects/:key/automation/dry-run': z.object({ steps: z.array(Step), error: nullable(z.string()) }),
-  'GET /projects/:key/boards': z.array(z.object({ id, name: z.string(), type: z.enum(['kanban', 'scrum']), jql: z.string(), position: z.number(), canManage: z.boolean() })),
+  'GET /projects/:key/boards': z.array(z.object({ id, name: z.string(), type: z.enum(['kanban', 'scrum']), jql: z.string(), position: z.number(), canManage: z.boolean(), canManageSprints: z.boolean() })),
   'POST /projects/:key/boards': Board,
   'GET /boards/:id': Board,
   'GET /boards/:id/statuses': z.array(z.object({ id, name: z.string(), category: z.enum(['todo', 'in-progress', 'done']), color: z.string() })),

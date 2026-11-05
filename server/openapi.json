@@ -12022,7 +12022,7 @@
     },
     "/api/v1/projects/{key}/sprints": {
       "post": {
-        "summary": "Create a sprint",
+        "summary": "Create a sprint (needs the right to change work in every project its board covers)",
         "tags": [
           "Sprints"
         ],
@@ -12829,7 +12829,7 @@
     },
     "/api/v1/projects/{key}/sprints/{id}/complete": {
       "post": {
-        "summary": "Complete a sprint; unfinished work moves to another sprint or the backlog",
+        "summary": "Complete a sprint; unfinished work moves to a future sprint of its board, a new sprint (\"new\"), or the backlog (null)",
         "tags": [
           "Sprints"
         ],
@@ -12845,11 +12845,21 @@
                 "properties": {
                   "moveTo": {
                     "default": null,
-                    "description": "Sprint that receives unfinished work (null = backlog)",
+                    "description": "A planned sprint of the same board, \"new\" for a new sprint on it, or null for the backlog",
                     "nullable": true,
-                    "type": "string",
-                    "format": "uuid",
-                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "format": "uuid",
+                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "new"
+                        ]
+                      }
+                    ]
                   }
                 }
               }
@@ -12949,6 +12959,94 @@
                     "createdAt": {
                       "type": "string",
                       "description": "ISO 8601 timestamp"
+                    },
+                    "newSprint": {
+                      "description": "The sprint made for unfinished work (moveTo \"new\")",
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "description": "uuid"
+                        },
+                        "workspaceId": {
+                          "type": "string",
+                          "description": "uuid"
+                        },
+                        "projectId": {
+                          "type": "string",
+                          "description": "uuid"
+                        },
+                        "boardId": {
+                          "type": "string",
+                          "description": "The board it belongs to"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "goal": {
+                          "type": "string"
+                        },
+                        "state": {
+                          "type": "string",
+                          "enum": [
+                            "planned",
+                            "active",
+                            "closed"
+                          ]
+                        },
+                        "startedAt": {
+                          "nullable": true,
+                          "type": "string",
+                          "description": "ISO 8601 timestamp"
+                        },
+                        "endsAt": {
+                          "nullable": true,
+                          "type": "string",
+                          "description": "ISO 8601 timestamp"
+                        },
+                        "completedAt": {
+                          "nullable": true,
+                          "type": "string",
+                          "description": "ISO 8601 timestamp"
+                        },
+                        "committed": {
+                          "nullable": true,
+                          "type": "number"
+                        },
+                        "completed": {
+                          "nullable": true,
+                          "type": "number"
+                        },
+                        "issueIds": {
+                          "nullable": true,
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "description": "uuid"
+                          }
+                        },
+                        "createdAt": {
+                          "type": "string",
+                          "description": "ISO 8601 timestamp"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "workspaceId",
+                        "projectId",
+                        "boardId",
+                        "name",
+                        "goal",
+                        "state",
+                        "startedAt",
+                        "endsAt",
+                        "completedAt",
+                        "committed",
+                        "completed",
+                        "issueIds",
+                        "createdAt"
+                      ],
+                      "additionalProperties": false
                     }
                   },
                   "required": [
@@ -43046,6 +43144,9 @@
                       },
                       "canManage": {
                         "type": "boolean"
+                      },
+                      "canManageSprints": {
+                        "type": "boolean"
                       }
                     },
                     "required": [
@@ -43054,7 +43155,8 @@
                       "type",
                       "jql",
                       "position",
-                      "canManage"
+                      "canManage",
+                      "canManageSprints"
                     ],
                     "additionalProperties": false
                   }
@@ -43508,6 +43610,10 @@
                       "type": "boolean",
                       "description": "I may change it"
                     },
+                    "canManageSprints": {
+                      "type": "boolean",
+                      "description": "I may create, start, complete and delete its sprints"
+                    },
                     "admins": {
                       "type": "array",
                       "items": {
@@ -43551,6 +43657,7 @@
                     "doneDays",
                     "position",
                     "canManage",
+                    "canManageSprints",
                     "admins"
                   ],
                   "additionalProperties": false
@@ -43811,6 +43918,10 @@
                       "type": "boolean",
                       "description": "I may change it"
                     },
+                    "canManageSprints": {
+                      "type": "boolean",
+                      "description": "I may create, start, complete and delete its sprints"
+                    },
                     "admins": {
                       "type": "array",
                       "items": {
@@ -43854,6 +43965,7 @@
                     "doneDays",
                     "position",
                     "canManage",
+                    "canManageSprints",
                     "admins"
                   ],
                   "additionalProperties": false
@@ -44297,6 +44409,10 @@
                       "type": "boolean",
                       "description": "I may change it"
                     },
+                    "canManageSprints": {
+                      "type": "boolean",
+                      "description": "I may create, start, complete and delete its sprints"
+                    },
                     "admins": {
                       "type": "array",
                       "items": {
@@ -44340,6 +44456,7 @@
                     "doneDays",
                     "position",
                     "canManage",
+                    "canManageSprints",
                     "admins"
                   ],
                   "additionalProperties": false

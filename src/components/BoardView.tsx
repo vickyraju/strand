@@ -17,7 +17,7 @@ import { useFilters } from './filters'
 import BoardCard, { CardGhost } from './BoardCard'
 import { planMove } from './TransitionDialog'
 import { BOARD_INSTRUCTIONS, boardAnnouncements, boardCollision, planDrop, statusesIn, useBoardSensors } from './boardDnd'
-import { CompleteSprintModal } from './BacklogView'
+import { CompleteSprintModal, NO_SPRINTS } from './BacklogView'
 import CreateBoard from './boards/CreateBoard'
 import { Avatar, Empty, Loading, LoadError, Picker, Popover, Toggle, PriorityIcon, PRIORITY_META, PRIORITIES, TypeIcon, StatusLozenge, plural } from './ui'
 
@@ -300,7 +300,7 @@ function BoardScreen({ project, board, switcher, quick: asked, onChanged }: {
             {daysLeft !== undefined && <span className={daysLeft < 0 ? 'text-danger' : 'muted'}>{daysLeft < 0 ? `${-daysLeft}d overdue` : `${daysLeft}d left`}</span>}
           </span>
         )}
-        {sprint && <button className="btn btn-secondary" onClick={() => setCompleting(true)}>Complete sprint</button>}
+        {sprint && <button className="btn btn-secondary" disabled={board.canManageSprints === false} title={board.canManageSprints === false ? NO_SPRINTS : undefined} onClick={() => setCompleting(true)}>Complete sprint</button>}
         {board.canManage && (
           <Picker
             value={groupBy}
@@ -491,7 +491,7 @@ function BoardScreen({ project, board, switcher, quick: asked, onChanged }: {
       </DndContext>
 
       {completing && sprint && (
-        <CompleteSprintModal sprint={sprint} project={project}
+        <CompleteSprintModal sprint={sprint} project={project} boardId={local ? undefined : board.id}
           others={state.sprints.filter(s => (s.boardId ? s.boardId === board.id : s.projectId === project.id) && s.state === 'planned')}
           onClose={() => setCompleting(false)} />
       )}

@@ -42,14 +42,12 @@ export function createCollectionSync<T>(o: CollectionOptions<T>) {
     /** `only` splits a flush in two so other syncs can run between: 'writes' = creates and updates, 'deletes' = removals.
      *  (A status must be deleted after its issues are moved off it, but created before issues move onto it.) */
     flush(current: T[], only?: 'writes' | 'deletes') {
-      const seen = new Set<string>()
-      for (const t of current) {
-        const id = o.id(t); seen.add(id)
-        if (only === 'deletes') continue
-        const was = base.get(id)
-        base.set(id, t)
-        if (!was) run(() => o.create(t))
-        else if (o.changed(was, t)) run(() => o.update(was, t))
+      const seen = new Set<string>(current.map(o.id))
+      // creates before updates: an update may point at a record made in the same change (a sprint completed into a new one)
+      if (only !== 'deletes') for (const pass of ['create', 'update'] as const) for (const t of current) {
+        const id = o.id(t), was = base.get(id)
+        if (pass === 'create') { if (!was) { base.set(id, t); run(() => o.create(t)) } }
+        else if (was) { base.set(id, t); if (o.changed(was, t)) run(() => o.update(was, t)) }
       }
       if (only === 'writes') return
       for (const [id, t] of [...base]) {

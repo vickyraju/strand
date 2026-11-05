@@ -143,6 +143,8 @@ export interface Board extends BoardRef {
   cardFields: Partial<Record<CardField, boolean>>
   doneDays: number | null
   canManage: boolean
+  /** I may create, start, complete and delete its sprints (spec 0101; unset in a local workspace) */
+  canManageSprints?: boolean
   admins: { kind: 'user' | 'group'; id: string; name: string }[]
 }
 
@@ -447,7 +449,7 @@ export type Action =
   | { type: 'editComment'; id: string; body: string }
   | { type: 'deleteComment'; id: string }
   | { type: 'markViewed'; issueId: string }
-  | { type: 'createSprint'; projectId: string; boardId?: string }
+  | { type: 'createSprint'; projectId: string; boardId?: string; id?: string }
   | { type: 'updateSprint'; id: string; patch: Partial<Pick<Sprint, 'name' | 'goal' | 'endsAt'>> }
   | { type: 'startSprint'; id: string; endsAt: number }
   | { type: 'completeSprint'; id: string; moveTo?: string }
@@ -887,7 +889,7 @@ export function reducer(state: State, action: Action, now = Date.now()): State {
       const project = state.projects.find(p => p.id === action.projectId)
       if (!project) return state
       const n = state.sprints.filter(s => s.projectId === action.projectId).length + 1
-      const sprint: Sprint = { id: uid(), projectId: action.projectId, ...(action.boardId ? { boardId: action.boardId } : {}), name: `${project.key} Sprint ${n}`, goal: '', state: 'planned' }
+      const sprint: Sprint = { id: action.id ?? uid(), projectId: action.projectId, ...(action.boardId ? { boardId: action.boardId } : {}), name: `${project.key} Sprint ${n}`, goal: '', state: 'planned' }
       return { ...state, sprints: [...state.sprints, sprint] }
     }
     case 'updateSprint':

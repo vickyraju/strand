@@ -6,6 +6,7 @@ import type { Db } from './db.ts'
 import { HttpError, type Me } from './auth.ts'
 import { roleOf } from './access.ts'
 import { jqlToSql, parseOr400 } from './jqlSql.ts'
+import { filterProjects } from './shared/jql.ts'
 import { searchWhere } from './routes/misc.ts'
 
 export interface Column { id: string; name: string; statusIds: string[]; min?: number; max?: number }
@@ -60,6 +61,38 @@ export async function followStatuses(d: Db, p: { id: string; key: string }, orde
     }
     if (JSON.stringify(cols) !== JSON.stringify(b.columns)) await d.query('update boards set columns = $2, updated_at = now() where id = $1', [b.id, JSON.stringify(cols)])
   }
+}
+
+/** Who may create, edit, start, complete and delete a board's sprints (Jira's Manage Sprints): someone who can change work
+ *  (member or admin) in every project its filter names, or in every project when the filter can't tell (in practice a
+ *  global admin). Returns the reason when not. */
+export async function sprintManager(d: Db, me: Me, b: Pick<Board, 'jql' | 'workspaceId'>): Promise<{ ok: true } | { ok: false; why: string }> {
+  if (me.admin) return { ok: true }
+  const named = filterProjects(b.jql)
+  if (!named) {
+    const [{ n }] = await d.query<{ n: number }>(
+      `select count(*)::int as n from projects p where p.workspace_id = $1 and p.deleting_at is null
+          and not exists (select 1 from project_access a where a.project_id = p.id and a.user_id = $2 and a.role in ('member', 'admin'))`, [b.workspaceId, me.id]) as any
+    return n ? { ok: false, why: 'This board’s filter can include any project, so only someone who can change work in every project can manage its sprints' } : { ok: true }
+  }
+  const missing = await d.query<{ key: string; seen: boolean }>(
+    `select p.key, exists (select 1 from project_access v where v.project_id = p.id and v.user_id = $3) as seen
+       from projects p
+      where p.workspace_id = $1 and p.deleting_at is null and (lower(p.key) = any($2::text[]) or lower(p.name) = any($2::text[]))
+        and not exists (select 1 from project_access a where a.project_id = p.id and a.user_id = $3 and a.role in ('member', 'admin'))
+      order by p.key`, [b.workspaceId, named, me.id])
+  if (!missing.length) return { ok: true }
+  const shown = missing.filter(m => m.seen).map(m => m.key), hidden = missing.length - shown.length
+  const why = 'You can manage this board’s sprints only if you can change work in every project it covers'
+  if (!shown.length) return { ok: false, why: `${why}, including ${hidden === 1 ? 'one' : hidden} you can’t see` }
+  const list = [...shown.slice(0, 5), ...(shown.length > 5 || hidden ? [`${shown.length > 5 ? shown.length - 5 + hidden : hidden} more`] : [])]
+  return { ok: false, why: `${why}: ${list.join(', ').replace(/, ([^,]*)$/, ' and $1')}` }
+}
+
+/** 403 unless I may manage this board's sprints. */
+export async function needSprintManager(d: Db, me: Me, b: Pick<Board, 'jql' | 'workspaceId'>) {
+  const r = await sprintManager(d, me, b)
+  if (!r.ok) throw new HttpError(403, r.why)
 }
 
 /** A board I may see (read access to its project), with my role there and whether I may change it. 404 otherwise. */

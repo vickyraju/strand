@@ -12,7 +12,7 @@ import { projectByKey } from './projects.ts'
 import { ISSUE_ROW } from './issues.ts'
 import { searchWhere } from './misc.ts'
 import { parseJql, type Node } from '../shared/jql.ts'
-import { DEFAULT_QUICK, boardFor, boardWhere, checkQueries, columnsOf, laneSql, type Board, type Lanes } from '../boards.ts'
+import { DEFAULT_QUICK, sprintManager, boardFor, boardWhere, checkQueries, columnsOf, laneSql, type Board, type Lanes } from '../boards.ts'
 
 const T = ['Boards']
 const uuid = z.string().uuid()
@@ -49,7 +49,7 @@ async function boardOut(d: Db, me: Me, id: string) {
      union all select 'group', g.id, g.display_name from board_admins a join groups g on g.id = a.group_id where a.board_id = $1 order by 1, 3`, [b.id])
   const [p] = await d.query<{ key: string }>('select key from projects where id = $1', [b.projectId])
   return { id: b.id, projectId: b.projectId, projectKey: p!.key, name: b.name, type: b.type, jql: b.jql, columns: b.columns, swimlanes: b.swimlanes, quickFilters: b.quickFilters,
-    cardFields: b.cardFields, doneDays: b.doneDays, position: b.position, canManage, admins }
+    cardFields: b.cardFields, doneDays: b.doneDays, position: b.position, canManage, canManageSprints: (await sprintManager(d, me, b)).ok, admins }
 }
 
 /** Every status a column names is one of the workspace's; a status in two columns is refused. */
@@ -79,7 +79,8 @@ const plugin: FastifyPluginAsyncZod = async app => {
     const mine = new Set((await db.query<{ boardId: string }>(
       `select a.board_id from board_admins a join boards b on b.id = a.board_id where b.project_id = $1
          and (a.user_id = $2 or a.group_id in (select group_id from group_members where user_id = $2))`, [p.id, req.me.id])).map(r => r.boardId))
-    return rows.map(b => ({ id: b.id, name: b.name, type: b.type, jql: b.jql, position: b.position, canManage: p.role === 'admin' || mine.has(b.id) }))
+    return Promise.all(rows.map(async b => ({ id: b.id, name: b.name, type: b.type, jql: b.jql, position: b.position, canManage: p.role === 'admin' || mine.has(b.id),
+      canManageSprints: (await sprintManager(db, req.me, b)).ok })))
   })
 
   app.post('/projects/:key/boards', { schema: { tags: T, summary: 'Add a board to a project (project admins). Its type (Scrum or Kanban) can’t change later. Without columns, it gets one per project status; without quick filters, Jira’s two',

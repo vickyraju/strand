@@ -9,7 +9,7 @@ import { audit, changes } from '../audit.ts'
 import { enqueue, kickJobs } from '../jobs.ts'
 import { backupBucket, backupSettings } from '../backups.ts'
 import { applyScheme, previewing, typeWorkflows } from '../workflows.ts'
-import { firstBoard } from '../boards.ts'
+import { firstBoard, needSprintManager } from '../boards.ts'
 import { dryRun } from '../rules.ts'
 import { TEST_TYPES } from './issues.ts'
 import { checkImport } from '../csvImport.ts'
@@ -612,13 +612,26 @@ const plugin: FastifyPluginAsyncZod = async app => {
   const sprintBody = z.object({ name: z.string().min(1), goal: z.string(), endsAt: z.string().datetime().nullable() }).partial()
   const sprintCreate = sprintBody.required({ name: true }).extend({ id: uuid.optional().describe('Client-chosen id'), boardId: uuid.optional().describe('The Scrum board it belongs to (one of this project’s; default its first)') })
 
-  app.post('/projects/:key/sprints', { schema: { tags: T.sprints, summary: 'Create a sprint', params: keyP, body: sprintCreate } }, async req => {
-    const p = await projectByKey(db, req, req.params.key)
+  /** A sprint of this project, and its board: seeing the project reaches the sprint; managing it is checked on its board
+   *  (spec 0101: someone who can change work in every project the board's filter names). */
+  const managedSprint = async (d: Db, req: FastifyRequest<{ Params: { key: string; id: string } }>, lock = false) => {
+    const p = await projectByKey(d, req, req.params.key, 'viewer')
+    const [s] = await d.query<{ id: string; boardId: string; state: string; name: string }>(
+      `select id, board_id, state, name from sprints where id = $1 and project_id = $2 ${lock ? 'for update' : ''}`, [req.params.id, p.id])
+    if (!s) throw new HttpError(404, 'Not found')
+    const [b] = await d.query<{ jql: string; workspaceId: string }>('select jql, workspace_id from boards where id = $1', [s.boardId])
+    await needSprintManager(d, req.me, b!)
+    return { p, s }
+  }
+
+  app.post('/projects/:key/sprints', { schema: { tags: T.sprints, summary: 'Create a sprint (needs the right to change work in every project its board covers)', params: keyP, body: sprintCreate } }, async req => {
+    const p = await projectByKey(db, req, req.params.key, 'viewer')
     const b = req.body
     // on a board of this project (sprints belong to boards): the one named, else its first Scrum board, else its first
-    const [board] = await db.query<{ id: string }>(
-      `select id from boards where project_id = $1 and ($2::uuid is null or id = $2) order by (type = 'scrum') desc, position, id limit 1`, [p.id, b.boardId ?? null])
+    const [board] = await db.query<{ id: string; jql: string; workspaceId: string }>(
+      `select id, jql, workspace_id from boards where project_id = $1 and ($2::uuid is null or id = $2) order by (type = 'scrum') desc, position, id limit 1`, [p.id, b.boardId ?? null])
     if (!board) throw new HttpError(400, 'That board isn’t one of this project’s', { boardId: 'Unknown board' })
+    await needSprintManager(db, req.me, board)
     const [s] = await db.query(
       `insert into sprints (id, workspace_id, project_id, name, goal, ends_at, board_id) values (coalesce($6::uuid, uuid_v7()), $1, $2, $3, $4, $5, $7) returning *`,
       [req.me.workspaceId, p.id, b.name, b.goal ?? '', b.endsAt ?? null, b.id ?? null, board.id])
@@ -626,9 +639,9 @@ const plugin: FastifyPluginAsyncZod = async app => {
   })
 
   app.patch('/projects/:key/sprints/:id', { schema: { tags: T.sprints, summary: 'Update a sprint', params: keyIdP, body: sprintBody } }, async req => {
-    const p = await projectByKey(db, req, req.params.key)
     const w = pick(req.body, ['name', 'goal', 'endsAt'])
     if (!w.keys.length) throw new HttpError(400, 'Nothing to update')
+    const { p } = await managedSprint(db, req)
     const [s] = await db.query(
       `update sprints set ${w.cols.map((c, i) => `${c} = $${i + 3}`).join(', ')} where id = $1 and project_id = $2 returning *`,
       [req.params.id, p.id, ...w.vals])
@@ -637,7 +650,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
   })
 
   app.delete('/projects/:key/sprints/:id', { schema: { tags: T.sprints, summary: 'Delete a planned sprint', params: keyIdP } }, async (req, reply) => {
-    const p = await projectByKey(db, req, req.params.key)
+    const { p } = await managedSprint(db, req)
     await db.query(`delete from sprints where id = $1 and project_id = $2 and state = 'planned'`, [req.params.id, p.id])
     reply.code(204).send()
   })
@@ -646,8 +659,8 @@ const plugin: FastifyPluginAsyncZod = async app => {
     tags: T.sprints, summary: 'Start a sprint (snapshots committed points)', params: keyIdP, body: z.object({ endsAt: z.string().datetime() }),
   } }, async req => {
     const { endsAt } = req.body
-    const p = await projectByKey(db, req, req.params.key)
     return tx(async d => {
+      const { p } = await managedSprint(d, req, true)
       const [s] = await d.query(
         `update sprints set state = 'active', started_at = now(), ends_at = $3,
                 committed = (select coalesce(sum(estimate), 0) from issues where sprint_id = sprints.id and deleted_at is null)
@@ -658,26 +671,39 @@ const plugin: FastifyPluginAsyncZod = async app => {
   })
 
   app.post('/projects/:key/sprints/:id/complete', { schema: {
-    tags: T.sprints, summary: 'Complete a sprint; unfinished work moves to another sprint or the backlog', params: keyIdP,
-    body: z.object({ moveTo: uuid.nullable().default(null).describe('Sprint that receives unfinished work (null = backlog)') }).default({ moveTo: null }),
+    tags: T.sprints, summary: 'Complete a sprint; unfinished work moves to a future sprint of its board, a new sprint ("new"), or the backlog (null)', params: keyIdP,
+    body: z.object({ moveTo: z.union([uuid, z.literal('new')]).nullable().default(null).describe('A planned sprint of the same board, "new" for a new sprint on it, or null for the backlog') }).default({ moveTo: null }),
   } }, async req => {
-    const { moveTo } = req.body
-    const p = await projectByKey(db, req, req.params.key)
     return tx(async d => {
+      const { p, s: cur } = await managedSprint(d, req, true)
+      if (cur.state !== 'active') throw new HttpError(409, 'Sprint is not active')
+      // Jira: a Done item whose sub-items in the sprint aren't Done blocks completion; finish the sub-items first
+      const blocked = await d.query<{ key: string }>(
+        `select distinct pp.key || '-' || par.number as key, par.number from issues par join statuses ps on ps.id = par.status_id join projects pp on pp.id = par.project_id
+          where par.sprint_id = $1 and par.deleted_at is null and ps.category = 'done'
+            and exists (select 1 from issues c join statuses cs on cs.id = c.status_id where c.parent_id = par.id and c.sprint_id = $1 and c.deleted_at is null and cs.category <> 'done')
+          order by 1 limit 20`, [cur.id])
+      if (blocked.length) throw new HttpError(409, `Complete the sub-items first: ${blocked.map(b => b.key).join(', ')}`, { moveTo: 'Done items have unfinished sub-items' })
+      let moveTo = req.body.moveTo, newSprint: unknown
+      if (moveTo === 'new') {
+        // named like any new sprint of the project
+        const [{ n }] = await d.query<{ n: number }>('select count(*)::int + 1 as n from sprints where project_id = $1', [p.id]) as any
+        ;[newSprint] = await d.query<any>(
+          `insert into sprints (workspace_id, project_id, name, goal, board_id) values ($1, $2, $3, '', $4) returning *`, [req.me.workspaceId, p.id, `${p.key} Sprint ${n}`, cur.boardId])
+        moveTo = (newSprint as { id: string }).id
+      } else if (moveTo && !(await d.query(`select 1 from sprints where id = $1 and board_id = $2 and state = 'planned'`, [moveTo, cur.boardId])).length)
+        throw new HttpError(400, 'Unfinished work can go to a future sprint of the same board, a new sprint, or the backlog', { moveTo: 'Not a future sprint of this board' })
       const [s] = await d.query(
         `update sprints set state = 'closed', completed_at = now(),
                 completed = (select coalesce(sum(i.estimate), 0) from issues i join statuses st on st.id = i.status_id
                               where i.sprint_id = sprints.id and i.deleted_at is null and st.category = 'done'),
                 issue_ids = array(select id from issues where sprint_id = sprints.id and deleted_at is null)
-          where id = $1 and project_id = $2 and state = 'active' returning *`, [req.params.id, p.id])
-      if (!s) throw new HttpError(409, 'Sprint is not active')
-      if (moveTo && !(await d.query(`select 1 from sprints where id = $1 and board_id = $2 and state = 'planned'`, [moveTo, s.boardId])).length)
-        throw new HttpError(400, 'Unfinished work can go to a planned sprint of the same board, or the backlog', { moveTo: 'Not a planned sprint of this board' })
+          where id = $1 returning *`, [cur.id])
       await d.query(
         `update issues set sprint_id = $2, version = version + 1, updated_at = now()
           where sprint_id = $1 and deleted_at is null
-            and status_id in (select id from statuses where category <> 'done')`, [s.id, moveTo])   // unfinished work from every project in it
-      return s
+            and status_id in (select id from statuses where category <> 'done')`, [cur.id, moveTo])   // unfinished work from every project in it
+      return newSprint ? { ...s, newSprint } : s
     })
   })
 }

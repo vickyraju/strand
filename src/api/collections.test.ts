@@ -23,7 +23,15 @@ test('new records are created once, edits are updates, missing records are remov
   h.sync.flush([it('a', 'edited'), it('b')])
   h.sync.flush([it('b')])
   await idle()
-  assert.deepEqual(h.log, ['create a:t', 'update a:t->edited', 'create b:t', 'remove a'])
+  assert.deepEqual(h.log, ['create a:t', 'create b:t', 'update a:t->edited', 'remove a'])
+})
+
+test('[0101.R9] in one change, new records are sent before updates (a sprint completed into a sprint made at the same time)', async () => {
+  const h = setup()
+  h.sync.flush([it('old')])
+  h.sync.flush([it('old', 'completed into new'), it('new')])
+  await idle()
+  assert.deepEqual(h.log, ['create old:t', 'create new:t', 'update old:t->completed into new'])
 })
 
 test('records loaded from the server are not sent back; scoped load only replaces its scope', async () => {

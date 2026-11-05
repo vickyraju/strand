@@ -22,6 +22,12 @@ const keyOf = (projectId: string) => {
   return encodeURIComponent(k)
 }
 
+/** The projects whose work was in a sprint: its own, and those of the items it held (a board's sprint can span projects). */
+export const projectsIn = (sprint: Sprint, issues: Issue[]) => {
+  const members = new Set(sprint.issueIds ?? [])
+  return [...new Set([sprint.projectId, ...issues.filter(i => members.has(i.id)).map(i => i.projectId)])]
+}
+
 /** Where unfinished work went when a sprint was completed locally: the sprint its members now point at, else the backlog. */
 export function moveToOf(sprint: Sprint, issues: Issue[]): string | null {
   const members = new Set(sprint.issueIds ?? [])
@@ -45,7 +51,8 @@ export const sprintSync = createCollectionSync<Sprint>({
       await sprintDeps.reloadProject(b.projectId)
     } else if (a.state === 'active' && b.state === 'closed') {
       sprintDeps.applySprint(mapSprint(await api('POST', `${base}/complete`, { moveTo: moveToOf(b, sprintDeps.getIssues()) })))
-      await sprintDeps.reloadProject(b.projectId)
+      // the server moved the unfinished work of every project in the sprint: take their copies (and versions) again
+      for (const projectId of projectsIn(b, sprintDeps.getIssues())) await sprintDeps.reloadProject(projectId)
     }
   },
   remove: async s => { await api('DELETE', `/api/projects/${keyOf(s.projectId)}/sprints/${s.id}`) },
