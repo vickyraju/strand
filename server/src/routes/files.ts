@@ -5,7 +5,7 @@ import { PutObjectCommand, GetObjectCommand, DeleteObjectCommand, HeadObjectComm
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { db, pool } from '../db.ts'
 import { HttpError, type Me } from '../auth.ts'
-import { minFor, need, roleOf, type ProjectRole } from '../access.ts'
+import { minFor, need, type ProjectRole, ARCHIVED, READS, accessTo } from '../access.ts'
 import { issueByKey } from './issues.ts'
 import { s3, filesBucket } from '../storage.ts'
 import { getSetting } from '../settings.ts'
@@ -79,9 +79,10 @@ const plugin: FastifyPluginAsyncZod = async app => {
       `select a.object_key, a.name, a.size, a.uploaded_at, a.added_by, i.project_id from attachments a join issues i on i.id = a.issue_id
         where a.id = $1 and i.workspace_id = $2`,
       [z.string().uuid().parse(id), req.me.workspaceId])
-    const role = a ? await roleOf(db, req.me, a.projectId) : null
-    if (!a || !role) throw new HttpError(404, 'Not found')
-    need(role, min ?? minFor(req.method))
+    const acc = a ? await accessTo(db, req.me, a.projectId) : null
+    if (!a || !acc) throw new HttpError(404, 'Not found')
+    if (acc.archived && !READS.has(req.method)) throw new HttpError(403, ARCHIVED)
+    need(acc.role, min ?? minFor(req.method))
     return a
   }
 

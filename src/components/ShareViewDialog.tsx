@@ -40,7 +40,7 @@ export default function ShareViewDialog({ view, onClose, onSave }: { view: Saved
         <div className="form-row" style={{ marginTop: 10 }}>
           <select className="input" aria-label="Share with a project" value="" onChange={e => add('project', e.target.value)}>
             <option value="">+ A project’s people…</option>
-            {state.projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            {state.projects.filter(p => !p.archivedAt).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
           {groups.length > 0 && (
             <select className="input" aria-label="Share with a group" value="" onChange={e => add('group', e.target.value)}>

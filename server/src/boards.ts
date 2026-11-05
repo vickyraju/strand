@@ -4,7 +4,7 @@
 import { randomUUID } from 'node:crypto'
 import type { Db } from './db.ts'
 import { HttpError, type Me } from './auth.ts'
-import { roleOf } from './access.ts'
+import { ARCHIVED, accessTo } from './access.ts'
 import { jqlToSql, parseOr400 } from './jqlSql.ts'
 import { filterProjects } from './shared/jql.ts'
 import { searchWhere } from './routes/misc.ts'
@@ -98,10 +98,12 @@ export async function needSprintManager(d: Db, me: Me, b: Pick<Board, 'jql' | 'w
 /** A board I may see (read access to its project), with my role there and whether I may change it. 404 otherwise. */
 export async function boardFor(d: Db, me: Me, id: string, opts: { manage?: boolean; lock?: boolean } = {}) {
   const [b] = await d.query<Board>(`select * from boards where id = $1 and workspace_id = $2 ${opts.lock ? 'for update' : ''}`, [id, me.workspaceId])
-  const role = b ? await roleOf(d, me, b.projectId) : null
-  if (!b || !role) throw new HttpError(404, 'Board not found')
-  const canManage = role === 'admin' || (await d.query(
-    `select 1 from board_admins a where a.board_id = $1 and (a.user_id = $2 or a.group_id in (select group_id from group_members where user_id = $2))`, [b.id, me.id])).length > 0
+  const a = b ? await accessTo(d, me, b.projectId) : null
+  if (!b || !a) throw new HttpError(404, 'Board not found')
+  const role = a.role
+  if (opts.manage && a.archived) throw new HttpError(403, ARCHIVED)          // spec 0102: an archived project's boards don't change
+  const canManage = !a.archived && (role === 'admin' || (await d.query(
+    `select 1 from board_admins a where a.board_id = $1 and (a.user_id = $2 or a.group_id in (select group_id from group_members where user_id = $2))`, [b.id, me.id])).length > 0)
   if (opts.manage && !canManage) throw new HttpError(403, 'Only the board’s administrators and the project’s admins can change it')
   return { board: b, role, canManage }
 }

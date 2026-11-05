@@ -130,6 +130,8 @@ export interface Project {
   workflows?:  { typeKey: string; workflowId: string; workflow: string; statusIds: string[] }[]
   /** Its boards (from the server; a local workspace has the one built from its statuses) */
   boards?:     BoardRef[]
+  /** Archived (spec 0102): read-only for everyone, hidden from lists; its items open by their key */
+  archivedAt?: number
 }
 
 /** A board in a project's list (Jira's boards): which one, its kind, and its filter. */

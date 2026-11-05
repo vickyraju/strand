@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { Users, ScrollText, Archive, SlidersHorizontal, Link2, Bookmark, UsersRound, UserMinus, GitBranch, FlaskConical } from 'lucide-react'
+import { Users, ScrollText, Archive, SlidersHorizontal, Link2, Bookmark, UsersRound, UserMinus, GitBranch, FlaskConical, ArchiveRestore } from 'lucide-react'
 import { href, navigate, type AdminSection } from '../../router'
 
 // Administration's frame, as Jira lays it out: a grouped menu on the left, and each page with its title, what it is
@@ -21,6 +21,7 @@ export const MENU: { title: string; items: MenuItem[] }[] = [
   { title: 'System', items: [
     { id: 'settings', label: 'System settings', Icon: SlidersHorizontal, intro: 'Policies for the whole workspace. Changes apply within seconds on every server, without a restart, and are recorded in the Audit log.' },
     { id: 'audit', label: 'Audit log', Icon: ScrollText, intro: 'Who changed people, project settings, workflows, automation and deletions, and when. Entries can’t be edited or removed.' },
+    { id: 'archived', label: 'Archived projects', Icon: ArchiveRestore, intro: 'Archived projects are read-only and hidden from lists, search and boards; their work items still open from links. Restore one to bring it back as it was.' },
     { id: 'backups', label: 'Project backups', Icon: Archive, intro: 'A copy of each project taken when it is deleted, so a system administrator can bring it back.' },
     { id: 'views', label: 'Shared views', Icon: Bookmark, intro: 'Saved views shared beyond their owner, and views whose owner has left. Give one a new owner to keep it looked after.' },
   ] },

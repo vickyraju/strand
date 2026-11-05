@@ -2227,20 +2227,6 @@
           },
           {
             "schema": {
-              "default": "0",
-              "type": "string",
-              "enum": [
-                "0",
-                "1"
-              ]
-            },
-            "in": "query",
-            "name": "archived",
-            "required": false,
-            "description": "1 = archived projects instead of active ones"
-          },
-          {
-            "schema": {
               "type": "string",
               "enum": [
                 "0",
@@ -2428,7 +2414,7 @@
     },
     "/api/v1/projects/{key}/archive": {
       "post": {
-        "summary": "Archive a project: hidden from lists, data kept, can be restored",
+        "summary": "Archive a project (global admins): read-only and hidden, data kept, can be restored",
         "tags": [
           "Projects"
         ],
@@ -3292,7 +3278,7 @@
     },
     "/api/v1/projects/{key}/restore": {
       "post": {
-        "summary": "Restore an archived project",
+        "summary": "Restore an archived project (global admins)",
         "tags": [
           "Projects"
         ],
@@ -4063,6 +4049,185 @@
                     "workflowSchemeId",
                     "workflows",
                     "boards"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/archived-projects": {
+      "get": {
+        "summary": "Archived projects, newest archived first, a page at a time (global admins)",
+        "tags": [
+          "Projects"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "in": "query",
+            "name": "query",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "in": "query",
+            "name": "cursor",
+            "required": false
+          },
+          {
+            "schema": {
+              "default": 50,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            },
+            "in": "query",
+            "name": "limit",
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "description": "uuid"
+                          },
+                          "key": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "archivedAt": {
+                            "type": "string",
+                            "description": "ISO 8601 timestamp"
+                          },
+                          "archivedBy": {
+                            "nullable": true,
+                            "description": "Who archived it",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "key",
+                          "name",
+                          "archivedAt",
+                          "archivedBy"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "next": {
+                      "nullable": true,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "items",
+                    "next"
                   ],
                   "additionalProperties": false
                 }

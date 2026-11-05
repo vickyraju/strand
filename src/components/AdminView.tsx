@@ -17,6 +17,7 @@ import WorkflowsAdmin from './WorkflowsAdmin'
 import WorkflowBuilder from './WorkflowBuilder'
 import LinkTypesAdmin from './LinkTypesAdmin'
 import SharedViewsAdmin from './SharedViewsAdmin'
+import ArchivedProjects from './admin/ArchivedProjects'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -45,6 +46,7 @@ export default function AdminView({ section = 'people', item }: { section?: Admi
       {section === 'test-statuses' && <TestStatusesAdmin />}
       {section === 'settings' && <SystemSettings page={settingsPage} />}
       {section === 'audit' && <AuditLog />}
+      {section === 'archived' && <ArchivedProjects />}
       {section === 'backups' && <Backups />}
       {section === 'views' && <SharedViewsAdmin />}
     </AdminShell>

@@ -3,7 +3,7 @@ import { usePresence } from '../api/presence'
 import { recordView } from '../api/work'
 import {
   Maximize2, Minimize2, X, Link2, Trash2, Plus, Eye, EyeOff, ChevronUp, ChevronDown, MoreHorizontal, RefreshCw, CopyPlus, Lock,
-  Ban, Unlink, Pencil, UserCheck, Copy, Paperclip, FileText,
+  Ban, Unlink, Pencil, UserCheck, Copy, Paperclip, FileText, Archive,
 } from 'lucide-react'
 import {
   useStore, userOf, projectOf, timeAgo, transitionsFrom, loopsFrom, moveContext, linkWords, DEFAULT_LINK_TYPES, inLevel,
@@ -52,6 +52,7 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
   const issue = state.issues.find(i => i.id === issueId)
   const project = projectOf(state, issue?.projectId)
   const readOnly = !canEdit(project)
+  const archived = !!project?.archivedAt   // spec 0102: nothing changes, not even a comment or watching
   const mentionable = useProjectPeople(issue?.projectId, state.users)   // only people who can see the item can be mentioned
 
   const [title, setTitle]         = useState(issue?.title ?? '')
@@ -164,7 +165,7 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
             <button className="icon-btn" disabled={!next} onClick={() => next && openIssue(next)} title="Next (J)" aria-label="Next work item"><ChevronDown size={16} /></button>
           </span>
         )}
-        <button className={`icon-btn${watching ? ' active' : ''}`} onClick={() => dispatch({ type: 'toggleWatch', issueId: issue.id })}
+        <button className={`icon-btn${watching ? ' active' : ''}`} disabled={archived} onClick={() => dispatch({ type: 'toggleWatch', issueId: issue.id })}
           title={watching ? 'Stop watching' : 'Watch for updates'} aria-pressed={watching} aria-label={watching ? 'Stop watching' : 'Watch'}>
           {watching ? <Eye size={16} /> : <EyeOff size={16} />}<span className="sm">{watchers.length}</span>
         </button>
@@ -185,6 +186,7 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
         <button className="icon-btn" onClick={closeIssue} title="Close (Esc)" aria-label="Close"><X size={17} /></button>
       </div>
 
+      {archived && <p className="callout" role="status" style={{ margin: '12px 20px 0' }}><Archive size={15} />This work item is in an archived project. It can’t be changed.</p>}
       <div className="detail-body">
         <div className="detail-main">
           {mode === 'full' && <h1 className="sr-only">{issue.key}: {issue.title}</h1>}
@@ -306,7 +308,7 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
               </div>
             </div>
 
-            <div className="compose-comment">
+            {!archived && <div className="compose-comment">
               <Avatar user={state.me} size={30} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <MentionTextarea className="input comment-input" value={comment} onChange={setComment} users={mentionable}
@@ -324,7 +326,7 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
                   </div>
                 )}
               </div>
-            </div>
+            </div>}
 
             <ol className="timeline">
               {timeline.length === 0 && <li className="muted sm">{tab === 'comments' ? 'No comments yet.' : 'No history yet.'}</li>}

@@ -221,6 +221,7 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'GET /projects/search': ProjectPage,
   'POST /projects/:key/archive': ProjectDetail,
   'POST /projects/:key/restore': ProjectDetail,
+  'GET /admin/archived-projects': z.object({ items: z.array(z.object({ id, key: z.string(), name: z.string(), archivedAt: ts, archivedBy: nullable(z.string()).describe('Who archived it') })), next: nullable(z.string()) }),
   'GET /issues/:key/comments': CommentPage,
   'GET /issues/:key/activity': ActivityPage,
   'POST /issues/bulk/edit': BulkEditResult,

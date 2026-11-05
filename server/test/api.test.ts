@@ -563,12 +563,12 @@ test('project and user search are paginated and filtered; archive hides a projec
   assert.ok(arch.body.archivedAt)
   assert.ok(!(await call('GET', '/api/v1/projects')).body.some((p: any) => p.key === 'SRB'))
   assert.ok(!(await call('GET', '/api/v1/projects/search?query=search')).body.items.some((p: any) => p.key === 'SRB'))
-  assert.deepEqual((await call('GET', '/api/v1/projects/search?archived=1')).body.items.map((p: any) => p.key), ['SRB'])
+  assert.deepEqual((await call('GET', '/api/v1/admin/archived-projects')).body.items.map((p: any) => p.key), ['SRB'])
   assert.equal((await call('GET', '/api/v1/projects/SRB')).body.key, 'SRB')                            // still readable
   assert.equal((await call('POST', '/api/v1/projects/SRB/restore')).body.archivedAt, null)
   assert.ok((await call('GET', '/api/v1/projects')).body.some((p: any) => p.key === 'SRB'))
   await join('SRB', 'plain-member@x.com', 'member')
-  assert.equal((await call('POST', '/api/v1/projects/SRB/archive', undefined, 'plain-member@x.com')).status, 403)   // members cannot archive; project admins can
+  assert.equal((await call('POST', '/api/v1/projects/SRB/archive', undefined, 'plain-member@x.com')).status, 403)   // members cannot archive (nor project admins: spec 0102)
 
   for (const u of ['ann.search@x.com', 'bob.search@x.com', 'carl@x.com']) await call('GET', '/api/v1/me', undefined, u)
   const users = (await call('GET', '/api/v1/users/search?query=search&limit=1')).body
@@ -1572,6 +1572,100 @@ test('[0101.R9][0101.R10] completing a sprint: unfinished work to the backlog, a
   await call('POST', `/api/v1/projects/CMP/sprints/${s3.id}/start`, ends)
   await call('POST', `/api/v1/projects/CMP/sprints/${s3.id}/complete`, { moveTo: null })
   assert.equal((await call('GET', `/api/v1/issues/${open.key}`)).body.sprintId, null)
+})
+
+test('[0102.R1][0102.R2][0102.R3][0102.R4][0102.R6][0102.R7][0102.R8][0102.R9] an archived project: only global admins archive and restore; read-only for everyone, hidden from lists, search and boards; its items still open by key', { skip }, async () => {
+  const p = (await call('POST', '/api/v1/projects', { name: 'Shelved', key: 'ARC', template: 'scrum' })).body
+  await call('POST', '/api/v1/projects', { name: 'Still going', key: 'ARD', template: 'scrum' })
+  const adm = 'arc.admin@x.com', mem = 'arc.member@x.com'
+  await join('ARC', adm, 'admin'); await join('ARC', mem); await join('ARD', mem)
+  const me = (await call('GET', '/api/v1/me', undefined, mem)).body.id
+  const item = (await call('POST', '/api/v1/projects/ARC/issues', { title: 'Shelved work', assigneeId: me })).body
+  const comment = (await call('POST', `/api/v1/issues/${item.key}/comments`, { body: 'before' }, mem)).body
+  const log = (await call('POST', `/api/v1/issues/${item.key}/worklogs`, { minutes: 30, date: '2026-11-01' }, mem)).body
+  const version = (await call('POST', '/api/v1/projects/ARC/releases', { name: '1.0' })).body
+  // a board in another project whose filter names it, and a sprint there holding the archived project's work
+  const both = (await call('POST', '/api/v1/projects/ARD/boards', { name: 'Both', type: 'scrum', jql: 'project in (ARC, ARD)' })).body
+  const other = (await call('POST', '/api/v1/projects/ARD/issues', { title: 'Other work' })).body
+  const sprint = (await call('POST', '/api/v1/projects/ARD/sprints', { name: 'Both 1', boardId: both.id })).body
+  for (const k of [item.key, other.key]) await call('PATCH', `/api/v1/issues/${k}`, { sprintId: sprint.id })
+  await call('POST', `/api/v1/projects/ARD/sprints/${sprint.id}/start`, { endsAt: new Date(Date.now() + 7 * 864e5).toISOString() })
+
+  // R1: a project admin can't archive; a global admin can, and it is audited with who did it
+  assert.equal((await call('POST', '/api/v1/projects/ARC/archive', undefined, adm)).status, 403)
+  assert.equal((await call('POST', '/api/v1/projects/ARC/archive')).status, 200)
+  assert.ok((await pool.query(`select 1 from audit_log where action = 'project.archived' and target_id = $1`, [p.id])).rows.length)
+
+  // R2: nothing in it changes, for anyone, global admins included
+  const refused = async (who: string | undefined, m: string, path: string, body?: unknown) => {
+    const r = await call(m, `/api/v1${path}`, body, who)
+    assert.deepEqual([r.status, r.body?.error], [403, 'This project is archived. A system administrator can restore it to change it.'], `${m} ${path} as ${who ?? 'owner'}`)
+  }
+  for (const who of [mem, adm, undefined]) {
+    await refused(who, 'PATCH', `/issues/${item.key}`, { title: 'changed' })
+    await refused(who, 'POST', '/projects/ARC/issues', { title: 'new' })
+    await refused(who, 'POST', `/issues/${item.key}/comments`, { body: 'more' })
+    await refused(who, 'PUT', `/issues/${item.key}/watch`)
+    await refused(who, 'POST', `/issues/${item.key}/worklogs`, { minutes: 5, date: '2026-11-01' })
+    await refused(who, 'POST', '/projects/ARC/sprints', { name: 'x' })
+    await refused(who, 'PATCH', `/projects/ARC/releases/${version.id}`, { name: '1.1' })
+    await refused(who, 'POST', '/projects/ARC/components', { name: 'API' })
+    await refused(who, 'PATCH', '/projects/ARC', { name: 'Renamed' })
+    await refused(who, 'PATCH', `/boards/${p.boards[0].id}`, { name: 'x' })
+  }
+  await refused(mem, 'PATCH', `/comments/${comment.id}`, { body: 'edited' })
+  await refused(mem, 'DELETE', `/worklogs/${log.id}`)
+  await refused(undefined, 'POST', '/projects/ARC/members', { userIds: [me], role: 'admin' })
+  assert.equal((await call('GET', `/api/v1/issues/${item.key}`)).body.title, 'Shelved work')
+
+  // R3: hidden from search, counts, export, other projects' boards, Your work and the project lists
+  const keys = (r: any) => (r.body.items ?? r.body).map((x: any) => x.key)
+  assert.ok(!keys(await call('GET', '/api/v1/search?q=Shelved')).includes(item.key))
+  assert.equal((await call('POST', '/api/v1/jql/check', { jql: 'project = ARC' })).body.count, 0)
+  assert.ok(!(await app.inject({ method: 'GET', url: '/api/v1/search/export.csv?q=Shelved', headers: await bearer('owner@x.com') })).body.includes(item.key))
+  assert.deepEqual(keys(await call('GET', `/api/v1/boards/${both.id}/issues`)), [other.key])
+  assert.ok(!keys(await call('GET', '/api/v1/me/work', undefined, mem)).includes(item.key))
+  assert.ok(!(await call('GET', '/api/v1/projects')).body.some((x: any) => x.key === 'ARC'))
+  assert.ok(!(await call('GET', '/api/v1/projects/search?query=ARC')).body.items.some((x: any) => x.key === 'ARC'))
+  // R4: its items still open by their key, read-only, and recording that I opened it works
+  const opened = await call('GET', `/api/v1/issues/${item.key}`, undefined, mem)
+  assert.equal(opened.status, 200)
+  assert.equal((await call('POST', `/api/v1/issues/${item.key}/view`, undefined, mem)).status, 204)
+  assert.equal((await call('GET', '/api/v1/projects/ARC', undefined, mem)).body.role, 'viewer')
+  // R6: completing the other board's sprint leaves the archived project's item where it was
+  assert.equal((await call('POST', `/api/v1/projects/ARD/sprints/${sprint.id}/complete`, { moveTo: null }, mem)).status, 200)
+  assert.deepEqual([(await call('GET', `/api/v1/issues/${item.key}`)).body.sprintId, (await call('GET', `/api/v1/issues/${other.key}`)).body.sprintId], [sprint.id, null])
+
+  // R7: Administration › Archived projects, global admins only, newest first, searchable
+  assert.equal((await call('GET', '/api/v1/admin/archived-projects', undefined, adm)).status, 403)
+  const listed = (await call('GET', '/api/v1/admin/archived-projects?query=shelv')).body
+  assert.deepEqual(listed.items.map((x: any) => [x.key, x.archivedBy]), [['ARC', 'owner']])
+  // R1 + R9: a project admin can't restore; a global admin restores, and it is as it was
+  assert.equal((await call('POST', '/api/v1/projects/ARC/restore', undefined, adm)).status, 403)
+  assert.equal((await call('POST', '/api/v1/projects/ARC/restore')).status, 200)
+  assert.equal((await call('PATCH', `/api/v1/issues/${item.key}`, { title: 'Back to work' }, mem)).status, 200)
+  assert.ok(keys(await call('GET', '/api/v1/search?q=Back')).includes(item.key))
+  assert.equal((await call('GET', '/api/v1/admin/archived-projects?query=Shelved')).body.items.length, 0)
+  // R8: a global admin can delete an archived project without restoring it
+  await call('POST', '/api/v1/projects/ARC/archive')
+  const del = await call('DELETE', '/api/v1/projects/ARC')
+  assert.equal(del.status, 202, JSON.stringify(del.body))
+})
+
+test('[0102.R10] a system administrator’s workflow change still reaches an archived project, moving its items out of a removed status', { skip }, async () => {
+  await call('POST', '/api/v1/projects', { name: 'Shelved flow', key: 'ARF', template: 'kanban' })
+  const p = await flow('ARF', [])
+  const wf = p.workflows[0].workflowId
+  const doing = p.statuses.find((x: any) => x.name === 'In progress')
+  const item = (await call('POST', '/api/v1/projects/ARF/issues', { title: 'Half done', statusId: doing.id })).body
+  await call('POST', '/api/v1/projects/ARF/archive')
+  const cur = (await call('GET', `/api/v1/workflows/${wf}`)).body
+  const [todo, mid, done] = cur.statuses
+  const r = await call('POST', `/api/v1/admin/workflows/${wf}/publish`, { statuses: [todo, done], transitions: [], statusMap: { [mid.id]: todo.id } })
+  assert.equal(r.status, 200, JSON.stringify(r.body))
+  const { runJobs } = await import('../src/jobs.ts'); await runJobs()
+  const now = (await call('GET', `/api/v1/issues/${item.key}`)).body
+  assert.equal(now.statusId, (await call('GET', '/api/v1/projects/ARF')).body.statuses.find((x: any) => x.name === 'To do').id)
 })
 
 test('scrum boards: each has its own sprints, one active at a time; a sprint holds work from every project its board covers; its backlog is its filter’s unfinished work', { skip }, async () => {
@@ -3045,7 +3139,8 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     'GET /me': ['any', '/me'], 'GET /users': ['any', '/users'], 'GET /users/search': ['any', '/users/search'],
     'GET /projects': ['any', '/projects'], 'POST /projects': ['any', '/projects', { name: 'M', key: 'MTXNEW', template: 'kanban' }],
     'GET /projects/search': ['any', '/projects/search'],
-    'POST /projects/{key}/archive': ['padmin', `/projects/${K}/archive`], 'POST /projects/{key}/restore': ['padmin', `/projects/${K}/restore`],
+    'POST /projects/{key}/archive': ['gadmin', `/projects/${K}/archive`], 'POST /projects/{key}/restore': ['gadmin', `/projects/${K}/restore`],   // 0102.R1
+    'GET /admin/archived-projects': ['gadmin', '/admin/archived-projects'],   // 0102.R7
     'GET /projects/{key}': ['read', `/projects/${K}`], 'PATCH /projects/{key}': ['padmin', `/projects/${K}`, { name: 'x' }],
     'DELETE /projects/{key}': ['gadmin', `/projects/${K}`],
     'PUT /projects/{key}/star': ['viewer', `/projects/${K}/star`], 'DELETE /projects/{key}/star': ['viewer', `/projects/${K}/star`],

@@ -1095,3 +1095,36 @@ test('[0101.R7][0101.R9] sprints on a board across two projects: someone who can
   await o.waitForSelector(`.sprint-name:has-text("${made.name}")`)
   assert.deepEqual([...m.problems, ...o.problems], [])
 })
+
+test('[0102.R4][0102.R5][0102.R7] a global admin archives a project from its settings; a member then finds it read-only and gone from lists; it is restored from Administration', { skip, timeout: 90_000 }, async () => {
+  await owner('POST', '/projects', { name: 'Old project', key: 'ARJ', template: 'kanban' })
+  await owner('POST', '/projects/ARJ/members', { userIds: [await idOf('maya@e2e.test')], role: 'member' })
+  const item = (await owner('POST', '/projects/ARJ/issues', { title: 'Finished long ago' })).body
+
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url('/project/ARJ/settings'))
+  await o.click('button:has-text("Archive project")')
+  await o.click('.modal button:has-text("Archive project")')
+  await o.waitForURL(/\/projects$/)
+  assert.ok((await owner('GET', '/projects/ARJ')).body.archivedAt)
+
+  // R5 + R4: the member sees only that it is archived; its item opens from a link, read-only
+  const m = await signIn('maya@e2e.test')
+  await m.goto(url('/project/ARJ/board'))
+  await m.waitForSelector('text=ARJ is archived')
+  assert.equal(await m.locator('button:has-text("Restore project")').count(), 0)
+  await m.goto(url(`/i/${item.key}`))
+  await m.waitForSelector('text=This work item is in an archived project. It can’t be changed.')
+  assert.equal(await m.locator('[aria-label="Add a comment"]').count(), 0)
+
+  // R7: Administration › Archived projects lists it; restoring brings it back
+  await o.goto(url('/admin/archived'))
+  await o.waitForSelector('.paged-items >> text=Old project')
+  await o.click('.paged-items button:has-text("Restore")')
+  await o.click('.modal button:has-text("Restore project")')
+  await o.waitForSelector('text=Old project restored')
+  assert.equal((await owner('GET', '/projects/ARJ')).body.archivedAt, null)
+  await m.goto(url('/project/ARJ/board'))
+  await m.waitForSelector('text=Finished long ago')
+  assert.deepEqual([...o.problems, ...m.problems], [])
+})
