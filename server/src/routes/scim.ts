@@ -1,7 +1,7 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { timingSafeEqual } from 'node:crypto'
 import { z } from 'zod'
-import { db } from '../db.ts'
+import { db, tx } from '../db.ts'
 import { HttpError } from '../auth.ts'
 import { audit, changes } from '../audit.ts'
 
@@ -147,6 +147,8 @@ const plugin: FastifyPluginAsyncZod = async app => {
       'select u.id, u.email from group_members gm join users u on u.id = gm.user_id where gm.group_id = $1 order by u.email', [g.id])).map(m => ({ value: m.id, display: m.email })) } : {}),
   })
   const known = async (ids: string[]) => (await db.query<{ id: string }>('select id from users where id = any($1::uuid[])', [ids.filter(x => /^[0-9a-f-]{36}$/i.test(x))])).map(r => r.id)
+  /** A name already used (RFC 7644: 409 for uniqueness): Entra then matches the group it has by name. */
+  const taken = () => new HttpError(409, 'A group with that name already exists')
   const logGroup = (ip: string, action: string, g: { id: string; displayName: string }, after?: unknown) =>
     audit(db, { system: 'SCIM', ip }, { action, type: 'group', id: g.id, name: g.displayName, workspaceId: null, after })
   const groupBody = z.object({ displayName: z.string().min(1).max(256), externalId: z.string().optional(), members: z.array(z.object({ value: z.string() })).optional() }).passthrough()
@@ -159,7 +161,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     const count = Math.min(200, Math.max(0, Number(req.query.count ?? 100)))
     const f = /^displayName eq "([^"]+)"$/i.exec(req.query.filter ?? '')
     const rows = await db.query<any>(
-      `select *, count(*) over ()::int as total from groups where system_role is null and ($1::text is null or display_name = $1) order by created_at limit $2 offset $3`,
+      `select *, count(*) over ()::int as total from groups where source = 'directory' and ($1::text is null or display_name = $1) order by created_at limit $2 offset $3`,
       [f?.[1] ?? null, count, start - 1])
     const members = !/members/i.test(req.query.excludedAttributes ?? '')
     return { schemas: ['urn:ietf:params:scim:api:messages:2.0:ListResponse'], totalResults: rows[0]?.total ?? 0, startIndex: start, itemsPerPage: rows.length,
@@ -167,14 +169,16 @@ const plugin: FastifyPluginAsyncZod = async app => {
   })
 
   app.get('/Groups/:id', { schema: { tags: TAG, summary: 'Get a group with its members', security: sec, params: idP } }, async req => {
-    const [g] = await db.query<any>('select * from groups where id = $1 and system_role is null', [req.params.id])
+    const [g] = await db.query<any>(`select * from groups where id = $1 and source = 'directory'`, [req.params.id])
     if (!g) throw new HttpError(404, 'Not found')
     return groupOut(g)
   })
 
   app.post('/Groups', { schema: { tags: TAG, summary: 'Provision a group', security: sec, body: groupBody } }, async (req, reply) => {
     const b = req.body
-    const [g] = await db.query<any>('insert into groups (display_name, external_id) values ($1, $2) returning *', [b.displayName, b.externalId ?? null])
+    // a directory group, even without the directory's id; a name already used (any group, any case) is refused, as SCIM's uniqueness
+    const [g] = await db.query<any>(`insert into groups (display_name, external_id, source) values ($1, $2, 'directory') returning *`, [b.displayName, b.externalId ?? null])
+      .catch(e => { if ((e as { code?: string }).code === '23505') throw taken(); throw e })
     const ids = await known((b.members ?? []).map(m => m.value))
     for (const u of ids) await db.query('insert into group_members (group_id, user_id) values ($1, $2) on conflict do nothing', [g.id, u])
     await logGroup(req.ip, 'group.provisioned', g, { members: ids.length })
@@ -187,7 +191,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     tags: TAG, summary: 'Change a group: add or remove members, rename', security: sec, params: idP,
     body: z.object({ Operations: z.array(z.object({ op: z.string(), path: z.string().optional(), value: z.unknown().optional() })) }),
   } }, async (req, reply) => {
-    const [g] = await db.query<any>('select * from groups where id = $1 and system_role is null', [req.params.id])
+    const [g] = await db.query<any>(`select * from groups where id = $1 and source = 'directory'`, [req.params.id])   // the directory changes only its own groups
     if (!g) throw new HttpError(404, 'Not found')
     let added = 0, removed = 0
     for (const o of req.body.Operations) {
@@ -204,7 +208,11 @@ const plugin: FastifyPluginAsyncZod = async app => {
         for (const u of ids) await db.query('insert into group_members (group_id, user_id) values ($1, $2) on conflict do nothing', [g.id, u])
       } else if (op === 'replace' && (/^displayName$/i.test(path) || (!path && (o.value as any)?.displayName))) {
         const name = String(path ? o.value : (o.value as any).displayName)
-        await db.query('update groups set display_name = $2 where id = $1', [g.id, name]); g.displayName = name
+        if (name !== g.displayName) {
+          await db.query('update groups set display_name = $2 where id = $1', [g.id, name]).catch(e => { if ((e as { code?: string }).code === '23505') throw taken(); throw e })
+          await logGroup(req.ip, 'group.renamed', { id: g.id, displayName: name }, { before: g.displayName })
+          g.displayName = name
+        }
       } else if (op === 'replace' && /^externalId$/i.test(path)) {
         await db.query('update groups set external_id = $2 where id = $1', [g.id, String(o.value)])
       }
@@ -213,9 +221,20 @@ const plugin: FastifyPluginAsyncZod = async app => {
     reply.code(204).send()
   })
 
-  app.delete('/Groups/:id', { schema: { tags: TAG, summary: 'Delete a group: everyone loses the roles it gave them', security: sec, params: idP } }, async (req, reply) => {
-    const [g] = await db.query<any>('delete from groups where id = $1 and system_role is null returning *', [req.params.id])
-    if (g) await logGroup(req.ip, 'group.deleted', g)
+  // The directory is the source of its groups (as in Jira): deleting one goes through even when a project loses its last
+  // admin by it; the audit says which projects it gave roles in and which were left without an admin, to put right
+  app.delete('/Groups/:id', { schema: { tags: TAG, summary: 'Delete a directory group: everyone loses the roles it gave them', security: sec, params: idP } }, async (req, reply) => {
+    await tx(async d => {
+      const [g] = await d.query<any>(`select * from groups where id = $1 and source = 'directory' for update`, [req.params.id])
+      if (!g) throw new HttpError(404, 'Not found')
+      const roles = await d.query<{ key: string; role: string }>('select p.key, r.role from project_group_roles r join projects p on p.id = r.project_id where r.group_id = $1 order by p.key', [g.id])
+      await d.query('delete from groups where id = $1', [g.id])
+      const orphaned = roles.length ? (await d.query<{ key: string }>(
+        `select p.key from projects p where p.key = any($1) and not exists (select 1 from project_access a join users u on u.id = a.user_id where a.project_id = p.id and a.role = 'admin' and u.active) order by p.key`,
+        [roles.map(r => r.key)])).map(r => r.key) : []
+      await audit(d, { system: 'SCIM', ip: req.ip }, { action: 'group.deleted', type: 'group', id: g.id, name: g.displayName, workspaceId: null,
+        before: { roles: roles.map(r => `${r.key}: ${r.role}`) }, after: orphaned.length ? { projectsWithoutAdmin: orphaned } : undefined })
+    })
     reply.code(204).send()
   })
 }

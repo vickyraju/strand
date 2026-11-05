@@ -19,24 +19,24 @@ const uuid = z.string().uuid()
 const idP = z.object({ id: uuid })
 const name = z.string().trim().min(1).max(100)
 
-interface G { id: string; displayName: string; description: string; systemRole: string | null; externalId: string | null }
-const kindOf = (g: G) => (g.systemRole ? 'system' : g.externalId ? 'directory' : 'strand')
+interface G { id: string; displayName: string; description: string; systemRole: string | null; source: 'strand' | 'directory' | 'system' }
+const kindOf = (g: G) => g.source
 /** May this person manage the group (members, name, owners)? */
 async function canManage(d: Db, me: Me, g: G) {
-  if (g.externalId && !g.systemRole) return false                                    // the directory manages it
+  if (g.source === 'directory') return false                                         // the directory manages it (spec 0104 R7, a read-only directory in Jira)
   if (me.admin) return true
   if (g.systemRole) return false
   return (await d.query('select 1 from group_owners where group_id = $1 and user_id = $2', [g.id, me.id])).length > 0
 }
 async function groupFor(d: Db, me: Me, id: string, manage: boolean, lock = false) {
-  const [g] = await d.query<G>(`select id, display_name, description, system_role, external_id from groups where id = $1 ${lock ? 'for update' : ''}`, [id])
+  const [g] = await d.query<G>(`select id, display_name, description, system_role, source from groups where id = $1 ${lock ? 'for update' : ''}`, [id])
   if (!g) throw new HttpError(404, 'No such group')
   if (manage && !(await canManage(d, me, g)))
-    throw new HttpError(403, g.externalId && !g.systemRole ? 'This group comes from the directory (Entra): change it there'
+    throw new HttpError(403, g.source === 'directory' ? 'This group comes from the directory (Entra): change it there'
       : g.systemRole ? 'Only system administrators can change this group' : 'Only the group’s owners and system administrators can change it')
   return g
 }
-const ROW = `select g.id, g.display_name as name, g.description, g.system_role, (g.external_id is not null) as directory, g.created_at,
+const ROW = `select g.id, g.display_name as name, g.description, g.system_role, (g.source = 'directory') as directory, g.created_at,
   (select count(*)::int from group_members gm join users u on u.id = gm.user_id where gm.group_id = g.id and u.active) as members,
   coalesce((select jsonb_agg(jsonb_build_object('id', u.id, 'name', u.name) order by lower(u.name)) from group_owners o join users u on u.id = o.user_id where o.group_id = g.id), '[]') as owners,
   exists (select 1 from group_members gm where gm.group_id = g.id and gm.user_id = $1) as is_member,
@@ -115,7 +115,8 @@ const plugin: FastifyPluginAsyncZod = async app => {
     return tx(async d => {
       if ((await d.query('select 1 from groups where lower(display_name) = lower($1)', [req.body.name])).length)
         throw new HttpError(409, 'There is already a group with that name', { name: 'Already used' })
-      const [g] = await d.query<{ id: string }>('insert into groups (display_name, description, created_by) values ($1, $2, $3) returning id', [req.body.name, req.body.description, req.me.id])
+      const [g] = await d.query<{ id: string }>("insert into groups (display_name, description, created_by, source) values ($1, $2, $3, 'strand') returning id", [req.body.name, req.body.description, req.me.id])
+        .catch(e => { if ((e as { code?: string }).code === '23505') throw new HttpError(409, 'There is already a group with that name', { name: 'Already used' }); throw e })
       await d.query('insert into group_owners (group_id, user_id) values ($1, $2)', [g!.id, req.me.id])
       await d.query('insert into group_members (group_id, user_id) values ($1, $2)', [g!.id, req.me.id])
       await audit(d, req, { action: 'group.created', type: 'group', id: g!.id, name: req.body.name, after: req.body })

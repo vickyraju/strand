@@ -24,7 +24,7 @@ function eligible(rule: Rule) {
 /** …and who the action would still change (in users-access, in a chosen group, or active). */
 function stillApplies(rule: Rule) {
   return rule.action === 'remove-access' ? `exists (select 1 from group_members gm join groups g on g.id = gm.group_id where gm.user_id = u.id and g.system_role = 'default-users') and cardinality($4::uuid[]) >= 0`
-    : rule.action === 'remove-groups' ? `exists (select 1 from group_members gm where gm.user_id = u.id and gm.group_id = any($4::uuid[]))`
+    : rule.action === 'remove-groups' ? `exists (select 1 from group_members gm join groups g on g.id = gm.group_id where gm.user_id = u.id and gm.group_id = any($4::uuid[]) and g.source = 'strand')`
     : 'cardinality($4::uuid[]) >= 0'      // (deactivate: no group condition; $4 is still bound)
 }
 const people = (d: Db, ws: string, rule: Rule, days: number, extra: string) => d.query<Person>(
@@ -69,7 +69,7 @@ export async function runCleanup(ws: string, trigger: 'schedule' | 'manual', who
       if (rule.action === 'deactivate') await d.query('update users set active = false where id = $1', [p.userId])
       else if (rule.action === 'remove-access')
         await d.query(`delete from group_members where user_id = $1 and group_id = (select id from groups where system_role = 'default-users')`, [p.userId])
-      else await d.query(`delete from group_members gm using groups g where g.id = gm.group_id and gm.user_id = $1 and gm.group_id = any($2::uuid[]) and g.system_role is null`, [p.userId, rule.groupIds])
+      else await d.query(`delete from group_members gm using groups g where g.id = gm.group_id and gm.user_id = $1 and gm.group_id = any($2::uuid[]) and g.source = 'strand'`, [p.userId, rule.groupIds])   // never a directory group (spec 0104 R7)
       await audit(d, who, { workspaceId: ws, action: `license_cleanup.${rule.action === 'deactivate' ? 'deactivated' : 'removed_from_groups'}`, type: 'user', id: p.userId, name: p.email,
         before: { lastActiveAt: p.lastActiveAt }, after: { action: rule.action, inactiveDays: rule.inactiveDays } })
     }

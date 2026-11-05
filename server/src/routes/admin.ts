@@ -58,9 +58,9 @@ registerJob('users.bulk', async (payload, job) => {
 /** The group a bulk change names (not one the directory manages). */
 async function checkGroup(d: Db, groupId?: string) {
   if (!groupId) return null
-  const [g] = await d.query<{ id: string; displayName: string; systemRole: string | null; externalId: string | null }>('select id, display_name, system_role, external_id from groups where id = $1', [groupId])
+  const [g] = await d.query<{ id: string; displayName: string; systemRole: string | null; source: string }>('select id, display_name, system_role, source from groups where id = $1', [groupId])
   if (!g) throw new HttpError(400, 'No such group', { groupId: 'Unknown group' })
-  if (g.externalId && !g.systemRole) throw new HttpError(400, `${g.displayName} comes from the directory (Entra): change it there`)
+  if (g.source === 'directory') throw new HttpError(400, `${g.displayName} comes from the directory (Entra): change it there`)
   return g
 }
 
@@ -199,6 +199,12 @@ const plugin: FastifyPluginAsyncZod = async app => {
     const parsed = SETTINGS[key].schema.safeParse(req.body)
     if (!parsed.success) throw new HttpError(400, 'That setting is not valid',
       Object.fromEntries(parsed.error.issues.map(i => [i.path.join('.') || 'value', i.message])))
+    // License cleanup takes people out of groups made in Strand only: the directory decides who is in its groups (spec 0104 R7)
+    if (key === 'licenseCleanup') {
+      const ids = (parsed.data as { groupIds: string[] }).groupIds
+      const dir = ids.length ? await db.query<{ displayName: string }>(`select display_name from groups where id = any($1::uuid[]) and source = 'directory'`, [ids]) : []
+      if (dir.length) throw new HttpError(400, `${dir.map(g => g.displayName).join(', ')} ${dir.length === 1 ? 'comes' : 'come'} from the directory (Entra): only it changes who is in ${dir.length === 1 ? 'it' : 'them'}`, { groupIds: 'A directory group' })
+    }
     await tx(async d => {
       const before = await getSetting(req.me.workspaceId, key, d)
       await setSetting(d, req.me.workspaceId, key, parsed.data, req.me.id)

@@ -565,7 +565,7 @@
         }
       },
       "delete": {
-        "summary": "Delete a group: everyone loses the roles it gave them",
+        "summary": "Delete a directory group: everyone loses the roles it gave them",
         "tags": [
           "SCIM (Entra provisioning)"
         ],
