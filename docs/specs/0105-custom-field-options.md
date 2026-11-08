@@ -1,6 +1,6 @@
 # 0105 Custom fields: type fixed once made; options that rename, disable and delete as in Jira
 
-Status: In review
+Status: Ported (aws-jira `c3d25e8`, strand `1006a53`), approved by the PO on 8 Nov 2026; awaiting verification
 Parity rows: ISS-24
 
 ## Context and Jira reference
@@ -115,4 +115,4 @@ None. Each rule follows Jira's behaviour, except R8, which is how Strand's exist
 
 ## Changelog
 
-—
+- 8 Nov 2026, while building (within the approved rules): on `strand`, R8's migration test is in `server/test/fieldOptions.test.ts`, because `strand` keeps its migrations in `supabase/migrations`.
