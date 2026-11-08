@@ -1,6 +1,6 @@
 # 0104 Groups from the directory are read-only in Strand; unique group names
 
-Status: Approved (PO, 5 Nov 2026)
+Status: Ported (aws-jira `13ee4e8`, strand `0b811de`), approved by the PO on 5 Nov 2026; awaiting verification
 Parity rows: PRM-17, PRM-18
 
 ## Context and Jira reference
