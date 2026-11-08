@@ -4,7 +4,7 @@
 import { randomUUID } from 'node:crypto'
 import type { Db } from './db.ts'
 import { HttpError, type Me } from './auth.ts'
-import { ARCHIVED, accessTo } from './access.ts'
+import { ARCHIVED, accessTo, rolesWith } from './access.ts'
 import { jqlToSql, parseOr400 } from './jqlSql.ts'
 import { filterProjects } from './shared/jql.ts'
 import { searchWhere } from './routes/misc.ts'
@@ -72,15 +72,15 @@ export async function sprintManager(d: Db, me: Me, b: Pick<Board, 'jql' | 'works
   if (!named) {
     const [{ n }] = await d.query<{ n: number }>(
       `select count(*)::int as n from projects p where p.workspace_id = $1 and p.deleting_at is null
-          and not exists (select 1 from project_access a where a.project_id = p.id and a.user_id = $2 and a.role in ('member', 'admin'))`, [b.workspaceId, me.id]) as any
+          and not exists (select 1 from project_access a where a.project_id = p.id and a.user_id = $2 and a.role = any($3))`, [b.workspaceId, me.id, rolesWith('manageSprints')]) as any
     return n ? { ok: false, why: 'This board’s filter can include any project, so only someone who can change work in every project can manage its sprints' } : { ok: true }
   }
   const missing = await d.query<{ key: string; seen: boolean }>(
     `select p.key, exists (select 1 from project_access v where v.project_id = p.id and v.user_id = $3) as seen
        from projects p
       where p.workspace_id = $1 and p.deleting_at is null and (lower(p.key) = any($2::text[]) or lower(p.name) = any($2::text[]))
-        and not exists (select 1 from project_access a where a.project_id = p.id and a.user_id = $3 and a.role in ('member', 'admin'))
-      order by p.key`, [b.workspaceId, named, me.id])
+        and not exists (select 1 from project_access a where a.project_id = p.id and a.user_id = $3 and a.role = any($4))
+      order by p.key`, [b.workspaceId, named, me.id, rolesWith('manageSprints')])
   if (!missing.length) return { ok: true }
   const shown = missing.filter(m => m.seen).map(m => m.key), hidden = missing.length - shown.length
   const why = 'You can manage this board’s sprints only if you can change work in every project it covers'

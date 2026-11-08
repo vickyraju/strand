@@ -86,7 +86,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
   app.post('/projects/:key/boards', { schema: { tags: T, summary: 'Add a board to a project (project admins). Its type (Scrum or Kanban) can’t change later. Without columns, it gets one per project status; without quick filters, Jira’s two',
     params: keyP, body: z.object({ ...settings, type: z.enum(['kanban', 'scrum']) }).partial().required({ name: true, type: true }) } }, async (req, reply) => {
     const p = await projectByKey(db, req, req.params.key)
-    need(p.role, 'admin')
+    need(p.role, 'administer', p.key)
     return tx(async d => {
       const b = req.body
       const [proj] = await d.query<{ key: string }>('select key from projects where id = $1', [p.id])

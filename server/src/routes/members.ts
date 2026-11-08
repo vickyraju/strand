@@ -56,7 +56,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     params: keyP, body: z.object({ userIds: z.array(z.string().uuid()).min(1).max(100), role }),
   } }, async req => {
     const p = await projectByKey(db, req, req.params.key)
-    need(p.role, 'admin')
+    need(p.role, 'administer', p.key)
     const ids = [...new Set(req.body.userIds)]
     return tx(async d => {
       const ok = await d.query<{ id: string }>(
@@ -74,7 +74,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
 
   app.patch('/projects/:key/members/:userId', { schema: { tags: TAG, summary: 'Change someone\'s role (project admins only)', params: memberP, body: z.object({ role }) } }, async req => {
     const p = await projectByKey(db, req, req.params.key)
-    need(p.role, 'admin')
+    need(p.role, 'administer', p.key)
     return tx(async d => {
       await d.query('select id from projects where id = $1 for update', [p.id])
       const [cur] = await d.query<{ role: string }>('select role from project_members where project_id = $1 and user_id = $2', [p.id, req.params.userId])
@@ -120,7 +120,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     params: keyP, body: z.object({ groupId: z.string().uuid(), role }),
   } }, async req => {
     const p = await projectByKey(db, req, req.params.key)
-    need(p.role, 'admin')
+    need(p.role, 'administer', p.key)
     return tx(async d => {
       const name = await nameOf(d, req.body.groupId)
       if (!name) throw new HttpError(400, 'No such group', { groupId: 'No such group' })
@@ -133,7 +133,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
 
   app.patch('/projects/:key/groups/:groupId', { schema: { tags: TAG, summary: 'Change the role a group has in the project (project admins)', params: groupP, body: z.object({ role }) } }, async req => {
     const p = await projectByKey(db, req, req.params.key)
-    need(p.role, 'admin')
+    need(p.role, 'administer', p.key)
     return tx(async d => {
       await d.query('select id from projects where id = $1 for update', [p.id])
       const [cur] = await d.query<{ role: string }>('select role from project_group_roles where project_id = $1 and group_id = $2', [p.id, req.params.groupId])
@@ -147,7 +147,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
 
   app.delete('/projects/:key/groups/:groupId', { schema: { tags: TAG, summary: 'Take a group out of the project (project admins)', params: groupP } }, async (req, reply) => {
     const p = await projectByKey(db, req, req.params.key)
-    need(p.role, 'admin')
+    need(p.role, 'administer', p.key)
     await tx(async d => {
       await d.query('select id from projects where id = $1 for update', [p.id])
       const [cur] = await d.query<{ role: string }>('select role from project_group_roles where project_id = $1 and group_id = $2', [p.id, req.params.groupId])

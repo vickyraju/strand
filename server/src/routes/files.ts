@@ -5,7 +5,7 @@ import { PutObjectCommand, GetObjectCommand, DeleteObjectCommand, HeadObjectComm
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { db, pool } from '../db.ts'
 import { HttpError, type Me } from '../auth.ts'
-import { minFor, need, type ProjectRole, ARCHIVED, READS, accessTo } from '../access.ts'
+import { minFor, need, type ProjectRole, ARCHIVED, READS, accessTo, type Permission, roleOf } from '../access.ts'
 import { issueByKey } from './issues.ts'
 import { s3, filesBucket } from '../storage.ts'
 import { getSetting } from '../settings.ts'
@@ -64,7 +64,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     if (req.body.size > policy.maxSizeMb * 1024 * 1024)
       throw new HttpError(400, `Files can be at most ${policy.maxSizeMb} MB`, { size: `At most ${policy.maxSizeMb} MB` })
     const b = req.body
-    const i = await issueByKey(db, req, req.params.key)
+    const i = await issueByKey(db, req, req.params.key, false, 'createAttachments')
     const objectKey = `${req.me.workspaceId}/${i.id}/${randomUUID()}`
     const [a] = await db.query<any>(
       `insert into attachments (issue_id, name, size, type, object_key, added_by) values ($1, $2, $3, $4, $5, $6)
@@ -74,7 +74,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
   })
 
   /** An attachment by id, only if I can see its project (and, for changes, am a member of it). */
-  const owned = async (id: string, req: { me: Me; method: string }, min?: ProjectRole) => {
+  const owned = async (id: string, req: { me: Me; method: string }, min?: ProjectRole | Permission) => {
     const [a] = await db.query<{ objectKey: string; name: string; size: string; projectId: string; uploadedAt: string | null; addedBy: string | null }>(
       `select a.object_key, a.name, a.size, a.uploaded_at, a.added_by, i.project_id from attachments a join issues i on i.id = a.issue_id
         where a.id = $1 and i.workspace_id = $2`,
@@ -110,7 +110,9 @@ const plugin: FastifyPluginAsyncZod = async app => {
 
   // The row goes now; its file is queued (database trigger) and removed from storage by the sweeper, with retries
   app.delete('/attachments/:id', { schema: { tags: ['Attachments'], summary: 'Delete an attachment; its file is removed from storage shortly after', params: z.object({ id: z.string().uuid() }) } }, async (req, reply) => {
-    await owned(req.params.id, req)
+    const a = await owned(req.params.id, req, 'browse')
+    // Jira: Delete own attachments, or Delete all attachments for anyone's (spec 0201's table decides who holds which)
+    need((await roleOf(db, req.me, a.projectId)) ?? 'viewer', a.addedBy === req.me.id ? 'deleteOwnAttachments' : 'deleteAllAttachments')
     await db.query('delete from attachments where id = $1', [req.params.id])
     reply.code(204).send()
   })

@@ -11,3 +11,12 @@ test('viewers read only, members work, admins also manage; a local workspace has
 test('global admin: from the server when connected; everyone in a workspace kept in this browser', () => {
   assert.deepEqual([isGlobalAdmin({ isAdmin: true }), isGlobalAdmin({ isAdmin: false }), isGlobalAdmin({})], [true, false, true])
 })
+
+test('[0201.R4] the screens ask the same table as the server; a local workspace may do everything', async () => {
+  const { can } = await import('./access.ts')
+  const { PERMISSIONS, holds } = await import('../../server/src/shared/permissions.ts')
+  for (const k of Object.keys(PERMISSIONS) as (keyof typeof PERMISSIONS)[]) {
+    for (const role of ['viewer', 'member', 'admin'] as const) assert.equal(can({ role }, k), holds(role, k), `${role} ${k}`)
+    assert.equal(can({}, k), true)
+  }
+})

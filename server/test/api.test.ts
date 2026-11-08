@@ -2717,6 +2717,21 @@ test('[0105.R10] custom fields: values must fit the field (number, option, date,
   assert.equal(note in (await call('GET', `/api/v1/issues/${i.body.key}`)).body.custom, false)
 })
 
+test('[0201.R2][0201.R3] permissions come from one table: a refusal names the Jira permission and the project; who may do what is unchanged', { skip }, async () => {
+  await call('POST', '/api/v1/projects', { name: 'Permitted', key: 'PRM', template: 'kanban' })
+  await join('PRM', 'prm.viewer@x.com', 'viewer'); await join('PRM', 'prm.member@x.com', 'member')
+  const item = (await call('POST', '/api/v1/projects/PRM/issues', { title: 'Guarded' })).body
+  const edit = await call('PATCH', `/api/v1/issues/${item.key}`, { title: 'x' }, 'prm.viewer@x.com')
+  assert.deepEqual([edit.status, edit.body.error], [403, 'You need the Edit issues permission in PRM'])
+  const settings = await call('PATCH', '/api/v1/projects/PRM', { name: 'x' }, 'prm.member@x.com')
+  assert.deepEqual([settings.status, settings.body.error], [403, 'You need the Administer projects permission in PRM'])
+  // unchanged until 0202-0207: viewers comment, members delete (0202 makes it admins), viewers are assignable (0207)
+  assert.equal((await call('POST', `/api/v1/issues/${item.key}/comments`, { body: 'hi' }, 'prm.viewer@x.com')).status, 201)
+  const viewerId = (await call('GET', '/api/v1/me', undefined, 'prm.viewer@x.com')).body.id
+  assert.equal((await call('PATCH', `/api/v1/issues/${item.key}`, { assigneeId: viewerId })).status, 200)
+  assert.equal((await call('DELETE', `/api/v1/issues/${item.key}`, undefined, 'prm.member@x.com')).status, 204)
+})
+
 test('[0105.R1][0105.R2][0105.R3][0105.R4][0105.R5][0105.R6][0105.R9] custom fields as in Jira: the type is fixed; options have ids, and renaming, disabling and deleting one carry through to items', { skip }, async () => {
   await call('POST', '/api/v1/projects', { name: 'Options', key: 'OPT', template: 'kanban' })
   const f = (await call('POST', '/api/v1/projects/OPT/fields', { name: 'Team', kind: 'select', options: [{ name: 'Web' }, { name: 'Mobile' }, { name: 'Data' }], position: 0 })).body
