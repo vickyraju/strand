@@ -47,7 +47,7 @@ The roadmap, in order. Bugs come first, then the permission model, then the data
 | [0102](0102-archived-projects-read-only.md) | Archived projects are read-only; only global admins archive | 1 | Ported |
 | [0103](0103-active-workflows.md) | Active workflows keep their name and statuses with work; only global admins switch a project's scheme | 1 | Ported |
 | [0104](0104-directory-groups.md) | Groups from the directory are read-only in Strand; unique group names | 1 | Ported |
-| 0105 | Custom fields: type fixed, options kept by id | 1 | Planned |
+| [0105](0105-custom-field-options.md) | Custom fields: type fixed once made; options that rename, disable and delete as in Jira | 1 | In review |
 | 0201 | One table of Jira's default permissions for the three roles | 2 | Planned |
 | 0202 | Deleting items: admins only, children too; Undo kept with a retention period | 2 | Planned |
 | 0203 | Manage sprints in every project of the board | 2 | Planned |
