@@ -1,6 +1,6 @@
 # 0203 The rest of Jira's default permission scheme: sprints, attachments, comments, sharing, reporter, watchers, assignees
 
-Status: Approved (PO, 9 Nov 2026: merge 0203–0207 into one spec and build it)
+Status: Ported (aws-jira `7a00960`, strand `e57e756`), approved by the PO on 9 Nov 2026 (0203–0207 merged); awaiting verification
 Parity rows: PRM-03, PRM-04, PRM-05, PRM-06, PRM-07, PRM-08, PRM-09
 
 ## Context and Jira reference
@@ -119,4 +119,5 @@ None.
 
 ## Changelog
 
+- 9 Nov 2026, while building (within the approved rules): an admin's edit or delete of someone else's comment is also allowed in the browser's copy, so it reaches the server.
 - 9 Nov 2026: specs 0203–0207 merged into this one at the product owner's request.
