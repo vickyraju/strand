@@ -1,6 +1,6 @@
 # 0202 Deleting work items: project admins only, sub-items go too, epics' items stay; Undo kept for a set time
 
-Status: Approved (PO, 9 Nov 2026, with the Deleted work items list)
+Status: Ported (aws-jira `9f82bba`, strand `6707c7a`), approved by the PO on 9 Nov 2026 with the Deleted work items list; awaiting verification
 Parity rows: PRM-02
 
 ## Context and Jira reference
