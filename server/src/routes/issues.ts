@@ -651,6 +651,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
       args.push('%' + req.query.query.trim().replace(/[\\%_]/g, '\\$&') + '%')
       after += ` and (i.title ilike $${args.length} or p.key || '-' || i.number ilike $${args.length})`
     }
+    args.push(req.me.id); const me = args.length                     // strand: only items my security level lets me see
     args.push(req.query.limit + 1, retentionDays)
     // the items deleted themselves, not the sub-items that went with them (those are counted)
     const rows = await db.query<any>(
@@ -660,6 +661,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
          from issues i join projects p on p.id = i.project_id left join users u on u.id = i.deleted_by
         where i.project_id = $1 and i.deleted_at is not null ${after}
           and not exists (select 1 from issues par where par.id = i.parent_id and par.deleted_at = i.deleted_at)
+          and ${levelOk(req.me, me)}
         order by i.deleted_at desc, i.id desc limit $${args.length - 1}`, args)
     const more = rows.length > req.query.limit, items = more ? rows.slice(0, req.query.limit) : rows
     const last = items.at(-1)
