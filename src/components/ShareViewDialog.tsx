@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Trash2 } from 'lucide-react'
+import { isGlobalAdmin } from '../data/access'
 import { useStore, type SavedView, type ViewShare } from '../data/store'
 import { api, apiEnabled } from '../api/client'
 import { UserSelect } from './UserPicker'
@@ -11,7 +12,12 @@ export default function ShareViewDialog({ view, onClose, onSave }: { view: Saved
   const [shared, setShared] = useState(view.shared)
   const [share, setShare] = useState<ViewShare[]>(view.share ?? [])
   const [groups, setGroups] = useState<{ id: string; name: string }[]>([])
-  useEffect(() => { if (apiEnabled) api<{ id: string; name: string }[]>('GET', '/api/groups/search').then(setGroups, () => {}) }, [])
+  // As in Jira, a view is shared only with groups I'm in (spec 0203 R5); a global admin, with any
+  useEffect(() => {
+    if (!apiEnabled) return
+    if (isGlobalAdmin(state)) api<{ id: string; name: string }[]>('GET', '/api/groups/search').then(setGroups, () => {})
+    else api<{ items: { id: string; name: string; isMember: boolean }[] }>('GET', '/api/groups?mine=1&limit=200').then(r => setGroups(r.items.filter(g => g.isMember)), () => {})
+  }, [])   // eslint-disable-line react-hooks/exhaustive-deps
   const nameOf = (e: ViewShare) => e.kind === 'project' ? state.projects.find(p => p.id === e.id)?.name
     : e.kind === 'group' ? groups.find(g => g.id === e.id)?.name : state.users.find(u => u.id === e.id)?.name
   const add = (kind: ViewShare['kind'], id: string | undefined) => { if (id && !share.some(e => e.kind === kind && e.id === id)) setShare([...share, { kind, id, can: 'view' }]) }
@@ -40,7 +46,7 @@ export default function ShareViewDialog({ view, onClose, onSave }: { view: Saved
         <div className="form-row" style={{ marginTop: 10 }}>
           <select className="input" aria-label="Share with a project" value="" onChange={e => add('project', e.target.value)}>
             <option value="">+ A project’s people…</option>
-            {state.projects.filter(p => !p.archivedAt).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            {state.projects.filter(p => !p.archivedAt && p.role).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
           {groups.length > 0 && (
             <select className="input" aria-label="Share with a group" value="" onChange={e => add('group', e.target.value)}>

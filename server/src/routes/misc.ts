@@ -308,12 +308,20 @@ const plugin: FastifyPluginAsyncZod = async app => {
     return v
   }
   /** Share entries must name this workspace's projects, groups and people. */
-  const checkShare = async (d: Db, ws: string, entries: z.infer<typeof share>) => {
+  /** As in Jira, a view is shared only with groups I belong to and projects I can see (people: anyone in the workspace);
+   *  global admins may share with any. Entries the view already has stay, so an owner who left a group can still save it
+   *  (spec 0203 R5). */
+  const checkShare = async (d: Db, me: Me, entries: z.infer<typeof share>, already: z.infer<typeof share> = []) => {
+    const ws = me.workspaceId
     for (const e of entries) {
       const sql = e.kind === 'project' ? 'select 1 from projects where id = $1 and workspace_id = $2'
         : e.kind === 'group' ? 'select 1 from groups where id = $1 and $2::uuid is not null'
         : 'select 1 from memberships where user_id = $1 and workspace_id = $2'
       if (!(await d.query(sql, [e.id, ws])).length) throw new HttpError(400, `No such ${e.kind} to share with`, { share: `Unknown ${e.kind}` })
+      if (me.admin || e.kind === 'user' || already.some(x => x.kind === e.kind && x.id === e.id)) continue
+      const mine = e.kind === 'group' ? await d.query('select 1 from group_members where group_id = $1 and user_id = $2', [e.id, me.id])
+        : await d.query('select 1 from project_access where project_id = $1 and user_id = $2', [e.id, me.id])
+      if (!mine.length) throw new HttpError(400, e.kind === 'group' ? 'You can share a view only with groups you are in' : 'You can share a view only with projects you can see', { share: `Not your ${e.kind}` })
     }
   }
   app.get('/views', { schema: { tags: ['Saved views'], summary: 'Saved views I can see: mine, and those shared with me (the workspace, my projects, my groups, me)' } }, async req =>
@@ -323,7 +331,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
   }) } }, async (req, reply) => {
     const b = req.body
     return tx(async d => {
-      await checkShare(d, req.me.workspaceId, b.share)
+      await checkShare(d, req.me, b.share)
       const [row] = await d.query<{ id: string }>('insert into saved_views (id, workspace_id, owner_id, name, shared, share, filters) values (coalesce($7::uuid, uuid_v7()), $1, $2, $3, $4, $5, $6) returning id',
         [req.me.workspaceId, req.me.id, b.name, b.shared, JSON.stringify(b.share), JSON.stringify(b.filters), b.id ?? null])
       reply.code(201)
@@ -338,7 +346,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
       if (!v.canEdit) throw new HttpError(403, 'Only its owner, or someone it is shared with to edit, can change this view')
       const governs = v.ownerId === req.me.id || req.me.admin
       if ((b.shared !== undefined || b.share !== undefined || b.ownerId !== undefined) && !governs) throw new HttpError(403, 'Only its owner or a workspace admin changes who can see it')
-      if (b.share) await checkShare(d, req.me.workspaceId, b.share)
+      if (b.share) await checkShare(d, req.me, b.share, (v as { share?: z.infer<typeof share> }).share ?? [])
       if (b.ownerId && !(await d.query('select 1 from memberships m join users u on u.id = m.user_id where m.user_id = $1 and m.workspace_id = $2 and u.active', [b.ownerId, req.me.workspaceId])).length)
         throw new HttpError(400, 'The new owner must be an active person in the workspace', { ownerId: 'Not an active person here' })
       await d.query(

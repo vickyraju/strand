@@ -2,7 +2,7 @@ import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
 import { db, tx, pick, type Db } from '../db.ts'
 import { HttpError, type Me } from '../auth.ts'
-import { canJoinWork, commentShown, minFor, need, roleOf, visible, visibleAs, type ProjectRole, ARCHIVED, READS, accessTo, notArchived, type Permission } from '../access.ts'
+import { canJoinWork, commentShown, minFor, need, roleOf, visible, visibleAs, type ProjectRole, ARCHIVED, READS, accessTo, notArchived, type Permission, canSee } from '../access.ts'
 import { publish } from '../events.ts'
 import { audit } from '../audit.ts'
 import { getSetting } from '../settings.ts'
@@ -41,7 +41,7 @@ export const TEST_TYPES = ['test', 'precondition', 'test_set', 'test_plan', 'tes
 
 const patchBody = z.object({
   title: z.string().min(1).max(500), description: z.string(), type, priority, statusId: uuid,
-  assigneeId: uuid.nullable(), labels: z.array(z.string().max(50)).max(50), estimate: z.number().nonnegative().nullable(),
+  assigneeId: uuid.nullable(), reporterId: uuid.describe('Modify reporter: project admins (spec 0203)'), labels: z.array(z.string().max(50)).max(50), estimate: z.number().nonnegative().nullable(),
   timeEstimate: z.number().int().nonnegative().nullable(), timeRemaining: z.number().int().nonnegative().nullable().describe('Remaining estimate, minutes (starts at the original estimate)'),
   dueDate: date.nullable(), startDate: date.nullable(),
   sprintId: uuid.nullable(), releaseId: uuid.nullable().describe('Fix version'), parentId: uuid.nullable(),
@@ -197,6 +197,11 @@ async function applyPatch(d: Db, me: Me, cur: any, patch: z.infer<typeof patchBo
   if (o.ifMatch !== null && o.ifMatch !== cur.version) throw new HttpError(409, `Edited elsewhere (current version ${cur.version})`)
   const [lead] = await d.query<{ leadId: string | null }>('select lead_id from projects where id = $1', [cur.projectId])
   const override = o.override && (await roleOf(d, me, cur.projectId)) === 'admin'
+  // Modify reporter (spec 0203 R6): project admins, to someone who can see the project
+  if (patch.reporterId !== undefined && patch.reporterId !== cur.reporterId) {
+    need((await roleOf(d, me, cur.projectId)) ?? 'viewer', 'modifyReporter', cur.key.split('-')[0])
+    if (!(await canSee(d, cur.projectId, patch.reporterId))) throw new HttpError(400, 'The reporter must be someone who can see this project', { reporterId: 'Can’t see the project' })
+  }
   if (patch.assigneeId && patch.assigneeId !== cur.assigneeId && !(await canJoinWork(d, cur.projectId, patch.assigneeId)))
     throw new HttpError(400, 'The assignee must be a member of this project')
   // A status change goes through a transition: its Restrict rules decide whether this person may use it, its Validate
@@ -441,7 +446,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     return { items, next: more && last ? Buffer.from(`${last.rank}|${last.id}`).toString('base64url') : null }
   })
 
-  const createBody = patchBody.required({ title: true }).extend({
+  const createBody = patchBody.omit({ reporterId: true }).required({ title: true }).extend({   // the creator is the reporter
     labels: z.array(z.string()).default([]),
     id: uuid.optional().describe('Client-chosen id: lets the app keep its local id, and makes a retried create a conflict instead of a duplicate'),
   })
@@ -698,7 +703,22 @@ const plugin: FastifyPluginAsyncZod = async app => {
     const i = await issueByKey(db, req, req.params.key, false, 'viewer')
     await db.query('delete from issue_watchers where issue_id = $1 and user_id = $2', [i.id, req.me.id])
     reply.code(204).send()
+  })  // Manage watchers (spec 0203 R8): project admins add and remove other people, who must be able to see the item's project
+  const watcherP = z.object({ key: z.string(), userId: uuid })
+  app.put('/issues/:key/watchers/:userId', { schema: { tags: ['Links & watchers'], summary: 'Add someone as a watcher (Manage watchers: project admins)', params: watcherP } }, async (req, reply) => {
+    const i = await issueByKey(db, req, req.params.key, false, req.params.userId === req.me.id ? 'browse' : 'manageWatchers')
+    if (!(await canSee(db, i.projectId, req.params.userId))) throw new HttpError(400, 'A watcher must be someone who can see this project', { userId: 'Can’t see the project' })
+    await db.query('insert into issue_watchers (issue_id, user_id) values ($1, $2) on conflict do nothing', [i.id, req.params.userId])
+    await publish(db, i.projectId, { type: 'issue.updated', id: i.id, key: i.key })
+    reply.code(204).send()
   })
+  app.delete('/issues/:key/watchers/:userId', { schema: { tags: ['Links & watchers'], summary: 'Remove someone as a watcher (Manage watchers: project admins)', params: watcherP } }, async (req, reply) => {
+    const i = await issueByKey(db, req, req.params.key, false, req.params.userId === req.me.id ? 'browse' : 'manageWatchers')
+    await db.query('delete from issue_watchers where issue_id = $1 and user_id = $2', [i.id, req.params.userId])
+    await publish(db, i.projectId, { type: 'issue.updated', id: i.id, key: i.key })
+    reply.code(204).send()
+  })
+
 
   // ── Edit presence (soft lock, Jira/monday.com style: others can still edit, they just see who is here) ──
   app.post('/issues/:key/presence', { schema: {
@@ -726,6 +746,16 @@ const plugin: FastifyPluginAsyncZod = async app => {
     z.object({ kind: z.literal('role'), role: z.enum(['admin', 'member', 'viewer']) }), z.object({ kind: z.literal('group'), id: uuid }),
   ]).nullable().describe('Who can read it (Jira\'s comment visibility): a project role or a group; null or left out: everyone who sees the item')
   const commentCreate = body.extend({ id: uuid.optional().describe('Client-chosen id'), visibility: visibility.optional() })
+  /** As in Jira, a comment is limited only to a group I belong to or a role I hold (Strand's roles stack: an admin also
+   *  holds member); global admins may choose any (spec 0203 R4). */
+  const checkVisibility = async (d: Db, me: Me, projectId: string, v: z.infer<typeof visibility> | undefined) => {
+    if (!v || me.admin) return
+    if (v.kind === 'group' && !(await d.query('select 1 from group_members where group_id = $1 and user_id = $2', [v.id, me.id])).length)
+      throw new HttpError(400, 'You can limit a comment only to a group you are in', { visibility: 'Not your group' })
+    const RANK = { viewer: 1, member: 2, admin: 3 } as const
+    if (v.kind === 'role' && RANK[(await roleOf(d, me, projectId)) ?? 'viewer'] < RANK[v.role])
+      throw new HttpError(400, 'You can limit a comment only to a role you hold', { visibility: 'Not your role' })
+  }
   /** Who of these people may read a comment with this visibility (the author always can). */
   const readers = async (d: Db, projectId: string, people: string[], v: z.infer<typeof visibility> | undefined) => {
     if (!v || !people.length) return people
@@ -742,6 +772,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     return tx(async d => {
       const i = await issueByKey(d, req, req.params.key, false, 'addComments')            // read-only people can comment (Strand's viewers)
       if (b.visibility?.kind === 'group' && !(await d.query('select 1 from groups where id = $1', [b.visibility.id])).length) throw new HttpError(400, 'No such group', { visibility: 'Unknown group' })
+      await checkVisibility(d, req.me, i.projectId, b.visibility)
       const [c] = await d.query('insert into comments (id, issue_id, author_id, body, visibility) values (coalesce($4::uuid, uuid_v7()), $1, $2, $3, $5) returning *',
         [i.id, req.me.id, b.body, b.id ?? null, b.visibility ? JSON.stringify(b.visibility) : null])
       // A mention tells that person; everyone already watching hears "commented" (not both); the commenter and the mentioned start watching.
@@ -755,28 +786,34 @@ const plugin: FastifyPluginAsyncZod = async app => {
     })
   })
   /** A comment in an archived project can't change (spec 0102). */
-  const commentWritable = async (id: string) => {
-    const [c] = await db.query<{ projectId: string }>('select i.project_id from comments c join issues i on i.id = c.issue_id where c.id = $1', [id])
-    if (c) await notArchived(db, c.projectId)
-  }
-  app.patch('/comments/:id', { schema: { tags: ['Comments & work logs'], summary: 'Edit your own comment', params: idP, body } }, async req => {
-    await commentWritable(req.params.id)
-    const args: unknown[] = [req.params.id, req.me.id, req.body.body]
-    const see = visible(req.me, 'i.project_id', args)
-    const [c] = await db.query(
-      `update comments set body = $3, edited_at = now() where id = $1 and author_id = $2
-         and exists (select 1 from issues i where i.id = comments.issue_id and ${see}) returning *`, args)
-    if (!c) throw new HttpError(404, 'Not found, or not yours')
+  /** A comment I may change: my own (Edit/Delete own comments), or anyone's with Edit/Delete all comments (project admins,
+   *  spec 0203); in an archived project, none (0102). Someone else's comment is in the audit log. */
+  const commentFor = async (d: Db, req: { me: Me; method: string; ip?: string }, id: string, own: Permission, all: Permission) => {
+    const [c] = await d.query<{ id: string; authorId: string; projectId: string; key: string }>(
+      `select c.id, c.author_id, i.project_id, p.key || '-' || i.number as key from comments c join issues i on i.id = c.issue_id join projects p on p.id = i.project_id
+        where c.id = $1 and i.workspace_id = $2 and i.deleted_at is null for update of c`, [id, req.me.workspaceId])
+    const a = c ? await accessTo(d, req.me, c.projectId) : null
+    // a comment I can't read doesn't exist, as far as I can tell
+    if (!c || !a || !(await d.query(`select 1 from comments c where c.id = $1 and ${commentShown(req.me, c.projectId, 2)}`, [c.id, req.me.id])).length) throw new HttpError(404, 'Comment not found')
+    if (a.archived) throw new HttpError(403, ARCHIVED)
+    need(a.role, c.authorId === req.me.id ? own : all, c.key.split('-')[0])
     return c
-  })
-  app.delete('/comments/:id', { schema: { tags: ['Comments & work logs'], summary: 'Delete your own comment', params: idP } }, async (req, reply) => {
-    await commentWritable(req.params.id)
-    const args: unknown[] = [req.params.id, req.me.id]
-    const see = visible(req.me, 'i.project_id', args)
-    const r = await db.query(`delete from comments where id = $1 and author_id = $2 and exists (select 1 from issues i where i.id = comments.issue_id and ${see}) returning id`, args)
-    if (!r.length) throw new HttpError(404, 'Not found, or not yours')
+  }
+  app.patch('/comments/:id', { schema: { tags: ['Comments & work logs'], summary: 'Edit a comment: your own, or anyone’s as a project admin (audited)', params: idP, body } }, async req => tx(async d => {
+    const c = await commentFor(d, req, req.params.id, 'editOwnComments', 'editAllComments')
+    const [row] = await d.query('update comments set body = $2, edited_at = now() where id = $1 returning *', [c.id, req.body.body])
+    if (c.authorId !== req.me.id) await audit(d, req, { action: 'comment.moderated', type: 'comment', id: c.id, name: c.key, project: { id: c.projectId, key: c.key.split('-')[0]! }, after: { edited: true } })
+    return row
+  }))
+  app.delete('/comments/:id', { schema: { tags: ['Comments & work logs'], summary: 'Delete a comment: your own, or anyone’s as a project admin (audited)', params: idP } }, async (req, reply) => {
+    await tx(async d => {
+      const c = await commentFor(d, req, req.params.id, 'deleteOwnComments', 'deleteAllComments')
+      await d.query('delete from comments where id = $1', [c.id])
+      if (c.authorId !== req.me.id) await audit(d, req, { action: 'comment.moderated', type: 'comment', id: c.id, name: c.key, project: { id: c.projectId, key: c.key.split('-')[0]! }, after: { deleted: true } })
+    })
     reply.code(204).send()
   })
+
 
   // ── Work logs (Jira's: people log, change and remove their own; project admins can change and remove anyone's; each
   // adjusts the remaining estimate as `adjustEstimate` says, automatically by default) ──
