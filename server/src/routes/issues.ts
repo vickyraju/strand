@@ -2,7 +2,7 @@ import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
 import { db, tx, pick, type Db } from '../db.ts'
 import { HttpError, type Me } from '../auth.ts'
-import { canJoinWork, commentShown, levelOk, minFor, need, roleOf, visible, visibleAs, type ProjectRole, ARCHIVED, READS, accessTo, notArchived } from '../access.ts'
+import { canJoinWork, commentShown, levelOk, minFor, need, roleOf, visible, visibleAs, type ProjectRole, ARCHIVED, READS, accessTo, notArchived, type Permission } from '../access.ts'
 import { publish } from '../events.ts'
 import { audit } from '../audit.ts'
 import { getSetting } from '../settings.ts'
@@ -57,7 +57,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /** "PAY-12" or the issue's uuid → the issue, or 404 when it does not exist or I cannot see its project (Jira calls this issueIdOrKey).
  *  `min` is the project role the request needs: by default reading needs any role and changing things needs member. */
-export async function issueByKey(d: Db, req: { me: Me; method: string }, ref: string, includeDeleted = false, min?: ProjectRole, o: { archivedOk?: boolean } = {}) {
+export async function issueByKey(d: Db, req: { me: Me; method: string }, ref: string, includeDeleted = false, min?: ProjectRole | Permission, o: { archivedOk?: boolean } = {}) {
   const live = includeDeleted ? '' : 'and i.deleted_at is null'
   const byId = UUID.test(ref)
   const m = byId ? null : /^([A-Za-z][A-Za-z0-9]*)-(\d+)$/.exec(ref)
@@ -72,7 +72,7 @@ export async function issueByKey(d: Db, req: { me: Me; method: string }, ref: st
   if (i.securityLevelId && !(await d.query(`select 1 from issues i where i.id = $1 and ${levelOk(req.me, 2)}`, [i.id, req.me.id])).length) throw new HttpError(404, 'Issue not found')
   // an archived project's items open by their key, read-only (spec 0102); opening one may still record the view
   if (a.archived && !READS.has(req.method) && !o.archivedOk) throw new HttpError(403, ARCHIVED)
-  need(a.role, min ?? minFor(req.method))
+  need(a.role, min ?? minFor(req.method), i.key.split('-')[0])
   return i
 }
 
@@ -317,6 +317,7 @@ async function defaultAssignee(d: Db, projectId: string, componentIds: string[] 
 /** A security level must be the project's, and (as in Jira) one I am in myself, judged with the item as it will be. */
 async function checkLevel(d: Db, me: Me, projectId: string, levelId: string | null | undefined, reporterId: string | null, assigneeId: string | null) {
   if (!levelId) return
+  need((await roleOf(d, me, projectId)) ?? 'viewer', 'setIssueSecurity')
   const [ok] = await d.query<{ ok: boolean }>(`select issue_visible($1, $2, $3, $4, $5, $6) as ok from security_levels where id = $1 and project_id = $4`,
     [levelId, reporterId, assigneeId, projectId, me.id, me.admin])
   if (!ok) throw new HttpError(400, 'No such security level in this project', { securityLevelId: 'Unknown level' })
@@ -578,7 +579,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     await checkBulk(req)
     return tx(async d => {
       const rows = []
-      for (const ref of [...new Set(req.body.issues)]) rows.push(await issueByKey(d, req, ref))
+      for (const ref of [...new Set(req.body.issues)]) rows.push(await issueByKey(d, req, ref, false, 'deleteIssues'))
       await d.query('update issues set deleted_at = now(), version = version + 1 where id = any($1::uuid[])', [rows.map(r => r.id)])
       for (const r of rows) await audit(d, req, { action: 'issue.deleted', type: 'issue', id: r.id, name: r.key, project: { id: r.projectId, key: r.key.split('-')[0]! }, after: { bulk: true } })
       for (const pid of new Set(rows.map(r => r.projectId))) await publish(d, pid, { type: 'issue.deleted' })
@@ -589,7 +590,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     await checkBulk(req)
     return tx(async d => {
       const rows = []
-      for (const ref of [...new Set(req.body.issues)]) rows.push(await issueByKey(d, req, ref, true))
+      for (const ref of [...new Set(req.body.issues)]) rows.push(await issueByKey(d, req, ref, true, 'deleteIssues'))   // restoring is undoing a delete
       await d.query('update issues set deleted_at = null, version = version + 1 where id = any($1::uuid[])', [rows.map(r => r.id)])
       for (const r of rows) await audit(d, req, { action: 'issue.restored', type: 'issue', id: r.id, name: r.key, project: { id: r.projectId, key: r.key.split('-')[0]! }, after: { bulk: true } })
       for (const pid of new Set(rows.map(r => r.projectId))) await publish(d, pid, { type: 'issue.created' })
@@ -600,7 +601,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
   // Soft delete + restore back the client's Undo
   app.delete('/issues/:key', { schema: { tags: TAG, summary: 'Soft-delete an issue (restorable)', params: keyP } }, async (req, reply) => {
     await tx(async d => {
-      const i = await issueByKey(d, req, req.params.key)
+      const i = await issueByKey(d, req, req.params.key, false, 'deleteIssues')
       await d.query('update issues set deleted_at = now(), version = version + 1 where id = $1', [i.id])
       await audit(d, req, { action: 'issue.deleted', type: 'issue', id: i.id, name: i.key, project: { id: i.projectId, key: i.key.split('-')[0]! } })
       await publish(d, i.projectId, { type: 'issue.deleted', id: i.id, key: i.key })
@@ -619,7 +620,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
 
   app.post('/issues/:key/restore', { schema: { tags: TAG, summary: 'Restore a soft-deleted issue (Undo)', params: keyP } }, async req => {
     return tx(async d => {
-      const i = await issueByKey(d, req, req.params.key, true)
+      const i = await issueByKey(d, req, req.params.key, true, 'deleteIssues')
       await d.query('update issues set deleted_at = null, version = version + 1 where id = $1', [i.id])
       await audit(d, req, { action: 'issue.restored', type: 'issue', id: i.id, name: i.key, project: { id: i.projectId, key: i.key.split('-')[0]! } })
       await publish(d, i.projectId, { type: 'issue.created', id: i.id })
@@ -632,7 +633,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
   const linkBody = z.object({ type: linkType, targetKey: z.string() })
   app.post('/issues/:key/links', { schema: { tags: ['Links & watchers'], summary: 'Link two issues: this one <type\'s outward words> the target (blocks, relates to, duplicates…)', params: keyP, body: linkBody } }, async (req, reply) => {
     const b = req.body
-    const [a, t] = await Promise.all([issueByKey(db, req, req.params.key), issueByKey(db, req, b.targetKey, false, 'viewer')])
+    const [a, t] = await Promise.all([issueByKey(db, req, req.params.key, false, 'linkIssues'), issueByKey(db, req, b.targetKey, false, 'browse')])
     if (a.id === t.id) throw new HttpError(400, 'Cannot link an item to itself')
     if (!(await db.query('select 1 from link_types where workspace_id = $1 and id = $2', [req.me.workspaceId, b.type])).length) throw new HttpError(400, 'No such link type', { type: 'Unknown link type' })
     if (b.type === 'tests' && (a.type !== 'test' || (TEST_TYPES as readonly string[]).includes(t.type)))
@@ -700,7 +701,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
   app.post('/issues/:key/comments', { schema: { tags: ['Comments & work logs'], summary: 'Add a comment (notifies watchers who may read it)', params: keyP, body: commentCreate } }, async req => {
     const b = req.body
     return tx(async d => {
-      const i = await issueByKey(d, req, req.params.key, false, 'viewer')                // read-only people can comment, as in Jira
+      const i = await issueByKey(d, req, req.params.key, false, 'addComments')            // read-only people can comment (Strand's viewers)
       if (b.visibility?.kind === 'group' && !(await d.query('select 1 from groups where id = $1', [b.visibility.id])).length) throw new HttpError(400, 'No such group', { visibility: 'Unknown group' })
       const [c] = await d.query('insert into comments (id, issue_id, author_id, body, visibility) values (coalesce($4::uuid, uuid_v7()), $1, $2, $3, $5) returning *',
         [i.id, req.me.id, b.body, b.id ?? null, b.visibility ? JSON.stringify(b.visibility) : null])
@@ -766,7 +767,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     const [w] = await d.query<any>(`select w.*, i.project_id, p.key as project_key from worklogs w join issues i on i.id = w.issue_id join projects p on p.id = i.project_id
                                      where w.id = $1 and ${see} for update of w`, args)
     if (!w) throw new HttpError(404, 'Work log not found')
-    if (w.userId !== req.me.id && (await roleOf(d, req.me, w.projectId)) !== 'admin') throw new HttpError(403, 'Only project admins can change other people’s work logs')
+    if (w.userId !== req.me.id) need((await roleOf(d, req.me, w.projectId)) ?? 'viewer', req.method === 'DELETE' ? 'deleteAllWorklogs' : 'editAllWorklogs', w.projectKey)
     return w
   }
   app.post('/issues/:key/worklogs', { schema: {
@@ -775,7 +776,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
   } }, async req => {
     const b = req.body
     return tx(async d => {
-      const i = await issueByKey(d, req, req.params.key)
+      const i = await issueByKey(d, req, req.params.key, false, 'workOnIssues')
       const [w] = await d.query('insert into worklogs (id, issue_id, user_id, minutes, date, note) values (coalesce($6::uuid, uuid_v7()), $1, $2, $3, $4, $5) returning *',
         [i.id, req.me.id, b.minutes, b.date, b.note, b.id ?? null])
       await remaining(d, i.id, b.minutes, adjustOf(b))

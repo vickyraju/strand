@@ -4,7 +4,7 @@ import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
 import { db, tx, pick, type Db } from '../db.ts'
 import { HttpError, requireAdmin, signedIn, type Me } from '../auth.ts'
-import { ARCHIVED, READS, accessTo, minFor, need, visible, type ProjectRole } from '../access.ts'
+import { ARCHIVED, READS, accessTo, minFor, need, visible, type Permission, type ProjectRole } from '../access.ts'
 import { publish, subscribe } from '../events.ts'
 import { audit, changes } from '../audit.ts'
 import { enqueue, kickJobs } from '../jobs.ts'
@@ -21,17 +21,17 @@ const color = z.string().regex(/^#[0-9a-fA-F]{6}$/)
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-/** Project key (PAY) or id (uuid). A project I cannot see is "not found" (its existence is not revealed). `min` is the role the
- *  request needs; by default reading needs any role and changing things needs member. Returns my role in it. An archived
- *  project refuses every change (spec 0102) unless `archivedOk` (restoring it, deleting it, starring it). */
-export async function projectByKey(d: Db, req: { me: Me; method: string }, ref: string, min?: ProjectRole, o: { archivedOk?: boolean } = {}) {
+/** Project key (PAY) or id (uuid). A project I cannot see is "not found" (its existence is not revealed). `min` is the
+ *  permission (spec 0201) or role the request needs; by default Browse projects to read, Edit issues to change. Returns my
+ *  role in it. An archived project refuses every change (spec 0102) unless `archivedOk` (restoring it, deleting it, starring it). */
+export async function projectByKey(d: Db, req: { me: Me; method: string }, ref: string, min?: ProjectRole | Permission, o: { archivedOk?: boolean } = {}) {
   const byId = UUID.test(ref)
   const [p] = await d.query<{ id: string; leadId: string | null; key: string }>(
     `select id, lead_id, key from projects where workspace_id = $1 and ${byId ? 'id = $2' : 'key = $2'}`, [req.me.workspaceId, byId ? ref : ref.toUpperCase()])
   const a = p ? await accessTo(d, req.me, p.id) : null
   if (!p || !a) throw new HttpError(404, 'Project not found')
   if (a.archived && !READS.has(req.method) && !o.archivedOk) throw new HttpError(403, ARCHIVED)
-  need(a.role, min ?? minFor(req.method))
+  need(a.role, min ?? minFor(req.method), p.key)
   return { ...p, role: a.role }
 }
 
@@ -60,7 +60,7 @@ async function carryOptions(d: Db, projectId: string, fieldId: string, before: O
 }
 
 /** Project settings (workflow, fields, rules, people…) are for project admins. */
-async function requireProjectAdmin(_req: FastifyRequest, p: { role: ProjectRole }) { need(p.role, 'admin') }
+async function requireProjectAdmin(_req: FastifyRequest, p: { role: ProjectRole; key?: string }) { need(p.role, 'administer', p.key) }
 
 // Child collections of a project. `json` columns are stored as jsonb. (Statuses and transitions come from the project's
 // workflow scheme: system administrators change them, in Administration.)

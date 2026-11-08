@@ -3,9 +3,11 @@
 // ("global admins", Me.admin) can see and administer every project without being listed.
 import { HttpError, type Me } from './auth.ts'
 import type { Db } from './db.ts'
+import { PERMISSIONS, holds, rolesWith, type Permission } from './shared/permissions.ts'
 
 export type ProjectRole = 'admin' | 'member' | 'viewer'
-const RANK: Record<ProjectRole, number> = { viewer: 1, member: 2, admin: 3 }
+export type { Permission }
+export { rolesWith }
 
 /** Why nothing in an archived project can change (spec 0102: archived projects are read-only for everyone, as in Jira). */
 export const ARCHIVED = 'This project is archived. A system administrator can restore it to change it.'
@@ -35,16 +37,20 @@ export async function notArchived(d: Db, projectId: string) {
  *  boards; its items open only by their key). */
 const LIVE = 'select id from projects where deleting_at is null and archived_at is null'
 
-/** Throws 403 unless `role` is at least `min`. */
-export function need(role: ProjectRole, min: ProjectRole) {
-  if (RANK[role] < RANK[min]) throw new HttpError(403, min === 'admin' ? 'Project admin only' : 'Read-only access')
+/** A role named where a permission is meant: what each role stands for in the permission table (spec 0201). */
+const AS: Record<ProjectRole, Permission> = { viewer: 'browse', member: 'editIssues', admin: 'administer' }
+
+/** Throws 403 unless `role` holds the permission (or reaches the role) in the project; `key` names the project in the message. */
+export function need(role: ProjectRole, what: Permission | ProjectRole, key?: string) {
+  const p = (what in AS ? AS[what as ProjectRole] : what) as Permission
+  if (!holds(role, p)) throw new HttpError(403, `You need the ${PERMISSIONS[p].name} permission${key ? ` in ${key}` : ''}`)
 }
 
 /** Requests that only read. */
 export const READS = new Set(['GET', 'HEAD'])
 
-/** What a request needs by default: reading is for anyone who can see the project, changing things is for members and admins. */
-export const minFor = (method: string): ProjectRole => (method === 'GET' || method === 'HEAD' ? 'viewer' : 'member')
+/** What a request needs by default: reading is Browse projects, changing things is Edit issues (spec 0201's table). */
+export const minFor = (method: string): Permission => (READS.has(method) ? 'browse' : 'editIssues')
 
 /** An SQL condition limiting `col` (a project id column) to projects I can see; adds its parameter to `args`. */
 export function visible(me: Me, col: string, args: unknown[]): string {
@@ -53,11 +59,11 @@ export function visible(me: Me, col: string, args: unknown[]): string {
   return `${col} in (select project_id from project_access where user_id = $${args.length} and project_id in (${LIVE}))`
 }
 
-/** Can this person be given work in the project (a member, or a global admin)? */
+/** Can this person be given work in the project (Assignable user, or a global admin)? */
 export async function canJoinWork(d: Db, projectId: string, userId: string): Promise<boolean> {
   const rows = await d.query(
-    `select 1 from project_access where project_id = $1 and user_id = $2
-     union all select 1 where is_system_admin($2) limit 1`, [projectId, userId])
+    `select 1 from project_access where project_id = $1 and user_id = $2 and role = any($3)
+     union all select 1 where is_system_admin($2) limit 1`, [projectId, userId, rolesWith('assignable')])
   return rows.length > 0
 }
 
