@@ -16,7 +16,7 @@ import { Avatar, LoadError, Loading, Toggle } from './ui'
 export const SETTINGS_PAGES = [
   { id: 'rate-limiting', label: 'Rate limiting' }, { id: 'attachments', label: 'Attachments' }, { id: 'access-tokens', label: 'Personal access tokens' },
   { id: 'search-and-bulk', label: 'Search, export and bulk' }, { id: 'email', label: 'Email notifications' }, { id: 'groups', label: 'Group creation' },
-  { id: 'testing', label: 'Testing' }, { id: 'due-dates', label: 'Due dates' },
+  { id: 'testing', label: 'Testing' }, { id: 'due-dates', label: 'Due dates' }, { id: 'deleted-items', label: 'Deleted work items' },
 ] as const
 
 interface Setting<V = any> { key: string; label: string; description: string; value: V; default: V }
@@ -80,6 +80,9 @@ export default function SystemSettings({ page = SETTINGS_PAGES[0].id }: { page?:
         { key: 'finalStatusesHavePrecedence', label: 'A finished result outweighs a newer run that hasn’t finished', type: 'toggle', hint: 'Off: a test’s status is always its latest run’s' },
         { key: 'resultImportMaxMb', label: 'Largest CI results file (MB)', type: 'number', min: 1, max: 20 },
         { key: 'resultImportMaxTests', label: 'Most test results in one import', type: 'number', min: 10, max: 20000 },
+      ]} />}
+      {page === 'deleted-items' && <SimpleSection setting={of('deletedItems')} save={v => save('deletedItems', v)} fields={[
+        { key: 'retentionDays', label: 'Keep deleted work items for this many days', type: 'number', min: 1, max: 365, hint: 'Until then a project admin can restore them (Project settings › Deleted work items); after, they are removed for good' },
       ]} />}
       {page === 'due-dates' && <SimpleSection setting={of('dueReminders')} save={v => save('dueReminders', v)} fields={[
         { key: 'enabled', label: 'Send “due” notifications', type: 'toggle' },

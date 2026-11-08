@@ -3,8 +3,10 @@ import { X, Trash2 } from 'lucide-react'
 import { useStore, type IssuePatch, type Priority } from '../data/store'
 import { planMove } from './TransitionDialog'
 import { useApp } from '../appContext'
-import { Picker, Modal, statusOptions, priorityOptions, plural } from './ui'
+import { Picker, statusOptions, priorityOptions, plural } from './ui'
 import { UserPicker } from './UserPicker'
+import { can } from '../data/access'
+import DeleteItemsDialog from './DeleteItemsDialog'
 
 /** Floating "N selected" action bar (Linear style) for any list of work items. */
 export default function BulkBar({ ids, onClear }: { ids: string[]; onClear: () => void }) {
@@ -16,6 +18,8 @@ export default function BulkBar({ ids, onClear }: { ids: string[]; onClear: () =
   const items = state.issues.filter(i => ids.includes(i.id))
   const projectIds = [...new Set(items.map(i => i.projectId))]
   const project = projectIds.length === 1 ? state.projects.find(p => p.id === projectIds[0]) : undefined
+  // Delete issues (spec 0202): only when I may delete in every project the selection is in
+  const mayDelete = projectIds.every(id => can(state.projects.find(p => p.id === id), 'deleteIssues'))
   const sprints = project?.template === 'scrum' ? state.sprints.filter(s => s.projectId === project.id && s.state !== 'closed') : []
 
   const apply = (patch: IssuePatch, what: string) => {
@@ -49,23 +53,13 @@ export default function BulkBar({ ids, onClear }: { ids: string[]; onClear: () =
             options={[{ value: undefined, label: 'Backlog' }, ...sprints.map(s => ({ value: s.id as string | undefined, label: s.name }))]}
             onChange={s => apply({ sprintId: s ?? undefined }, 'sprint')} className="btn btn-ghost btn-sm" title="Move to sprint" trigger="Sprint" />
         )}
-        <span className="bulk-sep" />
-        <button className="btn btn-ghost btn-sm text-danger" onClick={() => setConfirm(true)}><Trash2 size={14} />Delete</button>
+        {mayDelete && <>
+          <span className="bulk-sep" />
+          <button className="btn btn-ghost btn-sm text-danger" onClick={() => setConfirm(true)}><Trash2 size={14} />Delete</button>
+        </>}
       </div>
 
-      {confirm && (
-        <Modal title={`Delete ${plural(ids.length, 'work item')}?`} onClose={() => setConfirm(false)}
-          footer={<>
-            <button className="btn btn-secondary" onClick={() => setConfirm(false)}>Cancel</button>
-            <button className="btn btn-danger" autoFocus onClick={() => {
-              dispatch({ type: 'deleteIssues', ids })
-              toast(`Deleted ${plural(ids.length, 'work item')}`, { undo: 'deleteIssues' })
-              setConfirm(false); onClear()
-            }}>Delete</button>
-          </>}>
-          <p>This permanently deletes {items.slice(0, 3).map(i => i.key).join(', ')}{items.length > 3 ? ` and ${items.length - 3} more` : ''}, including their sub-items and comments.</p>
-        </Modal>
-      )}
+      {confirm && <DeleteItemsDialog ids={ids} onClose={() => setConfirm(false)} onDeleted={onClear} />}
     </>
   )
 }

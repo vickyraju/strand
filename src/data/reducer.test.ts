@@ -417,3 +417,18 @@ test('components: new work in one goes to its lead (or the project lead) unless 
   ], t)
   assert.deepEqual(['a', 'b', 'c'].map(id => t.issues.find(i => i.id === id)!.assigneeId), [sam, owner, undefined])
 })
+
+test('[0202.R3][0202.R4] deleting an item takes its sub-items at every depth; deleting an epic leaves its items, linked to it for Undo', () => {
+  const { s } = workspace()
+  const t = run([
+    { type: 'createIssue', id: 'e1', issue: { projectId: 'p1', title: 'Epic', type: 'epic' } },
+    { type: 'createIssue', id: 's1', issue: { projectId: 'p1', title: 'Story', parentId: 'e1' } },
+    { type: 'createIssue', id: 's2', issue: { projectId: 'p1', title: 'Sub', parentId: 's1' } },
+    { type: 'createIssue', id: 's3', issue: { projectId: 'p1', title: 'Sub-sub', parentId: 's2' } },
+  ], s)
+  const ids = (x: State) => x.issues.map(i => i.id).sort()
+  assert.deepEqual(ids(reducer(t, { type: 'deleteIssues', ids: ['s1'] })), ['e1', 'i1'])
+  const noEpic = reducer(t, { type: 'deleteIssues', ids: ['e1'] })
+  assert.deepEqual(ids(noEpic), ['i1', 's1', 's2', 's3'])
+  assert.equal(noEpic.issues.find(i => i.id === 's1')!.parentId, 'e1')     // the link stays; the epic is just not there
+})

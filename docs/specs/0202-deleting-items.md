@@ -1,6 +1,6 @@
 # 0202 Deleting work items: project admins only, sub-items go too, epics' items stay; Undo kept for a set time
 
-Status: In review
+Status: Approved (PO, 9 Nov 2026, with the Deleted work items list)
 Parity rows: PRM-02
 
 ## Context and Jira reference
@@ -94,8 +94,11 @@ Same rules. A deleted item hidden by a security level is listed only for admins 
 
 ## Open questions
 
-1. **R7, a list of deleted items in Project settings.** Without it, a deleted item can only be brought back with the Undo straight after deleting it, so the retention period would matter only to the API. Proposed: include it. Jira way: no trash at all; in that case R6 keeps deleted items for the set time but only Undo restores them.
+None. The product owner chose to include the Deleted work items list (R7) on 9 Nov 2026.
 
 ## Changelog
 
-—
+- 9 Nov 2026, in review: the list (R7) is included.
+- 9 Nov 2026, while building (within the approved rules):
+  - **R4/R5:** an epic's items keep their link to a deleted epic in the database, and the API shows them with no epic while it is deleted. Restoring the epic shows the link again, unless the item was given another epic or none in the meantime. This keeps Undo and the browser's copy of the items in step without reloading.
+  - **R7:** the list can be searched by key or title.

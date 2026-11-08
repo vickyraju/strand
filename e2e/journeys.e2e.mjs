@@ -1157,3 +1157,36 @@ test('[0105.R3][0105.R5][0105.R7] a project admin edits a dropdown field: rename
   await o.waitForSelector('text=Mobile apps')
   assert.deepEqual(o.problems, [])
 })
+
+test('[0202.R7][0202.R8] deleting as in Jira: a member has no Delete; an admin is told what goes with it, deletes, and restores it from Project settings', { skip, timeout: 90_000 }, async () => {
+  await owner('POST', '/projects', { name: 'Deleting', key: 'DLJ', template: 'kanban' })
+  await owner('POST', '/projects/DLJ/members', { userIds: [await idOf('maya@e2e.test')], role: 'member' })
+  const story = (await owner('POST', '/projects/DLJ/issues', { title: 'Story to delete' })).body
+  await owner('POST', '/projects/DLJ/issues', { title: 'Its sub-item', parentId: story.id })
+
+  const m = await signIn('maya@e2e.test')
+  await m.goto(url(`/i/${story.key}`))
+  await m.waitForSelector('text=Story to delete')
+  await m.click('.detail-hdr [aria-label="More actions"]')
+  await m.waitForSelector('[role="menu"]')
+  assert.equal(await m.locator('[role="menu"] button:has-text("Delete")').count(), 0)
+
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url(`/i/${story.key}`))
+  await o.waitForSelector('text=Story to delete')
+  await o.click('.detail-hdr [aria-label="More actions"]')
+  await o.click('[role="menu"] button:has-text("Delete")')
+  await o.waitForSelector('.modal >> text=and 1 sub-item will be deleted')
+  await o.click('.modal button:has-text("Delete")')
+  const gone = async () => (await owner('GET', `/issues/${story.key}`)).status
+  for (let i = 0; i < 40 && (await gone()) !== 404; i++) await new Promise(r => setTimeout(r, 250))
+  assert.equal(await gone(), 404)
+
+  await o.goto(url('/project/DLJ/settings'))
+  await o.waitForSelector('#deleted-items >> text=Story to delete')
+  await o.waitForSelector('#deleted-items >> text=+ 1 sub-item')
+  await o.click('#deleted-items button:has-text("Restore")')
+  await o.waitForSelector(`text=${story.key} restored with 1 sub-item`)
+  assert.equal(await gone(), 200)
+  assert.deepEqual([...m.problems, ...o.problems], [])
+})

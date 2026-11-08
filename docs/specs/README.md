@@ -49,7 +49,7 @@ The roadmap, in order. Bugs come first, then the permission model, then the data
 | [0104](0104-directory-groups.md) | Groups from the directory are read-only in Strand; unique group names | 1 | Ported |
 | [0105](0105-custom-field-options.md) | Custom fields: type fixed once made; options that rename, disable and delete as in Jira | 1 | Ported |
 | [0201](0201-permission-table.md) | One table of Jira's project permissions for the three roles | 2 | Ported |
-| [0202](0202-deleting-items.md) | Deleting items: project admins only, sub-items go too, epics' items stay; Undo kept for a set time | 2 | In review |
+| [0202](0202-deleting-items.md) | Deleting items: project admins only, sub-items go too, epics' items stay; Undo kept for a set time | 2 | Approved |
 | 0203 | Manage sprints in every project of the board | 2 | Planned |
 | 0204 | Attachments: delete own vs all | 2 | Planned |
 | 0205 | Comments: admins edit and delete anyone's | 2 | Planned |

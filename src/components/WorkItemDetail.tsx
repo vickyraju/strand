@@ -10,12 +10,13 @@ import {
   type Issue, type IssuePatch,
 } from '../data/store'
 import { useApp } from '../appContext'
-import { canEdit } from '../data/access'
+import { can, canEdit } from '../data/access'
+import DeleteItemsDialog from './DeleteItemsDialog'
 import { RESOLUTIONS } from '../data/reducer'
 import { href, navigate } from '../router'
 import {
   Picker, Menu, TypeIcon, PriorityIcon, Avatar, Modal, typeMeta, MultiSelect, PRIORITY_META, StatusLozenge,
-  priorityOptions, typeOptions, plural, formatDate,
+  priorityOptions, typeOptions, formatDate,
 } from './ui'
 import { UserPicker } from './UserPicker'
 import { useProjectPeople } from '../api/users'
@@ -177,7 +178,7 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
           ...(readOnly ? [] : [{ label: 'Link work item', icon: <Link2 size={14} />, onClick: () => setLinking(true) }]),
           ...(readOnly ? [] : [{ label: 'Save as template', icon: <FileText size={14} />, onClick: () => setTemplating(true) }]),
           ...(!readOnly && issue.type !== 'epic' && !issue.parentId ? [{ label: 'Add sub-item', icon: <Plus size={14} />, onClick: () => createIssue({ projectId: project.id, parentId: issue.id, sprintId: issue.sprintId }) }] : []),
-          ...(readOnly ? [] : [{ label: 'Delete', icon: <Trash2 size={14} />, danger: true, divider: true, onClick: () => setConfirmDel(true) }]),
+          ...(can(project, 'deleteIssues') && !project?.archivedAt ? [{ label: 'Delete', icon: <Trash2 size={14} />, danger: true, divider: true, onClick: () => setConfirmDel(true) }] : []),
         ]} />
         <button className="icon-btn" onClick={() => mode === 'peek' ? openIssue(issue.id, { full: true }) : navigate(href({ name: 'project', key: project.key }, issue.key))}
           title={mode === 'peek' ? 'Open full page' : 'Open in side panel'} aria-label={mode === 'peek' ? 'Open full page' : 'Open in side panel'}>
@@ -503,15 +504,7 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
           onClose={() => setTemplating(false)}
           onSave={t => { dispatch({ type: 'updateProject', id: project.id, patch: { templates: [...project.templates, t] } }); toast(`Saved template ${t.name}`); setTemplating(false) }} />
       )}
-      {confirmDel && (
-        <Modal title={`Delete ${issue.key}?`} onClose={() => setConfirmDel(false)}
-          footer={<>
-            <button className="btn btn-secondary" onClick={() => setConfirmDel(false)}>Cancel</button>
-            <button className="btn btn-danger" autoFocus onClick={() => { dispatch({ type: 'deleteIssues', ids: [issue.id] }); toast(`Deleted ${issue.key}`, { undo: 'deleteIssues' }); closeIssue() }}>Delete</button>
-          </>}>
-          <p>“{issue.title}” will be permanently deleted{children.length ? `, along with ${plural(children.length, 'sub-item')}` : ''}. Comments and history go with it.</p>
-        </Modal>
-      )}
+      {confirmDel && <DeleteItemsDialog ids={[issue.id]} onClose={() => setConfirmDel(false)} onDeleted={closeIssue} />}
     </div>
   )
 }

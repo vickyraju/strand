@@ -371,7 +371,8 @@ test('every documented response body is produced by the real handler and matches
   await ok('POST', '/issues/SCH-1/links', { type: 'blocks', targetKey: 'SCH-2' }); await ok('PUT', '/issues/SCH-1/watch')
   const d = await ok('GET', '/issues/SCH-1')
   assert.equal(d.children.length, 1); assert.equal(d.comments[0].editedAt !== null, true)
-  await ok('PATCH', '/issues/SCH-1', { title: 'One!' }); await ok('DELETE', '/issues/SCH-2'); await ok('POST', '/issues/SCH-2/restore')
+  await ok('PATCH', '/issues/SCH-1', { title: 'One!' }); await ok('GET', '/issues/SCH-2/delete-preview'); await ok('DELETE', '/issues/SCH-2')
+  await ok('GET', '/projects/SCH/deleted'); await ok('POST', '/issues/SCH-2/restore')
   await ok('GET', '/search?q=One'); await ok('GET', '/search?q=SCH-1'); await ok('GET', '/me/work')
   await join('SCH', 'someone@x.com')
   await ok('PATCH', '/issues/SCH-1', { assigneeId: (await call('GET', '/api/v1/me', undefined, 'someone@x.com')).body.id })   // makes a notification for someone
@@ -2724,11 +2725,71 @@ test('[0201.R2][0201.R3] permissions come from one table: a refusal names the Ji
   assert.deepEqual([edit.status, edit.body.error], [403, 'You need the Edit issues permission in PRM'])
   const settings = await call('PATCH', '/api/v1/projects/PRM', { name: 'x' }, 'prm.member@x.com')
   assert.deepEqual([settings.status, settings.body.error], [403, 'You need the Administer projects permission in PRM'])
-  // unchanged until 0202-0207: viewers comment, members delete (0202 makes it admins), viewers are assignable (0207)
+  // unchanged until 0203-0207: viewers comment, viewers are assignable (0207); 0202 made deleting admins-only
   assert.equal((await call('POST', `/api/v1/issues/${item.key}/comments`, { body: 'hi' }, 'prm.viewer@x.com')).status, 201)
   const viewerId = (await call('GET', '/api/v1/me', undefined, 'prm.viewer@x.com')).body.id
   assert.equal((await call('PATCH', `/api/v1/issues/${item.key}`, { assigneeId: viewerId })).status, 200)
-  assert.equal((await call('DELETE', `/api/v1/issues/${item.key}`, undefined, 'prm.member@x.com')).status, 204)
+  assert.equal((await call('DELETE', `/api/v1/issues/${item.key}`, undefined, 'prm.member@x.com')).status, 403)
+})
+
+test('[0202.R1][0202.R2][0202.R3][0202.R4][0202.R5][0202.R7] deleting work items as in Jira: project admins only; sub-items go too, an epic’s items stay; restoring brings back what went with it', { skip }, async () => {
+  await call('POST', '/api/v1/projects', { name: 'Deleting', key: 'DEL', template: 'kanban' })
+  await join('DEL', 'del.member@x.com'); await join('DEL', 'del.admin@x.com', 'admin')
+  const mk = (title: string, extra: object = {}) => call('POST', '/api/v1/projects/DEL/issues', { title, ...extra }).then(r => r.body)
+  const epic = await mk('Epic', { type: 'epic' })
+  const story = await mk('Story', { parentId: epic.id }), other = await mk('Other story', { parentId: epic.id })
+  const sub = await mk('Sub', { parentId: story.id }), subsub = await mk('Sub-sub', { parentId: sub.id })
+  const alone = await mk('Alone')
+  const get = async (key: string) => (await call('GET', `/api/v1/issues/${key}`)).status === 200
+  // R1: a member can't delete, one or many; R2: nor restore
+  const r = await call('DELETE', `/api/v1/issues/${alone.key}`, undefined, 'del.member@x.com')
+  assert.deepEqual([r.status, r.body.error], [403, 'You need the Delete issues permission in DEL'])
+  assert.equal((await call('POST', '/api/v1/issues/bulk/delete', { issues: [alone.key] }, 'del.member@x.com')).status, 403)
+  // R3: the preview counts the sub-items at every depth; deleting takes them all
+  assert.deepEqual((await call('GET', `/api/v1/issues/${story.key}/delete-preview`, undefined, 'del.admin@x.com')).body, { subItems: 2, epicItems: 0 })
+  assert.equal((await call('DELETE', `/api/v1/issues/${story.key}`, undefined, 'del.admin@x.com')).status, 204)
+  assert.deepEqual([await get(story.key), await get(sub.key), await get(subsub.key)], [false, false, false])
+  assert.equal((await call('DELETE', `/api/v1/issues/${story.key}`, undefined, 'del.admin@x.com')).status, 204)   // again: nothing more
+  assert.equal((await call('POST', `/api/v1/issues/${alone.key}/restore`, undefined, 'del.member@x.com')).status, 403)
+  // R4: deleting an epic leaves its items, without an epic
+  assert.deepEqual((await call('GET', `/api/v1/issues/${epic.key}/delete-preview`)).body, { subItems: 0, epicItems: 1 })
+  await call('DELETE', `/api/v1/issues/${epic.key}`, undefined, 'del.admin@x.com')
+  const left = (await call('GET', `/api/v1/issues/${other.key}`)).body
+  assert.equal(left.parentId, null)
+  // R7: the list shows what was deleted itself, newest first, with who and how many went with it; admins only
+  const list = await call('GET', '/api/v1/projects/DEL/deleted', undefined, 'del.admin@x.com')
+  assert.deepEqual(list.body.items.map((x: any) => [x.key, x.subItems, x.deletedBy]), [[epic.key, 0, 'del.admin'], [story.key, 1, 'del.admin']])
+  assert.ok(Date.parse(list.body.items[0].removedAt) - Date.parse(list.body.items[0].deletedAt) >= 29 * 864e5)
+  assert.equal((await call('GET', '/api/v1/projects/DEL/deleted', undefined, 'del.member@x.com')).status, 403)
+  assert.deepEqual((await call('GET', '/api/v1/projects/DEL/deleted?query=epi', undefined, 'del.admin@x.com')).body.items.map((x: any) => x.key), [epic.key])
+  // R5: restoring brings back what went with it, and an epic its items
+  assert.equal((await call('POST', `/api/v1/issues/${story.key}/restore`, undefined, 'del.admin@x.com')).status, 200)
+  assert.deepEqual([await get(story.key), await get(sub.key), await get(subsub.key)], [true, true, true])
+  await call('POST', `/api/v1/issues/${epic.key}/restore`, undefined, 'del.admin@x.com')
+  assert.equal((await call('GET', `/api/v1/issues/${other.key}`)).body.parentId, epic.id)
+  // a sub-item deleted on its own earlier stays deleted when its parent is restored later
+  await call('DELETE', `/api/v1/issues/${subsub.key}`, undefined, 'del.admin@x.com')
+  await call('DELETE', `/api/v1/issues/${sub.key}`, undefined, 'del.admin@x.com')
+  await call('POST', `/api/v1/issues/${sub.key}/restore`, undefined, 'del.admin@x.com')
+  assert.deepEqual([await get(sub.key), await get(subsub.key)], [true, false])
+})
+
+test('[0202.R6] deleted work items are removed for good after the period in System settings, with what belongs to them', { skip }, async () => {
+  await call('POST', '/api/v1/projects', { name: 'Purging', key: 'PUR', template: 'kanban' })
+  const mk = (title: string) => call('POST', '/api/v1/projects/PUR/issues', { title }).then(r => r.body)
+  const old = await mk('Long gone'), fresh = await mk('Just gone')
+  await call('POST', `/api/v1/issues/${old.key}/comments`, { body: 'a comment' })
+  await call('DELETE', `/api/v1/issues/${old.key}`); await call('DELETE', `/api/v1/issues/${fresh.key}`)
+  await pool.query(`update issues set deleted_at = now() - interval '2 days' where id = $1`, [old.id])
+  for (const v of [0, 400]) assert.equal((await call('PUT', '/api/v1/admin/settings/deletedItems', { retentionDays: v })).status, 400)
+  assert.equal((await call('PUT', '/api/v1/admin/settings/deletedItems', { retentionDays: 1 })).status, 200)
+  const { purgeDeleted } = await import('../src/deletedItems.ts')
+  const ws = (await call('GET', '/api/v1/me')).body.workspaceId
+  assert.ok(await purgeDeleted(ws) >= 1)
+  assert.equal((await pool.query('select 1 from issues where id = $1', [old.id])).rows.length, 0)
+  assert.equal((await pool.query('select 1 from comments where issue_id = $1', [old.id])).rows.length, 0)
+  assert.equal((await pool.query('select 1 from issues where id = $1', [fresh.id])).rows.length, 1)
+  await call('PUT', '/api/v1/admin/settings/deletedItems', { retentionDays: 30 })
 })
 
 test('[0105.R1][0105.R2][0105.R3][0105.R4][0105.R5][0105.R6][0105.R9] custom fields as in Jira: the type is fixed; options have ids, and renaming, disabling and deleting one carry through to items', { skip }, async () => {
@@ -3366,16 +3427,17 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     'GET /projects/{key}/issues': ['read', `/projects/${K}/issues`],
     'POST /projects/{key}/issues': ['write', `/projects/${K}/issues`, { title: 'x' }],
     'GET /issues/{key}': ['read', `/issues/${I}`], 'PATCH /issues/{key}': ['write', `/issues/${I}`, { title: 'x' }],
-    'DELETE /issues/{key}': ['write', `/issues/${I}`],
+    'DELETE /issues/{key}': ['padmin', `/issues/${I}`],   // 0202.R1
     'GET /issues/{key}/comments': ['read', `/issues/${I}/comments`], 'POST /issues/{key}/comments': ['viewer', `/issues/${I}/comments`, { body: 'x' }],
     'GET /issues/{key}/activity': ['read', `/issues/${I}/activity`],
     'POST /issues/{key}/clone': ['write', `/issues/${I}/clone`, {}],
     'GET /issues/{key}/transitions': ['read', `/issues/${I}/transitions`],
     'POST /issues/{key}/transitions': ['write', `/issues/${I}/transitions`, { transitionId: p.transitions[0].id }],
     'POST /issues/bulk/edit': ['write', '/issues/bulk/edit', { issues: [I], patch: { title: 'x' } }],
-    'POST /issues/bulk/delete': ['write', '/issues/bulk/delete', { issues: [I] }],
-    'POST /issues/bulk/restore': ['write', '/issues/bulk/restore', { issues: ['MTX-2'] }],
-    'POST /issues/{key}/view': ['viewer', `/issues/${I}/view`], 'POST /issues/{key}/restore': ['write', '/issues/MTX-2/restore'],
+    'POST /issues/bulk/delete': ['padmin', '/issues/bulk/delete', { issues: [I] }],   // 0202.R1
+    'POST /issues/bulk/restore': ['padmin', '/issues/bulk/restore', { issues: ['MTX-2'] }],   // 0202.R2
+    'POST /issues/{key}/view': ['viewer', `/issues/${I}/view`], 'POST /issues/{key}/restore': ['padmin', '/issues/MTX-2/restore'],   // 0202.R2
+    'GET /issues/{key}/delete-preview': ['padmin', `/issues/${I}/delete-preview`], 'GET /projects/{key}/deleted': ['padmin', `/projects/${K}/deleted`],   // 0202.R3 R7
     'POST /issues/{key}/links': ['write', `/issues/${I}/links`, { type: 'relates', targetKey: 'MTX-3' }],
     'DELETE /issues/{key}/links': ['write', `/issues/${I}/links?type=relates&target=MTX-3`],
     'PUT /issues/{key}/watch': ['viewer', `/issues/${I}/watch`], 'DELETE /issues/{key}/watch': ['viewer', `/issues/${I}/watch`],
@@ -3579,7 +3641,7 @@ test('system settings: admins change policies at runtime (validated, audited); e
   const { clearSettingsCache } = await import('../src/settings.ts')
   const put = (key: string, value: object, who = 'owner@x.com') => call('PUT', `/api/v1/admin/settings/${key}`, value, who)
   const all = (await call('GET', '/api/v1/admin/settings')).body
-  assert.deepEqual(all.map((s: any) => s.key), ['rateLimiting', 'attachments', 'accessTokens', 'searchAndBulk', 'licenseCleanup', 'groups', 'testing', 'dueReminders', 'email'])
+  assert.deepEqual(all.map((s: any) => s.key), ['rateLimiting', 'attachments', 'accessTokens', 'searchAndBulk', 'licenseCleanup', 'groups', 'testing', 'dueReminders', 'email', 'deletedItems'])
   assert.equal(all.find((s: any) => s.key === 'rateLimiting').value.enabled, false)                  // no limit unless an admin sets one
   assert.equal((await call('GET', '/api/v1/admin/settings', undefined, 'set.member@x.com')).status, 403)
   assert.equal((await put('attachments', { enabled: true, maxSizeMb: 5 }, 'set.member@x.com')).status, 403)
