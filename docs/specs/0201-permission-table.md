@@ -1,6 +1,6 @@
 # 0201 One table of Jira's project permissions for Strand's three roles
 
-Status: In review
+Status: Ported (aws-jira `cb721f1`, strand `541a1c5`), approved by the PO on 9 Nov 2026; awaiting verification
 Parity rows: PRM-01
 
 ## Context and Jira reference
@@ -29,7 +29,7 @@ Today each route decides on its own, mostly through "reading needs any role, cha
   - Add comments; Edit own and all comments; Delete own and all comments.
   - Create attachments; Delete own and all attachments.
   - Work on issues; Edit own and all work logs; Delete own and all work logs.
-  - Manage sprints; Administer projects; Set issue security (`strand` only).
+  - Manage sprints; Administer projects; Set issue security (`strand` only, held by members, as Strand does today).
 - **R3:** No behaviour changes. The table's roles are what Strand does today (column "Strand today" below). The permission matrix and every existing test pass unchanged.
 - **R4:** The web app asks the same table with `can(project, permission)`. `canEdit` and `canAdmin` remain as the names for Edit issues and Administer projects. A local workspace (no roles) can do everything, as today.
 - **R5:** A unit test pins the table: each permission's role and Jira default. So a change to it is deliberate and shows up in review.
@@ -62,7 +62,7 @@ Today each route decides on its own, mostly through "reading needs any role, cha
 | Edit all / Delete all work logs | Administrators | admin | — |
 | Manage sprints | Administrators | **member, in every project the board covers** (0101) | 0203: admin |
 | Administer projects | Administrators | admin | — |
-| Set issue security (`strand`) | none | admin | — (security levels are low priority) |
+| Set issue security (`strand`) | none | member | — (security levels are low priority) |
 | Archive issues | none | none | 0508 |
 
 Bold marks where Strand today differs from Jira's default. Those differences are what 0202–0207 change, each with its own review.
@@ -126,4 +126,4 @@ None.
 
 ## Changelog
 
-—
+- 9 Nov 2026, while building: the table said Set issue security was held by admins today; in fact members choose an item's security level (one they are in). The row now says member, keeping R3 (no behaviour change).
