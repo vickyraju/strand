@@ -5,6 +5,7 @@ import type { Attachment } from '../data/reducer'
 import { fileUrl, saveFile, readAsDataUrl, usedBytes, formatBytes, MAX_FILE, MAX_TOTAL } from '../data/files'
 import { apiEnabled, ApiError } from '../api/client'
 import { attachmentUrl, deleteAttachment, uploadAttachment } from '../api/attachments'
+import { can } from '../data/access'
 import { usePublicSettings } from '../api/settings-public'
 import { useApp } from '../appContext'
 
@@ -15,6 +16,7 @@ const failure = (e: unknown) => (e instanceof ApiError || e instanceof Error ? e
 export default function Attachments({ issue, pickRef }: { issue: Issue; pickRef?: React.RefObject<HTMLInputElement | null> }) {
   const { state, dispatch } = useStore()
   const { toast } = useApp()
+  const project = state.projects.find(p => p.id === issue.projectId)
   const ownRef = useRef<HTMLInputElement>(null)
   const input = pickRef ?? ownRef
   const [over, setOver] = useState(false)
@@ -91,7 +93,9 @@ export default function Attachments({ issue, pickRef }: { issue: Issue; pickRef?
                 {apiEnabled
                   ? <button className="icon-btn sm" onClick={() => download(a)} aria-label={`Download ${a.name}`} title="Download"><Download size={14} /></button>
                   : fileUrl(a.id) && <a className="icon-btn sm" href={fileUrl(a.id)} download={a.name} aria-label={`Download ${a.name}`} title="Download"><Download size={14} /></a>}
-                <button className="icon-btn sm" onClick={() => remove(a)} aria-label={`Remove ${a.name}`} title="Remove"><Trash2 size={14} /></button>
+                {/* Delete own attachments (members), Delete all attachments (project admins), spec 0203 R2 */}
+                {can(project, a.addedBy === state.me?.id ? 'deleteOwnAttachments' : 'deleteAllAttachments') && !project?.archivedAt &&
+                  <button className="icon-btn sm" onClick={() => remove(a)} aria-label={`Remove ${a.name}`} title="Remove"><Trash2 size={14} /></button>}
               </div>
             </div>
           ))}

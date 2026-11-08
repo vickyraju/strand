@@ -1500,8 +1500,9 @@ test('[0101.R2][0101.R5][0101.R6][0101.R7][0101.R8] sprint actions need the righ
   for (const key of ['SMA', 'SMB', 'SMC']) await call('POST', '/api/v1/projects', { name: `Sprint mgmt ${key}`, key, template: 'scrum' })
   const board = (await call('POST', '/api/v1/projects/SMA/boards', { name: 'Two teams', type: 'scrum', jql: 'project in (SMA, SMB)' })).body
   const one = 'sm.one@x.com', both = 'sm.both@x.com', viewerA = 'sm.viewer@x.com'
-  await join('SMA', one); await join('SMB', one, 'viewer'); await join('SMA', both); await join('SMB', both)
-  await join('SMA', viewerA, 'viewer'); await join('SMB', viewerA); await join('SMC', viewerA)
+  // since spec 0203, managing sprints is for project admins: "able to manage" below means admin
+  await join('SMA', one, 'admin'); await join('SMB', one, 'viewer'); await join('SMA', both, 'admin'); await join('SMB', both, 'admin')
+  await join('SMA', viewerA, 'viewer'); await join('SMB', viewerA, 'admin'); await join('SMC', viewerA, 'admin')
   const item = (await call('POST', '/api/v1/projects/SMB/issues', { title: 'From B' })).body
   const s = (await call('POST', '/api/v1/projects/SMA/sprints', { name: 'Train 1', boardId: board.id })).body
   await call('PATCH', `/api/v1/issues/${item.key}`, { sprintId: s.id })
@@ -1535,7 +1536,7 @@ test('[0101.R2][0101.R5][0101.R6][0101.R7][0101.R8] sprint actions need the righ
   const wide = (await call('POST', '/api/v1/projects/SMA/boards', { name: 'Three', type: 'scrum', jql: 'project in (SMA, SMB, SMC)' })).body
   const r = await call('POST', '/api/v1/projects/SMA/sprints', { name: 'y', boardId: wide.id }, one)
   assert.equal(r.status, 403); assert.match(r.body.error, /: SMB and 1 more$/)
-  await join('SMC', 'sm.c@x.com'); await join('SMA', 'sm.c@x.com')
+  await join('SMC', 'sm.c@x.com', 'admin'); await join('SMA', 'sm.c@x.com', 'admin')
   assert.match((await call('POST', '/api/v1/projects/SMA/sprints', { name: 'z', boardId: board.id }, 'sm.c@x.com')).body.error, /covers, including one you can’t see$/)
 })
 
@@ -1643,7 +1644,7 @@ test('[0102.R1][0102.R2][0102.R3][0102.R4][0102.R6][0102.R7][0102.R8][0102.R9] a
   assert.equal((await call('POST', `/api/v1/issues/${item.key}/view`, undefined, mem)).status, 204)
   assert.equal((await call('GET', '/api/v1/projects/ARC', undefined, mem)).body.role, 'viewer')
   // R6: completing the other board's sprint leaves the archived project's item where it was
-  assert.equal((await call('POST', `/api/v1/projects/ARD/sprints/${sprint.id}/complete`, { moveTo: null }, mem)).status, 200)
+  assert.equal((await call('POST', `/api/v1/projects/ARD/sprints/${sprint.id}/complete`, { moveTo: null })).status, 200)   // a global admin (sprints: project admins, 0203)
   assert.deepEqual([(await call('GET', `/api/v1/issues/${item.key}`)).body.sprintId, (await call('GET', `/api/v1/issues/${other.key}`)).body.sprintId], [sprint.id, null])
 
   // R7: Administration › Archived projects, global admins only, newest first, searchable
@@ -1875,6 +1876,8 @@ test('saved views are shared as Jira filters are: with a project, a group or a p
   const [ann, ben, pat] = [await id('flt.ann@x.com'), await id('flt.ben@x.com'), await id('flt.pat@x.com')]
   const [{ id: grp }] = (await pool.query(`insert into groups (display_name) values ('Filter fans') returning id`)).rows
   await pool.query('insert into group_members (group_id, user_id) values ($1, $2)', [grp, ben])
+  // since spec 0203 a view is shared only with my groups and projects: Ann is in both
+  await pool.query('insert into group_members (group_id, user_id) values ($1, $2)', [grp, ann]); await join('FLT', 'flt.ann@x.com')
   const mine = ['For Ben', 'For the group', 'For the project', 'Private', 'Renamed by Ben']   // views other tests share with the whole workspace are left out
   const names = async (who: string) => (await call('GET', '/api/v1/views', undefined, who)).body.map((v: any) => v.name).filter((n: string) => mine.includes(n)).sort()
   const make = (name: string, share: object[]) => call('POST', '/api/v1/views', { name, share, filters: { q: '' } }, 'flt.ann@x.com')
@@ -2076,7 +2079,7 @@ test('notification settings: each kind in the Inbox and/or by email; email only 
 
 test('issue security: an item with a level is invisible everywhere to people outside it; comments can be limited to a role', { skip }, async () => {
   const p = (await call('POST', '/api/v1/projects', { name: 'Secret', key: 'SEC', template: 'kanban' })).body
-  await join('SEC', 'sec.ann@x.com'); await join('SEC', 'sec.bob@x.com'); await join('SEC', 'sec.viewer@x.com', 'viewer')
+  await join('SEC', 'sec.ann@x.com', 'admin'); await join('SEC', 'sec.bob@x.com'); await join('SEC', 'sec.viewer@x.com', 'viewer')
   const id = async (w: string) => (await call('GET', '/api/v1/me', undefined, w)).body.id as string
   const [ann, bob] = [await id('sec.ann@x.com'), await id('sec.bob@x.com')]
   const lvl = (await call('POST', '/api/v1/projects/SEC/security-levels', { name: 'Security team', members: [{ kind: 'role', role: 'admin' }, { kind: 'user', id: ann }, { kind: 'reporter' }] })).body
@@ -2725,10 +2728,10 @@ test('[0201.R2][0201.R3] permissions come from one table: a refusal names the Ji
   assert.deepEqual([edit.status, edit.body.error], [403, 'You need the Edit issues permission in PRM'])
   const settings = await call('PATCH', '/api/v1/projects/PRM', { name: 'x' }, 'prm.member@x.com')
   assert.deepEqual([settings.status, settings.body.error], [403, 'You need the Administer projects permission in PRM'])
-  // unchanged until 0203-0207: viewers comment, viewers are assignable (0207); 0202 made deleting admins-only
+  // viewers comment; 0202 made deleting admins-only and 0203 made viewers not assignable
   assert.equal((await call('POST', `/api/v1/issues/${item.key}/comments`, { body: 'hi' }, 'prm.viewer@x.com')).status, 201)
   const viewerId = (await call('GET', '/api/v1/me', undefined, 'prm.viewer@x.com')).body.id
-  assert.equal((await call('PATCH', `/api/v1/issues/${item.key}`, { assigneeId: viewerId })).status, 200)
+  assert.equal((await call('PATCH', `/api/v1/issues/${item.key}`, { assigneeId: viewerId })).status, 400)
   assert.equal((await call('DELETE', `/api/v1/issues/${item.key}`, undefined, 'prm.member@x.com')).status, 403)
 })
 
@@ -2790,6 +2793,62 @@ test('[0202.R6] deleted work items are removed for good after the period in Syst
   assert.equal((await pool.query('select 1 from comments where issue_id = $1', [old.id])).rows.length, 0)
   assert.equal((await pool.query('select 1 from issues where id = $1', [fresh.id])).rows.length, 1)
   await call('PUT', '/api/v1/admin/settings/deletedItems', { retentionDays: 30 })
+})
+
+test('[0203.R1][0203.R2][0203.R3][0203.R4][0203.R5][0203.R6][0203.R7][0203.R8] the rest of Jira’s default permission scheme: sprints, attachments, comments, sharing, reporter, watchers and assignees', { skip }, async () => {
+  await call('POST', '/api/v1/projects', { name: 'Defaults', key: 'DFP', template: 'scrum' })
+  const [adm, mem, viw, out] = ['dfp.admin@x.com', 'dfp.member@x.com', 'dfp.viewer@x.com', 'dfp.out@x.com']
+  await join('DFP', adm, 'admin'); await join('DFP', mem); await join('DFP', viw, 'viewer')
+  const id = async (e: string) => (await call('GET', '/api/v1/me', undefined, e)).body.id as string
+  const [admId, memId, viwId, outId] = [await id(adm), await id(mem), await id(viw), await id(out)]
+  const item = (await call('POST', '/api/v1/projects/DFP/issues', { title: 'Shared work' }, mem)).body
+  // R1: sprints are for project admins
+  assert.equal((await call('POST', '/api/v1/projects/DFP/sprints', { name: 'S' }, mem)).status, 403)
+  assert.equal((await call('POST', '/api/v1/projects/DFP/sprints', { name: 'S' }, adm)).status, 201)
+  // R2: a member deletes their own attachment, not someone else's; an admin deletes any
+  const attach = async (who: string) => (await call('POST', `/api/v1/issues/${item.key}/attachments`, { name: 'a.txt', size: 3, type: 'text/plain' }, who)).body.id
+  const mine = await attach(mem), theirs = await attach(adm)
+  assert.equal((await call('DELETE', `/api/v1/attachments/${theirs}`, undefined, mem)).status, 403)
+  assert.equal((await call('DELETE', `/api/v1/attachments/${mine}`, undefined, mem)).status, 204)
+  assert.equal((await call('DELETE', `/api/v1/attachments/${theirs}`, undefined, adm)).status, 204)
+  // R3: an admin edits and deletes a member's comment, audited; a member can't touch another's
+  const c1 = (await call('POST', `/api/v1/issues/${item.key}/comments`, { body: 'member says' }, mem)).body
+  const c2 = (await call('POST', `/api/v1/issues/${item.key}/comments`, { body: 'admin says' }, adm)).body
+  assert.equal((await call('PATCH', `/api/v1/comments/${c2.id}`, { body: 'x' }, mem)).status, 403)
+  assert.equal((await call('DELETE', `/api/v1/comments/${c2.id}`, undefined, mem)).status, 403)
+  assert.equal((await call('PATCH', `/api/v1/comments/${c1.id}`, { body: 'tidied by an admin' }, adm)).status, 200)
+  assert.equal((await call('DELETE', `/api/v1/comments/${c1.id}`, undefined, adm)).status, 204)
+  assert.equal((await call('GET', '/api/v1/audit?action=comment.moderated')).body.items.filter((x: any) => x.targetId === c1.id).length, 2)
+  // R4: limited only to a role I hold or a group I'm in
+  const g = (await call('POST', '/api/v1/groups', { name: 'dfp-team' }, adm)).body
+  const cm = (v: object, who: string) => call('POST', `/api/v1/issues/${item.key}/comments`, { body: 'v', visibility: v }, who)
+  assert.equal((await cm({ kind: 'role', role: 'admin' }, mem)).status, 400)
+  assert.equal((await cm({ kind: 'role', role: 'member' }, mem)).status, 201)
+  assert.equal((await cm({ kind: 'role', role: 'member' }, viw)).status, 400)
+  assert.equal((await cm({ kind: 'group', id: g.id }, mem)).status, 400)
+  assert.equal((await cm({ kind: 'group', id: g.id }, adm)).status, 201)
+  // R5: a view is shared only with my groups and projects; what it already has stays
+  const v = (await call('POST', '/api/v1/views', { name: 'Mine', filters: {}, share: [{ kind: 'group', id: g.id }] }, mem))
+  assert.equal(v.status, 400)
+  const ok = (await call('POST', '/api/v1/views', { name: 'Ours', filters: {}, share: [{ kind: 'group', id: g.id }] }, adm)).body
+  await call('POST', `/api/v1/groups/${g.id}/members/${admId}`, undefined, adm).catch(() => {})
+  await pool.query('delete from group_members where group_id = $1 and user_id = $2', [g.id, admId])   // the owner leaves the group
+  assert.equal((await call('PATCH', `/api/v1/views/${ok.id}`, { name: 'Ours, renamed', share: ok.share }, adm)).status, 200)
+  // R6: an admin changes the reporter, to someone who can see the project; a member can't
+  assert.equal((await call('PATCH', `/api/v1/issues/${item.key}`, { reporterId: admId }, mem)).status, 403)
+  assert.equal((await call('PATCH', `/api/v1/issues/${item.key}`, { reporterId: outId }, adm)).status, 400)
+  assert.equal((await call('PATCH', `/api/v1/issues/${item.key}`, { reporterId: viwId }, adm)).body.reporterId, viwId)
+  // R7: viewers aren't assignable; an item already assigned to one keeps it
+  assert.equal((await call('PATCH', `/api/v1/issues/${item.key}`, { assigneeId: viwId }, adm)).status, 400)
+  await pool.query('update issues set assignee_id = $2 where id = $1', [item.id, viwId])
+  assert.equal((await call('PATCH', `/api/v1/issues/${item.key}`, { title: 'still mine' }, adm)).status, 200)
+  // R8: an admin adds and removes other watchers who can see the project; a member can't
+  assert.equal((await call('PUT', `/api/v1/issues/${item.key}/watchers/${viwId}`, undefined, mem)).status, 403)
+  assert.equal((await call('PUT', `/api/v1/issues/${item.key}/watchers/${outId}`, undefined, adm)).status, 400)
+  assert.equal((await call('PUT', `/api/v1/issues/${item.key}/watchers/${viwId}`, undefined, adm)).status, 204)
+  assert.ok((await call('GET', `/api/v1/issues/${item.key}`)).body.watcherIds.includes(viwId))
+  assert.equal((await call('DELETE', `/api/v1/issues/${item.key}/watchers/${viwId}`, undefined, adm)).status, 204)
+  assert.equal((await call('PUT', `/api/v1/issues/${item.key}/watchers/${memId}`, undefined, mem)).status, 204)   // yourself: always
 })
 
 test('[0105.R1][0105.R2][0105.R3][0105.R4][0105.R5][0105.R6][0105.R9] custom fields as in Jira: the type is fixed; options have ids, and renaming, disabling and deleting one carry through to items', { skip }, async () => {
@@ -3441,6 +3500,7 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     'POST /issues/{key}/links': ['write', `/issues/${I}/links`, { type: 'relates', targetKey: 'MTX-3' }],
     'DELETE /issues/{key}/links': ['write', `/issues/${I}/links?type=relates&target=MTX-3`],
     'PUT /issues/{key}/watch': ['viewer', `/issues/${I}/watch`], 'DELETE /issues/{key}/watch': ['viewer', `/issues/${I}/watch`],
+    'PUT /issues/{key}/watchers/{userId}': ['padmin', `/issues/${I}/watchers/${ownerId}`], 'DELETE /issues/{key}/watchers/{userId}': ['padmin', `/issues/${I}/watchers/${ownerId}`],   // 0203.R8
     'POST /issues/{key}/presence': ['write', `/issues/${I}/presence`], 'DELETE /issues/{key}/presence': ['viewer', `/issues/${I}/presence`],
     'PATCH /comments/{id}': ['own', `/comments/${comment}`, { body: 'x' }], 'DELETE /comments/{id}': ['own', `/comments/${comment}`],
     'POST /issues/{key}/worklogs': ['write', `/issues/${I}/worklogs`, { minutes: 5, date: '2026-10-01' }],

@@ -38,13 +38,13 @@ Checked against Atlassian's Data Center documentation on 5 November 2026 (Jira S
 |---|---|---|---|---|---|---|---|
 | PRM-01 | Project permissions | About 35 permissions granted per project to roles, groups and users through permission schemes ([perm]) | Three fixed roles (`server/src/access.ts`) | diverges | diverge | 0201 | Decided 5 Nov 2026: the roles get what Jira's default scheme gives them, as one fixed table. Editable permission schemes are out of scope. |
 | PRM-02 | Delete issues | Administrators by default; permanent; sub-tasks go too, an epic's issues stay ([perm]) | Project admins; sub-items go too, an epic's items stay; Undo and Project settings › Deleted work items until the retention period ends | match | match + diverge | 0202 | Undo, the list and the retention period are deliberate extras (PO, 5 and 9 Nov 2026). |
-| PRM-03 | Manage sprints | Needed in every project of the board ([sprint permissions](https://confluence.atlassian.com/adminjiraserver/sprint-permissions-and-defined-processes-983794894.html)) | Member or higher in every project the board's filter names (0101); the named permission comes with 0203 | partial | match | 0101, 0203 | Leak fixed by 0101. |
-| PRM-04 | Delete own / all attachments | Separate permissions ([perm]) | Any member deletes anyone's (`files.ts`) | diverges | match | 0204 | |
-| PRM-05 | Edit / delete own and all comments | Separate permissions ([perm]) | Author only; admins can't moderate (`issues.ts`) | diverges | match | 0205 | |
-| PRM-06 | Comment visibility and filter sharing | Only to groups and roles you belong to | Any group (`issues.ts`, `misc.ts`) | diverges | match | 0206 | |
-| PRM-07 | Modify reporter | A permission, usually admins ([perm]) | Absent: the reporter is always the creator | absent | match | 0207 | |
-| PRM-08 | Assignable user | Separate from Assign issues ([perm]) | Viewers can be assignees (`access.ts`) | diverges | match | 0207 | |
-| PRM-09 | Manage watchers | Add and remove other people ([perm]) | Only yourself | absent | match | 0207 | |
+| PRM-03 | Manage sprints | Administrators default; needed in every project the board covers ([sprint permissions](https://confluence.atlassian.com/adminjiraserver/sprint-permissions-and-defined-processes-983794894.html)) | Project admins, in every project the board's filter names (0101, 0203) | match | match | 0101, 0203 | Leak fixed by 0101. |
+| PRM-04 | Delete own / all attachments | Separate permissions; Delete all to Administrators ([perm]) | Members delete their own; project admins delete anyone's | match | match | 0203 | |
+| PRM-05 | Edit / delete own and all comments | Separate permissions; Edit all and Delete all to Administrators ([perm]) | Authors edit and delete their own; project admins anyone's, audited as `comment.moderated` | match | match | 0203 | Viewers comment: Strand's read-and-comment role, as before. |
+| PRM-06 | Comment visibility and filter sharing | Only groups and roles you belong to | Only your groups and roles (roles stack); views shared only with your groups and projects; existing entries stay; global admins any | match | match | 0203 | |
+| PRM-07 | Modify reporter | A permission, Administrators by default ([perm]) | Project admins change the reporter to someone who can see the project | match | match | 0203 | |
+| PRM-08 | Assignable user | Separate from Assign issues ([perm]) | Members and admins; viewers can't be given work, existing assignments stay | match | match | 0203 | |
+| PRM-09 | Manage watchers | Add and remove other people; Administrators by default ([perm]) | Project admins add and remove others; everyone watches themselves | match | match | 0203 | |
 | PRM-10 | Global permissions | System admins, admins, browse users, create shared objects, bulk change, group filter subscriptions ([gperm]) | The system-administrators group or the Entra role | partial | open | — | |
 | PRM-11 | Issue security levels | Schemes of levels ([perm]) | `strand` only; removed on `aws-jira` | partial | diverge | — | Low priority: one team per project. |
 | PRM-12 | Groups: create, delete, owners | Admins manage groups; **no rename** ([KB](https://support.atlassian.com/jira/kb/how-to-rename-a-group-in-jira/)) | Owners, a creation policy, name fixed | better | match | — | Name fixed since `20bfae4`. Keep: groups test "its name is fixed once made". |
@@ -137,7 +137,7 @@ Checked against Atlassian's Data Center documentation on 5 November 2026 (Jira S
 | SR-01 | JQL fields and operators | All fields; WAS, CHANGED, BY, DURING… ([jqlop]) | Most fields; no history operators | partial | match | 0601, 0602 | |
 | SR-02 | JQL functions | About 35 ([jqlfn]) | currentUser, now, startOfDay, endOfDay, startOfWeek, openSprints, closedSprints, membersOf, Xray functions | partial | match | 0603 | |
 | SR-03 | `~` text search | Word search with stemming | Substring match (`jqlSql.ts`) | diverges | open | — | |
-| SR-04 | Saved filters and sharing | View and edit sharing; admins change the owner | Same (`misc.ts`) | match | match | 0206 | Sharing limited to your own groups, under PRM-06. |
+| SR-04 | Saved filters and sharing | View and edit sharing; admins change the owner | Same (`misc.ts`) | match | match | 0203 | Sharing limited to your own groups and projects (PRM-06). |
 | SR-07 | Filter names and owner change | Unique per owner; a new owner must be able to see it and not already have one of that name ([shared filters](https://confluence.atlassian.com/adminjiraserver089/managing-shared-filters-1005347206.html)) | Not unique; owner change has no checks (`misc.ts`) | diverges | match | 0309 | |
 | SR-05 | Filter subscriptions | Scheduled email | Absent | absent | match | 0604 | |
 | SR-06 | Export | CSV, Excel, XML, Word, RSS, print | CSV, capped by a setting | partial | match | 0608 | |

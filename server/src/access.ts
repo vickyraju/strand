@@ -59,6 +59,11 @@ export function visible(me: Me, col: string, args: unknown[]): string {
   return `${col} in (select project_id from project_access where user_id = $${args.length} and project_id in (${LIVE}))`
 }
 
+/** Can this person see the project at all (any role, or a global admin)? */
+export async function canSee(d: Db, projectId: string, userId: string): Promise<boolean> {
+  return (await d.query(`select 1 from project_access where project_id = $1 and user_id = $2 union all select 1 where is_system_admin($2) limit 1`, [projectId, userId])).length > 0
+}
+
 /** Can this person be given work in the project (Assignable user, or a global admin)? */
 export async function canJoinWork(d: Db, projectId: string, userId: string): Promise<boolean> {
   const rows = await d.query(

@@ -23,7 +23,8 @@ import { useProjectPeople } from '../api/users'
 import { Markdown, MentionTextarea } from './markdown'
 import { transitionLabel } from './BoardCard'
 import CloneDialog from './CloneDialog'
-import { apiEnabled } from '../api/client'
+import { api, apiEnabled, errorMessage } from '../api/client'
+import { commentDeps } from '../api/comments'
 import IssueRow from './IssueRow'
 import Attachments from './Attachments'
 import TestSpecEditor from './TestSpecEditor'
@@ -319,7 +320,10 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
                     <button className="btn btn-primary btn-sm" onClick={postComment}>Comment</button>
                     {apiEnabled && (
                       <select className="input input-sm" aria-label="Who can read this comment" value={commentFor} onChange={e => setCommentFor(e.target.value as typeof commentFor)}>
-                        <option value="">Everyone who sees the item</option><option value="admin">Project admins only</option><option value="member">Members only</option>
+                        <option value="">Everyone who sees the item</option>
+                        {/* only a role I hold (spec 0203 R4; an admin also holds member) */}
+                        {can(project, 'administer') && <option value="admin">Project admins only</option>}
+                        {can(project, 'editIssues') && <option value="member">Members only</option>}
                       </select>
                     )}
                     <button className="btn btn-ghost btn-sm" onClick={() => setComment('')}>Cancel</button>
@@ -364,10 +368,11 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
                           </div>
                         </>
                       ) : <Markdown text={t.text} users={state.users} />}
-                      {mine && !editing && (
+                      {!editing && !archived && (mine || can(project, 'editAllComments') || can(project, 'deleteAllComments')) && (
                         <div className="comment-actions">
-                          <button className="link sm" onClick={() => setEditComment({ id: t.id, body: t.text })}><Pencil size={11} />Edit</button>
-                          <button className="link sm text-danger" onClick={() => { dispatch({ type: 'deleteComment', id: t.id }); toast('Comment deleted', { undo: 'deleteComment' }) }}><Trash2 size={11} />Delete</button>
+                          {/* my own comment, or anyone's for a project admin (Edit/Delete all comments, spec 0203 R3) */}
+                          {(mine || can(project, 'editAllComments')) && <button className="link sm" onClick={() => setEditComment({ id: t.id, body: t.text })}><Pencil size={11} />Edit</button>}
+                          {(mine || can(project, 'deleteAllComments')) && <button className="link sm text-danger" onClick={() => { dispatch({ type: 'deleteComment', id: t.id }); toast('Comment deleted', { undo: 'deleteComment' }) }}><Trash2 size={11} />Delete</button>}
                         </div>
                       )}
                     </div>
@@ -402,7 +407,13 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
                 trigger={<><Avatar user={assignee} size={22} />{assignee?.name ?? 'Unassigned'}</>} />
               {issue.assigneeId !== state.me?.id && <button className="link sm" onClick={() => set({ assigneeId: state.me?.id })}><UserCheck size={12} />Assign to me</button>}
             </Field>
-            <Field label="Reporter"><span className="field-static"><Avatar user={reporter} size={22} />{reporter?.name ?? '—'}</span></Field>
+            <Field label="Reporter">
+              {/* Modify reporter: project admins (spec 0203 R6) */}
+              {can(project, 'modifyReporter') && !archived
+                ? <UserPicker value={issue.reporterId} onChange={reporterId => reporterId && set({ reporterId })} projectId={issue.projectId} className="field-btn" title="Reporter" allowUnassigned={false}
+                    trigger={<><Avatar user={reporter} size={22} />{reporter?.name ?? '—'}</>} />
+                : <span className="field-static"><Avatar user={reporter} size={22} />{reporter?.name ?? '—'}</span>}
+            </Field>
             <Field label="Priority">
               <Picker value={issue.priority} options={priorityOptions} onChange={priority => set({ priority })} className="field-btn" title="Priority"
                 trigger={<><PriorityIcon priority={issue.priority} />{PRIORITY_META[issue.priority].label}</>} />
@@ -486,6 +497,8 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
             ))}
             <Field label="Watchers">
               <span className="avatar-group sm">{watchers.map(u => <Avatar key={u.id} user={u} size={22} />)}</span>
+              {/* Manage watchers: project admins add and remove other people (spec 0203 R8) */}
+              {apiEnabled && can(project, 'manageWatchers') && !archived && <WatcherManager issue={issue} />}
             </Field>
           </div>
           <div className="side-dates">
@@ -506,6 +519,25 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
       )}
       {confirmDel && <DeleteItemsDialog ids={[issue.id]} onClose={() => setConfirmDel(false)} onDeleted={closeIssue} />}
     </div>
+  )
+}
+
+/** Add or remove other people as watchers (Manage watchers, spec 0203). The server answers; the item is loaded again. */
+function WatcherManager({ issue }: { issue: Issue }) {
+  const { state } = useStore()
+  const { toast } = useApp()
+  const reload = () => commentDeps.reloadDetail(issue.id)
+  const call = (method: 'PUT' | 'DELETE', userId: string, what: string) =>
+    api(method, `/api/issues/${encodeURIComponent(issue.key)}/watchers/${userId}`).then(() => { toast(what); return reload() }, e => toast(errorMessage(e), { tone: 'warn' }))
+  return (
+    <span className="watcher-manage">
+      <UserPicker value={undefined} title="Add a watcher" allowUnassigned={false} placeholder="Add a watcher" projectId={issue.projectId} className="link sm"
+        trigger={<><Plus size={12} />Add</>} onChange={id => id && void call('PUT', id, `${userOf(state, id)?.name ?? 'They'} will be notified of changes`)} />
+      {issue.watcherIds.length > 0 && (
+        <Menu title="Remove a watcher" className="link sm" align="left" trigger={<>Remove</>}
+          items={issue.watcherIds.map(id => ({ label: userOf(state, id)?.name ?? 'Someone', onClick: () => void call('DELETE', id, `${userOf(state, id)?.name ?? 'They'} stopped watching`) }))} />
+      )}
+    </span>
   )
 }
 

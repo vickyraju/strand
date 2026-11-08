@@ -1,5 +1,6 @@
 // Pure data layer: types, reducer, migration and selectors. No React here so it can be unit-tested with `node --test`.
 import { RULE_FIELDS, actionChanges, allows, problems, type Item, type RuleCtx, type TransitionRules } from './transitionRules.ts'
+import { can } from './access.ts'
 import { adjustRemaining, type Adjust } from '../../server/src/shared/estimates.ts'
 
 // ── Types ──────────────────────────────────────────────────
@@ -418,7 +419,7 @@ export interface State {
 
 export type ProjectPatch = Partial<Pick<Project,
   'name' | 'description' | 'color' | 'leadId' | 'statuses' | 'transitions' | 'layout' | 'boardPrefs' | 'rules' | 'fields' | 'releases' | 'templates' | 'types' | 'components' | 'securityLevels' | 'testing' | 'requirementTypes'>>
-export type IssuePatch = Partial<Omit<Issue, 'id' | 'key' | 'projectId' | 'reporterId' | 'createdAt' | 'watcherIds' | 'links' | 'attachments' | 'rank' | 'worklogs'>>
+export type IssuePatch = Partial<Omit<Issue, 'id' | 'key' | 'projectId' | 'createdAt' | 'watcherIds' | 'links' | 'attachments' | 'rank' | 'worklogs'>>   // reporterId: project admins (spec 0203)
 export type NewIssue = Pick<Issue, 'projectId' | 'title'> & Partial<Pick<Issue,
   'type' | 'description' | 'status' | 'priority' | 'assigneeId' | 'labels' | 'estimate' | 'dueDate' | 'startDate' | 'sprintId' | 'parentId' | 'custom' | 'releaseId' | 'timeEstimate' | 'componentIds' | 'affectsReleaseIds' | 'testFolderId'>>
 
@@ -844,14 +845,15 @@ export function reducer(state: State, action: Action, now = Date.now()): State {
           ...notify(issue.watcherIds.filter(w => !mentioned.includes(w)), issue.id, 'commented', `${who} commented on ${issue.key}`)],
       }
     }
-    case 'editComment':
-      return {
-        ...state,
-        comments: state.comments.map(c => c.id === action.id && c.authorId === actor && action.body.trim()
-          ? { ...c, body: action.body.trim(), editedAt: now } : c),
-      }
-    case 'deleteComment':
-      return { ...state, comments: state.comments.filter(c => !(c.id === action.id && c.authorId === actor)) }
+    // Your own comments; a project admin's, anyone's (Edit all and Delete all comments, spec 0203).
+    case 'editComment': case 'deleteComment': {
+      const c = state.comments.find(x => x.id === action.id)
+      const project = c && state.projects.find(p => p.id === state.issues.find(i => i.id === c.issueId)?.projectId)
+      if (!c || (c.authorId !== actor && !can(project, action.type === 'editComment' ? 'editAllComments' : 'deleteAllComments'))) return state
+      if (action.type === 'deleteComment') return { ...state, comments: state.comments.filter(x => x !== c) }
+      return action.body.trim()
+        ? { ...state, comments: state.comments.map(x => x === c ? { ...x, body: action.body.trim(), editedAt: now } : x) } : state
+    }
 
     case 'logWork': {
       if (!actor || action.minutes <= 0) return state

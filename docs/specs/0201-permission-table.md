@@ -127,3 +127,4 @@ None.
 ## Changelog
 
 - 9 Nov 2026, while building: the table said Set issue security was held by admins today; in fact members choose an item's security level (one they are in). The row now says member, keeping R3 (no behaviour change).
+- 9 Nov 2026: specs 0203–0207, named in the table above, were merged into one, [0203](0203-default-permissions.md), at the product owner's request.
