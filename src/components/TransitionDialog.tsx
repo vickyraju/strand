@@ -121,7 +121,7 @@ function FieldInput({ id, field, project, value, onChange }: { id: string; field
   )
   if (field.startsWith('custom.')) {
     const f = project.fields.find(x => x.id === field.slice(7))
-    if (f?.kind === 'select') return select((f.options ?? []).map(o => ({ value: o, label: o })))
+    if (f?.kind === 'select') return select((f.options ?? []).filter(o => !o.disabled).map(o => ({ value: o.name, label: o.name })))
     return <input id={id} className="input" type={f?.kind === 'number' ? 'number' : f?.kind === 'date' ? 'date' : 'text'} value={str}
       onChange={e => onChange(f?.kind === 'number' && e.target.value !== '' ? Number(e.target.value) : e.target.value)} />
   }

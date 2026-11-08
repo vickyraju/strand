@@ -190,8 +190,16 @@ export interface FieldDef {
   id:       string
   name:     string
   kind:     'text' | 'number' | 'select' | 'date'
-  options?: string[]
+  options?: FieldOption[]
 }
+
+/** A select field's option (spec 0105, as Jira): an id that survives a rename; a disabled one is no longer offered, but
+ *  items keep it. Items store the option's name. */
+export interface FieldOption { id: string; name: string; disabled?: boolean }
+
+/** Options as stored before spec 0105 (names only) or after (objects), as objects. */
+export const optionsOf = (raw: unknown): FieldOption[] =>
+  Array.isArray(raw) ? raw.map(o => (typeof o === 'string' ? { id: uid(), name: o } : o as FieldOption)) : []
 
 /** A release (Jira "fix version"). */
 export interface Release {
@@ -1169,7 +1177,7 @@ function updateOne(
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function migrate(raw: any): State {
   if (!raw || typeof raw !== 'object') return EMPTY
-  if (raw.version === 4) return { ...EMPTY, ...raw }
+  if (raw.version === 4) return toV4({ ...EMPTY, ...raw })   // also brings older option lists (names) to objects
   if (raw.version === 3 || raw.version === 2) return toV4(toV3({ ...EMPTY, ...raw }))
 
   // v1: `me` object, statuses with a `done` flag, no transitions/watchers/links/notifications
@@ -1215,7 +1223,7 @@ function toV4(s: State): State {
     version:    4,
     views:      s.views ?? [],
     editors:    {},   // live edit presence is session-only, never persisted
-    projects:   s.projects.map(p => ({ ...p, fields: p.fields ?? [], releases: p.releases ?? [], templates: p.templates ?? [] })),
+    projects:   s.projects.map(p => ({ ...p, fields: (p.fields ?? []).map(f => (f.options ? { ...f, options: optionsOf(f.options) } : f)), releases: p.releases ?? [], templates: p.templates ?? [] })),
     issues:     s.issues.map(i => ({ ...i, custom: i.custom ?? {}, worklogs: i.worklogs ?? [] })),
   }
 }

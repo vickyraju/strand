@@ -155,22 +155,22 @@ async function editorsOf(d: Db, issueId: string) {
 }
 
 /** Custom field values must belong to a field of this project and fit its kind: text (at most 5000 characters), a finite
- *  number, one of a select field's options, or a YYYY-MM-DD date. Only values that change are checked, so an item keeps a
- *  value whose option was later renamed until someone edits that field. A cleared field is simply left out. */
+ *  number, one of a select field's enabled options, or a YYYY-MM-DD date. Only values that change are checked, so an item
+ *  keeps an option that was later disabled. A cleared field is simply left out. */
 async function checkCustom(d: Db, projectId: string, next: Record<string, string | number>, prev: Record<string, string | number> = {}) {
   const changed = Object.keys(next).filter(k => next[k] !== prev[k])
   if (!changed.length) return
-  const defs = new Map((await d.query<{ id: string; name: string; kind: string; options: string[] | null }>(
+  const defs = new Map((await d.query<{ id: string; name: string; kind: string; options: { name: string; disabled?: boolean }[] | null }>(
     'select id, name, kind, options from field_defs where project_id = $1', [projectId])).map(f => [f.id, f]))
   const errors: Record<string, string> = {}
   for (const k of changed) {
     const f = defs.get(k), v = next[k]
     if (!f) { errors[k] = 'No such field in this project'; continue }
     const ok = f.kind === 'number' ? typeof v === 'number' && Number.isFinite(v)
-      : f.kind === 'select' ? typeof v === 'string' && (f.options ?? []).includes(v)
+      : f.kind === 'select' ? typeof v === 'string' && (f.options ?? []).some(o => o.name === v && !o.disabled)   // a disabled option is kept, not chosen (spec 0105 R4)
       : f.kind === 'date' ? typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v))
       : typeof v === 'string' && v.length <= 5000
-    if (!ok) errors[k] = f.kind === 'select' ? `${f.name} must be one of: ${(f.options ?? []).join(', ')}` : `${f.name} must be a valid ${f.kind}`
+    if (!ok) errors[k] = f.kind === 'select' ? `${f.name} must be one of: ${(f.options ?? []).filter(o => !o.disabled).map(o => o.name).join(', ')}` : `${f.name} must be a valid ${f.kind}`
   }
   if (Object.keys(errors).length) throw new HttpError(400, 'Some custom field values are not valid', Object.fromEntries(Object.entries(errors).map(([k, m]) => [`custom.${k}`, m])))
 }

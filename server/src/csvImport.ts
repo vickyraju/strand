@@ -45,7 +45,7 @@ export async function checkImport(d: Db, projectId: string, csv: string, mapping
                            union select lower(u.name), u.id from users u join memberships m on m.user_id = u.id join projects p on p.workspace_id = m.workspace_id where p.id = $1 and u.active`),
     named<{ id: string }>('select lower(name) as k, id from components where project_id = $1'),
     named<{ id: string }>('select lower(name) as k, id from releases where project_id = $1'),
-    named<{ id: string; kind: string; options: string[] | null; name: string }>('select id::text as k, id, kind, options, name from field_defs where project_id = $1'),
+    named<{ id: string; kind: string; options: { name: string; disabled?: boolean }[] | null; name: string }>('select id::text as k, id, kind, options, name from field_defs where project_id = $1'),
   ])
   const items: Record<string, unknown>[] = []
   const report: RowReport[] = []
@@ -92,7 +92,7 @@ export async function checkImport(d: Db, projectId: string, csv: string, mapping
       const v = get(k), f = fields.get(k.slice(7))
       if (!v || !f) continue
       if (f.kind === 'number') { if (Number.isFinite(Number(v))) custom[f.id] = Number(v); else warnings.push(`${f.name} “${v}” isn’t a number: left empty`) }
-      else if (f.kind === 'select') { const o = (f.options ?? []).find(x => x.toLowerCase() === v.toLowerCase()); if (o) custom[f.id] = o; else warnings.push(`${f.name} “${v}” isn’t one of its options: left empty`) }
+      else if (f.kind === 'select') { const o = (f.options ?? []).find(x => !x.disabled && x.name.toLowerCase() === v.toLowerCase())?.name; if (o) custom[f.id] = o; else warnings.push(`${f.name} “${v}” isn’t one of its options: left empty`) }
       else if (f.kind === 'date') { const dd = toDate(v); if (dd) custom[f.id] = dd; else warnings.push(`${f.name} “${v}” isn’t a date: left empty`) }
       else custom[f.id] = v.slice(0, 5000)
     }

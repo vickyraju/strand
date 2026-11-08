@@ -51,7 +51,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
         for (const [i, st] of (p.statuses ?? []).entries())
           await ins('statuses', { id: nid(st.id), project_id: pid, name: st.name, color: st.color, category: st.category, wip_limit: st.wipLimit ?? null, position: i })
         for (const [i, f] of (p.fields ?? []).entries())
-          await ins('field_defs', { id: nid(f.id), project_id: pid, name: f.name, kind: f.kind, options: f.options ?? null, position: i })
+          await ins('field_defs', { id: nid(f.id), project_id: pid, name: f.name, kind: f.kind, options: f.options ? JSON.stringify(f.options.map((o: any) => (typeof o === 'string' ? { id: randomUUID(), name: o, disabled: false } : { id: o.id ?? randomUUID(), name: o.name, disabled: !!o.disabled }))) : null, position: i })
         for (const r of p.releases ?? [])
           await ins('releases', {
             id: nid(r.id), workspace_id: me.workspaceId, project_id: pid, name: r.name, description: r.description ?? '',
