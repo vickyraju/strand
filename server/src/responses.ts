@@ -40,7 +40,7 @@ export const AvailableTransition = z.object({
   id, name: z.string(), toId: nullable(id), screen: z.array(z.string()).describe('Fields to fill in (and "comment")'),
   problems: z.record(z.string(), z.string()).describe('What would stop the move if made now, by field'),
 })
-export const Field = z.object({ id, projectId: id, name: z.string(), kind: z.enum(['text', 'number', 'select', 'date']), options: nullable(z.array(z.string())), position: z.number() })
+export const Field = z.object({ id, projectId: id, name: z.string(), kind: z.enum(['text', 'number', 'select', 'date']), options: nullable(z.array(z.object({ id: z.string(), name: z.string(), disabled: z.boolean() }))), position: z.number() })
 export const Template = z.object({ id, projectId: id, name: z.string(), type: z.string(), title: z.string(), description: z.string(), priority: z.string(), labels: z.array(z.string()), estimate: nullable(z.number()) })
 export const Rule = z.object({ id, projectId: id, name: z.string(), enabled: z.boolean(), trigger: z.record(z.string(), z.unknown()), actions: z.array(z.record(z.string(), z.unknown())), runs: z.number(), failures: z.number(), ownerId: nullable(id) })
 const Step = z.object({ action: z.string(), outcome: z.enum(['done', 'skipped', 'unchanged', 'failed']), note: z.string().optional() })
@@ -218,6 +218,7 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'GET /projects/search': ProjectPage,
   'POST /projects/:key/archive': ProjectDetail,
   'POST /projects/:key/restore': ProjectDetail,
+  'GET /projects/:key/fields/:id/usage': z.object({ options: z.record(z.string(), z.number()).describe('Option id → live work items that have it') }),
   'GET /admin/archived-projects': z.object({ items: z.array(z.object({ id, key: z.string(), name: z.string(), archivedAt: ts, archivedBy: nullable(z.string()).describe('Who archived it') })), next: nullable(z.string()) }),
   'GET /issues/:key/comments': CommentPage,
   'GET /issues/:key/activity': ActivityPage,

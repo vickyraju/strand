@@ -2047,7 +2047,7 @@ test('CSV import: a dry run checks every row; the import runs as a job; running 
   const p = (await call('POST', '/api/v1/projects', { name: 'From CSV', key: 'CSV', template: 'kanban' })).body
   await join('CSV', 'imp.ann@x.com')
   await call('POST', '/api/v1/projects/CSV/components', { name: 'API' })
-  const [{ id: team }] = (await pool.query(`insert into field_defs (project_id, name, kind, options) values ($1, 'Team', 'select', '{Core,Web}') returning id`, [p.id])).rows
+  const [{ id: team }] = (await pool.query(`insert into field_defs (project_id, name, kind, options) values ($1, 'Team', 'select', '[{"id":"o1","name":"Core","disabled":false},{"id":"o2","name":"Web","disabled":false}]') returning id`, [p.id])).rows
   const csv = [
     'Summary,Issue Type,Status,Priority,Assignee,Labels,Story Points,Due Date,Component/s,Team',
     'Login fails,Bug,In progress,Highest,imp.ann@x.com,"auth,ui",5,01/Oct/26,API,Core',
@@ -2692,10 +2692,10 @@ test('ranking: dropping item after item into the same spot never runs out of roo
   assert.ok(last.id)
 })
 
-test('custom fields: values must fit the field (number, option, date, text); deleting a field removes its values', { skip }, async () => {
+test('[0105.R10] custom fields: values must fit the field (number, option, date, text); deleting a field removes its values', { skip }, async () => {
   await call('POST', '/api/v1/projects', { name: 'Custom', key: 'CUS', template: 'kanban' })
   const add = async (name: string, kind: string, options: string[] | null = null) =>
-    (await call('POST', '/api/v1/projects/CUS/fields', { name, kind, options, position: 0 })).body.id as string
+    (await call('POST', '/api/v1/projects/CUS/fields', { name, kind, options: options && options.map(name => ({ name })), position: 0 })).body.id as string
   const [team, points, due, note] = [await add('Team', 'select', ['Core', 'Web']), await add('Points', 'number'), await add('Due', 'date'), await add('Note', 'text')]
   const i = (await call('POST', '/api/v1/projects/CUS/issues', { title: 'fits', custom: { [team]: 'Core', [points]: 3, [due]: '2026-12-01', [note]: 'ok' } }))
   assert.equal(i.status, 201)
@@ -2708,12 +2708,51 @@ test('custom fields: values must fit the field (number, option, date, text); del
   }
   assert.equal((await call('POST', '/api/v1/projects/CUS/issues', { title: 'no', custom: { [team]: 'Nope' } })).status, 400)
   assert.equal((await bad({ [team]: 'Web' })).status, 200)
-  // an option renamed later does not block edits to other fields
-  await call('PATCH', `/api/v1/projects/CUS/fields/${team}`, { options: ['Platform', 'Web'] })
+  // an option disabled later does not block edits to other fields (spec 0105)
+  const opts = (await call('GET', '/api/v1/projects/CUS')).body.fields.find((f: any) => f.id === team).options
+  await call('PATCH', `/api/v1/projects/CUS/fields/${team}`, { options: opts.map((o: any) => ({ ...o, disabled: o.name === 'Web' })) })
   assert.equal((await call('PATCH', `/api/v1/issues/${i.body.key}`, { title: 'still editable' })).status, 200)
   // deleting a field clears it from every item
   assert.equal((await call('DELETE', `/api/v1/projects/CUS/fields/${note}`)).status, 204)
   assert.equal(note in (await call('GET', `/api/v1/issues/${i.body.key}`)).body.custom, false)
+})
+
+test('[0105.R1][0105.R2][0105.R3][0105.R4][0105.R5][0105.R6][0105.R9] custom fields as in Jira: the type is fixed; options have ids, and renaming, disabling and deleting one carry through to items', { skip }, async () => {
+  await call('POST', '/api/v1/projects', { name: 'Options', key: 'OPT', template: 'kanban' })
+  const f = (await call('POST', '/api/v1/projects/OPT/fields', { name: 'Team', kind: 'select', options: [{ name: 'Web' }, { name: 'Mobile' }, { name: 'Data' }], position: 0 })).body
+  // R2: options come back with ids
+  assert.ok(f.options.every((o: any) => o.id && o.disabled === false))
+  const [web, mobile, data] = f.options
+  const mk = (title: string, team: string) => call('POST', '/api/v1/projects/OPT/issues', { title, custom: { [f.id]: team } }).then(r => r.body)
+  const a = await mk('a', 'Mobile'), b = await mk('b', 'Mobile'), c = await mk('c', 'Data')
+  // R1: the type can't change; the name can
+  const retyped = await call('PATCH', `/api/v1/projects/OPT/fields/${f.id}`, { kind: 'text' })
+  assert.deepEqual([retyped.status, retyped.body.errors?.kind], [400, 'Fixed once made'])
+  assert.equal((await call('PATCH', `/api/v1/projects/OPT/fields/${f.id}`, { name: 'Squad' })).body.name, 'Squad')
+  // R6: names unique within the field, ignoring case, and not empty
+  assert.equal((await call('PATCH', `/api/v1/projects/OPT/fields/${f.id}`, { options: [web, { ...mobile, name: 'web' }, data] })).status, 400)
+  assert.equal((await call('PATCH', `/api/v1/projects/OPT/fields/${f.id}`, { options: [web, { ...mobile, name: ' ' }, data] })).status, 400)
+  // R5 (before): how many items have each option
+  assert.deepEqual((await call('GET', `/api/v1/projects/OPT/fields/${f.id}/usage`)).body.options, { [web.id]: 0, [mobile.id]: 2, [data.id]: 1 })
+  // R3: renaming keeps the id and changes it on every item, with a new version; R9: JQL finds them by the new name
+  const v = (await call('GET', `/api/v1/issues/${a.key}`)).body.version
+  const renamed = (await call('PATCH', `/api/v1/projects/OPT/fields/${f.id}`, { options: [web, { ...mobile, name: 'Mobile apps' }, data] })).body
+  assert.equal(renamed.options[1].id, mobile.id)
+  const now = (await call('GET', `/api/v1/issues/${a.key}`)).body
+  assert.deepEqual([now.custom[f.id], now.version], ['Mobile apps', v + 1])
+  assert.equal((await call('POST', '/api/v1/jql/check', { jql: 'project = OPT AND Squad = "Mobile apps"' })).body.count, 2)
+  // R4: a disabled option can't be chosen, stays where it is, and can be enabled again
+  const mob = { ...mobile, name: 'Mobile apps' }
+  await call('PATCH', `/api/v1/projects/OPT/fields/${f.id}`, { options: [web, mob, { ...data, disabled: true }] })
+  assert.equal((await call('PATCH', `/api/v1/issues/${a.key}`, { custom: { [f.id]: 'Data' } })).status, 400)
+  assert.equal((await call('GET', `/api/v1/issues/${c.key}`)).body.custom[f.id], 'Data')
+  assert.equal((await call('PATCH', `/api/v1/issues/${c.key}`, { title: 'c edited' })).status, 200)
+  await call('PATCH', `/api/v1/projects/OPT/fields/${f.id}`, { options: [web, mob, data] })
+  assert.equal((await call('PATCH', `/api/v1/issues/${a.key}`, { custom: { [f.id]: 'Data' } })).status, 200)
+  // R5: deleting an option clears it from the items that had it
+  await call('PATCH', `/api/v1/projects/OPT/fields/${f.id}`, { options: [web, data] })
+  assert.equal(f.id in (await call('GET', `/api/v1/issues/${b.key}`)).body.custom, false)
+  assert.equal((await call('GET', `/api/v1/issues/${a.key}`)).body.custom[f.id], 'Data')
 })
 
 test('attachments: shown only once the file has arrived; removed files leave storage, with retries, also when the item or project goes', { skip }, async () => {
@@ -2873,7 +2912,7 @@ test('project backups: deleting backs up everything first, restore brings it all
   const p = (await call('POST', '/api/v1/projects', { name: 'Backed up', key: 'BAK', template: 'scrum' })).body
   await join('BAK', 'bak.member@x.com')
   const member = (await call('GET', '/api/v1/me', undefined, 'bak.member@x.com')).body.id
-  await call('POST', '/api/v1/projects/BAK/fields', { name: 'Team', kind: 'select', options: ['Core'], position: 0 })
+  await call('POST', '/api/v1/projects/BAK/fields', { name: 'Team', kind: 'select', options: [{ name: 'Core' }], position: 0 })
   const field = (await call('GET', '/api/v1/projects/BAK')).body.fields[0].id
   const epic = (await call('POST', '/api/v1/projects/BAK/issues', { title: 'Epic', type: 'epic' })).body
   const child = (await call('POST', '/api/v1/projects/BAK/issues', { title: 'Child', parentId: epic.id, assigneeId: member, custom: { [field]: 'Core' } })).body
@@ -3249,6 +3288,7 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     'GET /projects/search': ['any', '/projects/search'],
     'POST /projects/{key}/archive': ['gadmin', `/projects/${K}/archive`], 'POST /projects/{key}/restore': ['gadmin', `/projects/${K}/restore`],   // 0102.R1
     'GET /admin/archived-projects': ['gadmin', '/admin/archived-projects'],   // 0102.R7
+    'GET /projects/{key}/fields/{id}/usage': ['read', `/projects/${K}/fields/${field}/usage`],   // 0105.R5
     'GET /projects/{key}': ['read', `/projects/${K}`], 'PATCH /projects/{key}': ['padmin', `/projects/${K}`, { name: 'x' }],
     'DELETE /projects/{key}': ['gadmin', `/projects/${K}`],
     'PUT /projects/{key}/star': ['viewer', `/projects/${K}/star`], 'DELETE /projects/{key}/star': ['viewer', `/projects/${K}/star`],

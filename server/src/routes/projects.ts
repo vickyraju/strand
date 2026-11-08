@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import type { FastifyRequest } from 'fastify'
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
@@ -34,13 +35,37 @@ export async function projectByKey(d: Db, req: { me: Me; method: string }, ref: 
   return { ...p, role: a.role }
 }
 
+type Opt = { id?: string; name: string; disabled?: boolean }
+/** A select field's options with ids (a new one gets one), names unique ignoring case (spec 0105 R2, R6). */
+function withOptionIds(options: Opt[]) {
+  const seen = new Set<string>()
+  return options.map(o => {
+    const key = o.name.trim().toLowerCase()
+    if (seen.has(key)) throw new HttpError(400, `“${o.name.trim()}” is an option twice`, { options: 'Each option once' })
+    seen.add(key)
+    return { id: o.id ?? randomUUID(), name: o.name.trim(), disabled: !!o.disabled }
+  })
+}
+/** Items take an option's new name, and lose an option that was deleted, in one statement (renames may swap names). */
+async function carryOptions(d: Db, projectId: string, fieldId: string, before: Opt[], after: Opt[]) {
+  const next = new Map(after.map(o => [o.id, o.name]))
+  const change: Record<string, string | null> = {}
+  for (const o of before) { const n = next.get(o.id); if (n !== o.name) change[o.name] = n ?? null }
+  if (!Object.keys(change).length) return
+  const r = await d.query(
+    `update issues set custom = case when $3::jsonb ->> (custom ->> $2) is null then custom - $2 else jsonb_set(custom, array[$2], to_jsonb($3::jsonb ->> (custom ->> $2))) end,
+            version = version + 1, updated_at = now()
+      where project_id = $1 and custom ? $2 and $3::jsonb ? (custom ->> $2) returning id`, [projectId, fieldId, JSON.stringify(change)])
+  if (r.length) await publish(d, projectId, { type: 'issues.reranked' })          // open boards and lists load them again
+}
+
 /** Project settings (workflow, fields, rules, people…) are for project admins. */
 async function requireProjectAdmin(_req: FastifyRequest, p: { role: ProjectRole }) { need(p.role, 'admin') }
 
 // Child collections of a project. `json` columns are stored as jsonb. (Statuses and transitions come from the project's
 // workflow scheme: system administrators change them, in Administration.)
 const CHILD = {
-  fields:      { table: 'field_defs',     cols: ['name', 'kind', 'options', 'position'] },
+  fields:      { table: 'field_defs',     cols: ['name', 'kind', 'options', 'position'], json: ['options'] },
   templates:   { table: 'item_templates', cols: ['name', 'type', 'title', 'description', 'priority', 'labels', 'estimate'] },
   rules:       { table: 'rules',          cols: ['name', 'enabled', 'trigger', 'actions'], json: ['trigger', 'actions'] },
   releases:    { table: 'releases',       cols: ['name', 'description', 'startDate', 'releaseDate'], ws: true },
@@ -49,7 +74,10 @@ const CHILD = {
 type Kind = keyof typeof CHILD
 
 const childPatch = {
-  fields: z.object({ name: z.string().min(1), kind: z.enum(['text', 'number', 'select', 'date']), options: z.array(z.string()).nullable(), position: z.number().int() }).partial(),
+  fields: z.object({ name: z.string().min(1), kind: z.enum(['text', 'number', 'select', 'date']).describe('Fixed once the field is made'),
+    options: z.array(z.object({ id: z.string().min(1).max(64).optional().describe('Kept when renamed; leave out for a new option'), name: z.string().trim().min(1).max(100), disabled: z.boolean().optional().describe('No longer offered; items keep it') })).max(500).nullable()
+      .describe('A select field’s options, in order. In a PATCH: one left out is deleted (its value goes from every item); a new name for an id renames it on every item'),
+    position: z.number().int() }).partial(),
   templates: z.object({
     name: z.string().min(1), type: z.string().min(1).max(40), title: z.string(), description: z.string(),
     priority: z.enum(['urgent', 'high', 'medium', 'low', 'none']), labels: z.array(z.string()), estimate: z.number().nullable(),
@@ -295,6 +323,17 @@ const plugin: FastifyPluginAsyncZod = async app => {
     subscribe(p.id, reply, req.me.id)
   })
 
+  // How many live items have each option of a select field: what deleting one would clear (spec 0105 R5)
+  app.get('/projects/:key/fields/:id/usage', { schema: { tags: T.config, summary: 'How many work items have each option of a select field (by option id)', params: keyIdP } }, async req => {
+    const p = await projectByKey(db, req, req.params.key)
+    const [f] = await db.query<{ options: Opt[] | null }>('select options from field_defs where id = $1 and project_id = $2', [req.params.id, p.id])
+    if (!f) throw new HttpError(404, 'Not found')
+    const rows = await db.query<{ name: string; n: number }>(
+      `select custom ->> $2 as name, count(*)::int as n from issues where project_id = $1 and deleted_at is null and custom ? $2 group by 1`, [p.id, req.params.id])
+    const by = new Map(rows.map(r => [r.name, r.n]))
+    return { options: Object.fromEntries((f.options ?? []).map(o => [o.id!, by.get(o.name) ?? 0])) }
+  })
+
   // ── Child collections: POST/PATCH/DELETE /projects/:key/<kind>[/:id] ──
   for (const kind of Object.keys(CHILD) as Kind[]) {
     const cfg = CHILD[kind] as { table: string; cols: readonly string[]; json?: readonly string[]; ws?: boolean }
@@ -305,6 +344,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
       const p = await projectByKey(db, req, req.params.key)
       await requireProjectAdmin(req, p)
       const body = req.body as Record<string, unknown>
+      if (kind === 'fields' && body.options) body.options = withOptionIds(body.options as Opt[])
       const w = pick(body, [...cfg.cols], json)
       // Ordered collections (statuses, fields) go to the end unless the caller says where
       if ((cfg.cols as readonly string[]).includes('position') && body.position === undefined) {
@@ -326,14 +366,21 @@ const plugin: FastifyPluginAsyncZod = async app => {
     app.patch(`/projects/:key/${kind}/:id`, { schema: { tags: T.config, summary: `Update a ${what}`, params: keyIdP, body: childPatch[kind] } }, async req => {
       const p = await projectByKey(db, req, req.params.key)
       await requireProjectAdmin(req, p)
-      const w = pick(req.body as Record<string, unknown>, [...cfg.cols], json)
+      const patch = req.body as Record<string, unknown>
+      if (kind === 'fields' && patch.options) patch.options = withOptionIds(patch.options as Opt[])
+      const w = pick(patch, [...cfg.cols], json)
       if (!w.keys.length) throw new HttpError(400, 'Nothing to update')
       return tx(async d => {
         const [before] = await d.query(`select * from ${cfg.table} where id = $1 and project_id = $2 for update`, [req.params.id, p.id])
         if (!before) throw new HttpError(404, 'Not found')
+        // Jira: a custom field's type can't change once it is made (spec 0105 R1)
+        if (kind === 'fields' && patch.kind !== undefined && patch.kind !== before.kind)
+          throw new HttpError(400, 'A field’s type can’t change. Make a new field of the type you need.', { kind: 'Fixed once made' })
         const [row] = await d.query(
           `update ${cfg.table} set ${w.cols.map((c, i) => `${c} = $${i + 3}`).join(', ')} where id = $1 and project_id = $2 returning *`,
           [req.params.id, p.id, ...w.vals])
+        // renamed and deleted options carry through to every item that has them, as in Jira (spec 0105 R3, R5)
+        if (kind === 'fields' && patch.options) await carryOptions(d, p.id, before.id, before.options ?? [], patch.options as Opt[])
         const c = changes(before, req.body as Record<string, unknown>)
         if (c.changed) await audit(d, req, { action: `project.${what.replace(' ', '_')}.updated`, type: what, id: row.id, name: row.name ?? null, project: p, before: c.before, after: c.after })
         return row

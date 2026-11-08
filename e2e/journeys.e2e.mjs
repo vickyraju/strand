@@ -1105,3 +1105,30 @@ test('[0102.R4][0102.R5][0102.R7] a global admin archives a project from its set
   await m.waitForSelector('text=Finished long ago')
   assert.deepEqual([...o.problems, ...m.problems], [])
 })
+
+test('[0105.R3][0105.R5][0105.R7] a project admin edits a dropdown field: renames an option (items follow), sorts A–Z, and deletes one after being told how many items have it', { skip, timeout: 90_000 }, async () => {
+  await owner('POST', '/projects', { name: 'Dropdowns', key: 'DRP', template: 'kanban' })
+  const f = (await owner('POST', '/projects/DRP/fields', { name: 'Team', kind: 'select', options: [{ name: 'Web' }, { name: 'Mobile' }, { name: 'Data' }], position: 0 })).body
+  const a = (await owner('POST', '/projects/DRP/issues', { title: 'App work', custom: { [f.id]: 'Mobile' } })).body
+  const b = (await owner('POST', '/projects/DRP/issues', { title: 'Pipeline work', custom: { [f.id]: 'Data' } })).body
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url('/project/DRP/settings'))
+  await o.click('.person:has-text("Team") button:has-text("Edit")')
+  await o.fill('[aria-label="Option 2"]', 'Mobile apps')
+  await o.click('.modal button:has-text("Sort A–Z")')
+  assert.deepEqual(await o.locator('.option-list input').evaluateAll(xs => xs.map(x => x.value)), ['Data', 'Mobile apps', 'Web'])
+  await o.click('[aria-label="Delete Data"]')
+  await o.waitForSelector('.modal >> text=1 work item has Data.')
+  await o.click('.modal button:has-text("Delete option")')
+  await o.click('.modal button:has-text("Save field")')
+  await o.waitForSelector('text=Saved Team')
+  const field = async () => (await owner('GET', '/projects/DRP')).body.fields.find(x => x.id === f.id)
+  for (let i = 0; i < 40 && (await field()).options.length !== 2; i++) await new Promise(r => setTimeout(r, 250))
+  assert.deepEqual((await field()).options.map(x => x.name), ['Mobile apps', 'Web'])
+  assert.equal((await owner('GET', `/issues/${a.key}`)).body.custom[f.id], 'Mobile apps')
+  assert.equal(f.id in (await owner('GET', `/issues/${b.key}`)).body.custom, false)
+  // the item page shows the new name
+  await o.goto(url(`/i/${a.key}`))
+  await o.waitForSelector('text=Mobile apps')
+  assert.deepEqual(o.problems, [])
+})

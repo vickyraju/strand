@@ -36,6 +36,12 @@ export function itemsOf(projects: Project[], kind: Kind): Item[] {
   })
 }
 
+/** Did a select field's options lose or rename one (which changes items on the server)? */
+export function optionsCarried(before: unknown, after: unknown) {
+  const next = new Map(((after ?? []) as { id: string; name: string }[]).map(o => [o.id, o.name]))
+  return ((before ?? []) as { id: string; name: string }[]).some(o => next.get(o.id) !== o.name)
+}
+
 /** Where unfinished work went when a release was shipped locally: the release those issues point at now, else none. */
 export function releaseMoveTo(releaseId: string, before: Issue[], now: Issue[], isUnfinished: (i: Issue) => boolean): string | null {
   const was = before.filter(i => i.releaseId === releaseId && isUnfinished(i)).map(i => i.id)
@@ -62,6 +68,8 @@ function kindSync(kind: Kind) {
     create: async i => { await api('POST', path(i), { id: i.id, ...i.body }) },
     update: async (a, b) => {
       if (!same(a.body, b.body)) await api('PATCH', `${path(b)}/${b.id}`, b.body)
+      // the server renamed or cleared those options on the items that had them (spec 0105): take the items again
+      if (kind === 'fields' && optionsCarried(a.body.options, b.body.options)) await settingsDeps.reloadProject(b.projectId)
       if (kind === 'releases' && !a.released && b.released) {
         const moveTo = releaseMoveTo(b.id, settingsDeps.baseIssues(), settingsDeps.getIssues(), settingsDeps.isUnfinished)
         await api('POST', `${path(b)}/${b.id}/release`, { moveTo })

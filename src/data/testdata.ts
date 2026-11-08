@@ -1,7 +1,7 @@
 // A realistic sample workspace: a team, three projects, sprint history and backdated activity so every
 // screen (board, backlog, inbox, reports) has believable data. Test fixture only: the app itself ships no demo data.
 import {
-  uid, makeUser, anyToAny, DEFAULT_BOARD_PREFS,
+  uid, makeUser, anyToAny, DEFAULT_BOARD_PREFS, optionsOf,
   type State, type User, type Project, type Issue, type Sprint, type Comment, type Activity, type Notification,
   type Status, type Transition, type IssueType, type Priority, type Release,
 } from './reducer.ts'
@@ -356,12 +356,12 @@ export function sampleWorkspace(owner: User, now = Date.now()): Partial<State> {
   }
 
   mobP.fields = [
-    { id: uid(), name: 'Platform', kind: 'select', options: ['iOS', 'Android', 'Both'] },
+    { id: uid(), name: 'Platform', kind: 'select', options: optionsOf(['iOS', 'Android', 'Both']) },
     { id: uid(), name: 'App version', kind: 'text' },
   ]
   supP.fields = [
     { id: uid(), name: 'Customer', kind: 'text' },
-    { id: uid(), name: 'Plan', kind: 'select', options: ['Starter', 'Growth', 'Enterprise'] },
+    { id: uid(), name: 'Plan', kind: 'select', options: optionsOf(['Starter', 'Growth', 'Enterprise']) },
     { id: uid(), name: 'Revenue at risk', kind: 'number' },
   ]
   const customers = ['Acme Coffee', 'Northwind Bikes', 'Bluebird Florists', 'Harbor Dental', 'Kite & Co', 'Lumen Studio', 'Oakline Books', 'Pinecrest Gym', 'Quarry Bakery', 'Riverbend Vets']
