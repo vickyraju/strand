@@ -22,9 +22,10 @@ export const RESOLUTIONS = ['Done', "Won't do", 'Duplicate', 'Cannot reproduce']
 export const ISSUE_ROW = `
   select i.id, p.key || '-' || i.number as key, i.project_id, i.number, i.type, i.title, i.description,
          i.status_id, i.priority, i.assignee_id, i.reporter_id, i.labels, i.estimate, i.time_estimate, i.time_remaining, i.component_ids, i.affects_release_ids, i.test_spec, i.test_folder_id, i.test_environments, i.revision,
-         i.due_date, i.start_date, i.sprint_id, i.release_id, i.parent_id, i.custom, i.rank, i.version,
+         i.due_date, i.start_date, i.sprint_id, i.release_id, live_par.id as parent_id, i.custom, i.rank, i.version,
          i.resolution, i.resolved_at, i.created_at, i.updated_at
-    from issues i join projects p on p.id = i.project_id`
+    from issues i join projects p on p.id = i.project_id
+    left join issues live_par on live_par.id = i.parent_id and live_par.deleted_at is null`   // a deleted parent (an epic) is no parent until restored (spec 0202)
 
 // What a Test or Pre-Condition says to do (Xray's three kinds of test)
 const testStep = z.object({
@@ -296,6 +297,35 @@ async function checkSprint(d: Db, me: Me, sprintId: string | null | undefined) {
   if (s.state === 'closed') throw new HttpError(400, 'That sprint is completed: choose an open one', { sprintId: 'Completed sprint' })
 }
 
+/** Delete a work item (spec 0202): its sub-items at any depth go with it, at the same moment (so restoring finds them);
+ *  an epic's items stay, and have no epic while it is deleted (they keep the link, so restoring it gives it back). An
+ *  item already deleted is left as it is. Returns how many went. */
+async function deleteItem(d: Db, who: { me: Me; ip?: string }, i: any) {
+  if ((await d.query('select 1 from issues where id = $1 and deleted_at is not null', [i.id])).length) return 0
+  const gone = await d.query<{ id: string; key: string }>(
+    `with recursive t as (select $1::uuid as id union all select c.id from issues c join t on c.parent_id = t.id where c.deleted_at is null and $2 <> 'epic')
+     update issues x set deleted_at = now(), deleted_by = $3, version = version + 1 from t join projects p on true
+      where x.id = t.id and p.id = x.project_id returning x.id, p.key || '-' || x.number as key`, [i.id, i.type, who.me.id])
+  for (const g of gone) await audit(d, who, { action: 'issue.deleted', type: 'issue', id: g.id, name: g.key, project: { id: i.projectId, key: i.key.split('-')[0]! } })
+  await publish(d, i.projectId, { type: 'issue.deleted', id: i.id, key: i.key })
+  if (i.type === 'epic') await publish(d, i.projectId, { type: 'issues.reranked' })   // its items lost their epic
+  return gone.length
+}
+
+/** Restore a deleted work item with the sub-items deleted with it (the same moment); an epic's items that still point to
+ *  it (not given another epic or none since) have it again. Returns how many came back. */
+async function restoreItem(d: Db, who: { me: Me; ip?: string }, i: any) {
+  const back = await d.query<{ id: string }>(
+    `with recursive at as (select deleted_at from issues where id = $1 and deleted_at is not null),
+       t as (select $1::uuid as id union all select c.id from issues c join t on c.parent_id = t.id where c.deleted_at = (select deleted_at from at))
+     update issues x set deleted_at = null, deleted_by = null, version = version + 1 from t where x.id = t.id and x.deleted_at = (select deleted_at from at) returning x.id`, [i.id])
+  if (!back.length) return 0
+  await audit(d, who, { action: 'issue.restored', type: 'issue', id: i.id, name: i.key, project: { id: i.projectId, key: i.key.split('-')[0]! }, after: back.length > 1 ? { withSubItems: back.length - 1 } : undefined })
+  await publish(d, i.projectId, { type: 'issue.created', id: i.id })
+  if (i.type === 'epic' || back.length > 1) await publish(d, i.projectId, { type: 'issues.reranked' })
+  return back.length
+}
+
 /** Jira's component default assignee: new work in a component, with nobody chosen, goes to the component's lead or the
  *  project's lead (the first component that says so). Only someone who can work in the project. */
 async function defaultAssignee(d: Db, projectId: string, componentIds: string[] | undefined) {
@@ -557,39 +587,67 @@ const plugin: FastifyPluginAsyncZod = async app => {
       return { count: out.length, issues: out }
     })
   })
-  app.post('/issues/bulk/delete', { schema: { tags: ['Issues: bulk'], summary: 'Soft-delete many issues (restorable)', body: z.object({ issues: refs }) } }, async req => {
+  app.post('/issues/bulk/delete', { schema: { tags: ['Issues: bulk'], summary: 'Delete many work items with their sub-items (project admins; restorable for the period in System settings)', body: z.object({ issues: refs }) } }, async req => {
     await checkBulk(req)
     return tx(async d => {
-      const rows = []
-      for (const ref of [...new Set(req.body.issues)]) rows.push(await issueByKey(d, req, ref, false, 'deleteIssues'))
-      await d.query('update issues set deleted_at = now(), version = version + 1 where id = any($1::uuid[])', [rows.map(r => r.id)])
-      for (const r of rows) await audit(d, req, { action: 'issue.deleted', type: 'issue', id: r.id, name: r.key, project: { id: r.projectId, key: r.key.split('-')[0]! }, after: { bulk: true } })
-      for (const pid of new Set(rows.map(r => r.projectId))) await publish(d, pid, { type: 'issue.deleted' })
-      return bulkResult(rows.length)
+      let n = 0
+      for (const ref of [...new Set(req.body.issues)]) n += await deleteItem(d, req, await issueByKey(d, req, ref, true, 'deleteIssues'))
+      return bulkResult(n)
     })
   })
-  app.post('/issues/bulk/restore', { schema: { tags: ['Issues: bulk'], summary: 'Restore many soft-deleted issues (Undo)', body: z.object({ issues: refs }) } }, async req => {
+  app.post('/issues/bulk/restore', { schema: { tags: ['Issues: bulk'], summary: 'Restore many deleted work items with what was deleted with them (Undo; project admins)', body: z.object({ issues: refs }) } }, async req => {
     await checkBulk(req)
     return tx(async d => {
-      const rows = []
-      for (const ref of [...new Set(req.body.issues)]) rows.push(await issueByKey(d, req, ref, true, 'deleteIssues'))   // restoring is undoing a delete
-      await d.query('update issues set deleted_at = null, version = version + 1 where id = any($1::uuid[])', [rows.map(r => r.id)])
-      for (const r of rows) await audit(d, req, { action: 'issue.restored', type: 'issue', id: r.id, name: r.key, project: { id: r.projectId, key: r.key.split('-')[0]! }, after: { bulk: true } })
-      for (const pid of new Set(rows.map(r => r.projectId))) await publish(d, pid, { type: 'issue.created' })
-      return bulkResult(rows.length)
+      let n = 0
+      for (const ref of [...new Set(req.body.issues)]) n += await restoreItem(d, req, await issueByKey(d, req, ref, true, 'deleteIssues'))
+      return bulkResult(n)
     })
   })
 
-  // Soft delete + restore back the client's Undo
-  app.delete('/issues/:key', { schema: { tags: TAG, summary: 'Soft-delete an issue (restorable)', params: keyP } }, async (req, reply) => {
-    await tx(async d => {
-      const i = await issueByKey(d, req, req.params.key, false, 'deleteIssues')
-      await d.query('update issues set deleted_at = now(), version = version + 1 where id = $1', [i.id])
-      await audit(d, req, { action: 'issue.deleted', type: 'issue', id: i.id, name: i.key, project: { id: i.projectId, key: i.key.split('-')[0]! } })
-      await publish(d, i.projectId, { type: 'issue.deleted', id: i.id, key: i.key })
-    })
+  // Deleting (spec 0202, as in Jira): project admins; an item takes its sub-items with it, an epic leaves its items (they
+  // lose their epic). Kept restorable for the period in System settings, then removed for good by a daily job.
+  app.delete('/issues/:key', { schema: { tags: TAG, summary: 'Delete a work item with its sub-items (project admins; restorable for the period in System settings). Deleting it again does nothing', params: keyP } }, async (req, reply) => {
+    await tx(async d => { await deleteItem(d, req, await issueByKey(d, req, req.params.key, true, 'deleteIssues')) })
     reply.code(204).send()
   })
+  app.get('/issues/:key/delete-preview', { schema: { tags: TAG, summary: 'What deleting a work item does: how many sub-items go with it, and for an epic how many items stay without it', params: keyP } }, async req => {
+    const i = await issueByKey(db, { ...req, method: 'DELETE' }, req.params.key, false, 'deleteIssues')
+    const [{ sub }] = await db.query<{ sub: number }>(`with recursive t as (select id from issues where parent_id = $1 and deleted_at is null and $2 <> 'epic'
+      union all select c.id from issues c join t on c.parent_id = t.id where c.deleted_at is null) select count(*)::int as sub from t`, [i.id, i.type]) as any
+    const [{ kept }] = await db.query<{ kept: number }>(`select count(*)::int as kept from issues where parent_id = $1 and deleted_at is null and $2 = 'epic'`, [i.id, i.type]) as any
+    return { subItems: sub, epicItems: kept }
+  })
+  // Project settings › Deleted work items (spec 0202): what was deleted, newest first, until it is removed for good
+  app.get('/projects/:key/deleted', { schema: { tags: TAG, summary: 'Deleted work items, newest first, a page at a time, with who deleted each and when it goes for good (project admins)', params: z.object({ key: z.string() }),
+    querystring: z.object({ query: z.string().max(200).optional(), cursor: z.string().max(200).optional(), limit: z.coerce.number().int().min(1).max(100).default(50) }) } }, async req => {
+    const p = await projectByKey(db, req, req.params.key, 'deleteIssues')
+    const { retentionDays } = await getSetting(req.me.workspaceId, 'deletedItems')
+    const args: unknown[] = [p.id]
+    let after = ''
+    if (req.query.cursor) {
+      const [at, id] = Buffer.from(req.query.cursor, 'base64url').toString().split('|')
+      if (!id || Number.isNaN(Date.parse(at!))) throw new HttpError(400, 'Invalid cursor')
+      args.push(at, id); after = `and (i.deleted_at, i.id) < ($${args.length - 1}::timestamptz, $${args.length}::uuid)`
+    }
+    if (req.query.query?.trim()) {
+      args.push('%' + req.query.query.trim().replace(/[\\%_]/g, '\\$&') + '%')
+      after += ` and (i.title ilike $${args.length} or p.key || '-' || i.number ilike $${args.length})`
+    }
+    args.push(req.query.limit + 1, retentionDays)
+    // the items deleted themselves, not the sub-items that went with them (those are counted)
+    const rows = await db.query<any>(
+      `select i.id, p.key || '-' || i.number as key, i.title, i.type, i.deleted_at, i.deleted_at::text as at_key, u.name as deleted_by,
+              i.deleted_at + make_interval(days => $${args.length}) as removed_at,
+              (select count(*)::int from issues c where c.parent_id = i.id and c.deleted_at = i.deleted_at) as sub_items
+         from issues i join projects p on p.id = i.project_id left join users u on u.id = i.deleted_by
+        where i.project_id = $1 and i.deleted_at is not null ${after}
+          and not exists (select 1 from issues par where par.id = i.parent_id and par.deleted_at = i.deleted_at)
+        order by i.deleted_at desc, i.id desc limit $${args.length - 1}`, args)
+    const more = rows.length > req.query.limit, items = more ? rows.slice(0, req.query.limit) : rows
+    const last = items.at(-1)
+    return { items: items.map(({ atKey, ...r }) => r), next: more && last ? Buffer.from(`${last.atKey}|${last.id}`).toString('base64url') : null }   // the exact time, to the microsecond
+  })
+
   // Opening a work item records it for "Your work → Viewed". Anyone who can see the item may record that they did (read-only users too).
   app.post('/issues/:key/view', { schema: { tags: TAG, summary: 'Record that I opened this work item (Your work → Viewed keeps my newest 50)', params: keyP } }, async (req, reply) => {
     const i = await issueByKey(db, req, req.params.key, false, 'viewer', { archivedOk: true })
@@ -600,15 +658,14 @@ const plugin: FastifyPluginAsyncZod = async app => {
     reply.code(204).send()
   })
 
-  app.post('/issues/:key/restore', { schema: { tags: TAG, summary: 'Restore a soft-deleted issue (Undo)', params: keyP } }, async req => {
+  app.post('/issues/:key/restore', { schema: { tags: TAG, summary: 'Restore a deleted work item with what was deleted with it (Undo; project admins)', params: keyP } }, async req => {
     return tx(async d => {
       const i = await issueByKey(d, req, req.params.key, true, 'deleteIssues')
-      await d.query('update issues set deleted_at = null, version = version + 1 where id = $1', [i.id])
-      await audit(d, req, { action: 'issue.restored', type: 'issue', id: i.id, name: i.key, project: { id: i.projectId, key: i.key.split('-')[0]! } })
-      await publish(d, i.projectId, { type: 'issue.created', id: i.id })
+      await restoreItem(d, req, i)
       return (await d.query<any>(`${ISSUE_ROW} where i.id = $1`, [i.id]))[0]
     })
   })
+
 
   // ── Links & watchers ──
   const linkType = z.string().max(40).describe('A link type id (GET /link-types), e.g. blocks, relates, duplicates, clones')

@@ -1,4 +1,7 @@
+import { useState } from 'react'
 import { useDraggable } from '@dnd-kit/core'
+import { can } from '../data/access'
+import DeleteItemsDialog from './DeleteItemsDialog'
 import { MoreHorizontal, CalendarDays, Ban, UserCheck, Link2, Trash2, ArrowRight, Eye, RefreshCw } from 'lucide-react'
 import { useStore, userOf, blockersOf, indexOf, transitionsFrom, loopsFrom, moveContext, type Issue, type Project, type CardField } from '../data/store'
 import { useApp } from '../appContext'
@@ -33,6 +36,7 @@ export function CardGhost(props: Omit<CardProps, 'dragging'>) {
 function CardView({ issue, project, fields, dragging, ghost, drag }: CardProps & { ghost?: boolean; drag?: ReturnType<typeof useDraggable> }) {
   const { state, dispatch } = useStore()
   const { openIssue, toast, moveIssue, runTransition } = useApp()
+  const [deleting, setDeleting] = useState(false)
   const status   = project.statuses.find(s => s.id === issue.status)
   const done     = status?.category === 'done'
   const index    = indexOf(state)
@@ -55,8 +59,7 @@ function CardView({ issue, project, fields, dragging, ghost, drag }: CardProps &
       onClick: () => dispatch({ type: 'updateIssues', ids: [issue.id], patch: { assigneeId: state.me?.id } }) }] : []),
     { label: 'Copy link', icon: <Link2 size={14} />, divider: issue.assigneeId === state.me?.id,
       onClick: () => { navigator.clipboard?.writeText(location.origin + href({ name: 'issue', key: issue.key })); toast('Link copied') } },
-    { label: 'Delete', icon: <Trash2 size={14} />, danger: true, divider: true,
-      onClick: () => { dispatch({ type: 'deleteIssues', ids: [issue.id] }); toast(`Deleted ${issue.key}`, { undo: 'deleteIssues' }) } },
+    ...(can(project, 'deleteIssues') ? [{ label: 'Delete', icon: <Trash2 size={14} />, danger: true, divider: true, onClick: () => setDeleting(true) }] : []),
   ]
 
   return (
@@ -103,6 +106,7 @@ function CardView({ issue, project, fields, dragging, ghost, drag }: CardProps &
         {!ghost && <span className="card-menu"><Menu title={`Actions for ${issue.key}`} className="icon-btn sm" trigger={<MoreHorizontal size={15} />} items={menu} /></span>}
         {fields.assignee && <Avatar user={assignee} size={24} />}
       </div>
+      {deleting && <span onClick={e => e.stopPropagation()} onPointerDown={e => e.stopPropagation()}><DeleteItemsDialog ids={[issue.id]} onClose={() => setDeleting(false)} /></span>}
     </div>
   )
 }

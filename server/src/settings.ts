@@ -120,6 +120,13 @@ export const SETTINGS = {
     }).refine(v => !v.enabled || !!v.from, { path: ['from'], message: 'Say who the emails come from' }),
     default: { enabled: false, from: '', appUrl: '' },
   },
+  deletedItems: {
+    label: 'Deleted work items',
+    description: 'How long a deleted work item can be restored (Project settings › Deleted work items) before it is removed for good.',
+    public: false,
+    schema: z.object({ retentionDays: z.number().int().min(1).max(365).describe('Days a deleted work item is kept') }),
+    default: { retentionDays: 30 },
+  },
   projectBackups: {
     label: 'Project backups',
     description: 'Whether deleting a project backs it up first, and where. Managed on the Project backups page.',

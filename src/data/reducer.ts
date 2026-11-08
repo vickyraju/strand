@@ -778,9 +778,15 @@ export function reducer(state: State, action: Action, now = Date.now()): State {
       return next !== state && t.to && t.to !== issue.status ? runRules(next, issue.id, [{ kind: 'status', to: t.to }], now) : next
     }
     case 'deleteIssues': {
+      // sub-items go with their parent, at any depth; an epic's items stay, keeping the link (it shows as no epic while
+      // the epic is deleted, and Undo or a restore gives it back) (spec 0202)
       const ids = new Set(action.ids)
-      for (const i of state.issues) if (i.parentId && ids.has(i.parentId)) ids.add(i.id)
-      return dropIssues(state, ids)
+      const epics = new Set(state.issues.filter(i => i.type === 'epic').map(i => i.id))
+      for (let grew = true; grew;) {
+        grew = false
+        for (const i of state.issues) if (i.parentId && ids.has(i.parentId) && !epics.has(i.parentId) && !ids.has(i.id)) { ids.add(i.id); grew = true }
+      }
+      return dropIssues(state, ids, true)
     }
     case 'toggleWatch':
       return {
@@ -1060,12 +1066,13 @@ export function runRules(state: State, issueId: string, events: RuleTrigger[], n
   }
 }
 
-function dropIssues(state: State, ids: Set<string>): State {
+/** `keepParent`: items keep a link to a removed parent (a deleted epic, which can come back). */
+function dropIssues(state: State, ids: Set<string>, keepParent = false): State {
   return {
     ...state,
     issues:        state.issues.filter(i => !ids.has(i.id)).map(i => ({
       ...i,
-      parentId: i.parentId && ids.has(i.parentId) ? undefined : i.parentId,
+      parentId: i.parentId && ids.has(i.parentId) && !keepParent ? undefined : i.parentId,
       links:    i.links.filter(l => !ids.has(l.issueId)),
     })),
     comments:      state.comments.filter(c => !ids.has(c.issueId)),

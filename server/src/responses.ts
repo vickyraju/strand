@@ -342,6 +342,8 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'GET /issues/:key/transitions': z.array(AvailableTransition),
   'POST /issues/:key/transitions': IssueRow,
   'POST /issues/:key/restore': IssueRow,
+  'GET /issues/:key/delete-preview': z.object({ subItems: z.number().describe('Sub-items deleted with it'), epicItems: z.number().describe('For an epic: its items, which stay without it') }),
+  'GET /projects/:key/deleted': z.object({ items: z.array(z.object({ id, key: z.string(), title: z.string(), type: z.string(), deletedAt: ts, deletedBy: nullable(z.string()), removedAt: ts.describe('When it is removed for good'), subItems: z.number() })), next: nullable(z.string()) }),
   'POST /issues/:key/comments': Comment,
   'PATCH /comments/:id': Comment,
   'POST /issues/:key/worklogs': Worklog,

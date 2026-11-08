@@ -32,7 +32,7 @@ export const PERMISSIONS: Record<Permission, Row> = {
   assignable:           { name: 'Assignable user',           jira: 'any user with access', role: 'viewer', spec: '0207' },
   linkIssues:           { name: 'Link issues',               jira: 'any user with access', role: 'member' },
   moveIssues:           { name: 'Move issues',               jira: 'any user with access', role: null, spec: '0501' },
-  deleteIssues:         { name: 'Delete issues',             jira: 'Administrators',       role: 'member', spec: '0202' },
+  deleteIssues:         { name: 'Delete issues',             jira: 'Administrators',       role: 'admin', spec: '0202' },
   modifyReporter:       { name: 'Modify reporter',           jira: 'Administrators',       role: null, spec: '0207' },
   manageWatchers:       { name: 'Manage watchers',           jira: 'Administrators',       role: null, spec: '0207' },
   viewWatchers:         { name: 'View voters and watchers',  jira: 'any user with access', role: 'viewer' },

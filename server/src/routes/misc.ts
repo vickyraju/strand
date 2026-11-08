@@ -91,7 +91,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
          from issues i join projects p on p.id = i.project_id join statuses st on st.id = i.status_id
          left join users a on a.id = i.assignee_id left join users r on r.id = i.reporter_id
          left join sprints sp on sp.id = i.sprint_id left join releases rl on rl.id = i.release_id
-         left join issues par on par.id = i.parent_id left join projects par_p on par_p.id = par.project_id
+         left join issues par on par.id = i.parent_id and par.deleted_at is null left join projects par_p on par_p.id = par.project_id
         where ${where.join(' and ')} order by ${order ? `${order}, i.id` : 'i.updated_at desc, i.id desc'} limit $${args.length}`, args)
     if (rows.length > max)
       throw new HttpError(400, `More than ${max.toLocaleString('en')} items match. Narrow the search (a project, a type, a label) and export again.`)

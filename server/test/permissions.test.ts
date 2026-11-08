@@ -7,7 +7,7 @@ const SPEC: Record<string, [jira: string, strand: string | null, spec?: string]>
   browse: ['any user with access', 'viewer'], createIssues: ['any user with access', 'member'], editIssues: ['any user with access', 'member'],
   transitionIssues: ['any user with access', 'member'], assignIssues: ['any user with access', 'member'],
   assignable: ['any user with access', 'viewer', '0207'], linkIssues: ['any user with access', 'member'], moveIssues: ['any user with access', null, '0501'],
-  deleteIssues: ['Administrators', 'member', '0202'], modifyReporter: ['Administrators', null, '0207'], manageWatchers: ['Administrators', null, '0207'],
+  deleteIssues: ['Administrators', 'admin', '0202'], modifyReporter: ['Administrators', null, '0207'], manageWatchers: ['Administrators', null, '0207'],
   viewWatchers: ['any user with access', 'viewer'], addComments: ['any user with access', 'viewer'],
   editOwnComments: ['any user with access', 'viewer'], deleteOwnComments: ['any user with access', 'viewer'],
   editAllComments: ['Administrators', null, '0205'], deleteAllComments: ['Administrators', null, '0205'],

@@ -17059,7 +17059,7 @@
         }
       },
       "delete": {
-        "summary": "Soft-delete an issue (restorable)",
+        "summary": "Delete a work item with its sub-items (project admins; restorable for the period in System settings). Deleting it again does nothing",
         "tags": [
           "Issues"
         ],
@@ -19195,7 +19195,7 @@
     },
     "/api/v1/issues/bulk/delete": {
       "post": {
-        "summary": "Soft-delete many issues (restorable)",
+        "summary": "Delete many work items with their sub-items (project admins; restorable for the period in System settings)",
         "tags": [
           "Issues: bulk"
         ],
@@ -19330,7 +19330,7 @@
     },
     "/api/v1/issues/bulk/restore": {
       "post": {
-        "summary": "Restore many soft-deleted issues (Undo)",
+        "summary": "Restore many deleted work items with what was deleted with them (Undo; project admins)",
         "tags": [
           "Issues: bulk"
         ],
@@ -19372,6 +19372,333 @@
                   },
                   "required": [
                     "count"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/issues/{key}/delete-preview": {
+      "get": {
+        "summary": "What deleting a work item does: how many sub-items go with it, and for an epic how many items stay without it",
+        "tags": [
+          "Issues"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "description": "Issue key (PAY-12) or id (uuid)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "subItems": {
+                      "type": "number",
+                      "description": "Sub-items deleted with it"
+                    },
+                    "epicItems": {
+                      "type": "number",
+                      "description": "For an epic: its items, which stay without it"
+                    }
+                  },
+                  "required": [
+                    "subItems",
+                    "epicItems"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{key}/deleted": {
+      "get": {
+        "summary": "Deleted work items, newest first, a page at a time, with who deleted each and when it goes for good (project admins)",
+        "tags": [
+          "Issues"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "in": "query",
+            "name": "query",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "in": "query",
+            "name": "cursor",
+            "required": false
+          },
+          {
+            "schema": {
+              "default": 50,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            },
+            "in": "query",
+            "name": "limit",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "key",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "description": "uuid"
+                          },
+                          "key": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "type": {
+                            "type": "string"
+                          },
+                          "deletedAt": {
+                            "type": "string",
+                            "description": "ISO 8601 timestamp"
+                          },
+                          "deletedBy": {
+                            "nullable": true,
+                            "type": "string"
+                          },
+                          "removedAt": {
+                            "type": "string",
+                            "description": "When it is removed for good"
+                          },
+                          "subItems": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "key",
+                          "title",
+                          "type",
+                          "deletedAt",
+                          "deletedBy",
+                          "removedAt",
+                          "subItems"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "next": {
+                      "nullable": true,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "items",
+                    "next"
                   ],
                   "additionalProperties": false
                 }
@@ -19568,7 +19895,7 @@
     },
     "/api/v1/issues/{key}/restore": {
       "post": {
-        "summary": "Restore a soft-deleted issue (Undo)",
+        "summary": "Restore a deleted work item with what was deleted with it (Undo; project admins)",
         "tags": [
           "Issues"
         ],
@@ -27656,7 +27983,7 @@
             "in": "path",
             "name": "key",
             "required": true,
-            "description": "One of: rateLimiting, attachments, accessTokens, searchAndBulk, licenseCleanup, groups, testing, dueReminders, email"
+            "description": "One of: rateLimiting, attachments, accessTokens, searchAndBulk, licenseCleanup, groups, testing, dueReminders, email, deletedItems"
           }
         ],
         "responses": {

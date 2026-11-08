@@ -7,11 +7,12 @@ const TestRepository = lazy(() => import('./testing/TestRepository'))
 import { Plus, Star, FolderPlus, Columns2, List, ListChecks, Settings, Gauge, BarChart3, GanttChart, CalendarDays, Rocket, Check, Info, Zap, Users, FlaskConical, Archive } from 'lucide-react'
 import { useStore, userOf, isDone, timeAgo, PROJECT_COLORS, type Project, type ProjectPatch } from '../data/store'
 import { useApp } from '../appContext'
-import { canAdmin, isGlobalAdmin } from '../data/access'
+import { can, canAdmin, isGlobalAdmin } from '../data/access'
 import { navigate, href, type ProjectTab } from '../router'
 import { api, apiEnabled } from '../api/client'
 import { useProjectEvents } from '../api/presence'
 import BoardView from './BoardView'
+import DeletedItems from './DeletedItems'
 import ConfigureBoard, { BoardsPanel } from './boards/ConfigureBoard'
 import BacklogView from './BacklogView'
 import IssueTable, { type TableGroup } from './IssueTable'
@@ -379,6 +380,7 @@ function ProjectSettings({ project }: { project: Project }) {
 
       <WorkflowPanel project={project} />
       {apiEnabled && <BoardsPanel project={project} />}
+      {apiEnabled && can(project, 'deleteIssues') && <DeletedItems project={project} />}
 
       {apiEnabled && <TestingPanel project={project} admin={canAdmin(project)} />}
       <WorkTypesPanel project={project} />

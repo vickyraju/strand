@@ -10,6 +10,7 @@ import { pool, db } from './db.ts'
 import { startListener, stopListener } from './events.ts'
 import { startJobWorker } from './jobs.ts'
 import { scheduleCleanup } from './licenseCleanup.ts'
+import { schedulePurge } from './deletedItems.ts'
 import { errorSchema, toErrorBody } from './errors.ts'
 import { CREATED, RESPONSES } from './responses.ts'
 import projects from './routes/projects.ts'
@@ -146,6 +147,9 @@ export async function build() {
   if (process.env.DATABASE_URL)   // not when only describing the API (npm run openapi)
     for (const w of (await pool.query<{ workspace_id: string }>(`select workspace_id from system_settings where key = 'licenseCleanup' and (value->>'enabled')::boolean`)).rows)
       await scheduleCleanup(db, w.workspace_id).catch(e => app.log.error(e))
+  // every workspace removes its long-deleted work items daily (spec 0202)
+  if (process.env.DATABASE_URL)
+    for (const w of (await pool.query<{ id: string }>('select id from workspaces')).rows) await schedulePurge(db, w.id).catch(e => app.log.error(e))
   app.addHook('onClose', async () => stopJobs())
   app.addHook('onClose', async () => { await stopListener(); await pool.end() })
   return app
