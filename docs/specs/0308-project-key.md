@@ -1,6 +1,6 @@
 # 0308 Project key pattern and length as System settings
 
-Status: Approved (PO, 9 Nov 2026: "i approve everything"; "yes proceed")
+Status: Ported (aws-jira `1ced66a`, strand `d361d6a`), approved by the PO on 9 Nov 2026; awaiting verification
 Parity rows: PRJ-03
 
 ## Context and Jira reference

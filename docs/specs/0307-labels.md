@@ -1,6 +1,6 @@
 # 0307 Labels without spaces
 
-Status: Approved (PO, 9 Nov 2026: "i approve everything"; "yes proceed")
+Status: Ported (aws-jira `1ced66a`, strand `d361d6a`), approved by the PO on 9 Nov 2026; awaiting verification
 Parity rows: ISS-06
 
 ## Context and Jira reference
