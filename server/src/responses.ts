@@ -12,7 +12,8 @@ const nullable = <T extends z.ZodType>(t: T) => t.nullable()
 export const User = z.object({ id, name: z.string(), initials: z.string(), color: z.string(), title: nullable(z.string()), email: z.string(), role: z.string() })
 export const Me = z.object({ id, email: z.string(), name: z.string(), workspaceId: id, role: z.enum(['owner', 'admin', 'member']), admin: z.boolean(), groupIds: z.array(id).describe('Groups I am in (transition rules can name groups)'),
   via: z.enum(['entra', 'password', 'recovery', 'pat']).describe('How this request signed in'),
-  recovery: z.boolean().describe('System admins: Strand is running in recovery mode (spec 0711)') })
+  recovery: z.boolean().describe('System admins: Strand is running in recovery mode (spec 0711)'),
+  hasPassword: z.boolean().describe('Keeps a password in Strand (spec 0714)'), directory: nullable(z.string()).describe('The user directory they come from; null for the internal directory') })
 
 const EntraConfig = z.object({ enabled: z.boolean(), name: z.string(), tenantId: z.string(), apiClientId: z.string(), webClientId: z.string(), authority: z.string() })
 export const UserDirectory = z.object({
@@ -235,6 +236,10 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'PUT /admin/authentication': AuthMethods,
   'PUT /admin/authentication/entra': AuthMethods,
   'GET /admin/directories': z.array(UserDirectory),
+  'GET /admin/directories/internal': z.object({ name: z.string(), users: z.number() }),
+  'POST /admin/users': z.object({ id, emailed: z.boolean().describe('The notification email was sent') }),
+  'PATCH /admin/users/:id': z.object({ ok: z.boolean() }),
+  'POST /auth/forgot': z.object({ message: z.string() }),
   'GET /admin/directories/presets': z.object({ ad: z.unknown(), ldap: z.unknown() }).describe('Jira’s defaults for each type, less host, service account and base DN'),
   'GET /admin/directories/:id': UserDirectory,
   'POST /admin/directories': UserDirectory,
@@ -407,7 +412,7 @@ export const RESPONSES: Record<string, z.ZodType> = {
     items: z.array(z.object({
       id, name: z.string(), email: z.string(), initials: z.string(), color: z.string(), title: nullable(z.string()), active: z.boolean(),
       role: z.enum(['owner', 'admin', 'member']), createdAt: ts, projects: z.number().describe('Projects they are a member of'),
-      lastActiveAt: nullable(ts).describe('Last used Strand (to the hour)'), lastSignInAt: nullable(ts), directory: nullable(z.string()).describe('The user directory they come from (spec 0712)'), groups: z.array(z.object({ id, name: z.string() })),
+      lastActiveAt: nullable(ts).describe('Last used Strand (to the hour)'), lastSignInAt: nullable(ts), directory: nullable(z.string()).describe('The user directory they come from (spec 0712)'), username: nullable(z.string()), hasPassword: z.boolean().describe('Keeps a password in Strand (spec 0714)'), groups: z.array(z.object({ id, name: z.string() })),
     })),
     total: z.number().describe('Everyone the filter matches'), next: nullable(z.string()).describe('Pass back as `cursor`; null on the last page'),
   }),

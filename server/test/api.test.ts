@@ -3402,6 +3402,11 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     'GET /auth/config': ['public', '/auth/config'], 'POST /auth/logout': ['public', '/auth/logout'],   // 0711.R1
     'POST /auth/login': ['public', '/auth/login', { username: 'matrix.nobody', password: 'x' }],
     'GET /admin/authentication': ['gadmin', '/admin/authentication'],   // 0711.R11
+    'POST /auth/forgot': ['public', '/auth/forgot', { username: 'matrix.nobody' }], 'POST /auth/reset': ['public', '/auth/reset', { token: 'x', password: 'x' }],   // 0714.R6
+    'PUT /me/password': ['any', '/me/password', { current: 'x', password: 'y' }],   // 0714.R8
+    'POST /admin/users': ['gadmin', '/admin/users', { username: 'matrix.local', name: 'Matrix Local', email: 'matrix.local@x.com', password: 'matrix-password' }],   // 0714.R9
+    'PATCH /admin/users/{id}': ['gadmin', `/admin/users/${none}`, { name: 'x' }], 'PUT /admin/users/{id}/password': ['gadmin', `/admin/users/${none}/password`, { password: 'matrix-password' }],
+    'GET /admin/directories/internal': ['gadmin', '/admin/directories/internal'],
     'GET /admin/directories': ['gadmin', '/admin/directories'], 'GET /admin/directories/presets': ['gadmin', '/admin/directories/presets'],   // 0712.R13
     'GET /admin/directories/{id}': ['gadmin', `/admin/directories/${none}`],
     'POST /admin/directories': ['gadmin', '/admin/directories', { name: 'Matrix directory', type: 'ad', enabled: false, config: { ...PRESET_AD, ...corpConfig() }, password: 'x' }],
@@ -3609,7 +3614,7 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
   const expect = (op: string, as: string, got: number, ok: number[]) => { if (!ok.includes(got)) wrong.push(`${op} as ${as}: ${got}, expected ${ok.join(' or ')}`) }
   for (const op of Object.keys(M)) {
     const rule = M[op]![0]
-    if (rule === 'public') { expect(op, 'nobody', await send(op, null), [200, 204, 400, 401, 403]); continue }
+    if (rule === 'public') { expect(op, 'nobody', await send(op, null), [200, 202, 204, 400, 401, 403]); continue }
     expect(op, 'nobody', await send(op, null), [401])
     if (rule === 'read' || rule === 'viewer') expect(op, 'outsider', await send(op, who.outsider), [404])
     if (rule === 'write') { expect(op, 'outsider', await send(op, who.outsider), [404]); expect(op, 'viewer', await send(op, who.viewer), [403]) }
@@ -4561,5 +4566,123 @@ test('[0712.R7][0712.R8][0712.R9][0712.R10][0712.R11] synchronising a directory:
   const [job] = (await pool.query('select status, result from jobs where id = $1', [started.body.jobId])).rows
   assert.deepEqual([job.status, job.result.ok], ['done', true])
   await call('PUT', `/api/v1/admin/directories/${corpDir.id}`, { name: corpDir.name, enabled: false, config: corpDir.config })
+})
+
+test('[0714.R1][0714.R2][0714.R3][0714.R4][0714.R5][0714.R9] local users: an admin creates one, edits them and sets their password; the login form checks the internal directory first', { skip }, async () => {
+  const login = (username: string, password: string) => app.inject({ method: 'POST', url: '/api/v1/auth/login', payload: { username, password } })
+  const as = (token: string, method = 'GET', url = '/api/v1/me', payload?: object) => app.inject({ method: method as any, url, payload, headers: { authorization: `Bearer ${token}` } })
+  await pool.query('delete from login_failures')
+  // R2: the rules for a new user
+  const make = (b: object) => call('POST', '/api/v1/admin/users', { username: 'lena', name: 'Lena Local', email: 'Lena@Local.test', ...b })
+  assert.equal((await make({})).status, 400)                                                   // no password, no email: no way in
+  assert.ok((await make({ password: 'short' })).body.errors.password)                          // shorter than 8
+  assert.equal((await make({ username: 'Recovery_Admin', password: 'long enough' })).status, 400)
+  assert.equal((await make({ username: 'has space', password: 'long enough' })).status, 400)
+  assert.ok((await make({ password: 'long enough', notify: true })).body.errors.notify)         // email isn't set up
+  const made = await make({ password: 'lena-password-1' })
+  assert.equal(made.status, 201, JSON.stringify(made.body))
+  const dup = await make({ username: 'LENA', email: 'other@local.test', password: 'long enough' })
+  assert.deepEqual([dup.status, Object.keys(dup.body.errors)], [409, ['username']])
+  assert.ok((await call('POST', '/api/v1/admin/users', { username: 'jdoe', name: 'X', email: 'x@local.test', password: 'long enough' })).body.errors.username)   // a directory user's
+  const [row] = (await pool.query('select password_hash, email, is_system_admin(id) as admin from users where id = $1', [made.body.id])).rows
+  assert.match(row.password_hash, /^scrypt\$/); assert.ok(!row.password_hash.includes('lena-password-1'))
+  assert.deepEqual([row.email, row.admin], ['lena@local.test', false])
+  assert.ok((await pool.query(`select 1 from group_members gm join groups g on g.id = gm.group_id where g.system_role = 'default-users' and gm.user_id = $1`, [made.body.id])).rows.length)
+  // R1, R5: the login form finds her in the internal directory
+  const ok = await login('Lena', 'lena-password-1')
+  assert.equal(ok.statusCode, 200, ok.body)
+  const session = JSON.parse(ok.body).token
+  const me = JSON.parse((await as(session)).body)
+  assert.deepEqual([me.email, me.via, me.hasPassword, me.directory], ['lena@local.test', 'password', true, null])
+  assert.equal((await login('lena', 'wrong-password')).statusCode, 401)
+  await pool.query('delete from login_failures')
+  // R5: no password, no form sign-in; R1: an internal user decides even when a directory has the same username
+  await call('GET', '/api/v1/me', undefined, 'nopass@x.com')
+  const nopass = (await pool.query(`select id from users where email = 'nopass@x.com'`)).rows[0].id
+  assert.equal((await call('PATCH', `/api/v1/admin/users/${nopass}`, { username: 'nopass' })).status, 200)
+  assert.equal((await login('nopass', '')).statusCode, 401)
+  assert.equal((await login('nopass', 'anything-at-all')).statusCode, 401)
+  await pool.query('delete from login_failures')
+  // R3: edit details; the people list shows them
+  assert.equal((await call('PATCH', `/api/v1/admin/users/${made.body.id}`, { username: 'lena.l', name: 'Lena Lind', email: 'lena.lind@local.test' })).status, 200)
+  const listed = (await call('GET', '/api/v1/admin/users?query=lena')).body.items[0]
+  assert.deepEqual([listed.username, listed.name, listed.email, listed.hasPassword, listed.directory], ['lena.l', 'Lena Lind', 'lena.lind@local.test', true, null])
+  assert.equal((await login('lena.l', 'lena-password-1')).statusCode, 200)
+  assert.deepEqual((await call('PATCH', `/api/v1/admin/users/${made.body.id}`, { email: 'owner@x.com' })).body.errors, { email: 'Someone already has this email' })
+  // R3: directory users and recovery_admin are not edited here
+  const jdoe = (await pool.query(`select id from users where username = 'jdoe'`)).rows[0].id
+  assert.equal((await call('PATCH', `/api/v1/admin/users/${jdoe}`, { name: 'x' })).status, 409)
+  assert.equal((await call('PUT', `/api/v1/admin/users/${jdoe}/password`, { password: 'long enough' })).status, 409)
+  // R3: deactivating ends sign-in
+  assert.equal((await call('PATCH', `/api/v1/admin/users/${made.body.id}`, { active: false })).status, 200)
+  assert.equal((await as(session)).statusCode, 403)
+  assert.equal((await call('PATCH', `/api/v1/admin/users/${made.body.id}`, { active: true })).status, 200)
+  // R4: set password: the new one works, her sessions end
+  assert.equal((await call('PUT', `/api/v1/admin/users/${made.body.id}/password`, { password: 'lena-password-2' })).status, 204)
+  assert.equal((await as(session)).statusCode, 401)
+  assert.equal((await login('lena.l', 'lena-password-1')).statusCode, 401)
+  assert.equal((await login('lena.l', 'lena-password-2')).statusCode, 200)
+  await pool.query('delete from login_failures')
+  // R9: not with an access token; audited, the password never written down
+  const pat = (await call('POST', '/api/v1/me/tokens', { name: 'local users' })).body.token
+  assert.equal((await as(pat, 'POST', '/api/v1/admin/users', { username: 'patmade', name: 'X', email: 'patmade@local.test', password: 'long enough' })).statusCode, 403)
+  const logged = (await pool.query(`select action, coalesce(before::text, '') || after::text as t from audit_log where action in ('user.created', 'user.updated', 'user.password_set') and target_id = $1`, [made.body.id])).rows
+  assert.deepEqual(new Set(logged.map(r => r.action)), new Set(['user.created', 'user.updated', 'user.password_set']))
+  assert.ok(logged.every(r => !/lena-password/.test(r.t)))
+  assert.equal((await call('GET', '/api/v1/admin/directories/internal')).body.name, 'Strand internal directory')
+})
+
+test('[0714.R6][0714.R7][0714.R8] can’t access your account: one answer for everyone, an emailed link that works once; changing your own password', { skip }, async () => {
+  const { sentEmails } = await import('../src/email.ts')
+  const login = (username: string, password: string) => app.inject({ method: 'POST', url: '/api/v1/auth/login', payload: { username, password } })
+  const forgot = (username: string) => app.inject({ method: 'POST', url: '/api/v1/auth/forgot', payload: { username } })
+  const reset = (token: string, password: string) => app.inject({ method: 'POST', url: '/api/v1/auth/reset', payload: { token, password } })
+  const settle = () => new Promise(r => setTimeout(r, 300))
+  const was = process.env.EMAIL_TRANSPORT
+  process.env.EMAIL_TRANSPORT = 'memory'
+  await call('PUT', '/api/v1/admin/settings/email', { enabled: false, from: 'strand@x.com', appUrl: 'https://strand.example' })
+  await pool.query('delete from password_resets'); await pool.query('delete from login_failures'); sentEmails.length = 0
+  // R6: the same answer for someone, nobody, and a directory user; only the internal user gets an email
+  const answers = await Promise.all(['lena.lind@local.test', 'nobody-here', 'jdoe'].map(forgot))
+  assert.deepEqual(answers.map(a => a.statusCode), [202, 202, 202])
+  assert.equal(new Set(answers.map(a => a.body)).size, 1)
+  await settle()
+  assert.deepEqual(sentEmails.map(m => [m.to, m.subject]), [['lena.lind@local.test', 'Reset your Strand password']])
+  const token = /\?reset=(jbr_[A-Za-z0-9_-]{43})/.exec(sentEmails[0]!.text)![1]!
+  assert.ok(!(await pool.query('select token_hash::text from password_resets')).rows.some(r => r.token_hash.includes(token)))
+  // R6: at most one every 5 minutes
+  await forgot('lena.l'); await settle()
+  assert.equal(sentEmails.length, 1)
+  // R7: too short is refused (the link still works); then it sets the password, once
+  assert.equal((await reset(token, 'short')).statusCode, 400)
+  const before = JSON.parse((await login('lena.l', 'lena-password-2')).body).token
+  assert.equal((await reset(token, 'lena-password-3')).statusCode, 204)
+  assert.equal((await reset(token, 'lena-password-4')).statusCode, 400)
+  assert.equal((await app.inject({ method: 'GET', url: '/api/v1/me', headers: { authorization: `Bearer ${before}` } })).statusCode, 401)   // her sessions ended
+  assert.equal((await login('lena.l', 'lena-password-3')).statusCode, 200)
+  assert.ok((await pool.query(`select 1 from audit_log where action = 'user.password_set' and after->>'by' = 'email link'`)).rows.length)
+  // R7: an expired link doesn't work
+  await pool.query(`update password_resets set created_at = now() - interval '1 hour'`)
+  await forgot('lena.l'); await settle()
+  const late = /\?reset=(jbr_[A-Za-z0-9_-]{43})/.exec(sentEmails.at(-1)!.text)![1]!
+  await pool.query(`update password_resets set expires_at = now() - interval '1 second' where used_at is null`)
+  assert.equal((await reset(late, 'lena-password-5')).statusCode, 400)
+  // R2: a user created with the notification email gets the same kind of link
+  const made = await call('POST', '/api/v1/admin/users', { username: 'nora', name: 'Nora New', email: 'nora@local.test', notify: true })
+  assert.deepEqual([made.status, made.body.emailed], [201, true])
+  const link = /\?reset=(jbr_[A-Za-z0-9_-]{43})/.exec(sentEmails.at(-1)!.text)![1]!
+  assert.equal(sentEmails.at(-1)!.subject, 'Your Strand account')
+  assert.equal((await reset(link, 'nora-password-1')).statusCode, 204)
+  // R8: changing your own password needs the current one; your other sessions end, this one stays
+  const s1 = JSON.parse((await login('nora', 'nora-password-1')).body).token, s2 = JSON.parse((await login('nora', 'nora-password-1')).body).token
+  const change = (body: object) => app.inject({ method: 'PUT', url: '/api/v1/me/password', payload: body, headers: { authorization: `Bearer ${s1}` } })
+  assert.equal((await change({ current: 'wrong', password: 'nora-password-2' })).statusCode, 400)
+  assert.equal((await change({ current: 'nora-password-1', password: 'nora-password-2' })).statusCode, 204)
+  const status = async (t: string) => (await app.inject({ method: 'GET', url: '/api/v1/me', headers: { authorization: `Bearer ${t}` } })).statusCode
+  assert.deepEqual([await status(s1), await status(s2)], [200, 401])
+  assert.equal((await call('PUT', '/api/v1/me/password', { current: 'x', password: 'long enough' })).status, 409)   // the owner keeps no password here
+  await pool.query('delete from login_failures')
+  process.env.EMAIL_TRANSPORT = was
+  if (was === undefined) delete process.env.EMAIL_TRANSPORT
 })
 

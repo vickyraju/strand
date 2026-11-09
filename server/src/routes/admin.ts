@@ -4,7 +4,10 @@ import { z } from 'zod'
 import { GetObjectCommand } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { db, tx, type Db } from '../db.ts'
-import { HttpError, requireAdmin, type Me } from '../auth.ts'
+import { HttpError, initials, joinSystemGroup, requireAdmin, type Me } from '../auth.ts'
+import { RECOVERY_USER } from '../authConfig.ts'
+import { checkLength, emailSetup, newLink, sendLink, setPassword } from '../localUsers.ts'
+import { requireNoToken } from './authentication.ts'
 import { audit, changes } from '../audit.ts'
 import { priorities, resolutions } from '../lists.ts'
 import { enqueue, kickJobs, registerJob } from '../jobs.ts'
@@ -98,7 +101,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
   // ── People in the workspace (system administrators). Accounts and admin rights come from Entra (sign-in and SCIM), so
   // this is a view with bulk changes, not an editor. Tens of thousands of people: searched, filtered and paged here ──
   const PERSON = `u.id, u.name, u.email, u.initials, u.color, u.title, u.active, case when m.role = 'owner' then 'owner' when is_system_admin(u.id) then 'admin' else 'member' end as role, u.created_at,
-              u.last_active_at, u.last_sign_in_at, (select name from user_directories where id = u.directory_id) as directory,
+              u.last_active_at, u.last_sign_in_at, (select name from user_directories where id = u.directory_id) as directory, u.username, u.password_hash is not null as has_password,
               coalesce((select jsonb_agg(jsonb_build_object('id', g.id, 'name', g.display_name) order by g.system_role is null, lower(g.display_name))
                           from group_members gm join groups g on g.id = gm.group_id where gm.user_id = u.id), '[]') as groups,
               (select count(*)::int from project_access pm join projects p on p.id = pm.project_id
@@ -154,6 +157,85 @@ const plugin: FastifyPluginAsyncZod = async app => {
       const changed = await bulkChange(d, { me: req.me, ip: req.ip }, people, b.action, g)
       return { changed, unchanged: people.length - changed }
     })
+  })
+
+  // ── Local users (spec 0714): Jira's internal directory. Created, edited and given passwords here; directory users
+  // change in their directory ──
+  const username = z.string().trim().min(1).max(255).regex(/^[A-Za-z0-9._@+-]+$/, 'Letters, digits and . _ - @ + only')
+    .refine(u => u.toLowerCase() !== RECOVERY_USER, 'This username is reserved')
+  const email = z.string().trim().toLowerCase().email().max(320)
+  const fullName = z.string().trim().min(1).max(200)
+  /** Usernames and emails are everyone's, directory users' too: the field's message when one is taken. */
+  const taken = async (d: Db, o: { username?: string; email?: string }, except: string | null = null) => {
+    const errors: Record<string, string> = {}
+    if (o.username && (await d.query('select 1 from users where lower(username) = lower($1) and id is distinct from $2', [o.username, except])).length) errors.username = 'Someone already has this username'
+    if (o.email && (await d.query('select 1 from users where email = $1 and id is distinct from $2', [o.email, except])).length) errors.email = 'Someone already has this email'
+    if (Object.keys(errors).length) throw new HttpError(409, Object.values(errors)[0]!, errors)
+  }
+  /** An internal directory person in this workspace (R3, R4): not a directory user, not recovery_admin. */
+  const internalUser = async (d: Db, ws: string, id: string) => {
+    const [u] = await d.query<{ id: string; username: string | null; name: string; email: string; active: boolean; directory: string | null }>(
+      `select u.id, u.username, u.name, u.email, u.active, ud.name as directory from users u join memberships m on m.user_id = u.id and m.workspace_id = $1
+        left join user_directories ud on ud.id = u.directory_id where u.id = $2 for update of u`, [ws, id])
+    if (!u) throw new HttpError(404, 'Person not found')
+    if (u.directory) throw new HttpError(409, `${u.name} comes from the user directory “${u.directory}”: change them there`)
+    if (u.username === RECOVERY_USER) throw new HttpError(409, 'recovery_admin belongs to recovery mode')
+    return u
+  }
+
+  app.post('/admin/users', { schema: { tags: TAG, summary: 'Create a user in the internal directory (system administrators): username, full name, email, and a password or an email with a link to set one',
+    body: z.object({ username, name: fullName, email, password: z.string().max(1024).optional(), notify: z.boolean().default(false).describe('Send notification email: a link to set the password, valid 24 hours') }) } }, async (req, reply) => {
+    requireNoToken(req)
+    const b = req.body
+    if (!b.password && !b.notify) throw new HttpError(400, 'Give a password, or send the notification email so they can set one', { password: 'Required without the notification email' })
+    if (b.password) await checkLength(b.password)
+    if (b.notify && !(await emailSetup())) throw new HttpError(400, 'Email isn’t set up (System settings › Email notifications): give a password instead', { notify: 'Email isn’t set up' })
+    const { id, token } = await tx(async d => {
+      await taken(d, b)
+      const [u] = await d.query<{ id: string }>(`insert into users (username, name, email, initials) values ($1, $2, $3, $4) returning id`, [b.username, b.name, b.email, initials(b.name)])
+      await d.query(`insert into memberships (workspace_id, user_id, role) values ($1, $2, 'member')`, [req.me.workspaceId, u!.id])
+      await joinSystemGroup(d, u!.id, 'default-users')
+      if (b.password) await setPassword(d, u!.id, b.password)
+      await audit(d, req, { action: 'user.created', type: 'user', id: u!.id, name: b.email, after: { username: b.username, name: b.name, email: b.email, password: b.password ? 'set' : 'by email link' } })
+      return { id: u!.id, token: b.notify ? await newLink(d, u!.id) : null }
+    })
+    let emailed = false
+    if (token) emailed = await sendLink({ email: b.email, name: b.name, username: b.username }, token, 'created').then(() => true, e => { req.log.warn(`account email not sent: ${(e as Error).message}`); return false })
+    reply.code(201)
+    return { id, emailed }
+  })
+
+  app.patch('/admin/users/:id', { schema: { tags: TAG, summary: 'Edit an internal directory user (system administrators): username, full name, email, active. Directory users answer 409', params: idP,
+    body: z.object({ username: username.optional(), name: fullName.optional(), email: email.optional(), active: z.boolean().optional() }) } }, async req => {
+    requireNoToken(req)
+    const b = req.body
+    if (b.active === false && req.params.id === req.me.id) throw new HttpError(400, 'You can’t deactivate yourself')
+    await tx(async d => {
+      const u = await internalUser(d, req.me.workspaceId, req.params.id)
+      await taken(d, b, u.id)
+      const after = { username: b.username ?? u.username, name: b.name ?? u.name, email: b.email ?? u.email, active: b.active ?? u.active }
+      const c = changes({ username: u.username, name: u.name, email: u.email, active: u.active }, after)
+      if (!c.changed) return
+      await d.query('update users set username = $2, name = $3, initials = $4, email = $5, active = $6 where id = $1', [u.id, after.username, after.name, initials(after.name), after.email, after.active])
+      if (!after.active) {
+        const [{ n }] = await d.query<{ n: number }>(`select count(*)::int as n from group_members gm join groups g on g.id = gm.group_id join users x on x.id = gm.user_id where g.system_role = 'system-admins' and x.active`) as any
+        if (!n) throw new HttpError(409, 'Strand needs at least one active system administrator')
+      }
+      await audit(d, req, { action: 'user.updated', type: 'user', id: u.id, name: after.email, before: c.before, after: c.after })
+    })
+    return { ok: true }
+  })
+
+  app.put('/admin/users/:id/password', { schema: { tags: TAG, summary: 'Set the password of an internal directory user (system administrators); their login-form sessions end', params: idP,
+    body: z.object({ password: z.string().max(1024) }) } }, async (req, reply) => {
+    requireNoToken(req)
+    await checkLength(req.body.password)
+    await tx(async d => {
+      const u = await internalUser(d, req.me.workspaceId, req.params.id)
+      await setPassword(d, u.id, req.body.password)
+      await audit(d, req, { action: 'user.password_set', type: 'user', id: u.id, name: u.email, after: { by: 'an administrator' } })
+    })
+    reply.code(204).send()
   })
 
   app.get('/admin/users/refused-sign-ins', { schema: { tags: TAG, summary: 'Deactivated people who tried to sign in, newest first (system administrators)' } }, async req => {

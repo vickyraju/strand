@@ -1430,3 +1430,32 @@ test('[0712.R1][0712.R4][0712.R5][0712.R7] an admin adds the company Active Dire
   assert.deepEqual([...o.problems, ...p.problems], [])
 })
 
+test('[0714.R2][0714.R5][0714.R8] an admin creates a local user in People; they sign in on the login form and change their password in Settings', { skip, timeout: 120_000 }, async () => {
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url('/admin/people'))
+  await o.click('button:has-text("Create user")')
+  await o.fill('#lu-email', 'lou@local.e2e.test')
+  await o.fill('#lu-name', 'Lou Local')
+  await o.fill('#lu-username', 'lou')
+  await o.fill('#lu-password', 'lou-password-1')
+  await o.click('.modal button:has-text("Create user")')
+  await o.waitForSelector('text=Lou Local created')
+  await o.fill('[aria-label="Find a person"]', 'lou')
+  await o.waitForSelector('[aria-label="Edit Lou Local"]')
+  const p = await signedOut('/')
+  await p.fill('#login-username', 'lou')
+  await p.fill('#login-password', 'lou-password-1')
+  await p.click('button:has-text("Log in")')
+  await p.waitForSelector('nav')
+  await p.goto(url('/settings'))
+  await p.fill('#pw-current', 'lou-password-1')
+  await p.fill('#pw-password', 'lou-password-2')
+  await p.fill('#pw-again', 'lou-password-2')
+  await p.click('button:has-text("Change password")')
+  await p.waitForSelector('text=Password changed')
+  // the new password is the one that works
+  const login = async password => (await postRaw('/api/v1/auth/login', JSON.stringify({ username: 'lou', password }), 'application/json', 'none')).status
+  assert.deepEqual([await login('lou-password-1'), await login('lou-password-2')], [401, 200])
+  assert.deepEqual([...o.problems, ...p.problems], [])
+})
+

@@ -100,6 +100,7 @@ export default function SystemSettings({ page = SETTINGS_PAGES[0].id }: { page?:
         { key: 'lockMinutes', label: 'Lock for this many minutes', type: 'number', min: 1, max: 1440 },
         { key: 'sessionIdleMinutes', label: 'Sign out after this many minutes unused', type: 'number', min: 5, max: 10080 },
         { key: 'rememberDays', label: '“Remember my login” lasts this many days', type: 'number', min: 1, max: 365 },
+        { key: 'passwordMinLength', label: 'Shortest password (internal directory)', type: 'number', min: 1, max: 128 },
       ]} />}
       {page === 'due-dates' && <SimpleSection setting={of('dueReminders')} save={v => save('dueReminders', v)} fields={[
         { key: 'enabled', label: 'Send “due” notifications', type: 'toggle' },

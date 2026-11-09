@@ -5,6 +5,7 @@ import { useStore, migrate } from '../data/store'
 import { useApp } from '../appContext'
 import { Avatar, Modal, plural } from './ui'
 import AccessTokens from './AccessTokens'
+import PasswordSettings from './PasswordSettings'
 import NotificationPrefs from './NotificationPrefs'
 import { apiEnabled } from '../api/client'
 
@@ -62,6 +63,7 @@ export default function SettingsView() {
           </section>
 
           {apiEnabled && <NotificationPrefs />}
+          {apiEnabled && <PasswordSettings />}
           {apiEnabled && <AccessTokens />}
 
           <section className="panel" id="appearance">

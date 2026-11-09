@@ -8,7 +8,8 @@ import { href, navigate, type AdminSection } from '../router'
 import { formatBytes } from '../data/files'
 import { Avatar, ConfirmDialog, Empty, LoadError, Loading, Modal, openRow, plural, Toggle } from './ui'
 import SystemSettings, { SETTINGS_PAGES } from './SystemSettings'
-import AdminShell, { ITEMS } from './admin/AdminShell'
+import AdminShell, { ITEMS, PageAction } from './admin/AdminShell'
+import { CreateUserDialog, EditUserDialog } from './admin/LocalUsers'
 import { GroupPicker, Progress, useJob, type GroupRef } from './admin/scale'
 import TestStatusesAdmin from './testing/TestStatusesAdmin'
 import GroupsView from './groups/GroupsView'
@@ -73,7 +74,7 @@ function useLoad<T>(path: string) {
 
 interface Person {
   id: string; name: string; email: string; initials: string; color: string; title: string | null; active: boolean; role: 'owner' | 'admin' | 'member'; projects: number
-  lastActiveAt: string | null; lastSignInAt: string | null; directory?: string | null; groups: { id: string; name: string }[]
+  lastActiveAt: string | null; lastSignInAt: string | null; directory?: string | null; username?: string | null; hasPassword?: boolean; groups: { id: string; name: string }[]
 }
 type BulkAction = 'deactivate' | 'reactivate' | 'add-to-group' | 'remove-from-group'
 const BULK: Record<BulkAction, string> = { deactivate: 'Deactivate', reactivate: 'Reactivate', 'add-to-group': 'Add to group…', 'remove-from-group': 'Remove from group…' }
@@ -98,6 +99,8 @@ function People() {
   const [everyone, setEveryone] = useState(false)                             // everyone the filter matches, not just those picked
   const [bulk, setBulk] = useState<{ action: BulkAction; group: GroupRef | null } | null>(null)
   const [jobId, setJobId] = useState<string | null>(null)
+  const [creating, setCreating] = useState(false)
+  const [editing, setEditing] = useState<Person | null>(null)
   const seq = useRef(0)
   const filter: Record<string, string> = { ...(q.trim() ? { query: q.trim() } : {}), status, ...(inactive ? { inactive } : {}), ...(group ? (inGroup === 'in' ? { group: group.id } : { notInGroup: group.id }) : {}) }
   const load = (more = false) => {
@@ -133,6 +136,7 @@ function People() {
   const pick = (ids: Person[], on: boolean) => { const m = new Map(picked); for (const p of ids) { if (on) m.set(p.id, p.name); else m.delete(p.id) } setPicked(m) }
   return (
     <section>
+      <PageAction><button className="btn btn-primary" onClick={() => setCreating(true)}>Create user</button></PageAction>
       <div className="people-filters">
         <input className="input" style={{ maxWidth: 240 }} placeholder="Find a person" aria-label="Find a person" value={q} onChange={e => setQ(e.target.value)} />
         <select className="input" aria-label="Inactive" value={inactive} onChange={e => setInactive(e.target.value)}>
@@ -165,7 +169,7 @@ function People() {
           <table className="table">
             <thead><tr>
               <th style={{ width: 32 }}><input type="checkbox" aria-label="Select everyone shown" checked={allShown || everyone} disabled={everyone} onChange={e => pick(shown, e.target.checked)} /></th>
-              <th>Name</th><th>Email</th><th>Role</th><th>Groups</th><th>Last active</th><th>Status</th>
+              <th>Name</th><th>Email</th><th>Role</th><th>Groups</th><th>Last active</th><th>Status</th><th />
             </tr></thead>
             <tbody>
               {shown.map(p => (
@@ -177,6 +181,7 @@ function People() {
                   <td className="muted sm admin-wrap">{p.groups.length > 4 ? `${p.groups.slice(0, 3).map(g => g.name).join(', ')} and ${p.groups.length - 3} more` : p.groups.map(g => g.name).join(', ')}</td>
                   <td className="muted" title={p.lastSignInAt ? `Last sign-in ${new Date(p.lastSignInAt).toLocaleString()}` : 'Never signed in'}>{p.lastActiveAt ? timeAgo(Date.parse(p.lastActiveAt)) : 'Never'}</td>
                   <td>{p.active ? <span className="lozenge lozenge-done">Active</span> : <span className="lozenge lozenge-todo">Deactivated</span>}</td>
+                  <td style={{ textAlign: 'right' }}>{!p.directory && p.username !== 'recovery_admin' && <button className="btn btn-ghost btn-sm" aria-label={`Edit ${p.name}`} onClick={() => setEditing(p)}>Edit</button>}</td>
                 </tr>
               ))}
             </tbody>
@@ -192,6 +197,8 @@ function People() {
           <ul className="test-members">{refused.data.map(r => <li key={`${r.userId}:${r.at}`} className="test-member"><span className="test-member-title">{r.name ?? r.email} <span className="muted sm">{r.email}</span></span><span className="muted sm">{timeAgo(Date.parse(r.at))}{r.active ? ' · reactivated since' : ''}</span></li>)}</ul>
         </div>
       )}
+      {creating && <CreateUserDialog onClose={() => setCreating(false)} onCreated={() => load()} />}
+      {editing && <EditUserDialog person={editing} onClose={() => setEditing(null)} onSaved={() => load()} />}
       {bulk && (
         <ConfirmDialog title={`${BULK[bulk.action].replace('…', '')}: ${count.toLocaleString()} ${count === 1 ? 'person' : 'people'}`}
           action={BULK[bulk.action].replace('…', '')} danger={bulk.action === 'deactivate'} typeToConfirm={everyone && count > 100 ? String(count) : undefined}
