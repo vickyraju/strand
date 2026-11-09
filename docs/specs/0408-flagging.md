@@ -1,6 +1,6 @@
 # 0408 Flagging a work item
 
-Status: Approved (PO, 9 Nov 2026: "proceed")
+Status: Ported (aws-jira `622118c`, strand `da68561`), approved by the PO on 9 Nov 2026; awaiting verification
 Parity rows: ISS-21
 
 ## Context and Jira reference
