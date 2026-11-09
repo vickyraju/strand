@@ -4,7 +4,8 @@
 // saves on its own; the server checks every query and says which one is wrong.
 import { useEffect, useState } from 'react'
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Kanban, MoveHorizontal, Plus, Trash2, X } from 'lucide-react'
-import { DEFAULT_FIELDS, useStore, type Board, type Estimation, type Project } from '../../data/store'
+import { DEFAULT_FIELDS, useStore, userOf, type Board, type CardColors, type Estimation, type Project } from '../../data/store'
+import { priorityList } from '../../data/lists'
 import { canAdmin } from '../../data/access'
 import { api, ApiError, errorMessage } from '../../api/client'
 import { lastBoard, reloadBoards, useBoard, useBoards, useJqlCount } from '../../api/boards'
@@ -15,14 +16,14 @@ import JqlBox from '../JqlBox'
 import { UserPicker } from '../UserPicker'
 import { GroupPicker } from '../admin/scale'
 import CreateBoard from './CreateBoard'
-import { ConfirmDialog, Loading, LoadError, Menu, Toggle, plural } from '../ui'
+import { ConfirmDialog, Loading, LoadError, Menu, Toggle, plural, typeList } from '../ui'
 
 type Column = Board['columns'][number]
 type Named = { id: string; name: string; jql: string }
 interface GStatus { id: string; name: string; category: 'todo' | 'in-progress' | 'done'; color: string }
 type Save = (patch: Partial<Omit<Board, 'admins'>> & { admins?: { userIds: string[]; groupIds: string[] } }) => Promise<void>
 
-const SECTIONS = [['general', 'General'], ['columns', 'Columns'], ['swimlanes', 'Swimlanes'], ['quick-filters', 'Quick filters'], ['card-layout', 'Card layout'], ['working-days', 'Working days']] as const
+const SECTIONS = [['general', 'General'], ['columns', 'Columns'], ['swimlanes', 'Swimlanes'], ['quick-filters', 'Quick filters'], ['card-colors', 'Card colours'], ['card-layout', 'Card layout'], ['working-days', 'Working days']] as const
 const LANES: [Board['swimlanes']['by'], string, string][] = [
   ['none', 'None', 'One lane for everything'], ['queries', 'Queries', 'A lane per query you write; an item goes in the first it matches'],
   ['assignee', 'Assignees', 'A lane per person'], ['epic', 'Epics', 'A lane per epic'], ['project', 'Projects', 'A lane per project'], ['priority', 'Priority', 'A lane per priority'],
@@ -93,6 +94,7 @@ export default function ConfigureBoard({ project, boardId }: { project: Project;
           <Columns board={board} statuses={statuses} can={can} save={save} />
           <Swimlanes board={board} can={can} save={save} />
           <QuickFilters board={board} can={can} save={save} />
+          <CardColorsSection board={board} project={project} can={can} save={save} />
           <CardLayout board={board} can={can} save={save} />
           <WorkingDays board={board} can={can} save={save} />
           {can && (
@@ -371,6 +373,64 @@ function CardLayout({ board, can, save }: { board: Board; can: boolean; save: Sa
         ))}
       </div>
       {s.message && <p role="alert" className="text-danger">{s.message}</p>}
+    </section>
+  )
+}
+
+// ── Card colours ───────────────────────────────────────────
+
+const COLOR_BY: [CardColors['by'], string][] = [['none', 'None'], ['types', 'Work types'], ['priorities', 'Priorities'], ['assignees', 'Assignees'], ['queries', 'Queries']]
+
+/** Jira's card colours (spec 0409): a stripe on each card's left edge, by work type, priority, assignee or the first JQL
+ *  query a card matches. Each method keeps its own colours when another is chosen. */
+function CardColorsSection({ board, project, can, save }: { board: Board; project: Project; can: boolean; save: Save }) {
+  const { state } = useStore()
+  const initial = (): CardColors => board.cardColors ?? { by: 'none' }
+  const [f, setF] = useState<CardColors>(initial)
+  useEffect(() => setF(initial()), [board])   // eslint-disable-line react-hooks/exhaustive-deps
+  const s = useSaving(save)
+  const dirty = JSON.stringify(f) !== JSON.stringify(initial())
+  const setIn = (k: 'types' | 'priorities' | 'assignees', key: string, color: string) => setF({ ...f, [k]: { ...f[k], [key]: color } })
+  const swatch = (k: 'types' | 'priorities' | 'assignees', key: string, label: string, fallback: string) => (
+    <label key={key} className="settings-row">
+      <input type="color" aria-label={`${label} colour`} disabled={!can} value={f[k]?.[key] ?? fallback} onChange={e => setIn(k, key, e.target.value)} />
+      <span>{label}</span>
+    </label>
+  )
+  const queries = f.queries ?? []
+  return (
+    <section className="panel" id="card-colors">
+      <h2 className="panel-title">Card colours</h2>
+      <p className="muted">A stripe on the left edge of each card, on the board and in the backlog.</p>
+      <label className="label" htmlFor="bc-color-by">Colours based on</label>
+      <select id="bc-color-by" className="input" style={{ width: 'auto' }} disabled={!can} value={f.by} onChange={e => setF({ ...f, by: e.target.value as CardColors['by'] })}>
+        {COLOR_BY.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+      </select>
+      <div style={{ marginTop: 12 }}>
+        {f.by === 'types' && typeList(project).map(t => swatch('types', t.key, t.name, t.color))}
+        {f.by === 'priorities' && priorityList().map(p => swatch('priorities', p.key, p.name, p.color))}
+        {f.by === 'assignees' && <>
+          {Object.keys(f.assignees ?? {}).map(id => swatch('assignees', id, userOf(state, id)?.name ?? 'Someone', '#2563EB'))}
+          {can && <UserPicker value={undefined} title="Add a person" allowUnassigned={false} placeholder="Add a person" className="btn btn-secondary btn-sm"
+            trigger={<><Plus size={13} />Add a person</>} onChange={id => id && setIn('assignees', id, '#2563EB')} />}
+        </>}
+        {f.by === 'queries' && <>
+          {queries.map((q, n) => (
+            <div key={q.id || n} className="btn-row" style={{ alignItems: 'center', marginBottom: 6 }}>
+              <input type="color" aria-label={`Query ${n + 1} colour`} disabled={!can} value={q.color} onChange={e => setF({ ...f, queries: queries.map((x, k) => k === n ? { ...x, color: e.target.value } : x) })} />
+              <input className="input mono" style={{ flex: 1 }} aria-label={`Query ${n + 1}`} disabled={!can} value={q.jql} placeholder="priority = High"
+                onChange={e => setF({ ...f, queries: queries.map((x, k) => k === n ? { ...x, jql: e.target.value } : x) })} />
+              {can && <button type="button" className="icon-btn sm" aria-label={`Move query ${n + 1} up`} disabled={n === 0}
+                onClick={() => setF({ ...f, queries: queries.map((x, k) => k === n - 1 ? queries[n]! : k === n ? queries[n - 1]! : x) })}><ArrowUp size={13} /></button>}
+              {can && <button type="button" className="icon-btn sm" aria-label={`Remove query ${n + 1}`} onClick={() => setF({ ...f, queries: queries.filter((_, k) => k !== n) })}><X size={13} /></button>}
+            </div>
+          ))}
+          {can && <button type="button" className="btn btn-secondary btn-sm" onClick={() => setF({ ...f, queries: [...queries, { id: '', jql: '', color: '#2563EB' }] })}><Plus size={13} />Add query</button>}
+          <p className="hint">A card takes the colour of the first query it matches; others are grey.</p>
+        </>}
+      </div>
+      {can && <SaveRow dirty={dirty} busy={s.busy} message={s.message} onReset={() => setF(initial())}
+        onSave={() => s.run({ cardColors: { ...f, ...(f.queries ? { queries: f.queries.filter(q => q.jql.trim()).map(q => ({ ...q, jql: q.jql.trim() })) } : {}) } })} />}
     </section>
   )
 }

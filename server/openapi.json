@@ -44205,6 +44205,73 @@
                     ],
                     "description": "Scrum: what estimates count (story points, original time estimate, issue count); spec 0404"
                   },
+                  "cardColors": {
+                    "type": "object",
+                    "properties": {
+                      "by": {
+                        "type": "string",
+                        "enum": [
+                          "none",
+                          "types",
+                          "priorities",
+                          "assignees",
+                          "queries"
+                        ]
+                      },
+                      "types": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "type": "string",
+                          "pattern": "^#[0-9a-fA-F]{6}$"
+                        }
+                      },
+                      "priorities": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "type": "string",
+                          "pattern": "^#[0-9a-fA-F]{6}$"
+                        }
+                      },
+                      "assignees": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "type": "string",
+                          "pattern": "^#[0-9a-fA-F]{6}$"
+                        }
+                      },
+                      "queries": {
+                        "maxItems": 30,
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "description": "Kept when edited; empty or left out for a new query",
+                              "type": "string",
+                              "maxLength": 64
+                            },
+                            "jql": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 5000
+                            },
+                            "color": {
+                              "type": "string",
+                              "pattern": "^#[0-9a-fA-F]{6}$"
+                            }
+                          },
+                          "required": [
+                            "jql",
+                            "color"
+                          ]
+                        }
+                      }
+                    },
+                    "required": [
+                      "by"
+                    ],
+                    "description": "Colours based on work types, priorities, assignees or queries (the first match), shown on each card’s left edge (spec 0409)"
+                  },
                   "workingDays": {
                     "type": "object",
                     "properties": {
@@ -44465,6 +44532,26 @@
                       "additionalProperties": false,
                       "description": "Working weekdays (0 is Sunday) and non-working dates (spec 0405)"
                     },
+                    "cardColors": {
+                      "type": "object",
+                      "properties": {
+                        "by": {
+                          "type": "string",
+                          "enum": [
+                            "none",
+                            "types",
+                            "priorities",
+                            "assignees",
+                            "queries"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "by"
+                      ],
+                      "additionalProperties": {},
+                      "description": "Card colours (spec 0409)"
+                    },
                     "position": {
                       "type": "number"
                     },
@@ -44519,6 +44606,7 @@
                     "doneDays",
                     "estimation",
                     "workingDays",
+                    "cardColors",
                     "position",
                     "canManage",
                     "canManageSprints",
@@ -44807,6 +44895,26 @@
                       "additionalProperties": false,
                       "description": "Working weekdays (0 is Sunday) and non-working dates (spec 0405)"
                     },
+                    "cardColors": {
+                      "type": "object",
+                      "properties": {
+                        "by": {
+                          "type": "string",
+                          "enum": [
+                            "none",
+                            "types",
+                            "priorities",
+                            "assignees",
+                            "queries"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "by"
+                      ],
+                      "additionalProperties": {},
+                      "description": "Card colours (spec 0409)"
+                    },
                     "position": {
                       "type": "number"
                     },
@@ -44861,6 +44969,7 @@
                     "doneDays",
                     "estimation",
                     "workingDays",
+                    "cardColors",
                     "position",
                     "canManage",
                     "canManageSprints",
@@ -45121,6 +45230,73 @@
                     ],
                     "description": "Scrum: what estimates count (story points, original time estimate, issue count); spec 0404"
                   },
+                  "cardColors": {
+                    "type": "object",
+                    "properties": {
+                      "by": {
+                        "type": "string",
+                        "enum": [
+                          "none",
+                          "types",
+                          "priorities",
+                          "assignees",
+                          "queries"
+                        ]
+                      },
+                      "types": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "type": "string",
+                          "pattern": "^#[0-9a-fA-F]{6}$"
+                        }
+                      },
+                      "priorities": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "type": "string",
+                          "pattern": "^#[0-9a-fA-F]{6}$"
+                        }
+                      },
+                      "assignees": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "type": "string",
+                          "pattern": "^#[0-9a-fA-F]{6}$"
+                        }
+                      },
+                      "queries": {
+                        "maxItems": 30,
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "description": "Kept when edited; empty or left out for a new query",
+                              "type": "string",
+                              "maxLength": 64
+                            },
+                            "jql": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 5000
+                            },
+                            "color": {
+                              "type": "string",
+                              "pattern": "^#[0-9a-fA-F]{6}$"
+                            }
+                          },
+                          "required": [
+                            "jql",
+                            "color"
+                          ]
+                        }
+                      }
+                    },
+                    "required": [
+                      "by"
+                    ],
+                    "description": "Colours based on work types, priorities, assignees or queries (the first match), shown on each card’s left edge (spec 0409)"
+                  },
                   "workingDays": {
                     "type": "object",
                     "properties": {
@@ -45371,6 +45547,26 @@
                       "additionalProperties": false,
                       "description": "Working weekdays (0 is Sunday) and non-working dates (spec 0405)"
                     },
+                    "cardColors": {
+                      "type": "object",
+                      "properties": {
+                        "by": {
+                          "type": "string",
+                          "enum": [
+                            "none",
+                            "types",
+                            "priorities",
+                            "assignees",
+                            "queries"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "by"
+                      ],
+                      "additionalProperties": {},
+                      "description": "Card colours (spec 0409)"
+                    },
                     "position": {
                       "type": "number"
                     },
@@ -45425,6 +45621,7 @@
                     "doneDays",
                     "estimation",
                     "workingDays",
+                    "cardColors",
                     "position",
                     "canManage",
                     "canManageSprints",
@@ -45865,6 +46062,10 @@
                             "type": "string",
                             "description": "The swimlane query it falls in (\"\" for none)"
                           },
+                          "color": {
+                            "type": "string",
+                            "description": "The card colour query it matches first (\"\" for none)"
+                          },
                           "projectKey": {
                             "type": "string"
                           }
@@ -45905,6 +46106,7 @@
                           "createdAt",
                           "updatedAt",
                           "lane",
+                          "color",
                           "projectKey"
                         ],
                         "additionalProperties": false

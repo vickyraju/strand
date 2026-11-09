@@ -12,13 +12,14 @@ import { projectByKey } from './projects.ts'
 import { ISSUE_ROW } from './issues.ts'
 import { searchWhere } from './misc.ts'
 import { parseJql, type Node } from '../shared/jql.ts'
-import { DEFAULT_QUICK, sprintManager, boardFor, boardWhere, checkQueries, columnsOf, laneSql, type Board, type Lanes } from '../boards.ts'
+import { DEFAULT_QUICK, sprintManager, boardFor, boardWhere, checkQueries, colorSql, columnsOf, laneSql, type Board, type CardColors, type Lanes } from '../boards.ts'
 
 const T = ['Boards']
 const uuid = z.string().uuid()
 const idP = z.object({ id: uuid })
 const keyP = z.object({ key: z.string().describe('Project key (PAY) or id') })
 const jql = z.string().trim().min(1).max(5000)
+const color = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'A colour like #2563EB')
 const named = z.object({ id: z.string().min(1).max(64).optional(), name: z.string().trim().min(1).max(60), jql })
 const column = z.object({ id: z.string().min(1).max(64).optional(), name: z.string().trim().min(1).max(60), statusIds: z.array(uuid).max(50),
   min: z.number().int().min(0).max(9999).nullable().optional(), max: z.number().int().min(1).max(9999).nullable().optional() })
@@ -32,6 +33,11 @@ const settings = {
   cardFields: z.record(z.string().max(40), z.boolean()),
   doneDays: z.number().int().min(1).max(3650).nullable().describe('Kanban: leave out Done items not updated for this many days (null: show them all)'),
   estimation: z.enum(['points', 'time', 'count']).describe('Scrum: what estimates count (story points, original time estimate, issue count); spec 0404'),
+  cardColors: z.object({
+    by: z.enum(['none', 'types', 'priorities', 'assignees', 'queries']),
+    types: z.record(z.string().max(40), color).optional(), priorities: z.record(z.string().max(40), color).optional(), assignees: z.record(uuid, color).optional(),
+    queries: z.array(z.object({ id: z.string().max(64).optional().describe('Kept when edited; empty or left out for a new query'), jql, color })).max(30).optional(),
+  }).describe('Colours based on work types, priorities, assignees or queries (the first match), shown on each card’s left edge (spec 0409)'),
   workingDays: z.object({
     weekdays: z.array(z.number().int().min(0).max(6)).min(1, 'Choose at least one working day').max(7).describe('Working weekdays, 0 for Sunday'),
     nonWorking: z.array(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)).max(365).describe('Holidays and other dates nobody works (YYYY-MM-DD)'),
@@ -42,7 +48,7 @@ const settings = {
 const namedProjects = (n: Node | null): string[] =>
   !n ? [] : n.kind === 'not' ? namedProjects(n.item) : n.kind !== 'clause' ? n.items.flatMap(namedProjects)
     : n.field.toLowerCase() === 'project' && (n.op === '=' || n.op === 'in') ? n.values.flatMap(v => v.kind === 'text' ? [v.text.toUpperCase(), v.text.toLowerCase()] : []) : []
-const withIds = <X extends { id?: string }>(xs: X[]) => xs.map(x => ({ ...x, id: x.id ?? randomUUID() }))
+const withIds = <X extends { id?: string }>(xs: X[]) => xs.map(x => ({ ...x, id: x.id || randomUUID() }))   // an empty id is a new one
 /** Swimlanes with every query given an id. */
 const lanesOf = (l: { by: Lanes['by']; queries?: { id?: string; name: string; jql: string }[] }): Lanes => ({ by: l.by, ...(l.queries ? { queries: withIds(l.queries) } : {}) })
 
@@ -54,7 +60,7 @@ async function boardOut(d: Db, me: Me, id: string) {
      union all select 'group', g.id, g.display_name from board_admins a join groups g on g.id = a.group_id where a.board_id = $1 order by 1, 3`, [b.id])
   const [p] = await d.query<{ key: string }>('select key from projects where id = $1', [b.projectId])
   return { id: b.id, projectId: b.projectId, projectKey: p!.key, name: b.name, type: b.type, jql: b.jql, columns: b.columns, swimlanes: b.swimlanes, quickFilters: b.quickFilters,
-    cardFields: b.cardFields, doneDays: b.doneDays, estimation: b.estimation, workingDays: b.workingDays, position: b.position, canManage, canManageSprints: (await sprintManager(d, me, b)).ok, admins }
+    cardFields: b.cardFields, doneDays: b.doneDays, estimation: b.estimation, workingDays: b.workingDays, cardColors: b.cardColors, position: b.position, canManage, canManageSprints: (await sprintManager(d, me, b)).ok, admins }
 }
 
 /** Every status a column names is one of the workspace's; a status in two columns is refused. */
@@ -125,13 +131,14 @@ const plugin: FastifyPluginAsyncZod = async app => {
       swimlanes: b.swimlanes ? lanesOf(b.swimlanes) : before.swimlanes,
       quickFilters: b.quickFilters ? withIds(b.quickFilters) : before.quickFilters, cardFields: b.cardFields ?? before.cardFields,
       doneDays: b.doneDays !== undefined ? b.doneDays : before.doneDays, estimation: b.estimation ?? before.estimation,
+      cardColors: b.cardColors ? { ...before.cardColors, ...b.cardColors, ...(b.cardColors.queries ? { queries: withIds(b.cardColors.queries) } : {}) } as CardColors : before.cardColors,   // switching keeps the others' colours
       workingDays: b.workingDays ? { weekdays: [...new Set(b.workingDays.weekdays)].sort(), nonWorking: [...new Set(b.workingDays.nonWorking)].sort() } : before.workingDays,
     }
     if (b.estimation && before.type !== 'scrum') throw new HttpError(400, 'Only a Scrum board has an estimation statistic', { estimation: 'Kanban boards don’t estimate' })
     await checkQueries(d, req.me, next)
     if (b.columns) await checkColumns(d, req.me.workspaceId, next.columns)
-    await d.query(`update boards set name = $2, jql = $3, columns = $4, swimlanes = $5, quick_filters = $6, card_fields = $7, done_days = $8, estimation = $9, working_days = $10, updated_at = now() where id = $1`,
-      [before.id, next.name, next.jql, JSON.stringify(next.columns), JSON.stringify(next.swimlanes), JSON.stringify(next.quickFilters), JSON.stringify(next.cardFields), next.doneDays, next.estimation, JSON.stringify(next.workingDays)])
+    await d.query(`update boards set name = $2, jql = $3, columns = $4, swimlanes = $5, quick_filters = $6, card_fields = $7, done_days = $8, estimation = $9, working_days = $10, card_colors = $11, updated_at = now() where id = $1`,
+      [before.id, next.name, next.jql, JSON.stringify(next.columns), JSON.stringify(next.swimlanes), JSON.stringify(next.quickFilters), JSON.stringify(next.cardFields), next.doneDays, next.estimation, JSON.stringify(next.workingDays), JSON.stringify(next.cardColors)])
     if (b.admins) await setAdmins(d, req.me.workspaceId, before.id, b.admins)
     const c = changes({ name: before.name, jql: before.jql }, { name: next.name, jql: next.jql })
     const what = Object.keys(b).filter(k => k !== 'name' && k !== 'jql')
@@ -169,13 +176,14 @@ const plugin: FastifyPluginAsyncZod = async app => {
     const [{ total }] = await db.query<{ total: number }>(`select count(*)::int as total from issues i join projects p on p.id = i.project_id join statuses st on st.id = i.status_id where ${where.join(' and ')}`, args) as any
     const page = [...args]
     const lane = await laneSql(db, req.me, b, page)                     // its parameters only in the page query, which uses them
+    const color = await colorSql(db, req.me, b, page)                   // the card colour query each matches (spec 0409)
     if (q.cursor) {
       const [r, id] = Buffer.from(q.cursor, 'base64url').toString().split('|')
       if (!id || !Number.isFinite(Number(r))) throw new HttpError(400, 'Invalid cursor')
       page.push(Number(r), id); where.push(`(i.rank, i.id) > ($${page.length - 1}, $${page.length}::uuid)`)
     }
     page.push(q.limit + 1)
-    const rows = await db.query<any>(`${ISSUE_ROW.replace('from issues i', `, ${lane} as lane, p.key as project_key from issues i`)} join statuses st on st.id = i.status_id
+    const rows = await db.query<any>(`${ISSUE_ROW.replace('from issues i', `, ${lane} as lane, ${color} as color, p.key as project_key from issues i`)} join statuses st on st.id = i.status_id
       where ${where.join(' and ')} order by i.rank, i.id limit $${page.length}`, page)
     const more = rows.length > q.limit, items = more ? rows.slice(0, q.limit) : rows
     const last = items.at(-1)

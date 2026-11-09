@@ -14,7 +14,7 @@ export interface Lanes { by: 'none' | 'assignee' | 'epic' | 'priority' | 'projec
 export interface Board {
   id: string; workspaceId: string; projectId: string; name: string; type: 'kanban' | 'scrum'; jql: string
   columns: Column[]; swimlanes: Lanes; quickFilters: { id: string; name: string; jql: string }[]; cardFields: Record<string, boolean>
-  doneDays: number | null; estimation: 'points' | 'time' | 'count'; workingDays: { weekdays: number[]; nonWorking: string[] }; position: number; createdBy: string | null
+  doneDays: number | null; estimation: 'points' | 'time' | 'count'; workingDays: { weekdays: number[]; nonWorking: string[] }; cardColors: CardColors; position: number; createdBy: string | null
 }
 
 /** Jira's two quick filters every new board starts with. */
@@ -109,7 +109,7 @@ export async function boardFor(d: Db, me: Me, id: string, opts: { manage?: boole
 }
 
 /** Every query a board stores, parsed now: a mistake is a 400 that says where, not a board that silently shows nothing. */
-export async function checkQueries(d: Db, me: Me, b: Pick<Board, 'jql' | 'swimlanes' | 'quickFilters'>) {
+export async function checkQueries(d: Db, me: Me, b: Pick<Board, 'jql' | 'swimlanes' | 'quickFilters'> & Partial<Pick<Board, 'cardColors'>>) {
   const check = async (jql: string, field: string) => {
     try { await jqlToSql(d, me, parseOr400(jql), []) }
     catch (e) { if (e instanceof HttpError) throw new HttpError(400, `${field}: ${e.message}`, { [field]: e.message }); throw e }
@@ -117,6 +117,7 @@ export async function checkQueries(d: Db, me: Me, b: Pick<Board, 'jql' | 'swimla
   await check(b.jql, 'jql')
   for (const q of b.quickFilters) await check(q.jql, `quickFilters.${q.id}`)
   for (const q of b.swimlanes.queries ?? []) await check(q.jql, `swimlanes.${q.id}`)
+  for (const q of b.cardColors?.queries ?? []) await check(q.jql, `cardColors.${q.id}`)
 }
 
 /** The SQL for a board's items as `me` sees them: where, and the parameters (an ORDER BY in the board's JQL is ignored:
@@ -142,14 +143,29 @@ export async function boardWhere(d: Db, me: Me, b: Board, o: { quick?: string[];
   return { where, args }
 }
 
-/** Which swimlane query each item falls in (the first that matches; "" for none), as one SQL CASE. */
-export async function laneSql(d: Db, me: Me, b: Board, args: unknown[]) {
-  if (b.swimlanes.by !== 'queries' || !b.swimlanes.queries?.length) return `''`
+/** A board's card colours (Jira's "Colors based on", spec 0409): each method keeps its own colours. */
+export interface CardColors {
+  by: 'none' | 'types' | 'priorities' | 'assignees' | 'queries'
+  types?: Record<string, string>; priorities?: Record<string, string>; assignees?: Record<string, string>
+  queries?: { id: string; jql: string; color: string }[]
+}
+
+/** Which of these queries each item matches first (its id; "" for none), as one SQL CASE. */
+async function firstMatchSql(d: Db, me: Me, queries: { id: string; jql: string }[], args: unknown[]) {
+  if (!queries.length) return `''`
   const whens: string[] = []
-  for (const q of b.swimlanes.queries) {
+  for (const q of queries) {
     const sql = await jqlToSql(d, me, parseOr400(q.jql), args)
     args.push(q.id)
     whens.push(`when ${sql.where ?? 'true'} then $${args.length}`)
   }
   return `case ${whens.join(' ')} else '' end`
 }
+
+/** Which swimlane query each item falls in (the first that matches; "" for none). */
+export const laneSql = (d: Db, me: Me, b: Board, args: unknown[]) =>
+  firstMatchSql(d, me, b.swimlanes.by === 'queries' ? b.swimlanes.queries ?? [] : [], args)
+
+/** Which card colour query each item takes (the first that matches; "" for none: grey). */
+export const colorSql = (d: Db, me: Me, b: Board, args: unknown[]) =>
+  firstMatchSql(d, me, b.cardColors.by === 'queries' ? b.cardColors.queries ?? [] : [], args)

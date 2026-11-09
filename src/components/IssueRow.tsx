@@ -7,6 +7,8 @@ import { UserPicker } from './UserPicker'
 import { ProjectIcon } from './ProjectView'
 
 export interface IssueRowProps {
+  /** The board's card colour for it, shown on its left edge (spec 0409). */
+  stripe?:      string
   issue:        Issue
   project:      Project
   showProject?: boolean
@@ -24,7 +26,7 @@ export interface IssueRowProps {
 }
 
 /** A dense, editable work item row for backlogs, sub-items and personal lists. */
-export default function IssueRow({ issue, project, showProject, trailing, selected, onSelect, showUpdated = true, drag, dragging, ghost, ghostCount }: IssueRowProps) {
+export default function IssueRow({ stripe, issue, project, showProject, trailing, selected, onSelect, showUpdated = true, drag, dragging, ghost, ghostCount }: IssueRowProps) {
   const { state, dispatch } = useStore()
   const { openIssue, moveIssue } = useApp()
   const status = project.statuses.find(s => s.id === issue.status)
@@ -36,7 +38,8 @@ export default function IssueRow({ issue, project, showProject, trailing, select
   return (
     <div
       ref={drag?.setNodeRef} {...drag?.listeners}
-      className={`row${selected ? ' selected' : ''}${dragging ? ' dragging' : ''}${ghost ? ' ghost' : ''}${issue.flagged ? ' flagged' : ''}`}
+      className={`row${selected ? ' selected' : ''}${dragging ? ' dragging' : ''}${ghost ? ' ghost' : ''}${issue.flagged ? ' flagged' : ''}${stripe ? ' striped' : ''}`}
+      style={stripe ? { '--stripe': stripe } as React.CSSProperties : undefined}
       onClick={ghost ? undefined : e => { if (onSelect && (e.shiftKey || e.metaKey)) onSelect(!selected, e.shiftKey); else openIssue(issue.id) }}
       aria-hidden={ghost || undefined}
     >
