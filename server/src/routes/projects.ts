@@ -6,7 +6,7 @@ import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
 import { db, tx, pick, type Db } from '../db.ts'
 import { HttpError, requireAdmin, signedIn, type Me } from '../auth.ts'
-import { ARCHIVED, READS, accessTo, minFor, need, visible, type Permission, type ProjectRole } from '../access.ts'
+import { ARCHIVED, READS, accessTo, levelOk, minFor, need, visible, type Permission, type ProjectRole } from '../access.ts'
 import { publish, subscribe } from '../events.ts'
 import { audit, changes } from '../audit.ts'
 import { enqueue, kickJobs } from '../jobs.ts'
@@ -114,6 +114,12 @@ const projectBody = z.object({
 
 const keyP = z.object({ key: z.string().describe('Project key (PAY) or id (uuid)') })
 const keyIdP = keyP.extend({ id: uuid })
+
+/** The statuses of a board's rightmost column that has any: what "completed" means for its sprints (Jira's; spec 0401). */
+async function doneColumnOf(d: Db, boardId: string | null) {
+  const [b] = boardId ? await d.query<{ columns: { statusIds: string[] }[] }>('select columns from boards where id = $1', [boardId]) : []
+  return (b && [...b.columns].reverse().find(c => c.statusIds.length)?.statusIds) ?? null
+}
 
 /** Templates and automation rules name priorities of the list (spec 0305). */
 async function checkPriorities(ws: string, kind: string, body: Record<string, any>) {
@@ -772,6 +778,46 @@ const plugin: FastifyPluginAsyncZod = async app => {
   })
 
   // ── Sprints ──
+  // Sprint Report (Jira's, spec 0402): one sprint's completed, not completed, completed outside and removed work, with the
+  // points each had at the start (or when added, marked *), among the items I can see
+  app.get('/projects/:key/sprints/:id/report', { schema: { tags: T.sprints, summary: 'Sprint Report: completed, not completed, completed outside the sprint, and removed work, with points', params: keyIdP } }, async req => {
+    const p = await projectByKey(db, req, req.params.key, 'viewer')
+    const [sp] = await db.query<any>('select * from sprints where id = $1 and project_id = $2', [req.params.id, p.id])
+    if (!sp) throw new HttpError(404, 'Sprint not found')
+    if (sp.state === 'planned') throw new HttpError(400, 'A sprint has a report once it has started')
+    const start: Record<string, number | null> | null = sp.startEstimates
+    // the items it held: at completion, or now; what was completed: recorded then, or in the board's rightmost column now
+    const col = await doneColumnOf(db, sp.boardId)
+    const members: string[] = sp.state === 'closed' ? sp.issueIds ?? []
+      : (await db.query<{ id: string }>('select id from issues where sprint_id = $1 and deleted_at is null', [sp.id])).map(r => r.id)
+    const completed = new Set<string>(sp.state === 'closed' ? sp.completedIds ?? []
+      : (await db.query<{ id: string }>(`select i.id from issues i join statuses st on st.id = i.status_id where i.id = any($1::uuid[]) and ${col ? 'st.global_status_id = any($2::uuid[])' : `(st.category = 'done' and $2::uuid[] is null)`}`, [members, col])).map(r => r.id))
+    // taken out while it ran (completing it moves work without a history line, so those are "not completed" instead)
+    const removed = (await db.query<{ id: string }>(
+      `select distinct a.issue_id as id from activity a where a.field = 'sprintId' and a.from_value = $1 and a.created_at >= $2 and a.created_at <= coalesce($3, now())`,
+      [sp.id, sp.startedAt, sp.completedAt])).map(r => r.id).filter(id => !members.includes(id))
+    const args: unknown[] = [[...members, ...removed], sp.id]
+    const rows = await db.query<any>(
+      `select i.id, p.key || '-' || i.number as key, i.title, i.type, i.priority, st.name as status, i.estimate, i.resolved_at,
+              coalesce((select max(a.created_at) from activity a where a.issue_id = i.id and a.field = 'sprintId' and a.to_value = $2::text), i.created_at) as joined_at
+         from issues i join projects p on p.id = i.project_id join statuses st on st.id = i.status_id
+        where i.id = any($1::uuid[]) and i.deleted_at is null and ${visible(req.me, 'i.project_id', args)} and ${levelOk(req.me, args.push(req.me.id))} order by i.rank, i.id`, args)   // within my security level too
+    const row = (r: any) => {
+      const added = !!start && !(r.id in start)
+      return { key: r.key, title: r.title, type: r.type, priority: r.priority, status: r.status, points: (start && r.id in start ? start[r.id] : r.estimate) ?? null, addedAfterStart: added }
+    }
+    // already resolved before it joined the sprint (at the start, or when added)
+    const outside = (r: any) => !!r.resolvedAt && new Date(r.resolvedAt) < new Date(start && r.id in start ? sp.startedAt : r.joinedAt)
+    const sections = {
+      completed: rows.filter(r => completed.has(r.id) && !outside(r)).map(row),
+      notCompleted: rows.filter(r => members.includes(r.id) && !completed.has(r.id)).map(row),
+      completedOutside: rows.filter(r => completed.has(r.id) && outside(r)).map(row),
+      removed: rows.filter(r => removed.includes(r.id)).map(row),
+    }
+    const total = (l: { points: number | null }[]) => l.reduce((n, x) => n + Number(x.points ?? 0), 0)
+    return { sprint: sp, ...sections, totals: Object.fromEntries(Object.entries(sections).map(([k, l]) => [k, total(l)])) }
+  })
+
   const sprintBody = z.object({ name: z.string().min(1), goal: z.string(), endsAt: z.string().datetime().nullable() }).partial()
   const sprintCreate = sprintBody.required({ name: true }).extend({ id: uuid.optional().describe('Client-chosen id'), boardId: uuid.optional().describe('The Scrum board it belongs to (one of this project’s; default its first)') })
 
@@ -826,7 +872,8 @@ const plugin: FastifyPluginAsyncZod = async app => {
       const { p } = await managedSprint(d, req, true)
       const [s] = await d.query(
         `update sprints set state = 'active', started_at = now(), ends_at = $3,
-                committed = (select coalesce(sum(estimate), 0) from issues where sprint_id = sprints.id and deleted_at is null)
+                committed = (select coalesce(sum(estimate), 0) from issues where sprint_id = sprints.id and deleted_at is null),
+                start_estimates = (select coalesce(jsonb_object_agg(id, estimate), '{}') from issues where sprint_id = sprints.id and deleted_at is null)   -- for the Sprint Report (0402)
           where id = $1 and project_id = $2 and state = 'planned' returning *`, [req.params.id, p.id, endsAt])
       if (!s) throw new HttpError(409, 'Sprint is not planned, or another sprint is already active on its board')
       return s
@@ -842,8 +889,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
       if (cur.state !== 'active') throw new HttpError(409, 'Sprint is not active')
       // Jira: an item is completed when its status is in the board's rightmost column (that has statuses), whatever its
       // category; without a board, a Done status (spec 0401). `done(alias)` tests a statuses row, with the column as $2.
-      const [b] = cur.boardId ? await d.query<{ columns: { statusIds: string[] }[] }>('select columns from boards where id = $1', [cur.boardId]) : []
-      const col = b && [...b.columns].reverse().find(c => c.statusIds.length)?.statusIds
+      const col = await doneColumnOf(d, cur.boardId)
       const done = (st: string) => (col ? `${st}.global_status_id = any($2::uuid[])` : `(${st}.category = 'done' and $2::uuid[] is null)`)
       const doneArg = col ?? null
       // a completed item whose sub-items in the sprint aren't completed blocks completion; finish the sub-items first
@@ -866,7 +912,8 @@ const plugin: FastifyPluginAsyncZod = async app => {
         `update sprints set state = 'closed', completed_at = now(),
                 completed = (select coalesce(sum(i.estimate), 0) from issues i join statuses st on st.id = i.status_id
                               where i.sprint_id = sprints.id and i.deleted_at is null and ${done('st')}),
-                issue_ids = array(select id from issues where sprint_id = sprints.id and deleted_at is null)
+                issue_ids = array(select id from issues where sprint_id = sprints.id and deleted_at is null),
+                completed_ids = array(select i.id from issues i join statuses st on st.id = i.status_id where i.sprint_id = sprints.id and i.deleted_at is null and ${done('st')})
           where id = $1 returning *`, [cur.id, doneArg])
       await d.query(
         `update issues set sprint_id = $3, version = version + 1, updated_at = now()

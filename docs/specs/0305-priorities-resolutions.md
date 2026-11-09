@@ -95,6 +95,8 @@ None.
 
 ## Changelog
 
+- 9 Nov 2026, after porting: making another priority or resolution the default failed (500). It switched both rows in one statement, against an index allowing one default. Fixed in two statements, and the test now checks it.
+
 - 9 Nov 2026: the product owner chose Medium as the default priority, and per-workflow resolution (R6).
 - 9 Nov 2026, while building (within the approved rules):
   - The CSV export's Priority column shows the priority's name, not its key.

@@ -1323,3 +1323,24 @@ test('[0305.R7] priorities are a list admins edit: Blocker added at the top show
   assert.equal((await owner('DELETE', `/admin/priorities/${key}?moveTo=urgent`)).status, 204)
   assert.deepEqual(o.problems, [])
 })
+
+test('[0402.R1] the Sprint Report lists what a sprint completed and what it didn’t, and marks work added after it started', { skip, timeout: 90_000 }, async () => {
+  const p = (await owner('POST', '/projects', { name: 'Reporting', key: 'SRP', template: 'scrum' })).body
+  const done = p.statuses.find(s => s.category === 'done').id
+  const s1 = (await owner('POST', '/projects/SRP/sprints', { name: 'Sprint report one' })).body
+  const finished = (await owner('POST', '/projects/SRP/issues', { title: 'Finished work', sprintId: s1.id, estimate: 3 })).body
+  await owner('POST', '/projects/SRP/issues', { title: 'Unfinished work', sprintId: s1.id, estimate: 2 })
+  await owner('POST', `/projects/SRP/sprints/${s1.id}/start`, { endsAt: new Date(Date.now() + 864e5).toISOString() })
+  const late = (await owner('POST', '/projects/SRP/issues', { title: 'Late arrival', estimate: 1 })).body
+  await owner('PATCH', `/issues/${late.key}`, { sprintId: s1.id })
+  await owner('PATCH', `/issues/${finished.key}`, { statusId: done })
+  await owner('POST', `/projects/SRP/sprints/${s1.id}/complete`, { moveTo: null })
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url('/project/SRP/reports/sprint'))
+  const completed = o.locator('section[aria-label="Completed Issues"]')
+  await completed.waitFor()
+  assert.match(await completed.innerText(), /Finished work/)
+  const notDone = await o.locator('section[aria-label="Issues Not Completed"]').innerText()
+  assert.match(notDone, /Unfinished work/); assert.match(notDone, new RegExp(`${late.key} \\*`))
+  assert.deepEqual(o.problems, [])
+})
