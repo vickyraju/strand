@@ -840,12 +840,18 @@ const plugin: FastifyPluginAsyncZod = async app => {
     return tx(async d => {
       const { p, s: cur } = await managedSprint(d, req, true)
       if (cur.state !== 'active') throw new HttpError(409, 'Sprint is not active')
-      // Jira: a Done item whose sub-items in the sprint aren't Done blocks completion; finish the sub-items first
+      // Jira: an item is completed when its status is in the board's rightmost column (that has statuses), whatever its
+      // category; without a board, a Done status (spec 0401). `done(alias)` tests a statuses row, with the column as $2.
+      const [b] = cur.boardId ? await d.query<{ columns: { statusIds: string[] }[] }>('select columns from boards where id = $1', [cur.boardId]) : []
+      const col = b && [...b.columns].reverse().find(c => c.statusIds.length)?.statusIds
+      const done = (st: string) => (col ? `${st}.global_status_id = any($2::uuid[])` : `(${st}.category = 'done' and $2::uuid[] is null)`)
+      const doneArg = col ?? null
+      // a completed item whose sub-items in the sprint aren't completed blocks completion; finish the sub-items first
       const blocked = await d.query<{ key: string }>(
         `select distinct pp.key || '-' || par.number as key, par.number from issues par join statuses ps on ps.id = par.status_id join projects pp on pp.id = par.project_id
-          where par.sprint_id = $1 and par.deleted_at is null and ps.category = 'done'
-            and exists (select 1 from issues c join statuses cs on cs.id = c.status_id where c.parent_id = par.id and c.sprint_id = $1 and c.deleted_at is null and cs.category <> 'done')
-          order by 1 limit 20`, [cur.id])
+          where par.sprint_id = $1 and par.deleted_at is null and ${done('ps')}
+            and exists (select 1 from issues c join statuses cs on cs.id = c.status_id where c.parent_id = par.id and c.sprint_id = $1 and c.deleted_at is null and not ${done('cs')})
+          order by 1 limit 20`, [cur.id, doneArg])
       if (blocked.length) throw new HttpError(409, `Complete the sub-items first: ${blocked.map(b => b.key).join(', ')}`, { moveTo: 'Done items have unfinished sub-items' })
       let moveTo = req.body.moveTo, newSprint: unknown
       if (moveTo === 'new') {
@@ -859,14 +865,14 @@ const plugin: FastifyPluginAsyncZod = async app => {
       const [s] = await d.query(
         `update sprints set state = 'closed', completed_at = now(),
                 completed = (select coalesce(sum(i.estimate), 0) from issues i join statuses st on st.id = i.status_id
-                              where i.sprint_id = sprints.id and i.deleted_at is null and st.category = 'done'),
+                              where i.sprint_id = sprints.id and i.deleted_at is null and ${done('st')}),
                 issue_ids = array(select id from issues where sprint_id = sprints.id and deleted_at is null)
-          where id = $1 returning *`, [cur.id])
+          where id = $1 returning *`, [cur.id, doneArg])
       await d.query(
-        `update issues set sprint_id = $2, version = version + 1, updated_at = now()
+        `update issues set sprint_id = $3, version = version + 1, updated_at = now()
           where sprint_id = $1 and deleted_at is null
-            and status_id in (select id from statuses where category <> 'done')
-            and project_id not in (select id from projects where archived_at is not null)`, [cur.id, moveTo])   // unfinished work from every project in it, except archived ones (read-only)
+            and status_id in (select st.id from statuses st where not ${done('st')})
+            and project_id not in (select id from projects where archived_at is not null)`, [cur.id, doneArg, moveTo])   // unfinished work from every project in it, except archived ones (read-only)
       return newSprint ? { ...s, newSprint } : s
     })
   })

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { DndContext, DragOverlay, useDraggable, useDroppable, type DragEndEvent, type DragOverEvent, type DragStartEvent } from '@dnd-kit/core'
 import { ChevronDown, ChevronRight, Kanban, ListChecks, Plus, MoreHorizontal, ArrowRightLeft, Pencil, Trash2, Play, ArrowUpToLine, ArrowDownToLine } from 'lucide-react'
-import { useStore, isDone, userOf, indexOf, uid, type Board, type Project, type Sprint, type Issue } from '../data/store'
+import { useStore, doneColumn, doneOnBoard, userOf, indexOf, uid, type Board, type Project, type Sprint, type Issue } from '../data/store'
 import { apiEnabled } from '../api/client'
 import { lastBoard, useBoard, useBoardItems, useBoards } from '../api/boards'
 import { useEnsureProjects } from '../api/useEnsureProjects'
@@ -265,7 +265,7 @@ function Backlog({ project, board, switcher }: { project: Project; board?: Board
 
       <BulkBar ids={[...selected].filter(id => ordered.some(i => i.id === id))} onClear={() => setSelected(new Set())} />
 
-      {completing && <CompleteSprintModal sprint={completing} project={project} boardId={board?.id} others={sprints.filter(s => s.id !== completing.id)} onClose={() => setCompleting(null)} />}
+      {completing && <CompleteSprintModal sprint={completing} project={project} board={board} boardId={board?.id} others={sprints.filter(s => s.id !== completing.id)} onClose={() => setCompleting(null)} />}
       {starting && <SprintDialog sprint={starting} mode="start" onClose={() => setStarting(null)} />}
       {editing && <SprintDialog sprint={editing} mode="edit" onClose={() => setEditing(null)} />}
     </div>
@@ -375,13 +375,14 @@ function SprintDialog({ sprint, mode, onClose }: { sprint: Sprint; mode: 'start'
   )
 }
 
-export function CompleteSprintModal({ sprint, project, boardId, others, onClose }: {
-  sprint: Sprint; project: Project; boardId?: string; others: Sprint[]; onClose: () => void
+export function CompleteSprintModal({ sprint, project, board, boardId, others, onClose }: {
+  sprint: Sprint; project: Project; board?: Pick<Board, 'columns'>; boardId?: string; others: Sprint[]; onClose: () => void
 }) {
+  const doneStatusIds = doneColumn(board)                           // completed means the board's rightmost column (spec 0401)
   const { state, dispatch } = useStore()
   const { toast } = useApp()
   const items = state.issues.filter(i => i.sprintId === sprint.id)
-  const done = (i: Issue) => isDone(state.projects.find(p => p.id === i.projectId) ?? project, i)   // by each item's own project
+  const done = (i: Issue) => doneOnBoard(state.projects.find(p => p.id === i.projectId) ?? project, i, doneStatusIds)
   const open = items.filter(i => !done(i))
   const future = others.filter(s => s.state === 'planned')
   const [target, setTarget] = useState<string>(future[0]?.id ?? BACKLOG)
@@ -396,7 +397,7 @@ export function CompleteSprintModal({ sprint, project, boardId, others, onClose 
       moveTo = uid()
       dispatch({ type: 'createSprint', projectId: sprint.projectId, ...(boardId ?? sprint.boardId ? { boardId: boardId ?? sprint.boardId } : {}), id: moveTo })
     }
-    dispatch({ type: 'completeSprint', id: sprint.id, moveTo })
+    dispatch({ type: 'completeSprint', id: sprint.id, moveTo, doneStatusIds })
     toast(`${sprint.name} completed`, { undo: 'completeSprint' })
     onClose()
   }

@@ -4098,3 +4098,32 @@ test('[0305.R6] each workflow says how its items get a resolution: on reaching D
   assert.equal((await call('PATCH', `/api/v1/issues/${c.key}`, { statusId: done.id, resolution: 'Duplicate' })).body.resolution, 'Duplicate')
   await call('PATCH', `/api/v1/admin/workflows/${wf}`, { resolutionOnDone: true })
 })
+
+test('[0401.R1][0401.R2][0401.R4] completing a sprint: done means the board’s rightmost column, whatever the status category', { skip }, async () => {
+  const p = (await call('POST', '/api/v1/projects', { name: 'Rightmost', key: 'RGT', template: 'scrum' })).body
+  const st = (cat: string, n = 0) => p.statuses.filter((x: any) => x.category === cat)[n]
+  const [todo, doing, done] = [st('todo'), st('in-progress'), st('done')]
+  const s1 = (await call('POST', '/api/v1/projects/RGT/sprints', { name: 'Sprint R' })).body
+  // the board's rightmost column becomes In progress; Done sits in a column to its left
+  await call('PATCH', `/api/v1/boards/${s1.boardId}`, { columns: [{ name: 'To do', statusIds: [todo.globalStatusId] }, { name: 'Done', statusIds: [done.globalStatusId] }, { name: 'Ready to ship', statusIds: [doing.globalStatusId] }, { name: 'Empty', statusIds: [] }] })
+  const mk = (title: string, extra: object = {}) => call('POST', '/api/v1/projects/RGT/issues', { title, sprintId: s1.id, estimate: 3, ...extra }).then(r => r.body)
+  const ready = await mk('Ready'), closed = await mk('Closed'), parent = await mk('Parent'), child = await mk('Child', { parentId: parent.id })
+  await call('POST', `/api/v1/projects/RGT/sprints/${s1.id}/start`, { endsAt: new Date(Date.now() + 864e5).toISOString() })
+  for (const i of [ready, parent]) await call('PATCH', `/api/v1/issues/${i.key}`, { statusId: doing.id })
+  await call('PATCH', `/api/v1/issues/${closed.key}`, { statusId: done.id })
+  const closedBefore = (await call('GET', `/api/v1/issues/${closed.key}`)).body
+  // R2: the parent is in the rightmost column, its sub-item isn't: refused
+  const blocked = await call('POST', `/api/v1/projects/RGT/sprints/${s1.id}/complete`, { moveTo: null })
+  assert.equal(blocked.status, 409); assert.equal(blocked.body.error, `Complete the sub-items first: ${parent.key}`)
+  await call('PATCH', `/api/v1/issues/${child.key}`, { statusId: doing.id })
+  // R1: what is in Ready to ship stays; Done (not the rightmost column) goes back to the backlog; points count the first
+  const r = await call('POST', `/api/v1/projects/RGT/sprints/${s1.id}/complete`, { moveTo: null })
+  assert.equal(r.status, 200, JSON.stringify(r.body))
+  assert.equal(r.body.completed, 9)
+  const sprintOf = async (key: string) => (await call('GET', `/api/v1/issues/${key}`)).body.sprintId
+  assert.deepEqual([await sprintOf(ready.key), await sprintOf(parent.key), await sprintOf(child.key), await sprintOf(closed.key)], [s1.id, s1.id, s1.id, null])
+  // R4: completing changes no status or resolution
+  const closedAfter = (await call('GET', `/api/v1/issues/${closed.key}`)).body
+  assert.deepEqual([closedAfter.statusId, closedAfter.resolution], [closedBefore.statusId, closedBefore.resolution])
+  assert.equal((await call('GET', `/api/v1/issues/${ready.key}`)).body.resolution, null)
+})

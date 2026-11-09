@@ -468,7 +468,7 @@ export type Action =
   | { type: 'createSprint'; projectId: string; boardId?: string; id?: string }
   | { type: 'updateSprint'; id: string; patch: Partial<Pick<Sprint, 'name' | 'goal' | 'endsAt'>> }
   | { type: 'startSprint'; id: string; endsAt: number }
-  | { type: 'completeSprint'; id: string; moveTo?: string }
+  | { type: 'completeSprint'; id: string; moveTo?: string; doneStatusIds?: string[] }   // the board's rightmost column (spec 0401)
   | { type: 'deleteSprint'; id: string }
   | { type: 'markRead'; ids: string[]; read?: boolean }
   | { type: 'archive'; ids: string[] }
@@ -607,6 +607,16 @@ const FIELD_LABEL: Partial<Record<keyof IssuePatch, string>> = {
 }
 
 /** Keeps resolution in step with the status, as the server does: reaching Done resolves (as Done unless chosen), leaving clears. */
+/** The statuses of a board's rightmost column that has any: what "completed" means when its sprint completes (Jira's; spec 0401). */
+export const doneColumn = (b?: Pick<Board, 'columns'>) => [...(b?.columns ?? [])].reverse().find(c => c.statusIds.length)?.statusIds
+
+/** Is the item completed on a board whose rightmost column holds `doneStatusIds`? Without them, by its Done category. */
+export function doneOnBoard(project: Project | undefined, i: Issue, doneStatusIds?: string[]) {
+  if (!doneStatusIds) return isDone(project, i)
+  const s = project?.statuses.find(x => x.id === i.status)
+  return !!s && doneStatusIds.includes(s.globalStatusId ?? s.id)
+}
+
 export function withResolution(project: Project, prev: Issue, next: Issue, now: number): Issue {
   const doneNow = categoryOf(project, next.status) === 'done', doneBefore = categoryOf(project, prev.status) === 'done'
   if (!doneNow) { const { resolution: _r, resolvedAt: _a, ...rest } = next; return rest }
@@ -938,8 +948,8 @@ export function reducer(state: State, action: Action, now = Date.now()): State {
     case 'completeSprint': {
       const sprint = state.sprints.find(s => s.id === action.id)
       if (!sprint) return state
-      // each item is done by its own project's statuses (a board's sprint can hold several projects' work)
-      const done = (i: Issue) => isDone(state.projects.find(p => p.id === i.projectId), i)
+      // completed: in the board's rightmost column; without a board, a Done status of its own project (spec 0401)
+      const done = (i: Issue) => doneOnBoard(state.projects.find(p => p.id === i.projectId), i, action.doneStatusIds)
       const items = state.issues.filter(i => i.sprintId === sprint.id)
       const completed = items.filter(done).reduce((n, i) => n + (i.estimate ?? 0), 0)
       return {
