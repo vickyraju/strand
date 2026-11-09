@@ -1,6 +1,6 @@
 # 0711 Authentication methods: Entra SSO configured in Administration, the login form, fallback and recovery
 
-Status: Approved (PO, 10 Nov 2026: "make sso configurable in the admin section … so the system admin can configure the sso enable or disable it when needed"; "when sso is turned off it will show a username and password field to login, check how it is in Jira data center")
+Status: Ported (aws-jira `d3bdb3a`, strand `d4f1978`), approved by the PO on 10 Nov 2026; awaiting verification
 Parity rows: AUTH-01, AUTH-02, AUTH-03
 
 ## Context and Jira reference
@@ -143,7 +143,10 @@ Parity rows: AUTH-01, AUTH-02, AUTH-03
 
 ## Strand branch
 
-Same rules. The developer login stays (R13), and the browser's Entra sign-in comes to strand.
+Same rules, and the browser's Entra sign-in comes to strand. The developer login stays (R13):
+- with `AUTH_DEV`, `GET /auth/config` also says `dev: true`, and the login page shows the dev form;
+- the login form is still at `?auth_fallback`, so recovery mode works on a development server too;
+- a request with a bearer token (Entra, or a login-form session) is never taken as the dev login.
 
 ## Out of scope and deliberate divergences
 
