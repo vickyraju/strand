@@ -146,3 +146,30 @@ test('[0307.R4] labels with spaces become one word joined by "_", once per item'
     await c.end()
   }
 })
+
+test('[0309.R4] duplicate names are renamed "X (2)", "X (3)", oldest first, each in the audit log', { skip }, async () => {
+  const { readFileSync } = await import('node:fs')
+  const sql = readFileSync(new URL('../migrations/20261130090000_unique_names.sql', import.meta.url), 'utf8')
+  const c = new pg.Client({ connectionString: url })
+  await c.connect()
+  const schema = `un_${process.pid}`
+  try {
+    await c.query(`create schema ${schema}; set search_path = ${schema}, public`)
+    await c.query(`create table projects (id uuid primary key, workspace_id uuid, key text, name text);
+                   create table releases (id uuid primary key, project_id uuid, name text);
+                   create table components (id uuid primary key, project_id uuid, name text, constraint components_project_id_name_key unique (project_id, name));
+                   create table saved_views (id uuid primary key, workspace_id uuid, owner_id uuid, name text);
+                   create table audit_log (workspace_id uuid, actor text, action text, project_id uuid, project_key text, target_type text, target_id text, target text, before jsonb, after jsonb)`)
+    const id = (n: number) => `00000000-0000-7000-8000-${String(n).padStart(12, '0')}`
+    const w = id(900), p = id(1)
+    await c.query(`insert into projects values ($1, $4, 'AA', 'Payments'), ($2, $4, 'BB', 'payments'), ($3, $4, 'CC', 'Payments ')`, [id(1), id(2), id(3), w])
+    await c.query(`insert into releases values ($1, $3, '2.0'), ($2, $3, '2.0')`, [id(11), id(12), p])
+    await c.query(sql)
+    assert.deepEqual((await c.query(`select name from projects order by id`)).rows.map((r: any) => r.name), ['Payments', 'payments (2)', 'Payments (3)'])
+    assert.deepEqual((await c.query(`select name from releases order by id`)).rows.map((r: any) => r.name), ['2.0', '2.0 (2)'])
+    assert.equal((await c.query(`select count(*)::int as n from audit_log where action = 'name.deduplicated'`)).rows[0].n, 3)
+  } finally {
+    await c.query(`drop schema ${schema} cascade`)
+    await c.end()
+  }
+})

@@ -66,7 +66,7 @@ Checked against Atlassian's Data Center documentation on 5 November 2026 (Jira S
 | PRJ-05 | Delete a project | Permanent | Job with an S3 backup and restore | better | diverge | — | Keep: "project backups" test. |
 | PRJ-06 | Templates | Scrum, Kanban, Basic, Business templates | Scrum, Kanban | partial | open | — | |
 | PRJ-07 | Project roles to people and groups | Roles with default members | Admin, member and viewer, to people and groups | partial | diverge | 0201 | Fixed roles (PRM-01). |
-| PRJ-08 | Project names | Unique, case-insensitive ([JRASERVER-3582](https://jira.atlassian.com/browse/JRASERVER-3582)) | Not unique | diverges | match | 0309 | JQL `project = "Name"` is ambiguous otherwise. |
+| PRJ-08 | Project names | Unique, case-insensitive ([JRASERVER-3582](https://jira.atlassian.com/browse/JRASERVER-3582)) | Unique in the workspace, ignoring case | match | match | 0309 | |
 | PRJ-09 | Who switches a project's workflow scheme | Jira admins ([managing workflows](https://confluence.atlassian.com/adminjiraserver/managing-your-workflows-938847410.html)) | Global admins | match | match | 0103 | |
 
 ## Work items and fields
@@ -82,7 +82,7 @@ Checked against Atlassian's Data Center documentation on 5 November 2026 (Jira S
 | ISS-07 | Custom field types | 20+ types ([cf]) | Text, number, select, date, per project | partial | match | 0502 | |
 | ISS-08 | Custom field contexts, field configurations | Global fields with contexts; required and hidden ([context](https://confluence.atlassian.com/adminjiraserver/configuring-a-custom-field-938847235.html)) | Absent | absent | match | 0503, 0504 | |
 | ISS-24 | Custom field type and options | The type can't be changed; options have ids: a rename carries to issues, a disabled option stays on issues, a deleted one is cleared ([editing custom fields](https://confluence.atlassian.com/adminjiraserver/editing-or-deleting-custom-fields-1047552719.html)) | Same: type fixed, option ids, rename/disable/delete carry through | match | match | 0105 | |
-| ISS-25 | Version and component names | Unique per project | Versions not unique; components unique only case-sensitively | diverges | match | 0309 | |
+| ISS-25 | Version and component names | Unique per project | Unique per project, ignoring case | match | match | 0309 | |
 | ISS-09 | Screens and screen schemes | Create, edit and view screens | Absent (transition screens exist) | absent | open | 0505 | Proposed: deliberately diverge. |
 | ISS-10 | Move between projects | Yes; the old key redirects | Absent | absent | match | 0501 | |
 | ISS-11 | Voting | Yes | Absent | absent | match | 0506 | |
@@ -138,7 +138,7 @@ Checked against Atlassian's Data Center documentation on 5 November 2026 (Jira S
 | SR-02 | JQL functions | About 35 ([jqlfn]) | currentUser, now, startOfDay, endOfDay, startOfWeek, openSprints, closedSprints, membersOf, Xray functions | partial | match | 0603 | |
 | SR-03 | `~` text search | Word search with stemming | Substring match (`jqlSql.ts`) | diverges | open | — | |
 | SR-04 | Saved filters and sharing | View and edit sharing; admins change the owner | Same (`misc.ts`) | match | match | 0203 | Sharing limited to your own groups and projects (PRM-06). |
-| SR-07 | Filter names and owner change | Unique per owner; a new owner must be able to see it and not already have one of that name ([shared filters](https://confluence.atlassian.com/adminjiraserver089/managing-shared-filters-1005347206.html)) | Not unique; owner change has no checks (`misc.ts`) | diverges | match | 0309 | |
+| SR-07 | Filter names and owner change | Unique per owner; a new owner must be able to see it and not already have one of that name ([shared filters](https://confluence.atlassian.com/adminjiraserver089/managing-shared-filters-1005347206.html)) | Unique per owner, ignoring case; the new owner must see it and not have one by that name | match | match | 0309 | |
 | SR-05 | Filter subscriptions | Scheduled email | Absent | absent | match | 0604 | |
 | SR-06 | Export | CSV, Excel, XML, Word, RSS, print | CSV, capped by a setting | partial | match | 0608 | |
 
