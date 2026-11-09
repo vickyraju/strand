@@ -12,11 +12,11 @@ import {
 import { useApp } from '../appContext'
 import { can, canEdit } from '../data/access'
 import DeleteItemsDialog from './DeleteItemsDialog'
-import { RESOLUTIONS } from '../data/reducer'
+import { resolutionNames } from '../data/lists'
 import { splitLabels } from '../../server/src/shared/labels.ts'
 import { href, navigate } from '../router'
 import {
-  Picker, Menu, TypeIcon, PriorityIcon, Avatar, Modal, typeMeta, MultiSelect, PRIORITY_META, StatusLozenge,
+  Picker, Menu, TypeIcon, PriorityIcon, Avatar, Modal, typeMeta, MultiSelect, priorityLabel, StatusLozenge,
   priorityOptions, typeOptions,
 } from './ui'
 import { UserPicker } from './UserPicker'
@@ -417,12 +417,12 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
                 : <span className="field-static"><Avatar user={reporter} size={22} />{reporter?.name ?? '—'}</span>}
             </Field>
             <Field label="Priority">
-              <Picker value={issue.priority} options={priorityOptions} onChange={priority => set({ priority })} className="field-btn" title="Priority"
-                trigger={<><PriorityIcon priority={issue.priority} />{PRIORITY_META[issue.priority].label}</>} />
+              <Picker value={issue.priority} options={priorityOptions()} onChange={priority => set({ priority })} className="field-btn" title="Priority"
+                trigger={<><PriorityIcon priority={issue.priority} />{priorityLabel(issue.priority)}</>} />
             </Field>
             {issue.resolution && (
               <Field label="Resolution">
-                <Picker value={issue.resolution} options={RESOLUTIONS.map(r => ({ value: r, label: r }))} onChange={resolution => set({ resolution })}
+                <Picker value={issue.resolution} options={resolutionNames().map(r => ({ value: r, label: r }))} onChange={resolution => set({ resolution })}
                   className="field-btn" title="Resolution" trigger={<>{issue.resolution}{issue.resolvedAt && <span className="muted sm">&nbsp;· {timeAgo(issue.resolvedAt)}</span>}</>} />
               </Field>
             )}

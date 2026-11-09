@@ -5,7 +5,7 @@ import { useStore, uid, userOf, statusesFor, type NewIssue, type IssueType, type
 import { useApp } from '../appContext'
 import { canEdit } from '../data/access'
 import {
-  Picker, TypeIcon, PriorityIcon, Avatar, typeMeta, PRIORITY_META, Toggle,
+  Picker, TypeIcon, PriorityIcon, Avatar, typeMeta, priorityLabel, Toggle,
   statusOptions, priorityOptions, typeOptions,
 } from './ui'
 import { UserPicker } from './UserPicker'
@@ -121,8 +121,8 @@ export default function CreateIssueModal({ defaults, onClose }: {
             trigger={<><TypeIcon type={type} size={13} project={project} />{typeMeta(type, project).label}</>} />
           <Picker value={statusObj?.id ?? status} options={statusOptions(project, undefined, undefined, type)} onChange={setStatus} title="Status"
             trigger={<><span className="status-dot" style={{ background: statusObj?.color }} />{statusObj?.name}</>} />
-          <Picker value={priority} options={priorityOptions} onChange={setPriority} title="Priority"
-            trigger={<><PriorityIcon priority={priority} />{PRIORITY_META[priority].label}</>} />
+          <Picker value={priority} options={priorityOptions()} onChange={setPriority} title="Priority"
+            trigger={<><PriorityIcon priority={priority} />{priorityLabel(priority)}</>} />
           <UserPicker value={assigneeId} onChange={setAssigneeId} projectId={projectId} title="Assignee"
             trigger={<><Avatar user={assignee} size={16} />{assignee?.name ?? 'Assignee'}</>} />
           {type !== 'epic' && parentOptions.length > 0 && (

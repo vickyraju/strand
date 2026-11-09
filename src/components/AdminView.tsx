@@ -16,6 +16,7 @@ import LicenseCleanup from './LicenseCleanup'
 import WorkflowsAdmin from './WorkflowsAdmin'
 import WorkflowBuilder from './WorkflowBuilder'
 import LinkTypesAdmin from './LinkTypesAdmin'
+import ListsAdmin from './ListsAdmin'
 import SharedViewsAdmin from './SharedViewsAdmin'
 import ArchivedProjects from './admin/ArchivedProjects'
 
@@ -43,6 +44,7 @@ export default function AdminView({ section = 'people', item }: { section?: Admi
       {section === 'license' && <LicenseCleanup />}
       {section === 'workflows' && <WorkflowsAdmin tab={item === 'statuses' || item === 'schemes' ? item : 'workflows'} />}
       {section === 'link-types' && <LinkTypesAdmin />}
+      {(section === 'priorities' || section === 'resolutions') && <ListsAdmin kind={section} />}
       {section === 'test-statuses' && <TestStatusesAdmin />}
       {section === 'settings' && <SystemSettings page={settingsPage} />}
       {section === 'audit' && <AuditLog />}

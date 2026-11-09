@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { useStore, moveContext, transitionFor, RESOLUTIONS, type Issue, type IssuePatch, type Project, type State, type Transition } from '../data/store'
+import { priorityList, resolutionNames } from '../data/lists'
+import { useStore, moveContext, transitionFor, type Issue, type IssuePatch, type Project, type State, type Transition } from '../data/store'
 import { problems, RULE_FIELDS, type Item } from '../data/transitionRules'
 import { api, apiEnabled, ApiError } from '../api/client'
 import { issueSync } from '../api/sync'
@@ -127,8 +128,8 @@ function FieldInput({ id, field, project, value, onChange }: { id: string; field
   }
   switch (field) {
     case 'assigneeId': return <UserSelect label="Assignee" projectId={project.key} value={str || undefined} placeholder="Unassigned" onChange={v => onChange(v ?? '')} />
-    case 'priority': return select(['urgent', 'high', 'medium', 'low', 'none'].map(p => ({ value: p, label: p[0]!.toUpperCase() + p.slice(1) })))
-    case 'resolution': return select(RESOLUTIONS.map(r => ({ value: r, label: r })), 'Done (default)')
+    case 'priority': return select(priorityList().map(p => ({ value: p.key, label: p.name })))
+    case 'resolution': return select(resolutionNames().map(r => ({ value: r, label: r })), 'Done (default)')
     case 'fixReleaseIds': return <MultiSelect label="Fix versions" all={project.releases.filter(r => !r.released || (value as string[] | undefined)?.includes(r.id)).map(r => ({ key: r.id, name: r.name }))}
       locked={project.releases.filter(r => r.archived).map(r => r.id)} value={Array.isArray(value) ? value : []} onChange={onChange} />
     case 'sprintId': return select(state.sprints.filter(s => s.projectId === project.id && s.state !== 'closed').map(s => ({ value: s.id, label: s.name })), 'Backlog')

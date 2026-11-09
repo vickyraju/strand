@@ -29,6 +29,7 @@ import raven from './routes/raven.ts'
 import groupsRoutes from './routes/groups.ts'
 import workflowRoutes from './routes/workflows.ts'
 import boardRoutes from './routes/boards.ts'
+import listRoutes from './routes/lists.ts'
 import { githubWebhook } from './routes/github.ts'
 
 export async function build() {
@@ -135,6 +136,7 @@ export async function build() {
       await v1.register(groupsRoutes)
       await v1.register(workflowRoutes)
       await v1.register(boardRoutes)
+      await v1.register(listRoutes)
     }, { prefix: '/api/v1' })
     // Xray's addresses for importing CI results: same sign-in and rate limits as the API
     await api.register(raven, { prefix: '/rest/raven/1.0' })

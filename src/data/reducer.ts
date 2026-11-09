@@ -1,4 +1,5 @@
 // Pure data layer: types, reducer, migration and selectors. No React here so it can be unit-tested with `node --test`.
+import { defaultPriority, defaultResolution } from './lists.ts'
 import { RULE_FIELDS, actionChanges, allows, problems, type Item, type RuleCtx, type TransitionRules } from './transitionRules.ts'
 import { can } from './access.ts'
 import { adjustRemaining, type Adjust } from '../../server/src/shared/estimates.ts'
@@ -41,7 +42,8 @@ export const statusesFor = (p: Pick<Project, 'statuses' | 'workflows'>, type: st
 }
 /** A project's work types (the built-in ones for a project saved before types were configurable). */
 export const typesOf = (p: Pick<Project, 'types'> | undefined) => (p?.types?.length ? p.types : BUILTIN_TYPES)
-export type Priority  = 'urgent' | 'high' | 'medium' | 'low' | 'none'
+/** A priority's key from the workspace's list (src/data/lists.ts; spec 0305). */
+export type Priority  = string
 export type Category  = 'todo' | 'in-progress' | 'done'
 export type GroupBy   = 'none' | 'assignee' | 'epic' | 'priority'
 export type CardField = 'type' | 'key' | 'epic' | 'labels' | 'due' | 'estimate' | 'priority' | 'assignee' | 'subitems'
@@ -85,8 +87,8 @@ export interface BoardPrefs {
   collapsedCols:  string[]
 }
 
-export const RESOLUTIONS = ['Done', "Won't do", 'Duplicate', 'Cannot reproduce'] as const
-export type Resolution = typeof RESOLUTIONS[number]
+/** A resolution's name from the workspace's list (src/data/lists.ts; spec 0305). */
+export type Resolution = string
 
 export interface Project {
   id:          string
@@ -119,7 +121,7 @@ export interface Project {
   /** Its workflow scheme (Administration › Workflows), and the workflow each work type uses: the statuses it may be in,
    *  new work starting in the first (from the server; unset for a local workspace, where every type uses every status) */
   workflowSchemeId?: string
-  workflows?:  { typeKey: string; workflowId: string; workflow: string; statusIds: string[] }[]
+  workflows?:  { typeKey: string; workflowId: string; workflow: string; statusIds: string[]; resolutionOnDone?: boolean }[]
   /** Its boards (from the server; a local workspace has the one built from its statuses) */
   boards?:     BoardRef[]
   /** Archived (spec 0102): read-only for everyone, hidden from lists; its items open by their key */
@@ -597,7 +599,11 @@ const FIELD_LABEL: Partial<Record<keyof IssuePatch, string>> = {
 export function withResolution(project: Project, prev: Issue, next: Issue, now: number): Issue {
   const doneNow = categoryOf(project, next.status) === 'done', doneBefore = categoryOf(project, prev.status) === 'done'
   if (!doneNow) { const { resolution: _r, resolvedAt: _a, ...rest } = next; return rest }
-  return { ...next, resolution: next.resolution ?? 'Done', resolvedAt: doneBefore ? prev.resolvedAt ?? now : now }
+  // the item's workflow says whether reaching Done resolves it on its own, with the list's default (spec 0305 R6)
+  const auto = project.workflows?.find(w => w.typeKey === next.type)?.resolutionOnDone ?? true
+  const resolution = next.resolution ?? (auto ? (doneBefore ? prev.resolution : undefined) ?? defaultResolution() : undefined)
+  if (!resolution) { const { resolution: _r, resolvedAt: _a, ...rest } = next; return rest }
+  return { ...next, resolution, resolvedAt: doneBefore && prev.resolution ? prev.resolvedAt ?? now : now }
 }
 
 export function reducer(state: State, action: Action, now = Date.now()): State {
@@ -696,7 +702,7 @@ export function reducer(state: State, action: Action, now = Date.now()): State {
       const allowed = statusesFor(project, action.issue.type ?? 'task')
       const status = allowed.some(s => s.id === action.issue.status) ? action.issue.status! : (allowed[0] ?? project.statuses[0]!).id
       const issue: Issue = {
-        type: 'task', description: '', priority: 'none', labels: [],
+        type: 'task', description: '', priority: defaultPriority(), labels: [],
         ...action.issue, status,
         ...(!('assigneeId' in action.issue) && componentAssignee(project, action.issue.componentIds) ? { assigneeId: componentAssignee(project, action.issue.componentIds) } : {}),
         id: action.id, key: `${project.key}-${project.nextNumber}`, reporterId: actor,

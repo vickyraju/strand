@@ -17,7 +17,7 @@ export interface RowReport { row: number; title: string; ok: boolean; errors: st
 
 const PRIORITY: Record<string, string> = {
   highest: 'urgent', urgent: 'urgent', critical: 'urgent', blocker: 'urgent', high: 'high', major: 'high',
-  medium: 'medium', normal: 'medium', low: 'low', minor: 'low', lowest: 'low', trivial: 'low', none: 'none', '': 'none',
+  medium: 'medium', normal: 'medium', low: 'low', minor: 'low', lowest: 'low', trivial: 'low', none: 'none',
 }
 /** YYYY-MM-DD from common date forms (ISO, 1/Oct/26, Oct 1 2026), or null. */
 function toDate(v: string) {
@@ -39,13 +39,14 @@ export async function checkImport(d: Db, projectId: string, csv: string, mapping
   const [header, ...data] = rows
   if (!header) return { header: [], items: [], report: [] as RowReport[] }
   const named = async <T,>(sql: string) => new Map((await d.query<{ k: string } & T>(sql, [projectId])).map(r => [r.k.toLowerCase(), r]))
-  const [statuses, types, users, components, releases, fields] = await Promise.all([
+  const [statuses, types, users, components, releases, prios, fields] = await Promise.all([
     named<{ id: string }>('select lower(name) as k, id from statuses where project_id = $1'),
     named<{ key: string }>('select lower(name) as k, key from work_types where project_id = $1 union select key, key from work_types where project_id = $1'),
     named<{ id: string }>(`select lower(u.email) as k, u.id from users u join memberships m on m.user_id = u.id join projects p on p.workspace_id = m.workspace_id where p.id = $1 and u.active
                            union select lower(u.name), u.id from users u join memberships m on m.user_id = u.id join projects p on p.workspace_id = m.workspace_id where p.id = $1 and u.active`),
     named<{ id: string }>('select lower(name) as k, id from components where project_id = $1'),
     named<{ id: string }>('select lower(name) as k, id from releases where project_id = $1'),
+    named<{ key: string }>('select lower(pr.name) as k, pr.key from priorities pr join projects p on p.workspace_id = pr.workspace_id where p.id = $1'),
     named<{ id: string; kind: string; options: { name: string; disabled?: boolean }[] | null; name: string }>('select id::text as k, id, kind, options, name from field_defs where project_id = $1'),
   ])
   const items: Record<string, unknown>[] = []
@@ -75,7 +76,10 @@ export async function checkImport(d: Db, projectId: string, csv: string, mapping
     const who = pick('assignee', users, 'Person')
     if (who) { if (await canJoinWork(d, projectId, (who as any).id)) item.assigneeId = (who as any).id; else warnings.push(`${get('assignee')} isn’t in this project: left unassigned`) }
     const pr = get('priority')
-    item.priority = PRIORITY[pr.toLowerCase()] ?? (warnings.push(`Priority “${pr}” isn’t known: none`), 'none')
+    // the list's names first (Administration › Priorities), then Jira's usual words for today's five; none given: the default
+    const known = pr && (prios.get(pr.toLowerCase())?.key ?? PRIORITY[pr.toLowerCase()])
+    if (known) item.priority = known
+    else if (pr) warnings.push(`Priority “${pr}” isn’t known: the default`)
     const labels = get('labels'); if (labels) item.labels = splitLabels(labels).slice(0, 50)
     for (const l of (item.labels ?? []) as string[]) if (l.length > 255) errors.push(`Label “${l.slice(0, 40)}…” is longer than 255 characters`)
     const est = get('estimate')

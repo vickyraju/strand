@@ -31,6 +31,7 @@ import { AppContext, type AppActions } from './appContext'
 import { useLocation, navigate, href, type Route } from './router'
 import { Empty } from './components/ui'
 import ErrorBoundary from './components/ErrorBoundary'
+import { usePublicSettings } from './api/settings-public'
 
 
 function useMedia(query: string) {
@@ -57,6 +58,7 @@ export default function App() {
 
 function Shell() {
   const { state, dispatch, undoType } = useStore()
+  usePublicSettings()                       // the screens re-render when the priority and resolution lists arrive or change (spec 0305)
   const { route, peek } = useLocation()
   const [railCollapsed, setRailCollapsed]   = useState(() => window.innerWidth < 1024)
   // Phones: the sidebar is a drawer opened from the top bar

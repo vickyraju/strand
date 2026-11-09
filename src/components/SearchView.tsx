@@ -8,7 +8,7 @@ import { applyFilters, filtersActive, EMPTY_FILTERS } from '../data/views'
 import { useApp } from '../appContext'
 import { navigate, href } from '../router'
 import IssueTable, { type TableGroup } from './IssueTable'
-import { Picker, Menu, Modal, Toggle, typeMeta, PRIORITY_META, typeOptions, priorityOptions, Avatar, type PickerOption } from './ui'
+import { Picker, Menu, Modal, Toggle, typeMeta, priorityLabel, typeOptions, priorityOptions, Avatar, type PickerOption } from './ui'
 import { ProjectIcon } from './ProjectView'
 import { api, apiEnabled } from '../api/client'
 import type { Row } from '../api/map'
@@ -149,8 +149,8 @@ export default function SearchView({ query, viewId }: { query: string; viewId?: 
             onChange={assignee => set({ assignee })} trigger={<>{assigneeLabel}<ChevronDown size={13} /></>} />
           <Picker value={f.type} title="Type" options={any('Any type', typeOptions(undefined, true, state.projects))} onChange={(type: IssueType | undefined) => set({ type })} className={`chip${f.type ? ' chip-on' : ''}`}
             trigger={<>{f.type ? typeMeta(f.type, undefined, state.projects).label : 'Type'}<ChevronDown size={13} /></>} />
-          <Picker value={f.priority} title="Priority" options={any('Any priority', priorityOptions)} onChange={(priority: Priority | undefined) => set({ priority })} className={`chip${f.priority ? ' chip-on' : ''}`}
-            trigger={<>{f.priority ? PRIORITY_META[f.priority].label : 'Priority'}<ChevronDown size={13} /></>} />
+          <Picker value={f.priority} title="Priority" options={any('Any priority', priorityOptions())} onChange={(priority: Priority | undefined) => set({ priority })} className={`chip${f.priority ? ' chip-on' : ''}`}
+            trigger={<>{f.priority ? priorityLabel(f.priority) : 'Priority'}<ChevronDown size={13} /></>} />
           {(apiEnabled || labels.length > 0) && (
             <Picker value={f.label} search title="Label" options={any('Any label', labels.map(l => ({ value: l as string | undefined, label: l })))} onChange={label => set({ label })}
               remote={apiEnabled ? { onSearch: labelList.search, searching: labelList.busy } : undefined}

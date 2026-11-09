@@ -2019,7 +2019,8 @@ test('automation audit log: every run is recorded; a failing rule undoes only it
   await call('POST', '/api/v1/projects', { name: 'Audited', key: 'AAL', template: 'kanban' })
   await join('AAL', 'aal.admin@x.com', 'admin'); await join('AAL', 'aal.member@x.com')
   const good = (await call('POST', '/api/v1/projects/AAL/rules', { name: 'Triage', trigger: { kind: 'created' }, actions: [{ kind: 'label', value: 'new' }, { kind: 'assign', to: '0192f0c0-0000-7000-8000-000000000000' }] }, 'aal.admin@x.com')).body
-  const bad = (await call('POST', '/api/v1/projects/AAL/rules', { name: 'Broken', trigger: { kind: 'created' }, actions: [{ kind: 'priority', value: 'bogus' }] }, 'aal.admin@x.com')).body
+  const bad = (await call('POST', '/api/v1/projects/AAL/rules', { name: 'Broken', trigger: { kind: 'created' }, actions: [{ kind: 'priority', value: 'high' }] }, 'aal.admin@x.com')).body
+  await pool.query(`update rules set actions = '[{"kind": "priority", "value": "bogus"}]' where id = $1`, [bad.id])   // broken since it was saved (saving checks priorities: spec 0305)
   assert.equal(bad.ownerId, (await call('GET', '/api/v1/me', undefined, 'aal.admin@x.com')).body.id)
   // the edit that triggers them saves; the broken rule's change is undone, the good one's stays
   const i = await call('POST', '/api/v1/projects/AAL/issues', { title: 'Watched', priority: 'low' })
@@ -3185,7 +3186,7 @@ test('CSV export: the same items the search shows (only what you can see), reada
   assert.match(String(r.headers['content-disposition']), /attachment; filename="strand-export-\d{4}-\d{2}-\d{2}\.csv"/)
   const body = r.body.replace(/^﻿/, '')
   assert.ok(body.startsWith('Key,Project,Type,Title,Status,Priority,Assignee,'))
-  assert.ok(body.includes(`,Plain row,To do,none,${me.name},`))
+  assert.ok(body.includes(`,Plain row,To do,Medium,${me.name},`))   // the priority's name; new work gets the default (spec 0305)
   assert.ok(body.includes('"red, blue"'))
   assert.ok(body.includes(`"'=HYPERLINK(""http://evil"")"`))         // stays text in a spreadsheet
   assert.ok(body.includes('"line one\nline, two"'))
@@ -3423,6 +3424,13 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     'GET /projects/search': ['any', '/projects/search'],
     'POST /projects/{key}/archive': ['gadmin', `/projects/${K}/archive`], 'POST /projects/{key}/restore': ['gadmin', `/projects/${K}/restore`],   // 0102.R1
     'GET /admin/archived-projects': ['gadmin', '/admin/archived-projects'],   // 0102.R7
+    'GET /priorities': ['any', '/priorities'], 'GET /resolutions': ['any', '/resolutions'],   // 0305.R1
+    'POST /admin/priorities': ['gadmin', '/admin/priorities', { name: 'Matrix priority', color: '#123456', icon: 'flame' }],   // 0305.R1
+    'PATCH /admin/priorities/{key}': ['gadmin', '/admin/priorities/low', { description: 'x' }],
+    'DELETE /admin/priorities/{key}': ['gadmin', '/admin/priorities/p-000000000000?moveTo=low'],
+    'POST /admin/resolutions': ['gadmin', '/admin/resolutions', { name: 'Matrix resolution' }],   // 0305.R5
+    'PATCH /admin/resolutions/{id}': ['gadmin', `/admin/resolutions/${none}`, { description: 'x' }],
+    'DELETE /admin/resolutions/{id}': ['gadmin', `/admin/resolutions/${none}?moveTo=${none}`],
     'GET /projects/{key}/fields/{id}/usage': ['read', `/projects/${K}/fields/${field}/usage`],   // 0105.R5
     'GET /projects/{key}': ['read', `/projects/${K}`], 'PATCH /projects/{key}': ['padmin', `/projects/${K}`, { name: 'x' }],
     'DELETE /projects/{key}': ['gadmin', `/projects/${K}`],
@@ -3709,7 +3717,7 @@ test('system settings: admins change policies at runtime (validated, audited); e
 
   // public settings: what the web app needs, for anyone signed in (not rate limiting)
   const pub = (await call('GET', '/api/v1/settings/public', undefined, 'set.member@x.com')).body
-  assert.deepEqual(Object.keys(pub).sort(), ['accessTokens', 'attachments', 'dueReminders', 'groups', 'projectKeys', 'searchAndBulk', 'testing', 'timeTracking'])
+  assert.deepEqual(Object.keys(pub).sort(), ['accessTokens', 'attachments', 'dueReminders', 'groups', 'priorities', 'projectKeys', 'resolutions', 'searchAndBulk', 'testing', 'timeTracking'])
 
   // attachments: size limit and the switch
   await call('POST', '/api/v1/projects', { name: 'Settings', key: 'SET', template: 'kanban' })
@@ -4012,4 +4020,71 @@ test('[0309.R1][0309.R2][0309.R3] names Jira keeps unique: projects, versions an
   await call('PATCH', `/api/v1/views/${ann.id}`, { shared: true }, 'unq.ann@x.com')
   assert.equal((await call('PATCH', `/api/v1/views/${ann.id}`, { ownerId: bob }, 'unq.ann@x.com')).status, 409)        // Bob has a "Mine"
   assert.equal((await call('PATCH', `/api/v1/views/${shared.id}`, { ownerId: bob }, 'unq.ann@x.com')).status, 200)
+})
+
+test('[0305.R1][0305.R2][0305.R3][0305.R4][0305.R5] priorities and resolutions are lists admins edit: new work gets the default; search and order follow the list; renames and deletes carry to items', { skip }, async () => {
+  await call('POST', '/api/v1/projects', { name: 'Listed', key: 'LST', template: 'kanban' })
+  // R2: new work gets the default, Medium out of the box (Jira's)
+  assert.equal((await call('GET', '/api/v1/priorities')).body.find((p: any) => p.isDefault).key, 'medium')
+  const plain = (await call('POST', '/api/v1/projects/LST/issues', { title: 'Plain' })).body
+  assert.equal(plain.priority, 'medium')
+  assert.equal((await call('POST', '/api/v1/projects/LST/issues', { title: 'x', priority: 'bogus' })).status, 400)
+  // R1: an admin adds Blocker at the top and makes it the default; members can't
+  assert.equal((await call('POST', '/api/v1/admin/priorities', { name: 'Blocker', color: '#7F1D1D', icon: 'flame' }, 'lst.member@x.com')).status, 403)
+  const blocker = (await call('POST', '/api/v1/admin/priorities', { name: 'Blocker', color: '#7F1D1D', icon: 'flame', position: 0, isDefault: true })).body
+  assert.equal((await call('POST', '/api/v1/admin/priorities', { name: 'blocker', color: '#7F1D1D', icon: 'flame' })).status, 409)
+  const list = (await call('GET', '/api/v1/priorities')).body
+  assert.deepEqual([list[0].name, list.filter((p: any) => p.isDefault).map((p: any) => p.name)], ['Blocker', ['Blocker']])
+  const urgent = (await call('POST', '/api/v1/projects/LST/issues', { title: 'Now' })).body
+  assert.equal(urgent.priority, blocker.key)
+  // R4: JQL by name; ORDER BY and > follow the list's order
+  const low = (await call('POST', '/api/v1/projects/LST/issues', { title: 'Later', priority: 'low' })).body
+  const jql = async (q: string) => (await call('GET', `/api/v1/search?jql=${encodeURIComponent(`project = LST AND ${q}`)}&limit=50`)).body.items.map((i: any) => i.title)
+  assert.deepEqual(await jql('priority = Blocker'), ['Now'])
+  assert.deepEqual(await jql('priority > Medium ORDER BY priority DESC'), ['Now'])
+  assert.deepEqual(await jql('priority >= Low ORDER BY priority DESC'), ['Now', 'Plain', 'Later'])
+  await call('PATCH', `/api/v1/admin/priorities/${blocker.key}`, { position: 4 })                 // below Low now
+  assert.deepEqual(await jql('priority < Low'), ['Now'])
+  // R3: deleting moves its items, templates and rules; the replacement becomes the default
+  await call('POST', '/api/v1/projects/LST/templates', { name: 'Hot', type: 'task', title: 'Hot', priority: blocker.key })
+  assert.equal((await call('DELETE', `/api/v1/admin/priorities/${blocker.key}?moveTo=${blocker.key}`)).status, 400)
+  assert.equal((await call('DELETE', `/api/v1/admin/priorities/${blocker.key}?moveTo=urgent`)).status, 204)
+  assert.equal((await call('GET', `/api/v1/issues/${urgent.key}`)).body.priority, 'urgent')
+  assert.equal((await call('GET', '/api/v1/projects/LST')).body.templates.find((t: any) => t.name === 'Hot').priority, 'urgent')
+  assert.equal((await call('GET', '/api/v1/priorities')).body.find((p: any) => p.isDefault).key, 'urgent')
+  await call('PATCH', '/api/v1/admin/priorities/medium', { isDefault: true })
+  // R5: resolutions: a rename carries to items; deleting moves them; an unknown one is refused
+  const done = (await call('GET', '/api/v1/projects/LST')).body.statuses.find((s: any) => s.category === 'done').id
+  await call('PATCH', `/api/v1/issues/${low.key}`, { statusId: done })
+  const res = (await call('GET', '/api/v1/resolutions')).body
+  const doneRes = res.find((r: any) => r.name === 'Done'), wont = res.find((r: any) => r.name === "Won't do")
+  await call('PATCH', `/api/v1/admin/resolutions/${doneRes.id}`, { name: 'Fixed' })
+  assert.equal((await call('GET', `/api/v1/issues/${low.key}`)).body.resolution, 'Fixed')
+  assert.equal((await call('PATCH', `/api/v1/issues/${low.key}`, { resolution: 'Nope' })).status, 400)
+  assert.equal((await call('DELETE', `/api/v1/admin/resolutions/${doneRes.id}?moveTo=${wont.id}`)).status, 204)
+  assert.equal((await call('GET', `/api/v1/issues/${low.key}`)).body.resolution, "Won't do")
+  // put the defaults back for later tests
+  const r2 = (await call('POST', '/api/v1/admin/resolutions', { name: 'Done', position: 0, isDefault: true })).body
+  assert.equal(r2.isDefault, true)
+})
+
+test('[0305.R6] each workflow says how its items get a resolution: on reaching Done, or only by transition rules', { skip }, async () => {
+  const p = (await call('POST', '/api/v1/projects', { name: 'Classic', key: 'CLS', template: 'kanban' })).body
+  const done = p.statuses.find((s: any) => s.category === 'done'), todo = p.statuses[0]
+  const wf = p.workflows[0].workflowId
+  assert.equal(p.workflows[0].resolutionOnDone, true)
+  const a = (await call('POST', '/api/v1/projects/CLS/issues', { title: 'Simplified' })).body
+  assert.equal((await call('PATCH', `/api/v1/issues/${a.key}`, { statusId: done.id })).body.resolution, 'Done')
+  // classic: reaching Done resolves nothing on its own; a rule (or the move) sets it; leaving Done clears it
+  assert.equal((await call('PATCH', `/api/v1/admin/workflows/${wf}`, { resolutionOnDone: false })).body.resolutionOnDone, false)
+  assert.equal((await call('GET', '/api/v1/projects/CLS')).body.workflows[0].resolutionOnDone, false)
+  const b = (await call('POST', '/api/v1/projects/CLS/issues', { title: 'Classic' })).body
+  const moved = (await call('PATCH', `/api/v1/issues/${b.key}`, { statusId: done.id })).body
+  assert.deepEqual([moved.resolution, moved.resolvedAt], [null, null])
+  const set = (await call('PATCH', `/api/v1/issues/${b.key}`, { resolution: "Won't do" })).body
+  assert.equal(set.resolution, "Won't do"); assert.ok(set.resolvedAt)
+  assert.equal((await call('PATCH', `/api/v1/issues/${b.key}`, { statusId: todo.id })).body.resolution, null)
+  const c = (await call('POST', '/api/v1/projects/CLS/issues', { title: 'Chosen in the move' })).body
+  assert.equal((await call('PATCH', `/api/v1/issues/${c.key}`, { statusId: done.id, resolution: 'Duplicate' })).body.resolution, 'Duplicate')
+  await call('PATCH', `/api/v1/admin/workflows/${wf}`, { resolutionOnDone: true })
 })

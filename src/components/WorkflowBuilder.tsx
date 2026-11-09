@@ -21,7 +21,7 @@ import type { Status } from '../data/store'
 // project whose scheme uses it, as in Jira; statuses taken out send their work items where the administrator chooses.
 
 type Dialog = null | { kind: 'transition'; initial: NewTransition } | { kind: 'status' } | { kind: 'delete'; id: string }
-interface LibWorkflow { id: string; name: string; version: number; updatedAt: string; statuses: any[]; transitions: any[]; layout: Workflow['layout']; schemes: { id: string; name: string }[]; projectCount: number }
+interface LibWorkflow { id: string; name: string; version: number; updatedAt: string; statuses: any[]; transitions: any[]; layout: Workflow['layout']; schemes: { id: string; name: string }[]; projectCount: number; resolutionOnDone: boolean }
 
 export default function WorkflowBuilder({ id, onBack }: { id: string; onBack: () => void }) {
   const [lib, setLib] = useState<LibWorkflow | null>(null)
@@ -204,6 +204,16 @@ function Editor({ lib, known, onBack, onSaved, applying }: { lib: LibWorkflow; k
         <span className="muted sm">{lib.schemes.length ? <>Used by {lib.schemes.length === 1 ? lib.schemes[0]!.name : `${lib.schemes.length} schemes`} · <CountLink count={lib.projectCount} one="project" many="projects" onOpen={() => setListing(true)} /></> : 'No scheme uses it yet'}</span>
         {dirty && <span className="lozenge lozenge-in-progress">Unsaved changes</span>}
         <div style={{ flex: 1 }} />
+        {/* how its items get a resolution (spec 0305 R6): saved at once, apart from the diagram's draft */}
+        <label className="cell-flex sm" title="On: reaching a Done status sets the default resolution (Jira Software’s simplified workflows). Off: only a transition’s rules set one (classic workflows).">
+          <select className="input input-sm" aria-label="Resolution" value={lib.resolutionOnDone ? 'done' : 'rules'} onChange={e => {
+            api<LibWorkflow>('PATCH', `/api/admin/workflows/${lib.id}`, { resolutionOnDone: e.target.value === 'done' })
+              .then(w => { onSaved({ ...lib, resolutionOnDone: w.resolutionOnDone }); toast(w.resolutionOnDone ? 'Reaching Done now resolves work items' : 'Only transition rules resolve work items now') }, err => toast(errorMessage(err), { tone: 'warn' }))
+          }}>
+            <option value="done">Resolve on reaching Done</option>
+            <option value="rules">Resolve only by transition rules</option>
+          </select>
+        </label>
         <button className="btn btn-ghost" onClick={() => setVersionsOpen(true)}><History size={15} />Versions</button>
         <button className="btn btn-secondary" onClick={discard} disabled={!dirty}>Discard changes</button>
         <button className="btn btn-primary" onClick={save} disabled={!dirty || applying.busy} title={applying.busy ? 'Wait for the last change to finish applying' : undefined}>Update workflow</button>

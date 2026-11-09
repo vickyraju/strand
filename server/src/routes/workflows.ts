@@ -29,7 +29,7 @@ const statusesOf = (d: Db, ids: string[]) => d.query<any>(
 /** One workflow in full, with the schemes that use it and how many projects that makes (which projects: page through
  *  GET /admin/workflows/:id/projects, for system administrators). */
 async function workflowOut(d: Db, ws: string, id: string) {
-  const [w] = await d.query<any>('select id, name, description, statuses, transitions, layout, version, updated_at from workflows where id = $1 and workspace_id = $2', [id, ws])
+  const [w] = await d.query<any>('select id, name, description, statuses, transitions, layout, version, updated_at, resolution_on_done from workflows where id = $1 and workspace_id = $2', [id, ws])
   if (!w) throw new HttpError(404, 'No such workflow')
   return {
     ...w, statuses: await statusesOf(d, w.statuses),
@@ -142,9 +142,9 @@ const plugin: FastifyPluginAsyncZod = async app => {
     requireAdmin(req)
     return tx(async d => {
       const ws = req.me.workspaceId
-      let from: { statuses: string[]; transitions: unknown[]; layout: unknown }
+      let from: { statuses: string[]; transitions: unknown[]; layout: unknown; resolutionOnDone?: boolean }
       if (req.body.copyFrom) {
-        const [w] = await d.query<any>('select statuses, transitions, layout from workflows where id = $1 and workspace_id = $2', [req.body.copyFrom, ws])
+        const [w] = await d.query<any>('select statuses, transitions, layout, resolution_on_done from workflows where id = $1 and workspace_id = $2', [req.body.copyFrom, ws])
         if (!w) throw new HttpError(400, 'No such workflow to copy', { copyFrom: 'Not found' })
         from = w
       } else {
@@ -153,24 +153,25 @@ const plugin: FastifyPluginAsyncZod = async app => {
         if (ends.length < 2) throw new HttpError(409, 'Add a To do and a Done status first')
         from = { statuses: ends.map(s => s.id), transitions: ends.map(s => ({ id: crypto.randomUUID(), name: s.name, fromIds: null, toId: s.id, rules: {} })), layout: {} }
       }
-      const [w] = await d.query<{ id: string }>(`insert into workflows (workspace_id, name, description, statuses, transitions, layout, updated_by) values ($1, $2, $3, $4, $5, $6, $7) returning id`,
-        [ws, req.body.name, req.body.description, from.statuses, JSON.stringify(from.transitions), JSON.stringify(from.layout), req.me.id]).catch(taken('workflow'))
+      const [w] = await d.query<{ id: string }>(`insert into workflows (workspace_id, name, description, statuses, transitions, layout, resolution_on_done, updated_by) values ($1, $2, $3, $4, $5, $6, $8, $7) returning id`,
+        [ws, req.body.name, req.body.description, from.statuses, JSON.stringify(from.transitions), JSON.stringify(from.layout), req.me.id, from.resolutionOnDone ?? true]).catch(taken('workflow'))
       await audit(d, req, { action: 'workflow.created', type: 'workflow', id: w!.id, name: req.body.name, after: { copyFrom: req.body.copyFrom ?? null } })
       reply.code(201)
       return workflowOut(d, ws, w!.id)
     })
   })
-  app.patch('/admin/workflows/:id', { schema: { tags: T, summary: 'Rename a workflow or change its description (system administrators)', params: idP,
-    body: z.object({ name, description: z.string().max(500) }).partial() } }, async req => {
+  app.patch('/admin/workflows/:id', { schema: { tags: T, summary: 'Rename a workflow, change its description, or say how its items get a resolution (system administrators)', params: idP,
+    body: z.object({ name, description: z.string().max(500),
+      resolutionOnDone: z.boolean().describe('true: reaching a Done status sets the default resolution (Jira Software’s simplified workflows); false: only transition rules set it (classic workflows)') }).partial() } }, async req => {
     requireAdmin(req)
     return tx(async d => {
-      const [before] = await d.query<any>('select name, description from workflows where id = $1 and workspace_id = $2 for update', [req.params.id, req.me.workspaceId])
+      const [before] = await d.query<any>('select name, description, resolution_on_done from workflows where id = $1 and workspace_id = $2 for update', [req.params.id, req.me.workspaceId])
       if (!before) throw new HttpError(404, 'No such workflow')
-      const next = { name: req.body.name ?? before.name, description: req.body.description ?? before.description }
+      const next = { name: req.body.name ?? before.name, description: req.body.description ?? before.description, resolutionOnDone: req.body.resolutionOnDone ?? before.resolutionOnDone }
       // As in Jira, an active workflow (one a project uses) keeps its name; its description can change (spec 0103 R2)
       if (next.name !== before.name && await countUsing(d, req.me.workspaceId, { workflowId: req.params.id }))
         throw new HttpError(400, 'A workflow’s name can’t change while projects use it. Copy it to make one with another name.', { name: 'In use' })
-      await d.query('update workflows set name = $2, description = $3, updated_at = now(), updated_by = $4 where id = $1', [req.params.id, next.name, next.description, req.me.id]).catch(taken('workflow'))
+      await d.query('update workflows set name = $2, description = $3, resolution_on_done = $5, updated_at = now(), updated_by = $4 where id = $1', [req.params.id, next.name, next.description, req.me.id, next.resolutionOnDone]).catch(taken('workflow'))
       const c = changes(before, next)
       if (c.changed) await audit(d, req, { action: 'workflow.updated', type: 'workflow', id: req.params.id, name: next.name, before: c.before, after: c.after })
       return workflowOut(d, req.me.workspaceId, req.params.id)

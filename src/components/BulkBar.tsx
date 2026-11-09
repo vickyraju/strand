@@ -47,7 +47,7 @@ export default function BulkBar({ ids, onClear }: { ids: string[]; onClear: () =
         )}
         <UserPicker value={undefined} onChange={a => apply({ assigneeId: a }, 'assignee')} className="btn btn-ghost btn-sm" title="Change assignee"
           trigger="Assignee" allowUnassigned projectId={project?.id} />
-        <Picker value={'' as Priority | ''} options={priorityOptions} onChange={p => apply({ priority: p as Priority }, 'priority')} className="btn btn-ghost btn-sm" title="Change priority" trigger="Priority" />
+        <Picker value={'' as Priority | ''} options={priorityOptions()} onChange={p => apply({ priority: p as Priority }, 'priority')} className="btn btn-ghost btn-sm" title="Change priority" trigger="Priority" />
         {sprints.length > 0 && (
           <Picker value={null as string | undefined | null}
             options={[{ value: undefined, label: 'Backlog' }, ...sprints.map(s => ({ value: s.id as string | undefined, label: s.name }))]}
