@@ -1932,6 +1932,16 @@
                           "createdAt": {
                             "type": "string",
                             "description": "ISO 8601 timestamp"
+                          },
+                          "estimation": {
+                            "nullable": true,
+                            "description": "What its totals count, from its board when it started (spec 0404)",
+                            "type": "string",
+                            "enum": [
+                              "points",
+                              "time",
+                              "count"
+                            ]
                           }
                         },
                         "required": [
@@ -1948,7 +1958,8 @@
                           "committed",
                           "completed",
                           "issueIds",
-                          "createdAt"
+                          "createdAt",
+                          "estimation"
                         ],
                         "additionalProperties": false
                       }
@@ -2987,6 +2998,16 @@
                           "createdAt": {
                             "type": "string",
                             "description": "ISO 8601 timestamp"
+                          },
+                          "estimation": {
+                            "nullable": true,
+                            "description": "What its totals count, from its board when it started (spec 0404)",
+                            "type": "string",
+                            "enum": [
+                              "points",
+                              "time",
+                              "count"
+                            ]
                           }
                         },
                         "required": [
@@ -3003,7 +3024,8 @@
                           "committed",
                           "completed",
                           "issueIds",
-                          "createdAt"
+                          "createdAt",
+                          "estimation"
                         ],
                         "additionalProperties": false
                       }
@@ -3818,6 +3840,16 @@
                           "createdAt": {
                             "type": "string",
                             "description": "ISO 8601 timestamp"
+                          },
+                          "estimation": {
+                            "nullable": true,
+                            "description": "What its totals count, from its board when it started (spec 0404)",
+                            "type": "string",
+                            "enum": [
+                              "points",
+                              "time",
+                              "count"
+                            ]
                           }
                         },
                         "required": [
@@ -3834,7 +3866,8 @@
                           "committed",
                           "completed",
                           "issueIds",
-                          "createdAt"
+                          "createdAt",
+                          "estimation"
                         ],
                         "additionalProperties": false
                       }
@@ -4828,6 +4861,16 @@
                           "createdAt": {
                             "type": "string",
                             "description": "ISO 8601 timestamp"
+                          },
+                          "estimation": {
+                            "nullable": true,
+                            "description": "What its totals count, from its board when it started (spec 0404)",
+                            "type": "string",
+                            "enum": [
+                              "points",
+                              "time",
+                              "count"
+                            ]
                           }
                         },
                         "required": [
@@ -4844,7 +4887,8 @@
                           "committed",
                           "completed",
                           "issueIds",
-                          "createdAt"
+                          "createdAt",
+                          "estimation"
                         ],
                         "additionalProperties": false
                       }
@@ -5695,6 +5739,16 @@
                           "createdAt": {
                             "type": "string",
                             "description": "ISO 8601 timestamp"
+                          },
+                          "estimation": {
+                            "nullable": true,
+                            "description": "What its totals count, from its board when it started (spec 0404)",
+                            "type": "string",
+                            "enum": [
+                              "points",
+                              "time",
+                              "count"
+                            ]
                           }
                         },
                         "required": [
@@ -5711,7 +5765,8 @@
                           "committed",
                           "completed",
                           "issueIds",
-                          "createdAt"
+                          "createdAt",
+                          "estimation"
                         ],
                         "additionalProperties": false
                       }
@@ -12257,6 +12312,16 @@
                     "createdAt": {
                       "type": "string",
                       "description": "ISO 8601 timestamp"
+                    },
+                    "estimation": {
+                      "nullable": true,
+                      "description": "What its totals count, from its board when it started (spec 0404)",
+                      "type": "string",
+                      "enum": [
+                        "points",
+                        "time",
+                        "count"
+                      ]
                     }
                   },
                   "required": [
@@ -12273,7 +12338,8 @@
                     "committed",
                     "completed",
                     "issueIds",
-                    "createdAt"
+                    "createdAt",
+                    "estimation"
                   ],
                   "additionalProperties": false
                 }
@@ -12489,6 +12555,16 @@
                     "createdAt": {
                       "type": "string",
                       "description": "ISO 8601 timestamp"
+                    },
+                    "estimation": {
+                      "nullable": true,
+                      "description": "What its totals count, from its board when it started (spec 0404)",
+                      "type": "string",
+                      "enum": [
+                        "points",
+                        "time",
+                        "count"
+                      ]
                     }
                   },
                   "required": [
@@ -12505,7 +12581,8 @@
                     "committed",
                     "completed",
                     "issueIds",
-                    "createdAt"
+                    "createdAt",
+                    "estimation"
                   ],
                   "additionalProperties": false
                 }
@@ -12940,6 +13017,16 @@
                     "createdAt": {
                       "type": "string",
                       "description": "ISO 8601 timestamp"
+                    },
+                    "estimation": {
+                      "nullable": true,
+                      "description": "What its totals count, from its board when it started (spec 0404)",
+                      "type": "string",
+                      "enum": [
+                        "points",
+                        "time",
+                        "count"
+                      ]
                     }
                   },
                   "required": [
@@ -12956,7 +13043,8 @@
                     "committed",
                     "completed",
                     "issueIds",
-                    "createdAt"
+                    "createdAt",
+                    "estimation"
                   ],
                   "additionalProperties": false
                 }
@@ -13181,6 +13269,16 @@
                       "type": "string",
                       "description": "ISO 8601 timestamp"
                     },
+                    "estimation": {
+                      "nullable": true,
+                      "description": "What its totals count, from its board when it started (spec 0404)",
+                      "type": "string",
+                      "enum": [
+                        "points",
+                        "time",
+                        "count"
+                      ]
+                    },
                     "newSprint": {
                       "description": "The sprint made for unfinished work (moveTo \"new\")",
                       "type": "object",
@@ -13249,6 +13347,16 @@
                         "createdAt": {
                           "type": "string",
                           "description": "ISO 8601 timestamp"
+                        },
+                        "estimation": {
+                          "nullable": true,
+                          "description": "What its totals count, from its board when it started (spec 0404)",
+                          "type": "string",
+                          "enum": [
+                            "points",
+                            "time",
+                            "count"
+                          ]
                         }
                       },
                       "required": [
@@ -13265,7 +13373,8 @@
                         "committed",
                         "completed",
                         "issueIds",
-                        "createdAt"
+                        "createdAt",
+                        "estimation"
                       ],
                       "additionalProperties": false
                     }
@@ -13284,7 +13393,8 @@
                     "committed",
                     "completed",
                     "issueIds",
-                    "createdAt"
+                    "createdAt",
+                    "estimation"
                   ],
                   "additionalProperties": false
                 }
@@ -43990,6 +44100,15 @@
                     "minimum": 1,
                     "maximum": 3650
                   },
+                  "estimation": {
+                    "type": "string",
+                    "enum": [
+                      "points",
+                      "time",
+                      "count"
+                    ],
+                    "description": "Scrum: what estimates count (story points, original time estimate, issue count); spec 0404"
+                  },
                   "admins": {
                     "type": "object",
                     "properties": {
@@ -44188,6 +44307,15 @@
                       "nullable": true,
                       "type": "number"
                     },
+                    "estimation": {
+                      "type": "string",
+                      "enum": [
+                        "points",
+                        "time",
+                        "count"
+                      ],
+                      "description": "Scrum: what estimates count (spec 0404)"
+                    },
                     "position": {
                       "type": "number"
                     },
@@ -44240,6 +44368,7 @@
                     "quickFilters",
                     "cardFields",
                     "doneDays",
+                    "estimation",
                     "position",
                     "canManage",
                     "canManageSprints",
@@ -44496,6 +44625,15 @@
                       "nullable": true,
                       "type": "number"
                     },
+                    "estimation": {
+                      "type": "string",
+                      "enum": [
+                        "points",
+                        "time",
+                        "count"
+                      ],
+                      "description": "Scrum: what estimates count (spec 0404)"
+                    },
                     "position": {
                       "type": "number"
                     },
@@ -44548,6 +44686,7 @@
                     "quickFilters",
                     "cardFields",
                     "doneDays",
+                    "estimation",
                     "position",
                     "canManage",
                     "canManageSprints",
@@ -44799,6 +44938,15 @@
                     "minimum": 1,
                     "maximum": 3650
                   },
+                  "estimation": {
+                    "type": "string",
+                    "enum": [
+                      "points",
+                      "time",
+                      "count"
+                    ],
+                    "description": "Scrum: what estimates count (story points, original time estimate, issue count); spec 0404"
+                  },
                   "admins": {
                     "type": "object",
                     "properties": {
@@ -44987,6 +45135,15 @@
                       "nullable": true,
                       "type": "number"
                     },
+                    "estimation": {
+                      "type": "string",
+                      "enum": [
+                        "points",
+                        "time",
+                        "count"
+                      ],
+                      "description": "Scrum: what estimates count (spec 0404)"
+                    },
                     "position": {
                       "type": "number"
                     },
@@ -45039,6 +45196,7 @@
                     "quickFilters",
                     "cardFields",
                     "doneDays",
+                    "estimation",
                     "position",
                     "canManage",
                     "canManageSprints",

@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState } from 'react'
+import { useDurations } from '../api/settings-public'
 import { TrendingDown, ClipboardCheck, BarChart3, Layers, ArrowLeftRight, Timer, Users, ShieldCheck, GitMerge, ListChecks } from 'lucide-react'
 import { useStore, userOf, isDone, CATEGORY_COLOR, type Project } from '../data/store'
 import { burndown, velocity, cumulativeFlow, createdVsResolved, cycleTimes, dayLabel } from '../data/analytics'
@@ -79,6 +80,7 @@ function NoData({ text }: { text: string }) {
 }
 
 function Burndown({ project }: { project: Project }) {
+  const { stat } = useDurations()                        // totals in the sprint's estimation statistic (spec 0404)
   const { state } = useReport()
   const sprints = state.sprints.filter(s => s.projectId === project.id && s.startedAt)
     .sort((a, b) => (b.startedAt ?? 0) - (a.startedAt ?? 0))
@@ -97,8 +99,8 @@ function Burndown({ project }: { project: Project }) {
         <span className="muted">{dayLabel(sprint.startedAt!)} – {dayLabel(sprint.completedAt ?? sprint.endsAt ?? Date.now())}</span>
       </div>
       <div className="kpis">
-        <div><b>{data.total}</b><span>points committed</span></div>
-        <div><b>{remaining}</b><span>points remaining</span></div>
+        <div><b>{stat(data.total, sprint.estimation)}</b><span>committed</span></div>
+        <div><b>{stat(remaining, sprint.estimation)}</b><span>remaining</span></div>
         <div><b>{plural(data.members.length, 'item')}</b><span>in sprint{pts !== data.total ? ` (${pts} pts now)` : ''}</span></div>
       </div>
       <BurndownChart data={data} name={sprint.name} />
@@ -129,6 +131,7 @@ const SECTIONS: [keyof Omit<SprintReportData, 'totals'>, string][] = [
 /** Jira's Sprint Report (spec 0402): one started sprint's burndown, then what it completed, what it didn't, what was
  *  already done when it joined, and what was taken out; points as they were at the start (* added later). */
 function SprintReport({ project }: { project: Project }) {
+  const { stat } = useDurations()                        // totals in the sprint's estimation statistic (spec 0404)
   const { state } = useReport()
   const live = useStore()                       // reopening and deleting change the live workspace (the report reads a copy)
   const { openIssue, toast } = useApp()
@@ -172,14 +175,14 @@ function SprintReport({ project }: { project: Project }) {
         : r.error ? <p className="hint error" role="alert">{r.error}</p>
         : SECTIONS.map(([k, title]) => r.data![k].length > 0 && (
           <section key={k} aria-label={title} style={{ marginTop: 20 }}>
-            <h3 className="section-label">{title} <span className="muted">· {plural(r.data![k].length, 'item')} · {r.data!.totals[k]} points</span></h3>
+            <h3 className="section-label">{title} <span className="muted">· {plural(r.data![k].length, 'item')} · {stat(r.data!.totals[k] ?? 0, sprint.estimation)}</span></h3>
             <table className="table">
-              <thead><tr><th>Key</th><th>Summary</th><th>Type</th><th>Priority</th><th>Status</th><th className="col-num">Points</th></tr></thead>
+              <thead><tr><th>Key</th><th>Summary</th><th>Type</th><th>Priority</th><th>Status</th><th className="col-num">{sprint.estimation === 'time' ? 'Estimate' : sprint.estimation === 'count' ? 'Count' : 'Points'}</th></tr></thead>
               <tbody>{r.data![k].map(x => (
                 <tr key={x.key} onClick={() => openIssue(x.key)}>
                   <td className="nowrap">{x.key}{x.addedAfterStart && <span title="Added after the sprint started"> *</span>}</td>
                   <td>{x.title}</td><td>{typeMeta(x.type, project).label}</td><td>{priorityLabel(x.priority)}</td><td>{x.status}</td>
-                  <td className="col-num">{x.points ?? '—'}</td>
+                  <td className="col-num">{x.points == null ? '—' : sprint.estimation === 'time' ? stat(x.points, 'time') : x.points}</td>
                 </tr>
               ))}</tbody>
             </table>

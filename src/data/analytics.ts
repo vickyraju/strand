@@ -1,5 +1,5 @@
 // Report maths. Everything is reconstructed from the activity log, so reports reflect real history.
-import { categoryOf, type Activity, type Category, type Issue, type Project, type Sprint, type State } from './reducer.ts'
+import { categoryOf, statOf, type Activity, type Category, type Issue, type Project, type Sprint, type State } from './reducer.ts'
 
 export const DAY = 86_400_000
 const endOfDay = (t: number) => { const d = new Date(t); d.setHours(23, 59, 59, 999); return d.getTime() }
@@ -60,7 +60,8 @@ export function burndown(state: State, project: Project, sprint: Sprint, now = D
   const end = sprint.completedAt ?? sprint.endsAt ?? now
   const members = sprintMembers(state, sprint)
   const history = statusHistory(state)
-  const total = sprint.committed ?? members.reduce((n, i) => n + (i.estimate ?? 0), 0)
+  const stat = (i: Issue) => statOf(i, sprint.estimation)                     // the sprint's statistic (spec 0404)
+  const total = sprint.committed ?? members.reduce((n, i) => n + stat(i), 0)
   const timeline = days(sprint.startedAt, end)
   const last = Math.min(now, end)
   const remaining = timeline.map(d => {
@@ -68,7 +69,7 @@ export function burndown(state: State, project: Project, sprint: Sprint, now = D
     const t = Math.min(endOfDay(d), last)
     return members.reduce((n, i) => {
       const st = statusAt(i, history.get(i.id), t)
-      return n + (st && categoryOf(project, st) === 'done' ? 0 : (i.estimate ?? 0))
+      return n + (st && categoryOf(project, st) === 'done' ? 0 : stat(i))
     }, 0)
   })
   const ideal = timeline.map((_, k) => Math.max(0, total - (total * k) / Math.max(1, timeline.length - 1)))

@@ -40,3 +40,10 @@ export function formatDuration(minutes: number, t: TimeSettings = DEFAULT_TIME) 
 }
 
 export const loggedMinutes = (i: Issue) => i.worklogs.reduce((n, w) => n + w.minutes, 0)
+
+/** A total in a board's estimation statistic, with its unit (spec 0404): "8 points", "1d 2h" (time format), "3 issues". */
+export function statLabel(total: number, e: 'points' | 'time' | 'count' = 'points', t: TimeSettings = DEFAULT_TIME) {
+  if (e === 'time') return formatDuration(total, t)
+  const n = Math.round(total * 10) / 10
+  return `${n} ${e === 'count' ? (n === 1 ? 'issue' : 'issues') : n === 1 ? 'point' : 'points'}`
+}
