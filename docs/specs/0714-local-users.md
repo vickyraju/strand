@@ -1,6 +1,6 @@
 # 0714 Local users: Jira's internal directory
 
-Status: Approved (PO, 10 Nov 2026: "jira has two directories or type of users ldap and local; local users can be created and edited … if anything pending fix that or implement it")
+Status: Ported (aws-jira `0e12055`, strand `f57ca64`), approved by the PO on 10 Nov 2026; awaiting verification
 Parity rows: DIR-05, DIR-06
 
 ## Context and Jira reference
