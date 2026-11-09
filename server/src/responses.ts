@@ -2,6 +2,7 @@
 // OpenAPI document and are enforced when responses are serialized: a handler that returns the wrong shape fails a test
 // instead of leaking an unexpected field. Timestamps are ISO strings (db.ts), dates are YYYY-MM-DD.
 import { z } from 'zod'
+import { directoryConfig } from './directories.ts'
 
 const id = z.string().describe('uuid')
 const ts = z.string().describe('ISO 8601 timestamp')
@@ -14,6 +15,13 @@ export const Me = z.object({ id, email: z.string(), name: z.string(), workspaceI
   recovery: z.boolean().describe('System admins: Strand is running in recovery mode (spec 0711)') })
 
 const EntraConfig = z.object({ enabled: z.boolean(), name: z.string(), tenantId: z.string(), apiClientId: z.string(), webClientId: z.string(), authority: z.string() })
+export const UserDirectory = z.object({
+  id, name: z.string(), type: z.enum(['ad', 'ldap']), position: z.number(), enabled: z.boolean(), config: directoryConfig,
+  hasPassword: z.boolean().describe('The service account’s password is stored (it is never returned)'),
+  lastSync: z.unknown().describe('When the last synchronisation ran, whether it worked, and what it changed'),
+  syncing: z.unknown().describe('The synchronisation running now, with its progress, or null'),
+  users: z.number().describe('Active people from this directory'), createdAt: ts, updatedAt: ts,
+})
 export const AuthMethods = z.object({ loginForm: z.boolean(), fallback: z.boolean(), entra: nullable(EntraConfig), recovery: z.boolean().describe('Recovery mode is on (STRAND_RECOVERY_PASSWORD)') })
 
 export const AccessToken = z.object({ id, name: z.string(), hint: z.string().describe('Last 4 characters of the token'), createdAt: ts, expiresAt: ts, lastUsedAt: nullable(ts), expired: z.boolean() })
@@ -226,6 +234,14 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'GET /admin/authentication': AuthMethods,
   'PUT /admin/authentication': AuthMethods,
   'PUT /admin/authentication/entra': AuthMethods,
+  'GET /admin/directories': z.array(UserDirectory),
+  'GET /admin/directories/presets': z.object({ ad: z.unknown(), ldap: z.unknown() }).describe('Jira’s defaults for each type, less host, service account and base DN'),
+  'GET /admin/directories/:id': UserDirectory,
+  'POST /admin/directories': UserDirectory,
+  'PUT /admin/directories/:id': UserDirectory,
+  'PUT /admin/directories/order': z.array(UserDirectory),
+  'POST /admin/directories/test': z.object({ steps: z.array(z.object({ step: z.string(), ok: z.boolean(), detail: z.string() })) }),
+  'POST /admin/directories/:id/sync': z.object({ jobId: id }),
   'GET /me/tokens': z.array(AccessToken),
   'POST /me/tokens': AccessTokenCreated,
   'GET /users': z.array(User),
@@ -391,7 +407,7 @@ export const RESPONSES: Record<string, z.ZodType> = {
     items: z.array(z.object({
       id, name: z.string(), email: z.string(), initials: z.string(), color: z.string(), title: nullable(z.string()), active: z.boolean(),
       role: z.enum(['owner', 'admin', 'member']), createdAt: ts, projects: z.number().describe('Projects they are a member of'),
-      lastActiveAt: nullable(ts).describe('Last used Strand (to the hour)'), lastSignInAt: nullable(ts), groups: z.array(z.object({ id, name: z.string() })),
+      lastActiveAt: nullable(ts).describe('Last used Strand (to the hour)'), lastSignInAt: nullable(ts), directory: nullable(z.string()).describe('The user directory they come from (spec 0712)'), groups: z.array(z.object({ id, name: z.string() })),
     })),
     total: z.number().describe('Everyone the filter matches'), next: nullable(z.string()).describe('Pass back as `cursor`; null on the last page'),
   }),

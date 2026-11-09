@@ -82,13 +82,23 @@ async function bulkChange(d: Db, who: { me: Me; ip?: string }, people: { id: str
   if (!n) throw new HttpError(409, 'Strand needs at least one active system administrator')
   return changed
 }
+/** A directory user's status follows their directory (spec 0712 R8): deactivating or reactivating them here is refused. */
+async function refuseDirectoryUsers(d: Db, action: string, where: string, args: unknown[]) {
+  if (action !== 'deactivate' && action !== 'reactivate') return
+  const [u] = await d.query<{ email: string; directory: string; n: number }>(
+    `select min(u.email) as email, min(ud.name) as directory, count(*)::int as n from memberships m join users u on u.id = m.user_id
+       join user_directories ud on ud.id = u.directory_id where ${where}`, args)
+  if (u?.n) throw new HttpError(409, u.n === 1
+    ? `${u.email} comes from the user directory “${u.directory}”: their status follows the directory`
+    : `${u.n} of these people come from a user directory (such as ${u.email}): their status follows the directory`)
+}
 const TAG = ['Admin']
 
 const plugin: FastifyPluginAsyncZod = async app => {
   // ── People in the workspace (system administrators). Accounts and admin rights come from Entra (sign-in and SCIM), so
   // this is a view with bulk changes, not an editor. Tens of thousands of people: searched, filtered and paged here ──
   const PERSON = `u.id, u.name, u.email, u.initials, u.color, u.title, u.active, case when m.role = 'owner' then 'owner' when is_system_admin(u.id) then 'admin' else 'member' end as role, u.created_at,
-              u.last_active_at, u.last_sign_in_at,
+              u.last_active_at, u.last_sign_in_at, (select name from user_directories where id = u.directory_id) as directory,
               coalesce((select jsonb_agg(jsonb_build_object('id', g.id, 'name', g.display_name) order by g.system_role is null, lower(g.display_name))
                           from group_members gm join groups g on g.id = gm.group_id where gm.user_id = u.id), '[]') as groups,
               (select count(*)::int from project_access pm join projects p on p.id = pm.project_id
@@ -124,6 +134,8 @@ const plugin: FastifyPluginAsyncZod = async app => {
     if (b.filter) {
       await checkGroup(db, b.groupId)
       const args: unknown[] = [req.me.workspaceId]
+      const dirArgs: unknown[] = [req.me.workspaceId]
+      await refuseDirectoryUsers(db, b.action, peopleWhere(b.filter, dirArgs), dirArgs)
       const [{ n }] = await db.query<{ n: number }>(`select count(*)::int as n from memberships m join users u on u.id = m.user_id where ${peopleWhere(b.filter, args)}`, args) as any
       const jobId = await tx(d => enqueue(d, 'users.bulk', { filter: b.filter, action: b.action, groupId: b.groupId ?? null, actor: { id: req.me.id, email: req.me.email, workspaceId: req.me.workspaceId }, ip: req.ip },
         { workspaceId: req.me.workspaceId, createdBy: req.me.id, maxAttempts: 3 }))
@@ -136,6 +148,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
       const people = await d.query<{ id: string; email: string; active: boolean }>(
         'select u.id, u.email, u.active from users u join memberships m on m.user_id = u.id where m.workspace_id = $1 and u.id = any($2::uuid[])', [req.me.workspaceId, b.userIds])
       if (people.length !== new Set(b.userIds).size) throw new HttpError(400, 'Everyone must be in this workspace', { userIds: 'Unknown people' })
+      await refuseDirectoryUsers(d, b.action, 'm.workspace_id = $1 and u.id = any($2::uuid[])', [req.me.workspaceId, b.userIds])
       if (b.action === 'deactivate' && b.userIds!.includes(req.me.id)) throw new HttpError(400, 'You can’t deactivate yourself')
       const g = await checkGroup(d, b.groupId)
       const changed = await bulkChange(d, { me: req.me, ip: req.ip }, people, b.action, g)

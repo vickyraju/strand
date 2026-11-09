@@ -1396,3 +1396,37 @@ test('[0711.R6][0711.R9][0711.R10] with the login form hidden, recovery_admin si
   assert.equal((await owner('GET', '/admin/authentication')).body.loginForm, true)
   assert.deepEqual(p.problems, [])
 })
+
+test('[0712.R1][0712.R4][0712.R5][0712.R7] an admin adds the company Active Directory, tests it, saves it; a corp id then signs in on the login form', { skip, timeout: 120_000 }, async () => {
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url('/admin/directories'))
+  await o.click('button:has-text("Add directory")')
+  await o.click('button:has-text("Microsoft Active Directory")')
+  await o.fill('#dir-host', 'dc1.e2e.test')
+  await o.fill('#dir-bindDn', 'CN=svc-strand,OU=Service,DC=e2e,DC=test')
+  await o.fill('#dir-password', 'svc-pass')
+  await o.fill('#dir-baseDn', 'DC=e2e,DC=test')
+  await o.fill('#dir-test-user', 'ccarla')
+  await o.fill('#dir-test-password', 'carla-pass')
+  await o.click('button:has-text("Test settings")')
+  await o.waitForSelector('[aria-label="Test results"] >> text=✓ The test user’s password')
+  assert.equal(await o.locator('[aria-label="Test results"] .text-danger').count(), 0)
+  await o.click('.modal button:has-text("Save")')
+  await o.waitForSelector('td:has-text("Active Directory")')
+  // the first synchronisation runs at once: Corp Carla and her group arrive
+  await o.waitForSelector('td >> text=/1 new/', { timeout: 30_000 })
+  const groups = (await owner('GET', '/groups?query=Corp')).body
+  assert.ok(JSON.stringify(groups).includes('Corp Engineers'))
+  // she signs in with her corp id; a wrong password gets Jira's message
+  const p = await signedOut('/')
+  await p.fill('#login-username', 'ccarla')
+  await p.fill('#login-password', 'wrong')
+  await p.click('button:has-text("Log in")')
+  await p.waitForSelector('text=Sorry, your username and password are incorrect - please try again.')
+  await p.fill('#login-password', 'carla-pass')
+  await p.click('button:has-text("Log in")')
+  await p.waitForSelector('nav')
+  assert.equal((await owner('GET', '/admin/users?query=carla')).body.items[0].directory, 'Active Directory')
+  assert.deepEqual([...o.problems, ...p.problems], [])
+})
+

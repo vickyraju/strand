@@ -83,8 +83,24 @@ const join = async (key: string, email: string, role: 'admin' | 'member' | 'view
        on conflict (project_id, user_id) do update set role = $3`, [key, email, role])
 }
 
+// Two company directories in memory (spec 0712). Every connection the server makes goes to one of them, so nothing
+// leaves the machine; any other host is refused as unreachable.
+import type { FakeDirectory } from '../src/fakeLdap.ts'
+const BASE = 'DC=corp,DC=test', SVC = `CN=svc-strand,OU=Service,${BASE}`
+const adUser = (cn: string, sam: string, o: { mail?: string; groups?: string[]; uac?: string; guid?: string } = {}) => ({
+  dn: `CN=${cn},OU=People,${BASE}`, objectClass: ['top', 'person', 'organizationalPerson', 'user'], objectCategory: 'Person', sAMAccountName: sam,
+  givenName: cn.split(' ')[0]!, sn: cn.split(' ')[1] ?? '', displayName: cn, ...(o.mail === '' ? {} : { mail: o.mail ?? `${sam}@corp.test` }),
+  objectGUID: Buffer.from(createHash('md5').update(o.guid ?? sam).digest()), memberOf: o.groups ?? [], userAccountControl: o.uac ?? '512',
+})
+const adGroup = (cn: string, members: string[] = [], guid = cn) => ({ dn: `CN=${cn},OU=Groups,${BASE}`, objectClass: ['top', 'group'], objectCategory: 'Group', cn, description: `${cn} team`, member: members, objectGUID: Buffer.from(createHash('md5').update(`group:${guid}`).digest()) })
+const corp: FakeDirectory = { host: 'dc1.corp.test', passwords: {}, entries: [], log: { binds: [], searches: [] } }
+const other: FakeDirectory = { host: 'dc1.other.test', passwords: {}, entries: [], log: { binds: [], searches: [] } }
+const corpConfig = (o: Record<string, unknown> = {}) => ({ host: corp.host, port: 389, security: 'none', bindDn: SVC, baseDn: BASE, ...o })
+
 before(async () => {
   if (skip) return
+  const { useLdap } = await import('../src/ldap.ts'), { fakeConnect } = await import('../src/fakeLdap.ts')
+  useLdap(s => fakeConnect(s.host === other.host ? other : corp)(s))
   const pair = await generateKeyPair('RS256')
   signingKey = pair.privateKey
   const jwk = { ...(await exportJWK(pair.publicKey)), kid: 'test', alg: 'RS256', use: 'sig' }
@@ -3376,6 +3392,7 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
   //   own    - only the person it belongs to; others 403 or 404
   type Rule = 'public' | 'any' | 'read' | 'viewer' | 'write' | 'padmin' | 'gadmin' | 'own'
   const K = 'MTX', I = 'MTX-1'
+  const PRESET_AD = (await import('../src/directories.ts')).PRESETS.ad
   const M: Record<string, [Rule, string, object?]> = {
     'GET /me': ['any', '/me'], 'GET /users': ['any', '/users'], 'GET /users/search': ['any', '/users/search'],
     'GET /projects': ['any', '/projects'], 'POST /projects': ['any', '/projects', { name: 'M', key: 'MTXNEW', template: 'kanban' }],
@@ -3385,6 +3402,13 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     'GET /auth/config': ['public', '/auth/config'], 'POST /auth/logout': ['public', '/auth/logout'],   // 0711.R1
     'POST /auth/login': ['public', '/auth/login', { username: 'matrix.nobody', password: 'x' }],
     'GET /admin/authentication': ['gadmin', '/admin/authentication'],   // 0711.R11
+    'GET /admin/directories': ['gadmin', '/admin/directories'], 'GET /admin/directories/presets': ['gadmin', '/admin/directories/presets'],   // 0712.R13
+    'GET /admin/directories/{id}': ['gadmin', `/admin/directories/${none}`],
+    'POST /admin/directories': ['gadmin', '/admin/directories', { name: 'Matrix directory', type: 'ad', enabled: false, config: { ...PRESET_AD, ...corpConfig() }, password: 'x' }],
+    'PUT /admin/directories/{id}': ['gadmin', `/admin/directories/${none}`, { name: 'Matrix directory', enabled: false, config: { ...PRESET_AD, ...corpConfig() } }],
+    'PUT /admin/directories/order': ['gadmin', '/admin/directories/order', { ids: [none] }],
+    'POST /admin/directories/test': ['gadmin', '/admin/directories/test', { config: { ...PRESET_AD, ...corpConfig({ host: 'matrix.invalid' }) }, password: 'x' }],
+    'POST /admin/directories/{id}/sync': ['gadmin', `/admin/directories/${none}/sync`],
     'PUT /admin/authentication': ['gadmin', '/admin/authentication', { loginForm: true, fallback: false }],
     'PUT /admin/authentication/entra': ['gadmin', '/admin/authentication/entra', { enabled: false, tenantId: '11111111-1111-4111-8111-111111111111', apiClientId: '22222222-2222-4222-8222-222222222222', webClientId: '33333333-3333-4333-8333-333333333333' }],
     'GET /priorities': ['any', '/priorities'], 'GET /resolutions': ['any', '/resolutions'],   // 0305.R1
@@ -4346,3 +4370,184 @@ test('[0711.R6][0711.R8][0711.R9][0711.R10][0711.R12] the login form: recovery m
   assert.deepEqual([r.active, r.admin], [false, false])
   await pool.query('delete from login_failures')
 })
+
+test('[0712.R1][0712.R2][0712.R3][0712.R4][0712.R13] user directories: Jira’s presets, a write-only password bound to its row, Test settings, the order', { skip }, async () => {
+  const { PRESETS } = await import('../src/directories.ts'), { unseal } = await import('../src/secrets.ts')
+  corp.passwords = { [SVC]: 'svc-pass', [`CN=Jane Doe,OU=People,${BASE}`]: 'jane-pass' }
+  corp.entries = [adUser('Jane Doe', 'jdoe', { groups: [`CN=Engineering,OU=Groups,${BASE}`] }), adGroup('Engineering')]
+  // R2: Jira’s defaults for each type
+  const presets = (await call('GET', '/api/v1/admin/directories/presets')).body
+  assert.deepEqual([presets.ad.user.username, presets.ad.user.guid, presets.ad.membership.useMemberOf, presets.ldap.user.username, presets.ldap.user.guid], ['sAMAccountName', 'objectGUID', true, 'uid', 'entryUUID'])
+  const body = { name: 'Corp AD', type: 'ad', enabled: false, config: { ...PRESETS.ad, ...corpConfig() }, password: 'svc-pass' }
+  // R3: without STRAND_SECRET_KEY no password can be stored
+  delete process.env.STRAND_SECRET_KEY
+  const noKey = await call('POST', '/api/v1/admin/directories', body)
+  assert.equal(noKey.status, 400); assert.ok(noKey.body.errors.password)
+  process.env.STRAND_SECRET_KEY = 'a-secret-key-for-tests-only-0712-xxxxxxxx'
+  const made = await call('POST', '/api/v1/admin/directories', body)
+  assert.equal(made.status, 201, JSON.stringify(made.body))
+  const dir = made.body
+  assert.deepEqual([dir.hasPassword, 'password' in dir, 'passwordEnc' in dir, dir.position], [true, false, false, 1])
+  // stored encrypted and bound to its row: the right row opens it, another row's id doesn't
+  const [row] = (await pool.query('select password_enc from user_directories where id = $1', [dir.id])).rows
+  assert.ok(!row.password_enc.toString('latin1').includes('svc-pass'))
+  assert.equal(unseal(row.password_enc, dir.id), 'svc-pass')
+  assert.throws(() => unseal(row.password_enc, '00000000-0000-4000-8000-000000000000'))
+  // R3: the password can't be sent to another server without typing it again
+  const elsewhere = await call('PUT', `/api/v1/admin/directories/${dir.id}`, { name: 'Corp AD', enabled: false, config: { ...dir.config, host: 'evil.example' } })
+  assert.equal(elsewhere.status, 400); assert.ok(elsewhere.body.errors.password)
+  assert.equal((await call('POST', '/api/v1/admin/directories/test', { id: dir.id, config: { ...dir.config, host: 'evil.example' } })).status, 400)
+  assert.equal((await call('PUT', `/api/v1/admin/directories/${dir.id}`, { name: 'Corporate AD', enabled: false, config: { ...dir.config, syncMinutes: 30 } })).status, 200)
+  // R4: Test settings, with the stored password, on unsaved changes, with a test user
+  const test = (await call('POST', '/api/v1/admin/directories/test', { id: dir.id, config: dir.config, testUser: { username: 'jdoe', password: 'jane-pass' } })).body.steps
+  assert.deepEqual(test.map((s: any) => [s.step, s.ok]), [['Connect and sign in', true], ['Find users', true], ['Find groups', true], ['Find the test user', true], ['The test user’s groups', true], ['The test user’s password', true]])
+  assert.match(test[1].detail, /jdoe/)
+  const wrong = (await call('POST', '/api/v1/admin/directories/test', { config: dir.config, password: 'nope' })).body.steps
+  assert.deepEqual(wrong.map((s: any) => s.ok), [false])
+  // R1: the order sign-in tries them in
+  const ldap = (await call('POST', '/api/v1/admin/directories', { name: 'Other LDAP', type: 'ldap', enabled: false, config: { ...PRESETS.ldap, host: other.host, port: 389, security: 'none', bindDn: 'cn=svc,dc=other', baseDn: 'dc=other' }, password: 'x' })).body
+  const order = (await call('PUT', '/api/v1/admin/directories/order', { ids: [ldap.id, dir.id] })).body
+  assert.deepEqual(order.map((d: any) => [d.name, d.position]), [['Other LDAP', 1], ['Corporate AD', 2]])
+  assert.equal((await call('PUT', '/api/v1/admin/directories/order', { ids: [dir.id] })).status, 400)
+  // R13: not with an access token; every change audited, the password only as "set" / "changed"
+  const pat = (await call('POST', '/api/v1/me/tokens', { name: 'directories' })).body.token
+  assert.equal((await app.inject({ method: 'GET', url: '/api/v1/admin/directories', headers: { authorization: `Bearer ${pat}` } })).statusCode, 403)
+  const logged = (await pool.query(`select action, before::text || after::text as t from audit_log where action like 'directory.%'`)).rows
+  assert.deepEqual(new Set(logged.map(r => r.action)), new Set(['directory.created', 'directory.updated', 'directory.reordered']))
+  assert.ok(logged.every(r => !String(r.t).includes('svc-pass')))
+  await call('PUT', '/api/v1/admin/directories/order', { ids: [dir.id, ldap.id] })
+})
+
+test('[0712.R5][0712.R6][0712.R12] the login form with user directories: first match decides, escaped usernames, no empty password, disabled accounts, unreachable', { skip }, async () => {
+  const { signInWithDirectory } = await import('../src/directories.ts')
+  const login = (username: string, password: string) => app.inject({ method: 'POST', url: '/api/v1/auth/login', payload: { username, password } })
+  const WRONG = 'Sorry, your username and password are incorrect - please try again.'
+  const [corpDir, ldapDir] = (await call('GET', '/api/v1/admin/directories')).body
+  const enable = (d: any, enabled = true) => call('PUT', `/api/v1/admin/directories/${d.id}`, { name: d.name, enabled, config: d.config })
+  await pool.query('delete from login_failures')
+  // R6: someone Entra already created is linked by email, not duplicated
+  await call('GET', '/api/v1/me', undefined, 'linked.person@corp.test')
+  corp.passwords = { [SVC]: 'svc-pass', [`CN=Jane Doe,OU=People,${BASE}`]: 'jane-pass', [`CN=Linked Person,OU=People,${BASE}`]: 'linked-pass', [`CN=Bob Smith,OU=People,${BASE}`]: 'bob-pass' }
+  corp.entries = [
+    adUser('Jane Doe', 'jdoe', { groups: [`CN=Engineering,OU=Groups,${BASE}`] }), adUser('Linked Person', 'lperson', { mail: 'linked.person@corp.test' }),
+    adUser('Bob Smith', 'bsmith', { uac: '514' }), adGroup('Engineering'),
+  ]
+  // R12: a disabled directory takes no sign-ins
+  assert.equal((await login('jdoe', 'jane-pass')).statusCode, 401)
+  assert.equal((await enable(corpDir)).status, 200)
+  await pool.query('delete from login_failures')
+  const ok = await login('JDoe', 'jane-pass')
+  assert.equal(ok.statusCode, 200, ok.body)
+  const [jane] = (await pool.query('select username, active, directory_id, name from users where email = $1', ['jdoe@corp.test'])).rows
+  assert.deepEqual([jane.username, jane.active, jane.directory_id, jane.name], ['jdoe', true, corpDir.id, 'Jane Doe'])
+  assert.equal((await login('lperson', 'linked-pass')).statusCode, 200)
+  assert.equal((await pool.query(`select count(*)::int as n from users where email = 'linked.person@corp.test'`)).rows[0].n, 1)
+  assert.equal((await pool.query(`select directory_id from users where email = 'linked.person@corp.test'`)).rows[0].directory_id, corpDir.id)
+  // a wrong password, a disabled account: the same message
+  for (const [u, p] of [['jdoe', 'nope'], ['bsmith', 'bob-pass']]) {
+    const r = await login(u!, p!)
+    assert.deepEqual([r.statusCode, JSON.parse(r.body).error], [401, WRONG])
+  }
+  await pool.query('delete from login_failures')
+  // R5: the username is escaped: it can't widen the search to everyone
+  corp.log!.searches.length = 0
+  assert.equal((await login('*)(sAMAccountName=*', 'jane-pass')).statusCode, 401)
+  assert.ok(corp.log!.searches.some(f => f.toLowerCase().includes('(samaccountname=\\2a\\29\\28samaccountname=\\2a)')), corp.log!.searches.join(' | '))
+  // R5: an empty password is never sent (the directory would take it as an anonymous sign-in)
+  corp.log!.binds.length = 0
+  assert.equal(await signInWithDirectory('jdoe', ''), null)
+  assert.ok(!corp.log!.binds.some(b => b.startsWith('CN=Jane Doe')))
+  // R5: the first enabled directory that has the username decides
+  other.passwords = { 'cn=svc,dc=other': 'x', 'uid=jdoe,ou=people,dc=other': 'other-pass' }
+  other.entries = [{ dn: 'uid=jdoe,ou=people,dc=other', objectClass: ['inetOrgPerson'], uid: 'jdoe', mail: 'jdoe@other.test', entryUUID: 'u-1', displayName: 'Other Jane' }]
+  await enable(ldapDir)
+  await call('PUT', '/api/v1/admin/directories/order', { ids: [ldapDir.id, corpDir.id] })
+  assert.equal((await login('jdoe', 'jane-pass')).statusCode, 401)                   // the other directory has jdoe: its password decides
+  await call('PUT', '/api/v1/admin/directories/order', { ids: [corpDir.id, ldapDir.id] })
+  assert.equal((await login('jdoe', 'jane-pass')).statusCode, 200)
+  await enable(ldapDir, false)
+  await pool.query('delete from login_failures')
+  // unreachable: 503, and not counted as a wrong password
+  corp.down = true
+  const down = await login('jdoe', 'jane-pass')
+  assert.equal(down.statusCode, 503)
+  assert.equal((await pool.query(`select count(*)::int as n from login_failures where username = 'jdoe'`)).rows[0].n, 0)
+  corp.down = false
+})
+
+test('[0712.R7][0712.R8][0712.R9][0712.R10][0712.R11] synchronising a directory: people and groups copied, never deleted, renames followed, nested groups, the zero-users guard', { skip }, async () => {
+  const { syncDirectory } = await import('../src/directories.ts'), { runJobs } = await import('../src/jobs.ts')
+  const [corpDir] = (await call('GET', '/api/v1/admin/directories')).body
+  const eng = `CN=Engineering,OU=Groups,${BASE}`, platform = `CN=Platform,OU=Groups,${BASE}`
+  await call('POST', '/api/v1/groups', { name: 'Clashing' })
+  corp.entries = [
+    adUser('Jane Doe', 'jdoe', { groups: [eng] }), adUser('Linked Person', 'lperson', { mail: 'linked.person@corp.test', groups: [eng] }),
+    adUser('Bob Smith', 'bsmith', { uac: '514' }), adUser('Nomail Person', 'nomail', { mail: '' }), adUser('Kim Lee', 'klee', { groups: [platform] }),
+    adGroup('Engineering'), adGroup('Platform', [eng]), adGroup('Clashing'),
+  ]
+  const sync = async () => { const r: any = await syncDirectory(corpDir.id); assert.ok(r.ok, JSON.stringify(r)); return r }
+  const members = async (name: string) => (await pool.query(`select u.username from group_members gm join groups g on g.id = gm.group_id join users u on u.id = gm.user_id where g.display_name = $1 order by 1`, [name])).rows.map(r => r.username)
+  // R7: created, linked, skipped
+  const r1 = await sync()
+  assert.equal(r1.users.created, 2)                                                   // bsmith and klee (jdoe and lperson came at sign-in)
+  assert.deepEqual(r1.users.skipped.map((s: any) => [s.name, s.why]), [['nomail', 'No email address']])
+  assert.equal((await pool.query(`select active from users where username = 'bsmith'`)).rows[0].active, false)   // R8: disabled there
+  // R9: directory groups, read-only; a clash with a Strand group is skipped
+  assert.deepEqual(r1.groups.skipped.map((s: any) => s.name), ['Clashing'])
+  const [g] = (await pool.query(`select id, source, directory_dn, directory_guid from groups where display_name = 'Engineering'`)).rows
+  assert.deepEqual([g.source, g.directory_dn], ['directory', eng])
+  // R10: memberships from memberOf; nested groups only when asked
+  assert.deepEqual([await members('Engineering'), await members('Platform')], [['jdoe', 'lperson'], ['klee']])
+  await call('PUT', `/api/v1/admin/directories/${corpDir.id}`, { name: corpDir.name, enabled: true, config: { ...corpDir.config, membership: { ...corpDir.config.membership, nested: true } } })
+  await sync()
+  assert.deepEqual(await members('Platform'), ['jdoe', 'klee', 'lperson'])
+  // R9: renamed in the directory (a new name and DN, the same id): the same group, renamed; gone: kept (with its grants), emptied
+  const engineers = `CN=Engineers,OU=Groups,${BASE}`
+  corp.entries = corp.entries.filter(e => e.dn !== platform && e.dn !== eng).map(e => ('memberOf' in e ? { ...e, memberOf: (e.memberOf as string[]).map(m => (m === eng ? engineers : m)) } : e))
+  corp.entries.push(adGroup('Engineers', [], 'Engineering'))
+  await sync()
+  const [renamed] = (await pool.query(`select id, display_name, directory_dn from groups where directory_guid = $1`, [g.directory_guid])).rows
+  assert.deepEqual([renamed.id, renamed.display_name, renamed.directory_dn], [g.id, 'Engineers', engineers])
+  assert.deepEqual(await members('Engineers'), ['jdoe', 'lperson'])
+  assert.ok((await pool.query(`select 1 from audit_log where action = 'group.renamed' and target_id = $1`, [g.id])).rows.length)
+  assert.deepEqual(await members('Platform'), [])
+  assert.equal((await pool.query(`select count(*)::int as n from groups where display_name = 'Platform'`)).rows[0].n, 1)
+  // R8: missing from the directory: deactivated (never deleted); back: reactivated
+  const kim = corp.entries.find(e => (e as any).sAMAccountName === 'klee')!
+  corp.entries = corp.entries.filter(e => e !== kim)
+  assert.equal((await sync()).users.deactivated, 1)
+  assert.equal((await pool.query(`select active from users where username = 'klee'`)).rows[0].active, false)
+  corp.entries.push(kim)
+  assert.equal((await sync()).users.reactivated, 1)
+  // R8: their status belongs to the directory: People bulk refuses
+  const klee = (await pool.query(`select id from users where username = 'klee'`)).rows[0].id
+  const bulk = await call('POST', '/api/v1/admin/users/bulk', { userIds: [klee], action: 'deactivate' })
+  assert.equal(bulk.status, 409); assert.match(bulk.body.error, /Corporate AD/)
+  const people = (await call('GET', '/api/v1/admin/users?query=klee')).body.items
+  assert.equal(people[0].directory, 'Corporate AD')
+  // R7: someone whose new email is another person's is skipped and reported, but still there: not deactivated
+  const mail = (m: string) => { corp.entries = corp.entries.map(e => ((e as any).sAMAccountName === 'klee' ? { ...e, mail: m } : e)) }
+  mail('owner@x.com')
+  assert.ok((await sync()).users.skipped.some((s: any) => s.name === 'klee'))
+  assert.equal((await pool.query(`select active, email from users where username = 'klee'`)).rows[0].active, true)
+  mail('klee@corp.test')
+  // R11: no users found where there were some: nothing changes
+  const all = corp.entries
+  corp.entries = all.filter(e => (e as any).objectCategory !== 'Person')
+  const guarded: any = await syncDirectory(corpDir.id)
+  assert.equal(guarded.ok, false); assert.match(guarded.error, /found no users/)
+  assert.equal((await pool.query(`select count(*)::int as n from users where directory_id = $1 and active`, [corpDir.id])).rows[0].n, 3)   // jdoe, lperson, klee
+  corp.entries = all
+  // R11: one synchronisation at a time; "Synchronise now" runs one as a job
+  const lock = await pool.connect()
+  await lock.query('select pg_advisory_lock(hashtext($1))', [`directory.sync:${corpDir.id}`])
+  assert.deepEqual(await syncDirectory(corpDir.id), { skipped: 'This directory is being synchronised already' })
+  await lock.query('select pg_advisory_unlock(hashtext($1))', [`directory.sync:${corpDir.id}`]); lock.release()
+  const started = await call('POST', `/api/v1/admin/directories/${corpDir.id}/sync`)
+  assert.equal(started.status, 202)
+  await runJobs()
+  const [job] = (await pool.query('select status, result from jobs where id = $1', [started.body.jobId])).rows
+  assert.deepEqual([job.status, job.result.ok], ['done', true])
+  await call('PUT', `/api/v1/admin/directories/${corpDir.id}`, { name: corpDir.name, enabled: false, config: corpDir.config })
+})
+

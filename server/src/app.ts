@@ -30,6 +30,8 @@ import workflowRoutes from './routes/workflows.ts'
 import boardRoutes from './routes/boards.ts'
 import listRoutes from './routes/lists.ts'
 import authentication, { publicAuth } from './routes/authentication.ts'
+import directories from './routes/directories.ts'
+import { startDirectories } from './directories.ts'
 import { startAuth } from './authConfig.ts'
 import { githubWebhook } from './routes/github.ts'
 
@@ -141,6 +143,7 @@ export async function build() {
       await v1.register(boardRoutes)
       await v1.register(listRoutes)
       await v1.register(authentication)
+      await v1.register(directories)
     }, { prefix: '/api/v1' })
     // Xray's addresses for importing CI results: same sign-in and rate limits as the API
     await api.register(raven, { prefix: '/rest/raven/1.0' })
@@ -151,6 +154,8 @@ export async function build() {
   const stopJobs = startJobWorker(app.log)
   // Entra from ENTRA_* the first time (an upgrade signs in as before); recovery_admin only while recovery mode is on
   if (process.env.DATABASE_URL) await startAuth(app.log)
+  // every enabled user directory has its next synchronisation queued (spec 0712)
+  if (process.env.DATABASE_URL) await startDirectories().catch(e => app.log.error(e))
   // every workspace removes its long-deleted work items daily (spec 0202)
   if (process.env.DATABASE_URL)
     for (const w of (await pool.query<{ id: string }>('select id from workspaces')).rows) await schedulePurge(db, w.id).catch(e => app.log.error(e))

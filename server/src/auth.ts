@@ -34,7 +34,7 @@ export class HttpError extends Error {
   constructor(status: number, message: string, errors?: Record<string, string>) { super(message); this.status = status; if (errors) this.errors = errors }
 }
 
-const initials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]!.toUpperCase()).join('') || '?'
+export const initials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]!.toUpperCase()).join('') || '?'
 
 /** Who signed in: from Entra (with its `oid`), or from the login form (a directory's username, spec 0711). */
 export interface Identity { oid?: string; username?: string; email: string; name: string; admin: boolean }

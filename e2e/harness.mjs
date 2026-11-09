@@ -83,7 +83,8 @@ export async function start() {
   }
   run(['src/index.ts'], `${root}server`, {
     DATABASE_URL: dbUrl, PORT: String(apiPort), NODE_ENV: 'test', ENTRA_TENANT_ID: TENANT, ENTRA_CLIENT_ID: CLIENT, ENTRA_WEB_CLIENT_ID: CLIENT, ENTRA_AUTHORITY: authority,
-    STRAND_RECOVERY_PASSWORD: RECOVERY_PASSWORD,
+    STRAND_RECOVERY_PASSWORD: RECOVERY_PASSWORD, STRAND_SECRET_KEY: 'e2e-secret-key-for-stored-passwords-0712',
+    STRAND_LDAP_FAKE: `${root}e2e/fake-directory.json`,   // a company directory in memory (spec 0712)
     CORS_ORIGINS: webUrl, JOBS_POLL_MS: '500', DUE_SCAN_INTERVAL_MS: '0', FILE_SWEEP_MS: '0', S3_BUCKET: '',
   })
   run(['node_modules/vite/bin/vite.js', '--port', String(webPort), '--strictPort', '--host', 'localhost'], root, {

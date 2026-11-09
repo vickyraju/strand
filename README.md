@@ -23,6 +23,8 @@ Entra ID needs two app registrations (the web app's sign-in; scripts use tokens 
 | API | Expose an API with the scope `access_as_user`; app role `Strand.Admin` for administrators. Its client id is the **API client ID** (`ENTRA_CLIENT_ID`). |
 | Web app | Single-page application, redirect URI `https://<site>/`, API permission on `access_as_user`. Its client id is the **Web client ID** (`ENTRA_WEB_CLIENT_ID`). |
 
+The login form checks passwords against your company's directories: add Active Directory or LDAP in **Administration › User directories** (spec 0712). It needs `STRAND_SECRET_KEY` on the API (32 characters or more) to store the service account's password, and the API pods must reach the domain controllers (LDAPS on 636, or StartTLS on 389; a company CA goes in `NODE_EXTRA_CA_CERTS`).
+
 Locked out (Entra misconfigured, the login form hidden)? Set `STRAND_RECOVERY_PASSWORD` (16 characters or more) on the API, sign in as `recovery_admin` at `https://<site>/?auth_fallback`, fix the methods, then remove the variable.
 
 ## API access with personal access tokens
