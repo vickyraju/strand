@@ -687,7 +687,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
   })
 
   // ── CSV import (Jira's importer): check every row first; import in the background; a rerun adds nothing twice ──
-  const importMapping = z.record(z.string().regex(/^(title|description|type|status|priority|assignee|labels|estimate|dueDate|startDate|components|fixVersion|custom\.[0-9a-f-]{36})$/), z.number().int().min(0))
+  const importMapping = z.record(z.string().regex(/^(title|description|type|status|priority|assignee|labels|estimate|dueDate|startDate|components|fixVersion|flagged|custom\.[0-9a-f-]{36})$/), z.number().int().min(0))
     .describe('Field → column number (0 is the first column). Fields: title (required), description, type, status, priority, assignee, labels, estimate, dueDate, startDate, components, fixVersion, custom.<field id>')
   app.post('/projects/:key/import', { schema: {
     tags: T.config, summary: 'Import work items from CSV. With dryRun (the default) nothing is created: every row is checked and reported. Otherwise the import runs as a job (GET /jobs/:id)',

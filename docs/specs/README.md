@@ -67,7 +67,7 @@ The roadmap, in order. Bugs come first, then the permission model, then the data
 | [0405](0405-working-days.md) | Working days on a board | 4 | Ported |
 | 0406 | Kanban backlog | 4 | Planned |
 | 0407 | Epics and versions panels | 4 | Planned |
-| 0408 | Flagging | 4 | Planned |
+| [0408](0408-flagging.md) | Flagging a work item | 4 | Approved |
 | 0409 | Card colours | 4 | Planned |
 | 0410 | Control chart | 4 | Planned |
 | 0411 | Version, epic, epic burndown, release burndown and burnup reports | 4 | Planned |

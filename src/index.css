@@ -555,6 +555,10 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; line-height:
 .card { -webkit-touch-callout: none }
 .card.ghost { cursor: grabbing; box-shadow: 0 10px 28px rgba(16,24,16,.22); transform: rotate(1.5deg); pointer-events: none }
 .card.blocked { box-shadow: inset 3px 0 0 var(--danger), var(--shadow) }
+/* Jira's flag (spec 0408): a flagged card and backlog row are yellow; the flag takes the priority's place */
+.card.flagged { background: var(--warn-soft); border-color: #FDE68A }
+.row.flagged { background: var(--warn-soft) }
+.flag-icon { color: var(--warn); fill: currentColor; flex-shrink: 0 }
 .card-title { font-size: 14px; line-height: 1.4; margin-bottom: 10px; word-break: break-word; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden }
 .card-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 10px }
 .card .due { margin-bottom: 10px }

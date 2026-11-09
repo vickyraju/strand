@@ -4257,3 +4257,26 @@ test('[0405.R1] a board’s working days: weekdays and days off, set by its admi
   assert.deepEqual((await set({ weekdays: [4, 1, 2, 3, 3], nonWorking: ['2026-12-25', '2026-12-24'] })).body.workingDays, { weekdays: [1, 2, 3, 4], nonWorking: ['2026-12-24', '2026-12-25'] })
   assert.ok(p.id)
 })
+
+test('[0408.R1][0408.R3][0408.R4] flagging a work item: members flag and unflag it (in its history), JQL finds it, CSV import carries it', { skip }, async () => {
+  await call('POST', '/api/v1/projects', { name: 'Flags', key: 'FLG', template: 'kanban' })
+  await join('FLG', 'flg.member@x.com'); await join('FLG', 'flg.viewer@x.com', 'viewer')
+  const a = (await call('POST', '/api/v1/projects/FLG/issues', { title: 'Stuck' })).body
+  await call('POST', '/api/v1/projects/FLG/issues', { title: 'Fine' })
+  assert.equal(a.flagged, false)
+  assert.equal((await call('PATCH', `/api/v1/issues/${a.key}`, { flagged: true }, 'flg.viewer@x.com')).status, 403)
+  assert.equal((await call('PATCH', `/api/v1/issues/${a.key}`, { flagged: true }, 'flg.member@x.com')).body.flagged, true)
+  assert.ok((await call('GET', `/api/v1/issues/${a.key}?expand=activity`)).body.activity.some((x: any) => x.field === 'flagged'))
+  const jql = async (q: string) => (await call('GET', `/api/v1/search?jql=${encodeURIComponent(`project = FLG AND ${q}`)}`)).body
+  assert.deepEqual((await jql('flagged = Impediment')).items.map((i: any) => i.title), ['Stuck'])
+  assert.deepEqual((await jql('flagged is EMPTY')).items.map((i: any) => i.title), ['Fine'])
+  assert.match((await jql('flagged = yes')).error, /Impediment/)
+  await call('PATCH', `/api/v1/issues/${a.key}`, { flagged: false }, 'flg.member@x.com')
+  assert.deepEqual((await jql('flagged is not EMPTY')).items, [])
+  // R4: a CSV Flagged column with "Impediment" flags the item
+  const csv = 'Summary,Flagged\nImported stuck,Impediment\nImported fine,\n'
+  const run = await call('POST', '/api/v1/projects/FLG/import', { csv, mapping: { title: 0, flagged: 1 }, dryRun: false, importId: '0192f0c0-0000-7000-8000-00000000f1a6' })
+  assert.equal(run.status, 202)
+  await (await import('../src/jobs.ts')).runJobs()
+  assert.deepEqual((await jql('flagged = Impediment')).items.map((i: any) => i.title), ['Imported stuck'])
+})

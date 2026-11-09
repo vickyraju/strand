@@ -319,6 +319,8 @@ export interface Issue {
   attachments: Attachment[]
   /** Values for the project's custom fields, by field id. */
   custom:      Record<string, string | number>
+  /** Jira's flag (Flagged = Impediment): blocked or needs attention (spec 0408). */
+  flagged?:    boolean
   /** Fix versions: releases that fix it (Jira's Fix Version/s, several, spec 0301). */
   fixReleaseIds?: string[]
   /** How a finished item ended, and when it last reached Done (kept in step with the status). */
