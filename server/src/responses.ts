@@ -44,7 +44,7 @@ export const Field = z.object({ id, projectId: id, name: z.string(), kind: z.enu
 export const Template = z.object({ id, projectId: id, name: z.string(), type: z.string(), title: z.string(), description: z.string(), priority: z.string(), labels: z.array(z.string()), estimate: nullable(z.number()) })
 export const Rule = z.object({ id, projectId: id, name: z.string(), enabled: z.boolean(), trigger: z.record(z.string(), z.unknown()), actions: z.array(z.record(z.string(), z.unknown())), runs: z.number(), failures: z.number(), ownerId: nullable(id) })
 const Step = z.object({ action: z.string(), outcome: z.enum(['done', 'skipped', 'unchanged', 'failed']), note: z.string().optional() })
-export const Release = z.object({ id, workspaceId: id, projectId: id, name: z.string(), description: z.string(), startDate: nullable(day), releaseDate: nullable(day), released: z.boolean(), releasedAt: nullable(ts) })
+export const Release = z.object({ id, workspaceId: id, projectId: id, name: z.string(), description: z.string(), startDate: nullable(day), releaseDate: nullable(day), released: z.boolean(), releasedAt: nullable(ts), archived: z.boolean().describe('Hidden from pickers; items keep it') })
 export const Sprint = z.object({
   id, workspaceId: id, projectId: id, boardId: id.describe('The board it belongs to'), name: z.string(), goal: z.string(), state: z.enum(['planned', 'active', 'closed']),
   startedAt: nullable(ts), endsAt: nullable(ts), completedAt: nullable(ts), committed: nullable(z.number()), completed: nullable(z.number()),
@@ -238,6 +238,9 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'POST /projects/:key/sprints/:id/start': Sprint,
   'POST /projects/:key/sprints/:id/complete': Sprint.extend({ newSprint: Sprint.optional().describe('The sprint made for unfinished work (moveTo "new")') }),
   'POST /projects/:key/releases/:id/release': Release,
+  'POST /projects/:key/releases/:id/merge': Release,
+  'GET /projects/:key/releases/:id/usage': z.object({ fix: z.number().describe('Live work items with it as a fix version'), affects: z.number().describe('…as an affects version') }),
+  'GET /projects/:key/components/:id/usage': z.object({ items: z.number().describe('Live work items in it') }),
   'GET /issues/:key': IssueDetail,
   'GET /issues/:key/development': Development,
   'PATCH /issues/:key': IssueRow,

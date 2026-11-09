@@ -202,6 +202,8 @@ export interface Release {
   releaseDate?: string
   released:     boolean
   releasedAt?:  number
+  /** Archived (Jira's): hidden from pickers and the Releases view; items keep it, and it can't be changed (spec 0304). */
+  archived?:    boolean
 }
 
 /** Reusable defaults for new work items. */

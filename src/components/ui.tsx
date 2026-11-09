@@ -397,13 +397,14 @@ export const userOptions = (users: User[]): PickerOption<string | undefined>[] =
 ]
 
 /** Picks several from a short list, as chips with an add menu. */
-export function MultiSelect({ label, all, value, onChange }: { label: string; all: { key: string; name: string }[]; value: string[]; onChange: (v: string[]) => void }) {
-  const rest = all.filter(a => !value.includes(a.key))
+/** Chips for the chosen keys, and a select to add one. `locked` keys show without a remove button (an archived version). */
+export function MultiSelect({ label, all, value, onChange, locked = [] }: { label: string; all: { key: string; name: string }[]; value: string[]; onChange: (v: string[]) => void; locked?: string[] }) {
+  const rest = all.filter(a => !value.includes(a.key) && !locked.includes(a.key))
   return (
     <span className="rule-chips">
       {value.map(k => (
-        <span key={k} className="chip-static">{all.find(a => a.key === k)?.name ?? 'Removed'}
-          <button className="chip-x" aria-label={`Remove ${all.find(a => a.key === k)?.name ?? 'item'}`} onClick={() => onChange(value.filter(x => x !== k))}>×</button>
+        <span key={k} className="chip-static" title={locked.includes(k) ? 'Archived: it stays on this item' : undefined}>{all.find(a => a.key === k)?.name ?? 'Removed'}
+          {!locked.includes(k) && <button className="chip-x" aria-label={`Remove ${all.find(a => a.key === k)?.name ?? 'item'}`} onClick={() => onChange(value.filter(x => x !== k))}>×</button>}
         </span>
       ))}
       {rest.length > 0 && (

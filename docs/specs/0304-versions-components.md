@@ -89,3 +89,7 @@ Same rules.
 None.
 
 ## Changelog
+
+- 9 Nov 2026, while building (within the approved rules):
+  - "Mark as unreleased" was only changed in the browser. It now reaches the server (`PATCH … { released: false }`) and clears the release date, as Jira's Unrelease does.
+  - The release dialog's last choice now reads "Leave it in <version>", matching 0301 R5.

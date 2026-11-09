@@ -30,7 +30,7 @@ const mapField = (f: Row): FieldDef => ({ id: f.id, name: f.name, kind: f.kind, 
 const mapRelease = (r: Row): Release => ({
   id: r.id, name: r.name, description: r.description ?? '', released: !!r.released,
   ...(r.startDate ? { startDate: r.startDate } : {}), ...(r.releaseDate ? { releaseDate: r.releaseDate } : {}),
-  ...(r.releasedAt ? { releasedAt: ms(r.releasedAt) } : {}),
+  ...(r.releasedAt ? { releasedAt: ms(r.releasedAt) } : {}), ...(r.archived ? { archived: true } : {}),
 })
 const mapTemplate = (t: Row): ItemTemplate => ({
   id: t.id, name: t.name, type: t.type, title: t.title, description: t.description ?? '', priority: t.priority,

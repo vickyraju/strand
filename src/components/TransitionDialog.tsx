@@ -130,7 +130,7 @@ function FieldInput({ id, field, project, value, onChange }: { id: string; field
     case 'priority': return select(['urgent', 'high', 'medium', 'low', 'none'].map(p => ({ value: p, label: p[0]!.toUpperCase() + p.slice(1) })))
     case 'resolution': return select(RESOLUTIONS.map(r => ({ value: r, label: r })), 'Done (default)')
     case 'fixReleaseIds': return <MultiSelect label="Fix versions" all={project.releases.filter(r => !r.released || (value as string[] | undefined)?.includes(r.id)).map(r => ({ key: r.id, name: r.name }))}
-      value={Array.isArray(value) ? value : []} onChange={onChange} />
+      locked={project.releases.filter(r => r.archived).map(r => r.id)} value={Array.isArray(value) ? value : []} onChange={onChange} />
     case 'sprintId': return select(state.sprints.filter(s => s.projectId === project.id && s.state !== 'closed').map(s => ({ value: s.id, label: s.name })), 'Backlog')
     case 'type': return select(['epic', 'story', 'task', 'bug'].map(t => ({ value: t, label: t[0]!.toUpperCase() + t.slice(1) })))
     case 'dueDate': case 'startDate': return <input id={id} className="input" type="date" value={str} onChange={e => onChange(e.target.value)} />

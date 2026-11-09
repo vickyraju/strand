@@ -31,7 +31,7 @@ export function itemsOf(projects: Project[], kind: Kind): Item[] {
       case 'templates':   return p.templates.map(t => mk(t, { name: t.name, type: t.type, title: t.title, description: t.description, priority: t.priority, labels: t.labels, estimate: t.estimate ?? null }))
       case 'rules':       return p.rules.map(r => mk(r, { name: r.name, enabled: r.enabled, trigger: r.trigger, actions: r.actions }))
       case 'components':  return (p.components ?? []).map(c => mk(c, { name: c.name, description: c.description, leadId: c.leadId ?? null, defaultAssignee: c.defaultAssignee }))
-      case 'releases':    return p.releases.map(r => mk(r, { name: r.name, description: r.description, startDate: r.startDate ?? null, releaseDate: r.releaseDate ?? null }, r.released))
+      case 'releases':    return p.releases.map(r => mk(r, { name: r.name, description: r.description, startDate: r.startDate ?? null, releaseDate: r.releaseDate ?? null, archived: !!r.archived }, r.released))
     }
   })
 }
@@ -70,6 +70,7 @@ function kindSync(kind: Kind) {
       if (!same(a.body, b.body)) await api('PATCH', `${path(b)}/${b.id}`, b.body)
       // the server renamed or cleared those options on the items that had them (spec 0105): take the items again
       if (kind === 'fields' && optionsCarried(a.body.options, b.body.options)) await settingsDeps.reloadProject(b.projectId)
+      if (kind === 'releases' && a.released && !b.released) await api('PATCH', `${path(b)}/${b.id}`, { released: false })   // Jira's Unrelease
       if (kind === 'releases' && !a.released && b.released) {
         const moveTo = releaseMoveTo(b.id, settingsDeps.baseIssues(), settingsDeps.getIssues(), settingsDeps.isUnfinished)
         await api('POST', `${path(b)}/${b.id}/release`, { moveTo })
@@ -86,6 +87,16 @@ function kindSync(kind: Kind) {
 
 export const KINDS: Kind[] = ['statuses', 'fields', 'releases', 'components', 'templates', 'rules']
 export const kindSyncs = Object.fromEntries(KINDS.map(k => [k, kindSync(k)])) as Record<Kind, ReturnType<typeof kindSync>>
+
+/** A change the server makes to a project's versions or components and to every item that has them (deleting with a
+ *  move, merging: spec 0304). After the call, `next` (the project afterwards) becomes what the server has and is shown in
+ *  the same step (`show`), so the sync never sees the old list against the new base; then the items are taken again. */
+export async function changeOnServer(kind: 'releases' | 'components', call: () => Promise<unknown>, next: Project, show: () => void) {
+  await call()
+  kindSyncs[kind].load(itemsOf([next], kind), i => i.projectId === next.id)
+  show()
+  await settingsDeps.reloadProject(next.id)
+}
 
 /** Load every kind from a freshly loaded project list, so the server's data is not sent back. */
 export function loadSettingsBase(projects: Project[], starredIds: string[]) {

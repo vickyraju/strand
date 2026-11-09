@@ -3468,7 +3468,10 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     'PATCH /projects/{key}/releases/{id}': ['padmin', `/projects/${K}/releases/${release}`, { name: 'x' }],
     'DELETE /projects/{key}/releases/{id}': ['padmin', `/projects/${K}/releases/${release}`],
     'POST /projects/{key}/releases/{id}/release': ['padmin', `/projects/${K}/releases/${release}/release`, {}],
-    'POST /projects/{key}/sprints': ['write', `/projects/${K}/sprints`, { name: 's' }],   // 0101.R8
+    'POST /projects/{key}/releases/{id}/merge': ['padmin', `/projects/${K}/releases/${release}/merge`, { from: ['00000000-0000-4000-8000-000000000000'] }],   // 0304.R3
+    'GET /projects/{key}/releases/{id}/usage': ['read', `/projects/${K}/releases/${release}/usage`],   // 0304.R5
+    'GET /projects/{key}/components/{id}/usage': ['read', `/projects/${K}/components/${component}/usage`],   // 0304.R5
+    'POST /projects/{key}/sprints':['write', `/projects/${K}/sprints`, { name: 's' }],   // 0101.R8
     'PATCH /projects/{key}/sprints/{id}': ['write', `/projects/${K}/sprints/${sprint}`, { name: 'x' }],   // 0101.R8
     'DELETE /projects/{key}/sprints/{id}': ['write', `/projects/${K}/sprints/${sprint}`],   // 0101.R8
     'POST /projects/{key}/sprints/{id}/start': ['write', `/projects/${K}/sprints/${sprint}/start`, { endsAt: '2026-12-01T00:00:00.000Z' }],   // 0101.R8
@@ -3891,4 +3894,49 @@ test('[0303.R1][0303.R2][0303.R3][0303.R4] the hierarchy is kept by the server: 
   const solo = (await mk('LVL', 'Solo')).body
   await mk('LVL', 'Solo sub', { parentId: solo.id })
   assert.deepEqual(err(await call('PATCH', `/api/v1/issues/${solo.key}`, { type: 'epic' })), [400, 'An item with sub-items can’t become an epic'])
+})
+
+test('[0304.R1][0304.R2][0304.R3][0304.R4] versions and components as in Jira: delete with a move, merge, archive', { skip }, async () => {
+  await call('POST', '/api/v1/projects', { name: 'Versions admin', key: 'VAD', template: 'kanban' })
+  const rel = async (name: string) => (await call('POST', '/api/v1/projects/VAD/releases', { name })).body.id as string
+  const [v1, v2, v3, v4] = [await rel('1.0'), await rel('1.1'), await rel('2.0'), await rel('2.1')]
+  const mk = async (title: string, extra = {}) => (await call('POST', '/api/v1/projects/VAD/issues', { title, ...extra })).body
+  const get = async (key: string) => (await call('GET', `/api/v1/issues/${key}`)).body
+  const a = await mk('A', { fixReleaseIds: [v1, v2], affectsReleaseIds: [v1] }), b = await mk('B', { fixReleaseIds: [v1] })
+  // R1: deleting 1.0 moves fix versions to 1.1 (no duplicate on A) and affects versions to 2.0; usage counts first
+  assert.deepEqual((await call('GET', `/api/v1/projects/VAD/releases/${v1}/usage`)).body, { fix: 2, affects: 1 })
+  assert.equal((await call('DELETE', `/api/v1/projects/VAD/releases/${v1}?fixTo=${v1}`)).status, 400)            // not into itself
+  assert.equal((await call('DELETE', `/api/v1/projects/VAD/releases/${v1}?fixTo=${v2}&affectsTo=${v3}`)).status, 204)
+  assert.deepEqual([(await get(a.key)).fixReleaseIds, (await get(a.key)).affectsReleaseIds, (await get(b.key)).fixReleaseIds], [[v2], [v3], [v2]])
+  // R3: merging 2.0 into 2.1 rewrites fix and affects versions and deletes 2.0, audited
+  const c = await mk('C', { fixReleaseIds: [v3] })
+  assert.equal((await call('POST', `/api/v1/projects/VAD/releases/${v4}/merge`, { from: [v4] })).status, 400)
+  assert.equal((await call('POST', `/api/v1/projects/VAD/releases/${v4}/merge`, { from: [v3] })).status, 200)
+  assert.deepEqual([(await get(c.key)).fixReleaseIds, (await get(a.key)).affectsReleaseIds], [[v4], [v4]])
+  assert.equal((await call('GET', '/api/v1/projects/VAD')).body.releases.some((r: any) => r.id === v3), false)
+  assert.ok((await pool.query(`select 1 from audit_log where action = 'project.release.merged'`)).rows.length)
+  // R4: archived 2.1 stays on items but can't be added or removed, edited, released or merged; JQL still finds it; unarchive restores
+  assert.equal((await call('PATCH', `/api/v1/projects/VAD/releases/${v4}`, { archived: true })).status, 200)
+  const r = await call('PATCH', `/api/v1/issues/${c.key}`, { fixReleaseIds: [] })
+  assert.deepEqual([r.status, r.body.error], [400, 'Version 2.1 is archived'])
+  assert.equal((await call('PATCH', `/api/v1/issues/${b.key}`, { fixReleaseIds: [v2, v4] })).status, 400)
+  assert.equal((await call('PATCH', `/api/v1/issues/${c.key}`, { title: 'C still' })).status, 200)                  // other edits are fine
+  assert.equal((await call('PATCH', `/api/v1/projects/VAD/releases/${v4}`, { name: '2.1.0' })).status, 400)
+  assert.equal((await call('POST', `/api/v1/projects/VAD/releases/${v4}/release`, {})).status, 400)
+  assert.equal((await call('POST', `/api/v1/projects/VAD/releases/${v2}/merge`, { from: [v4] })).status, 400)
+  assert.equal((await call('DELETE', `/api/v1/projects/VAD/releases/${v2}?fixTo=${v4}`)).status, 400)            // nor moved into
+  assert.deepEqual((await call('GET', `/api/v1/search?jql=${encodeURIComponent('project = VAD AND fixVersion = "2.1"')}`)).body.items.map((i: any) => i.key), [c.key])
+  assert.equal((await call('PATCH', `/api/v1/projects/VAD/releases/${v4}`, { archived: false })).status, 200)
+  assert.equal((await call('PATCH', `/api/v1/issues/${c.key}`, { fixReleaseIds: [] })).status, 200)
+  // Unrelease reaches the server
+  await call('POST', `/api/v1/projects/VAD/releases/${v2}/release`, {})
+  const un = (await call('PATCH', `/api/v1/projects/VAD/releases/${v2}`, { released: false })).body
+  assert.deepEqual([un.released, un.releasedAt], [false, null])
+  // R2: deleting a component moves its items to another
+  const comp = async (name: string) => (await call('POST', '/api/v1/projects/VAD/components', { name })).body.id as string
+  const [api, web] = [await comp('API'), await comp('Web')]
+  const d = await mk('D', { componentIds: [api, web] }), e = await mk('E', { componentIds: [api] })
+  assert.deepEqual((await call('GET', `/api/v1/projects/VAD/components/${api}/usage`)).body, { items: 2 })
+  assert.equal((await call('DELETE', `/api/v1/projects/VAD/components/${api}?moveTo=${web}`)).status, 204)
+  assert.deepEqual([(await get(d.key)).componentIds, (await get(e.key)).componentIds], [[web], [web]])
 })
