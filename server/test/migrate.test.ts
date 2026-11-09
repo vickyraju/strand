@@ -126,3 +126,23 @@ test('[0303.R5] rows that break the hierarchy are detached from their parent, wi
     await c.end()
   }
 })
+
+test('[0307.R4] labels with spaces become one word joined by "_", once per item', { skip }, async () => {
+  const { readFileSync } = await import('node:fs')
+  const sql = readFileSync(new URL('../migrations/20261129090000_labels.sql', import.meta.url), 'utf8')
+  const c = new pg.Client({ connectionString: url })
+  await c.connect()
+  const schema = `lb_${process.pid}`
+  try {
+    await c.query(`create schema ${schema}; set search_path = ${schema}, public`)
+    await c.query(`create table issues (id int primary key, labels text[]); create table item_templates (id int primary key, labels text[])`)
+    await c.query(`insert into issues values (1, '{"ui polish",backend}'), (2, '{"a b",a_b,c}'), (3, '{plain}')`)
+    await c.query(`insert into item_templates values (1, '{"  two   words "}')`)
+    await c.query(sql)
+    assert.deepEqual((await c.query(`select labels from issues order by id`)).rows.map((r: any) => r.labels), [['ui_polish', 'backend'], ['a_b', 'c'], ['plain']])
+    assert.deepEqual((await c.query(`select labels from item_templates`)).rows[0].labels, ['two_words'])
+  } finally {
+    await c.query(`drop schema ${schema} cascade`)
+    await c.end()
+  }
+})

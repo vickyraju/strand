@@ -522,7 +522,6 @@ export function suggestKey(name: string) {
   return (words.length > 1 ? words.map(w => w[0]).join('') : words[0].slice(0, 3)).slice(0, 10)
 }
 
-export const isValidKey = (key: string) => /^[A-Z]{2,10}$/.test(key)
 
 export const makeUser = (name: string, index: number, title?: string): User =>
   ({ id: uid(), name: name.trim(), initials: initialsOf(name), color: AVATAR_COLORS[index % AVATAR_COLORS.length], title })

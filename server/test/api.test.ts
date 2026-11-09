@@ -320,7 +320,7 @@ test('views and work logs accept client ids; notifications can be read and archi
 test('errors share one shape: message, stable code, and per-field messages for bad input', { skip }, async () => {
   const shape = (r: { body: any }) => assert.deepEqual(Object.keys(r.body).filter(k => !['errors'].includes(k)).sort(), ['code', 'error'])
   // 400: each bad field gets its own message
-  const bad = await call('POST', '/api/v1/projects', { name: '', key: 'bad', template: 'nope' })
+  const bad = await call('POST', '/api/v1/projects', { name: '', key: '', template: 'nope' })
   assert.equal(bad.status, 400); shape(bad)
   assert.equal(bad.body.code, 'invalid_input')
   assert.deepEqual(Object.keys(bad.body.errors).sort(), ['key', 'name', 'template'])
@@ -1415,7 +1415,7 @@ test('shared workflows: a system administrator’s change reaches every project 
 
 test('a workflow used by many projects: counted, listed a page at a time, previewed from the items that could move, applied by a job that carries on past a failing project', { skip, timeout: 120_000 }, async () => {
   const { runJobs } = await import('../src/jobs.ts')
-  const keys = Array.from({ length: 30 }, (_, n) => `MNY${String(n).padStart(2, '0')}`)
+  const keys = Array.from({ length: 30 }, (_, n) => `MNY${String.fromCharCode(65 + Math.floor(n / 26), 65 + (n % 26))}`)
   for (const key of keys) await call('POST', '/api/v1/projects', { name: `Many ${key}`, key, template: 'kanban' })
   const wfId = (await flow(keys[0]!, [])).workflows[0].workflowId
   const schemeId = (await call('GET', `/api/v1/projects/${keys[0]}`)).body.workflowSchemeId
@@ -1428,14 +1428,14 @@ test('a workflow used by many projects: counted, listed a page at a time, previe
   const p2 = (await call('GET', `/api/v1/admin/workflows/${wfId}/projects?limit=20&cursor=${p1.next}`)).body
   assert.deepEqual([p1.items.length, p2.items.length, p2.next, p1.total], [20, 10, null, 30])
   assert.deepEqual([...p1.items, ...p2.items].map((p: any) => p.key), keys)
-  assert.deepEqual((await call('GET', `/api/v1/admin/workflow-schemes/${schemeId}/projects?query=MNY2`)).body.items.map((p: any) => p.key), keys.filter(k => k.startsWith('MNY2')))
+  assert.deepEqual((await call('GET', `/api/v1/admin/workflow-schemes/${schemeId}/projects?query=MNYB`)).body.items.map((p: any) => p.key), keys.filter(k => k.startsWith('MNYB')))
   // taking In progress out: the preview's counts are what applying then does
   const cur = (await call('GET', `/api/v1/workflows/${wfId}`)).body
   const body = { statuses: cur.statuses.filter((s: any) => s.category !== 'in-progress'), transitions: [] }
   // as in Jira, the 5 items in it stop it leaving (spec 0103): the preview says where, kept short; then they move out
   const blocked = (await call('POST', `/api/v1/admin/workflows/${wfId}/publish`, { ...body, dryRun: true })).body.summary
   assert.deepEqual(blocked.blocked, [{ status: 'In progress', items: 5, projects: keys.slice(0, 3), more: 2 }])
-  assert.match((await call('POST', `/api/v1/admin/workflows/${wfId}/publish`, body)).body.error, /^In progress has 5 work items in MNY00, MNY01, MNY02 and 2 more\./)
+  assert.match((await call('POST', `/api/v1/admin/workflows/${wfId}/publish`, body)).body.error, /^In progress has 5 work items in MNYAA, MNYAB, MNYAC and 2 more\./)
   for (const i of doing) {
     const todo = (await call('GET', `/api/v1/projects/${i.key.split('-')[0]}`)).body.statuses.find((x: any) => x.name === 'To do')
     await call('PATCH', `/api/v1/issues/${i.key}`, { statusId: todo.id })
@@ -1466,7 +1466,7 @@ test('a workflow used by many projects: counted, listed a page at a time, previe
   assert.equal(moved, 5)
   // the message for a scheme in use stays short
   const del = await call('DELETE', `/api/v1/admin/workflow-schemes/${schemeId}`)
-  assert.equal(del.status, 409); assert.match(del.body.error, /MNY00, MNY01, MNY02 and 27 more/)
+  assert.equal(del.status, 409); assert.match(del.body.error, /MNYAA, MNYAB, MNYAC and 27 more/)
 })
 
 test('boards: several per project, each with its own filter (across projects too), columns, quick filters and swimlanes; project admins and named board admins change them', { skip, timeout: 120_000 }, async () => {
@@ -2047,7 +2047,7 @@ test('automation audit log: every run is recorded; a failing rule undoes only it
   assert.equal((await call('GET', '/api/v1/projects/AAL/automation/runs', undefined, 'aal.member@x.com')).status, 403)
 })
 
-test('CSV import: a dry run checks every row; the import runs as a job; running it again adds nothing twice', { skip, timeout: 60_000 }, async () => {
+test('[0307.R3] CSV import: a dry run checks every row; the import runs as a job; running it again adds nothing twice', { skip, timeout: 60_000 }, async () => {
   const p = (await call('POST', '/api/v1/projects', { name: 'From CSV', key: 'CSV', template: 'kanban' })).body
   await join('CSV', 'imp.ann@x.com')
   await call('POST', '/api/v1/projects/CSV/components', { name: 'API' })
@@ -3699,7 +3699,7 @@ test('system settings: admins change policies at runtime (validated, audited); e
   const { clearSettingsCache } = await import('../src/settings.ts')
   const put = (key: string, value: object, who = 'owner@x.com') => call('PUT', `/api/v1/admin/settings/${key}`, value, who)
   const all = (await call('GET', '/api/v1/admin/settings')).body
-  assert.deepEqual(all.map((s: any) => s.key), ['rateLimiting', 'attachments', 'accessTokens', 'searchAndBulk', 'licenseCleanup', 'groups', 'testing', 'dueReminders', 'email', 'deletedItems', 'timeTracking'])
+  assert.deepEqual(all.map((s: any) => s.key), ['rateLimiting', 'attachments', 'accessTokens', 'searchAndBulk', 'licenseCleanup', 'groups', 'testing', 'dueReminders', 'email', 'deletedItems', 'projectKeys', 'timeTracking'])
   assert.equal(all.find((s: any) => s.key === 'rateLimiting').value.enabled, false)                  // no limit unless an admin sets one
   assert.equal((await call('GET', '/api/v1/admin/settings', undefined, 'set.member@x.com')).status, 403)
   assert.equal((await put('attachments', { enabled: true, maxSizeMb: 5 }, 'set.member@x.com')).status, 403)
@@ -3709,7 +3709,7 @@ test('system settings: admins change policies at runtime (validated, audited); e
 
   // public settings: what the web app needs, for anyone signed in (not rate limiting)
   const pub = (await call('GET', '/api/v1/settings/public', undefined, 'set.member@x.com')).body
-  assert.deepEqual(Object.keys(pub).sort(), ['accessTokens', 'attachments', 'dueReminders', 'groups', 'searchAndBulk', 'testing', 'timeTracking'])
+  assert.deepEqual(Object.keys(pub).sort(), ['accessTokens', 'attachments', 'dueReminders', 'groups', 'projectKeys', 'searchAndBulk', 'testing', 'timeTracking'])
 
   // attachments: size limit and the switch
   await call('POST', '/api/v1/projects', { name: 'Settings', key: 'SET', template: 'kanban' })
@@ -3866,10 +3866,10 @@ test('[0302.R1][0302.R2][0302.R3][0302.R4] one rank order across projects: new w
 })
 
 test('[0303.R1][0303.R2][0303.R3][0303.R4] the hierarchy is kept by the server: epic > item > sub-item, sub-items in their parent’s project, a parent you can see', { skip }, async () => {
-  for (const [name, key] of [['Levels', 'LVL'], ['Levels too', 'LV2'], ['Hidden levels', 'LVH']]) await call('POST', '/api/v1/projects', { name, key, template: 'kanban' })
-  await join('LVL', 'lvl.mem@x.com'); await join('LV2', 'lvl.mem@x.com')
+  for (const [name, key] of [['Levels', 'LVL'], ['Levels too', 'LVB'], ['Hidden levels', 'LVH']]) await call('POST', '/api/v1/projects', { name, key, template: 'kanban' })
+  await join('LVL', 'lvl.mem@x.com'); await join('LVB', 'lvl.mem@x.com')
   const mk = async (key: string, title: string, extra = {}, who = 'owner@x.com') => call('POST', `/api/v1/projects/${key}/issues`, { title, ...extra }, who)
-  const epic = (await mk('LVL', 'Epic', { type: 'epic' })).body, other = (await mk('LV2', 'Other epic', { type: 'epic' })).body
+  const epic = (await mk('LVL', 'Epic', { type: 'epic' })).body, other = (await mk('LVB', 'Other epic', { type: 'epic' })).body
   const item = (await mk('LVL', 'Item', { parentId: epic.id })).body
   const sub = (await mk('LVL', 'Sub', { parentId: item.id })).body
   const err = (r: any) => [r.status, r.body.error]
@@ -3880,7 +3880,7 @@ test('[0303.R1][0303.R2][0303.R3][0303.R4] the hierarchy is kept by the server: 
   assert.deepEqual(err(await call('PATCH', `/api/v1/issues/${item.key}`, { parentId: lone.id })), [400, 'An item with sub-items can’t become a sub-item'])
   assert.deepEqual(err(await call('PATCH', `/api/v1/issues/${epic.key}`, { parentId: lone.id })), [400, 'An epic has no parent'])
   // R2: a sub-item stays in its parent's project; an epic may be in another project
-  assert.deepEqual(err(await mk('LV2', 'x', { parentId: item.id })), [400, 'A sub-item is in its parent’s project'])
+  assert.deepEqual(err(await mk('LVB', 'x', { parentId: item.id })), [400, 'A sub-item is in its parent’s project'])
   assert.equal((await call('PATCH', `/api/v1/issues/${lone.key}`, { parentId: other.id })).status, 200)
   // R3: a parent in a project I can't see, or a deleted one, is no parent at all
   const hidden = (await mk('LVH', 'Hidden epic', { type: 'epic' })).body
@@ -3949,4 +3949,39 @@ test('[0306.R1] time tracking settings: Jira’s defaults, public to everyone, c
   assert.equal((await put({ hoursPerDay: 7.5, daysPerWeek: 4, format: 'days', defaultUnit: 'h' })).status, 200)
   assert.equal((await call('GET', '/api/v1/settings/public')).body.timeTracking.hoursPerDay, 7.5)
   await put({ hoursPerDay: 8, daysPerWeek: 5, format: 'pretty', defaultUnit: 'm' })
+})
+
+test('[0307.R1] a label is one word of at most 255 characters, wherever labels are taken', { skip }, async () => {
+  await call('POST', '/api/v1/projects', { name: 'Labels', key: 'LBL', template: 'kanban' })
+  const r = await call('POST', '/api/v1/projects/LBL/issues', { title: 'Spaced', labels: ['ui polish'] })
+  assert.equal(r.status, 400); assert.match(JSON.stringify(r.body), /one word/)
+  const ok = (await call('POST', '/api/v1/projects/LBL/issues', { title: 'Fine', labels: ['ui_polish', 'x'.repeat(255)] }))
+  assert.equal(ok.status, 201)
+  assert.equal((await call('PATCH', `/api/v1/issues/${ok.body.key}`, { labels: ['x'.repeat(256)] })).status, 400)
+  assert.equal((await call('PATCH', `/api/v1/issues/${ok.body.key}`, { labels: ['two words'] })).status, 400)
+  assert.equal((await call('POST', '/api/v1/projects/LBL/templates', { name: 't', type: 'task', title: 't', labels: ['a b'] })).status, 400)
+  assert.equal((await call('POST', '/api/v1/projects/LBL/rules', { name: 'r', trigger: { kind: 'created' }, actions: [{ kind: 'label', value: 'a b' }] })).status, 400)
+  assert.equal((await call('POST', '/api/v1/projects/LBL/rules', { name: 'r', trigger: { kind: 'created' }, actions: [{ kind: 'label', value: 'triage' }] })).status, 201)
+})
+
+test('[0308.R1][0308.R2][0308.R3] project keys follow System settings: Jira’s default pattern and length; a new pattern must be sane and fit existing keys', { skip }, async () => {
+  const mk = (key: string) => call('POST', '/api/v1/projects', { name: `Key ${key}`, key, template: 'kanban' })
+  const put = (value: object) => call('PUT', '/api/v1/admin/settings/projectKeys', value)
+  assert.deepEqual((await call('GET', '/api/v1/settings/public')).body.projectKeys, { pattern: '[A-Z][A-Z]+', maxLength: 10 })
+  // R2: two or more capital letters, at most 10; lowercase is made uppercase
+  assert.equal((await mk('KA1')).status, 400)
+  assert.equal((await mk('K')).status, 400)
+  const r = await mk('KEYTOOLONGX'); assert.equal(r.status, 400); assert.equal(r.body.errors.key, '2–10 capital letters')
+  assert.equal((await mk('kab')).body.key, 'KAB')
+  // R3: patterns that allow a hyphen, a leading digit or underscore, that don't compile, or that an existing key breaks are refused
+  for (const pattern of ['[A-Z][A-Z-]+', '[A-Z0-9]+', '[A-Z_][A-Z]+', '[A-Z(', '.+'])
+    assert.equal((await put({ pattern, maxLength: 10 })).status, 400, pattern)
+  const misfit = await put({ pattern: '[A-Z]{4,}', maxLength: 10 })
+  assert.equal(misfit.status, 400); assert.match(misfit.body.error, /^Existing projects would not fit: [A-Z]/)
+  assert.equal((await put({ pattern: '[A-Z][A-Z]+', maxLength: 2 })).status, 400)          // existing keys are longer
+  // widened as Jira allows: digits after the first letter; a shorter maximum applies to new keys
+  assert.equal((await put({ pattern: '[A-Z][A-Z0-9]+', maxLength: 10 })).status, 200)
+  assert.equal((await mk('KA1')).status, 201)
+  await put({ pattern: '[A-Z][A-Z]+', maxLength: 10 }).then(x => assert.equal(x.status, 400))   // KA1 no longer fits
+  await call('DELETE', '/api/v1/projects/KA1')
 })

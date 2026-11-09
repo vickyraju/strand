@@ -1,5 +1,6 @@
 // Which transition a move uses, and whether its rules let it happen. The rules themselves are in shared/transitionRules.ts.
 import { z } from 'zod'
+import { label } from './shared/labels.ts'
 import type { Db } from './db.ts'
 import { HttpError, type Me } from './auth.ts'
 import { roleOf } from './access.ts'
@@ -32,7 +33,8 @@ export const rulesSchema = z.object({
   screen: z.array(z.union([field, z.literal('comment')])).max(30).optional(),
   actions: z.array(z.discriminatedUnion('kind', [
     z.object({ kind: z.literal('assign'), to: z.enum(['mover', 'reporter', 'lead', 'none', 'user']), userId: uuid.optional() }),
-    z.object({ kind: z.literal('set'), field: field.refine(f => SETTABLE.includes(f) || f.startsWith('custom.'), 'This field can’t be set by a transition'), value: z.union([value, z.null()]) }),
+    z.object({ kind: z.literal('set'), field: field.refine(f => SETTABLE.includes(f) || f.startsWith('custom.'), 'This field can’t be set by a transition'), value: z.union([value, z.null()]) })
+      .refine(a => a.field !== 'labels' || a.value == null || label.safeParse(a.value).success, { message: 'A label is one word: no spaces', path: ['value'] }),
     z.object({ kind: z.literal('copyFromParent'), field }),
     z.object({ kind: z.literal('comment'), body: z.string().min(1).max(20000) }),
   ])).max(LIMITS.actions).optional(),

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { splitLabels } from '../../server/src/shared/labels.ts'
 import { ChevronRight, Maximize2, Minimize2, X, CalendarDays, Tag, Zap, IterationCcw, Hash, FileText } from 'lucide-react'
 import { useStore, uid, userOf, statusesFor, type NewIssue, type IssueType, type Priority } from '../data/store'
 import { useApp } from '../appContext'
@@ -59,7 +60,7 @@ export default function CreateIssueModal({ defaults, onClose }: {
         projectId, title: title.trim(), description: description.trim(), type, status: statusObj?.id ?? status, priority, assigneeId,
         dueDate: dueDate || undefined, startDate: defaults.startDate, sprintId, parentId: type === 'epic' ? undefined : parentId,
         estimate: estimate === '' ? undefined : Math.max(0, Number(estimate)),
-        labels: labels.split(',').map(l => l.trim()).filter(Boolean),
+        labels: splitLabels(labels),
         ...(type === 'test' && defaults.testFolderId ? { testFolderId: defaults.testFolderId } : {}),
       },
     })
@@ -146,7 +147,7 @@ export default function CreateIssueModal({ defaults, onClose }: {
           </label>
           <label className="chip" title="Labels, separated by commas">
             <Tag size={13} className="muted" />
-            <input className="chip-input" value={labels} onChange={e => setLabels(e.target.value)} placeholder="Labels" aria-label="Labels" />
+            <input className="chip-input" value={labels} onChange={e => setLabels(e.target.value)} placeholder="Labels, separated by spaces" aria-label="Labels" />
           </label>
         </div>
 
