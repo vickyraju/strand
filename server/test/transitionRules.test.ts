@@ -60,11 +60,21 @@ test('actions: assign, set and clear (today for dates), copy from the parent, co
     { kind: 'assign', to: 'reporter' },
     { kind: 'set', field: 'dueDate', value: 'today' },
     { kind: 'set', field: 'custom.f1', value: null },
-    { kind: 'copyFromParent', field: 'releaseId' },
+    { kind: 'copyFromParent', field: 'fixReleaseIds' },
     { kind: 'comment', body: 'Moved by the workflow' },
-  ] }, ctx({ parent: { statusId: 's', releaseId: 'r1' } }), item, now)
-  assert.deepEqual(patch, { assigneeId: 'rob', dueDate: '2026-10-24', releaseId: 'r1', custom: {} })
+  ] }, ctx({ parent: { statusId: 's', fixReleaseIds: ['r1'] } }), item, now)
+  assert.deepEqual(patch, { assigneeId: 'rob', dueDate: '2026-10-24', fixReleaseIds: ['r1'], custom: {} })
   assert.deepEqual(comments, ['Moved by the workflow'])
   assert.deepEqual(actionChanges({ actions: [{ kind: 'assign', to: 'mover' }] }, ctx({ mover: null }), item).patch, {})   // automation is nobody to assign
   assert.deepEqual(actionChanges({ actions: [{ kind: 'assign', to: 'none' }] }, ctx(), item).patch, { assigneeId: null })
+})
+
+test('[0301.R7] fix versions in rules: a set action gives a one-version list, cleared is none, required needs one, copy takes the list', () => {
+  const set = (value: string | null) => actionChanges({ actions: [{ kind: 'set', field: 'fixReleaseIds', value }] }, ctx(), item).patch
+  assert.deepEqual(set('r2'), { fixReleaseIds: ['r2'] })
+  assert.deepEqual(set(null), { fixReleaseIds: [] })
+  const need = { validate: [{ kind: 'required' as const, fields: ['fixReleaseIds'] }] }
+  assert.ok(problems(need, ctx(), item, { ...item, fixReleaseIds: [] }).fixReleaseIds)
+  assert.deepEqual(problems(need, ctx(), item, { ...item, fixReleaseIds: ['r1'] }), {})
+  assert.deepEqual(actionChanges({ actions: [{ kind: 'copyFromParent', field: 'fixReleaseIds' }] }, ctx({ parent: { statusId: 's', fixReleaseIds: ['r1', 'r2'] } }), item).patch, { fixReleaseIds: ['r1', 'r2'] })
 })

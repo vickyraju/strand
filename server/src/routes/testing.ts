@@ -106,7 +106,7 @@ export async function importBatch(d: Db, req: any, batch: Batch, q: z.infer<type
     }
     const id = await insertIssue(d, me, project.id, {
       type: 'test_execution', title: (info.summary ?? `Execution results [${new Date().toISOString().slice(0, 19).replace('T', ' ')}]`).slice(0, 500),
-      description: info.description ?? '', testEnvironments: info.environments, revision: info.revision ?? '', ...(releaseId ? { releaseId } : {}),
+      description: info.description ?? '', testEnvironments: info.environments, revision: info.revision ?? '', ...(releaseId ? { fixReleaseIds: [releaseId] } : {}),
     }, 'Created by importing test results')
     exec = (await d.query<any>(`${ISSUE_ROW} where i.id = $1`, [id]))[0]
   } else if (info.environments.length) {
@@ -446,7 +446,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
   app.post('/issues/:key/executions', { schema: {
     tags: T, summary: 'Make a Test Execution for a Test Plan or Test Set with its tests (or add an existing execution to a plan, with `key`)', params: keyP,
     body: z.object({ key: z.string().max(40).optional(), title: z.string().trim().min(1).max(500).optional(), environments: z.array(z.string().trim().min(1).max(100)).max(20).optional(),
-      releaseId: uuid.nullable().optional(), revision: z.string().max(200).optional(), assigneeId: uuid.nullable().optional() }),
+      releaseId: uuid.nullable().optional().describe('Its fix version'), revision: z.string().max(200).optional(), assigneeId: uuid.nullable().optional() }),
   } }, async (req, reply) => {
     return tx(async d => {
       const c = await containerOf(d, req, req.params.key)
@@ -461,7 +461,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
         const { insertIssue } = await import('./issues.ts')
         execId = await insertIssue(d, req.me, c.projectId, {
           type: 'test_execution', title: req.body.title ?? `Run of ${c.key} ${c.title}`.slice(0, 500), testEnvironments: req.body.environments ?? [],
-          ...(req.body.releaseId !== undefined ? { releaseId: req.body.releaseId } : {}), ...(req.body.revision ? { revision: req.body.revision } : {}),
+          ...(req.body.releaseId ? { fixReleaseIds: [req.body.releaseId] } : {}), ...(req.body.revision ? { revision: req.body.revision } : {}),
           ...(req.body.assigneeId !== undefined ? { assigneeId: req.body.assigneeId } : {}),
         }, `Created from ${c.key}`)
         await addRuns(d, req.me, execId, (await membersOf(d, req.me, c.id)).filter((m: any) => m.type === 'test'))
@@ -624,7 +624,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
   /** The scope's run filter (latest runs everywhere, a version's executions, or a plan's), checked and turned into SQL. */
   async function scopeOf(d: Db, req: any, q: z.infer<typeof scopeQ>, args: unknown[]) {
     const where: string[] = []
-    if (q.version) { args.push(q.version); where.push(`e.release_id = $${args.length}`) }
+    if (q.version) { args.push(q.version); where.push(`e.fix_release_ids @> array[$${args.length}::uuid]`) }
     if (q.plan) {
       const p = await issueByKey(d, { me: req.me, method: 'GET' }, q.plan)
       if (p.type !== 'test_plan') throw new HttpError(400, `${p.key} isn’t a Test Plan`, { plan: 'Not a Test Plan' })

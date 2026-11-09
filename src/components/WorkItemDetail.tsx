@@ -16,7 +16,7 @@ import { RESOLUTIONS } from '../data/reducer'
 import { href, navigate } from '../router'
 import {
   Picker, Menu, TypeIcon, PriorityIcon, Avatar, Modal, typeMeta, MultiSelect, PRIORITY_META, StatusLozenge,
-  priorityOptions, typeOptions, formatDate,
+  priorityOptions, typeOptions,
 } from './ui'
 import { UserPicker } from './UserPicker'
 import { useProjectPeople } from '../api/users'
@@ -449,11 +449,8 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
               </Field>
             )}
             {project.releases.length > 0 && issue.type !== 'epic' && (
-              <Field label="Fix version">
-                <Picker value={issue.releaseId} className="field-btn" title="Fix version"
-                  options={[{ value: undefined, label: 'None' }, ...project.releases.map(r => ({ value: r.id as string | undefined, label: r.name, hint: r.released ? 'Released' : r.releaseDate ? `Due ${formatDate(r.releaseDate)}` : undefined }))]}
-                  onChange={releaseId => set({ releaseId })}
-                  trigger={issue.releaseId ? <>{project.releases.find(r => r.id === issue.releaseId)?.name}</> : <span className="muted">None</span>} />
+              <Field label="Fix versions">
+                <MultiSelect label="Fix versions" all={project.releases.map(r => ({ key: r.id, name: r.name }))} value={issue.fixReleaseIds ?? []} onChange={fixReleaseIds => set({ fixReleaseIds })} />
               </Field>
             )}
             {(project.securityLevels?.length ?? 0) > 0 && (

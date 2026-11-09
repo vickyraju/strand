@@ -25,7 +25,7 @@ test('settings items serialize exactly what the server stores (positions, null f
 
 const issue = (id: string, releaseId?: string, status = 'todo'): Issue => ({
   id, key: id, projectId: 'p1', type: 'task', title: id, description: '', status, priority: 'none', reporterId: 'u', labels: [],
-  watcherIds: [], links: [], attachments: [], custom: {}, worklogs: [], rank: 1, createdAt: 1, updatedAt: 1, ...(releaseId ? { releaseId } : {}),
+  watcherIds: [], links: [], attachments: [], custom: {}, worklogs: [], rank: 1, createdAt: 1, updatedAt: 1, ...(releaseId ? { fixReleaseIds: releaseId.split(',') } : {}),
 })
 
 test('releaseMoveTo finds the release unfinished work was moved to, ignoring finished work', () => {
@@ -33,6 +33,8 @@ test('releaseMoveTo finds the release unfinished work was moved to, ignoring fin
   const before = [issue('a', 'r1'), issue('b', 'r1', 'done'), issue('c', 'r1'), issue('z', 'r9')]
   assert.equal(releaseMoveTo('r1', before, [issue('a', 'r2'), issue('b', 'r1', 'done'), issue('c', 'r2'), issue('z', 'r9')], unfinished), 'r2')
   assert.equal(releaseMoveTo('r1', before, [issue('a'), issue('b', 'r1', 'done'), issue('c'), issue('z', 'r9')], unfinished), null)
+  // an item with two fix versions: the one that replaced the released one (spec 0301 R5)
+  assert.equal(releaseMoveTo('r1', [issue('a', 'r0,r1')], [issue('a', 'r0,r2')], unfinished), 'r2')
 })
 
 test('[0105.R3][0105.R5] a field change that renames or deletes an option reloads the project (the server changed its items); adding, disabling or reordering doesn’t', () => {

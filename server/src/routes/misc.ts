@@ -86,13 +86,14 @@ const plugin: FastifyPluginAsyncZod = async app => {
       `select p.key || '-' || i.number as key, p.key as project,
               coalesce((select wt.name from work_types wt where wt.project_id = i.project_id and wt.key = i.type), i.type) as type, i.title, st.name as status, i.priority,
               a.name as assignee, r.name as reporter, i.labels, i.estimate, i.time_estimate, i.start_date, i.due_date,
-              sp.name as sprint, rl.name as release, par_p.key || '-' || par.number as parent, i.resolution,
+              sp.name as sprint, par_p.key || '-' || par.number as parent, i.resolution,
               (select string_agg(c.name, ', ' order by c.name) from components c where c.id = any(i.component_ids)) as components,
+              (select string_agg(r.name, ', ' order by r.name) from releases r where r.id = any(i.fix_release_ids)) as release,
               (select string_agg(r.name, ', ' order by r.name) from releases r where r.id = any(i.affects_release_ids)) as affects,
               i.resolved_at, i.created_at, i.updated_at, i.description
          from issues i join projects p on p.id = i.project_id join statuses st on st.id = i.status_id
          left join users a on a.id = i.assignee_id left join users r on r.id = i.reporter_id
-         left join sprints sp on sp.id = i.sprint_id left join releases rl on rl.id = i.release_id
+         left join sprints sp on sp.id = i.sprint_id
          left join issues par on par.id = i.parent_id and par.deleted_at is null left join projects par_p on par_p.id = par.project_id
         where ${where.join(' and ')} order by ${order ? `${order}, i.id` : 'i.updated_at desc, i.id desc'} limit $${args.length}`, args)
     if (rows.length > max)
@@ -100,7 +101,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     const cols: [string, string][] = [
       ['Key', 'key'], ['Project', 'project'], ['Type', 'type'], ['Title', 'title'], ['Status', 'status'], ['Priority', 'priority'],
       ['Assignee', 'assignee'], ['Reporter', 'reporter'], ['Labels', 'labels'], ['Story points', 'estimate'], ['Time estimate (minutes)', 'timeEstimate'],
-      ['Start date', 'startDate'], ['Due date', 'dueDate'], ['Sprint', 'sprint'], ['Fix version', 'release'], ['Affects versions', 'affects'], ['Components', 'components'], ['Parent', 'parent'],
+      ['Start date', 'startDate'], ['Due date', 'dueDate'], ['Sprint', 'sprint'], ['Fix versions', 'release'], ['Affects versions', 'affects'], ['Components', 'components'], ['Parent', 'parent'],
       ['Resolution', 'resolution'], ['Resolved', 'resolvedAt'], ['Created', 'createdAt'], ['Updated', 'updatedAt'], ['Description', 'description'],
     ]
     const csv = [cols.map(c => c[0]).join(','), ...rows.map(r => cols.map(c => csvCell(r[c[1]])).join(','))].join('\r\n') + '\r\n'

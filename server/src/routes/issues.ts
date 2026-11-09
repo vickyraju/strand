@@ -22,7 +22,7 @@ export const RESOLUTIONS = ['Done', "Won't do", 'Duplicate', 'Cannot reproduce']
 export const ISSUE_ROW = `
   select i.id, p.key || '-' || i.number as key, i.project_id, i.number, i.type, i.title, i.description,
          i.status_id, i.priority, i.assignee_id, i.reporter_id, i.labels, i.estimate, i.time_estimate, i.time_remaining, i.component_ids, i.affects_release_ids, i.security_level_id, i.test_spec, i.test_folder_id, i.test_environments, i.revision,
-         i.due_date, i.start_date, i.sprint_id, i.release_id, live_par.id as parent_id, i.custom, i.rank, i.version,
+         i.due_date, i.start_date, i.sprint_id, i.fix_release_ids, live_par.id as parent_id, i.custom, i.rank, i.version,
          i.resolution, i.resolved_at, i.created_at, i.updated_at
     from issues i join projects p on p.id = i.project_id
     left join issues live_par on live_par.id = i.parent_id and live_par.deleted_at is null`   // a deleted parent (an epic) is no parent until restored (spec 0202)
@@ -44,7 +44,7 @@ const patchBody = z.object({
   assigneeId: uuid.nullable(), reporterId: uuid.describe('Modify reporter: project admins (spec 0203)'), labels: z.array(z.string().max(50)).max(50), estimate: z.number().nonnegative().nullable(),
   timeEstimate: z.number().int().nonnegative().nullable(), timeRemaining: z.number().int().nonnegative().nullable().describe('Remaining estimate, minutes (starts at the original estimate)'),
   dueDate: date.nullable(), startDate: date.nullable(),
-  sprintId: uuid.nullable(), releaseId: uuid.nullable().describe('Fix version'), parentId: uuid.nullable(),
+  sprintId: uuid.nullable(), fixReleaseIds: z.array(uuid).max(50).describe('Fix versions: releases of the project that fix it'), parentId: uuid.nullable(),
   securityLevelId: uuid.nullable().describe('Security level: only its members see the item (null: everyone in the project)'),
   componentIds: z.array(uuid).max(50).describe('Components of the project'), affectsReleaseIds: z.array(uuid).max(50).describe('Affects versions: releases of the project where it was found'),
   custom: z.record(z.string(), z.union([z.string(), z.number()])), rank: z.number(), testSpec: testSpec.nullable(),
@@ -289,9 +289,9 @@ async function applyPatch(d: Db, me: Me, cur: any, patch: z.infer<typeof patchBo
   return (await d.query<any>(`${ISSUE_ROW} where i.id = $1`, [cur.id]))[0]
 }
 
-/** Components and affects versions must be the project's own. */
-async function checkParts(d: Db, projectId: string, b: { componentIds?: string[]; affectsReleaseIds?: string[] }) {
-  for (const [ids, table, field, what] of [[b.componentIds, 'components', 'componentIds', 'component'], [b.affectsReleaseIds, 'releases', 'affectsReleaseIds', 'release']] as const) {
+/** Components, fix versions and affects versions must be the project's own. */
+async function checkParts(d: Db, projectId: string, b: { componentIds?: string[]; fixReleaseIds?: string[]; affectsReleaseIds?: string[] }) {
+  for (const [ids, table, field, what] of [[b.componentIds, 'components', 'componentIds', 'component'], [b.fixReleaseIds, 'releases', 'fixReleaseIds', 'release'], [b.affectsReleaseIds, 'releases', 'affectsReleaseIds', 'release']] as const) {
     if (!ids?.length) continue
     const [{ n }] = await d.query<{ n: number }>(`select count(*)::int as n from ${table} where project_id = $1 and id = any($2::uuid[])`, [projectId, [...new Set(ids)]]) as any
     if (n !== new Set(ids).size) throw new HttpError(400, `Every ${what} must be one of this project's`, { [field]: `Unknown ${what}` })
@@ -446,7 +446,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     if (q.status) add('i.status_id = ?', q.status)
     if (q.assignee) add('i.assignee_id = ?', q.assignee)
     if (q.type) add('i.type = ?', q.type)
-    if (q.release) add('i.release_id = ?', q.release)
+    if (q.release) add('i.fix_release_ids @> array[?::uuid]', q.release)
     if (q.parent) add('i.parent_id = ?', q.parent)
     if (q.sprint === 'none') where.push('i.sprint_id is null')
     else if (q.sprint) add('i.sprint_id = ?', q.sprint)
@@ -486,7 +486,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
       const { include } = req.body
       const copy = async (i: any, over: Record<string, unknown>) => insertIssue(d, req.me, i.projectId, {
         type: i.type, title: i.title, description: i.description, priority: i.priority, labels: i.labels, estimate: i.estimate,
-        timeEstimate: i.timeEstimate, dueDate: i.dueDate, startDate: i.startDate, releaseId: i.releaseId, custom: i.custom, securityLevelId: i.securityLevelId,
+        timeEstimate: i.timeEstimate, dueDate: i.dueDate, startDate: i.startDate, fixReleaseIds: i.fixReleaseIds, custom: i.custom, securityLevelId: i.securityLevelId,
         assigneeId: i.assigneeId && (await canJoinWork(d, i.projectId, i.assigneeId)) ? i.assigneeId : null,
         sprintId: include.sprint && i.sprintId && (await d.query(`select 1 from sprints where id = $1 and state <> 'closed'`, [i.sprintId])).length ? i.sprintId : null, ...over,   // a completed sprint stays behind
       }, `Cloned from ${i.key}`)

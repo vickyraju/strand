@@ -400,7 +400,8 @@ const plugin: FastifyPluginAsyncZod = async app => {
         if (kind === 'fields') await d.query('update issues set custom = custom - $2 where project_id = $1 and custom ? $2', [p.id, req.params.id])
         // …and a deleted component or release lets go of the items that named it
         if (kind === 'components') await d.query('update issues set component_ids = array_remove(component_ids, $2::uuid) where project_id = $1 and $2::uuid = any(component_ids)', [p.id, req.params.id])
-        if (kind === 'releases') await d.query('update issues set affects_release_ids = array_remove(affects_release_ids, $2::uuid) where project_id = $1 and $2::uuid = any(affects_release_ids)', [p.id, req.params.id])
+        if (kind === 'releases') await d.query(`update issues set fix_release_ids = array_remove(fix_release_ids, $2::uuid), affects_release_ids = array_remove(affects_release_ids, $2::uuid)
+          where project_id = $1 and (fix_release_ids @> array[$2::uuid] or $2::uuid = any(affects_release_ids))`, [p.id, req.params.id])
       })
       reply.code(204).send()
     })
@@ -659,10 +660,11 @@ const plugin: FastifyPluginAsyncZod = async app => {
     return { ...summary, jobId, importId }
   })
 
-  // Releasing a version moves its unfinished work to `moveTo` (or clears it)
+  // Releasing a version: its unfinished work moves to `moveTo` (the released version is replaced by it, their other fix
+  // versions stay), or stays where it is (Jira's "ignore"), spec 0301 R5
   app.post('/projects/:key/releases/:id/release', { schema: {
-    tags: T.config, summary: 'Mark a release shipped; unfinished work moves to another release', params: keyIdP,
-    body: z.object({ moveTo: uuid.nullable().default(null).describe('Release that receives unfinished work') }).default({ moveTo: null }),
+    tags: T.config, summary: 'Mark a release shipped; unfinished work may move to another release', params: keyIdP,
+    body: z.object({ moveTo: uuid.nullable().default(null).describe('Release that receives unfinished work (null: it keeps this one)') }).default({ moveTo: null }),
   } }, async req => {
     const { moveTo } = req.body
     const p = await projectByKey(db, req, req.params.key)
@@ -670,10 +672,13 @@ const plugin: FastifyPluginAsyncZod = async app => {
     return tx(async d => {
       const [r] = await d.query(`update releases set released = true, released_at = now() where id = $1 and project_id = $2 returning *`, [req.params.id, p.id])
       if (!r) throw new HttpError(404, 'Not found')
-      await d.query(
-        `update issues set release_id = $3, version = version + 1, updated_at = now()
-          where release_id = $1 and project_id = $2 and deleted_at is null
-            and status_id in (select id from statuses where project_id = $2 and category <> 'done')`, [req.params.id, p.id, moveTo])
+      if (moveTo) {
+        if (!(await d.query('select 1 from releases where id = $1 and project_id = $2', [moveTo, p.id])).length) throw new HttpError(400, 'Move the work to one of this project’s releases', { moveTo: 'Unknown release' })
+        await d.query(
+          `update issues set fix_release_ids = array(select x from unnest(array_replace(fix_release_ids, $1::uuid, $3::uuid)) with ordinality u(x, n) group by x order by min(n)), version = version + 1, updated_at = now()
+            where fix_release_ids @> array[$1::uuid] and project_id = $2 and deleted_at is null
+              and status_id in (select id from statuses where project_id = $2 and category <> 'done')`, [req.params.id, p.id, moveTo])
+      }
       await audit(d, req, { action: 'project.release.released', type: 'release', id: r.id, name: r.name, project: p, after: { moveTo } })
       return r
     })

@@ -306,7 +306,8 @@ export interface Issue {
   attachments: Attachment[]
   /** Values for the project's custom fields, by field id. */
   custom:      Record<string, string | number>
-  releaseId?:  string
+  /** Fix versions: releases that fix it (Jira's Fix Version/s, several, spec 0301). */
+  fixReleaseIds?: string[]
   /** How a finished item ended, and when it last reached Done (kept in step with the status). */
   resolution?: Resolution
   resolvedAt?: number
@@ -325,7 +326,7 @@ export interface Issue {
   timeRemaining?: number
   /** Components of the project it belongs to (Jira's). */
   componentIds?: string[]
-  /** Affects versions: releases where the problem was found (the fix version is `releaseId`). */
+  /** Affects versions: releases where the problem was found (the fix versions are `fixReleaseIds`). */
   affectsReleaseIds?: string[]
   worklogs:    Worklog[]
   /** Backlog order: lower is higher priority. Fractional so a move touches one item. */
@@ -421,7 +422,7 @@ export type ProjectPatch = Partial<Pick<Project,
   'name' | 'description' | 'color' | 'leadId' | 'statuses' | 'transitions' | 'layout' | 'boardPrefs' | 'rules' | 'fields' | 'releases' | 'templates' | 'types' | 'components' | 'securityLevels' | 'testing' | 'requirementTypes'>>
 export type IssuePatch = Partial<Omit<Issue, 'id' | 'key' | 'projectId' | 'createdAt' | 'watcherIds' | 'links' | 'attachments' | 'rank' | 'worklogs'>>   // reporterId: project admins (spec 0203)
 export type NewIssue = Pick<Issue, 'projectId' | 'title'> & Partial<Pick<Issue,
-  'type' | 'description' | 'status' | 'priority' | 'assigneeId' | 'labels' | 'estimate' | 'dueDate' | 'startDate' | 'sprintId' | 'parentId' | 'custom' | 'releaseId' | 'timeEstimate' | 'componentIds' | 'affectsReleaseIds' | 'testFolderId'>>
+  'type' | 'description' | 'status' | 'priority' | 'assigneeId' | 'labels' | 'estimate' | 'dueDate' | 'startDate' | 'sprintId' | 'parentId' | 'custom' | 'fixReleaseIds' | 'timeEstimate' | 'componentIds' | 'affectsReleaseIds' | 'testFolderId'>>
 
 export type Action =
   | { type: 'setOwner'; name: string; workspaceName?: string }
@@ -591,12 +592,15 @@ export function mentionedUsers(body: string, users: User[]) {
 
 export const actorId = (s: State) => s.ownerId ?? ''
 
+/** A release's work items: those with it among their fix versions (an item in two counts in both, spec 0301 R4). */
+export const itemsInRelease = (issues: Issue[], releaseId: string) => issues.filter(i => !!i.fixReleaseIds?.includes(releaseId))
+
 // ── Reducer ────────────────────────────────────────────────
 
 const FIELD_LABEL: Partial<Record<keyof IssuePatch, string>> = {
   title: 'title', description: 'description', status: 'status', priority: 'priority', assigneeId: 'assignee',
   type: 'type', labels: 'labels', estimate: 'estimate', dueDate: 'due date', sprintId: 'sprint', parentId: 'parent',
-  releaseId: 'release', timeEstimate: 'time estimate', custom: 'fields', startDate: 'start date', resolution: 'resolution',
+  fixReleaseIds: 'fix versions', timeEstimate: 'time estimate', custom: 'fields', startDate: 'start date', resolution: 'resolution',
 }
 
 /** Keeps resolution in step with the status, as the server does: reaching Done resolves (as Done unless chosen), leaving clears. */
@@ -765,7 +769,7 @@ export function reducer(state: State, action: Action, now = Date.now()): State {
       if (!src) return state
       const fields = (i: Issue): NewIssue => ({
         projectId: i.projectId, title: i.title, type: i.type, description: i.description, priority: i.priority, labels: i.labels,
-        estimate: i.estimate, timeEstimate: i.timeEstimate, dueDate: i.dueDate, startDate: i.startDate, releaseId: i.releaseId,
+        estimate: i.estimate, timeEstimate: i.timeEstimate, dueDate: i.dueDate, startDate: i.startDate, fixReleaseIds: i.fixReleaseIds,
         custom: i.custom, assigneeId: i.assigneeId, sprintId: action.include.sprint ? i.sprintId : undefined,
       })
       let next = reducer(state, { type: 'createIssue', id: action.id, issue: { ...fields(src), title: action.title, assigneeId: action.assigneeId, parentId: src.parentId } })
@@ -880,14 +884,16 @@ export function reducer(state: State, action: Action, now = Date.now()): State {
     case 'releaseVersion': {
       const project = state.projects.find(p => p.id === action.projectId)
       if (!project) return state
-      const open = state.issues.filter(i => i.releaseId === action.releaseId && !isDone(project, i)).map(i => i.id)
+      // unfinished work moves to `moveTo` (the released version replaced, their other fix versions kept), or keeps it (spec 0301 R5)
+      const open = action.moveTo ? state.issues.filter(i => i.fixReleaseIds?.includes(action.releaseId) && !isDone(project, i)) : []
       let next: State = {
         ...state,
         projects: state.projects.map(p => p.id !== project.id ? p : {
           ...p, releases: p.releases.map(r => r.id === action.releaseId ? { ...r, released: true, releasedAt: now } : r),
         }),
       }
-      if (open.length) next = reducer(next, { type: 'updateIssues', ids: open, patch: { releaseId: action.moveTo } }, now)
+      for (const i of open)
+        next = reducer(next, { type: 'updateIssues', ids: [i.id], patch: { fixReleaseIds: [...new Set(i.fixReleaseIds!.map(r => r === action.releaseId ? action.moveTo! : r))] } }, now)
       return next
     }
     case 'saveView':

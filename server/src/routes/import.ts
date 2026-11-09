@@ -90,7 +90,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
           id: nid(i.id), workspace_id: me.workspaceId, project_id: nid(i.projectId), number, type: i.type, title: i.title,
           description: i.description ?? '', status_id: nid(i.status), priority: i.priority, assignee_id: i.assigneeId ? me.id : null,
           reporter_id: me.id, labels: i.labels ?? [], estimate: i.estimate ?? null, time_estimate: i.timeEstimate ?? null,
-          due_date: i.dueDate ?? null, start_date: i.startDate ?? null, sprint_id: maybe(i.sprintId), release_id: maybe(i.releaseId),
+          due_date: i.dueDate ?? null, start_date: i.startDate ?? null, sprint_id: maybe(i.sprintId), fix_release_ids: (i.fixReleaseIds ?? (i.releaseId ? [i.releaseId] : [])).map(maybe).filter(Boolean),   // a file from before spec 0301 has one
           custom: JSON.stringify(custom), rank: i.rank ?? 0, created_at: ms(i.createdAt), updated_at: ms(i.updatedAt),
         })
         report.issues++

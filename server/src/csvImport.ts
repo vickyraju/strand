@@ -86,7 +86,7 @@ export async function checkImport(d: Db, projectId: string, csv: string, mapping
     if (comps) item.componentIds = comps.split(/[,;]/).map(c => c.trim()).filter(Boolean).flatMap(c => {
       const hit = components.get(c.toLowerCase()); if (!hit) warnings.push(`Component “${c}” isn’t in this project: left out`); return hit ? [hit.id] : []
     })
-    const fix = pick('fixVersion', releases, 'Release'); if (fix) item.releaseId = (fix as any).id
+    const fix = pick('fixVersion', releases, 'Release'); if (fix) item.fixReleaseIds = [(fix as any).id]
     const custom: Record<string, string | number> = {}
     for (const k of Object.keys(mapping).filter(k => k.startsWith('custom.'))) {
       const v = get(k), f = fields.get(k.slice(7))

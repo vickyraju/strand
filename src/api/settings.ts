@@ -42,13 +42,13 @@ export function optionsCarried(before: unknown, after: unknown) {
   return ((before ?? []) as { id: string; name: string }[]).some(o => next.get(o.id) !== o.name)
 }
 
-/** Where unfinished work went when a release was shipped locally: the release those issues point at now, else none. */
+/** Where unfinished work went when a release was shipped locally: the fix version that replaced it on those issues, else none. */
 export function releaseMoveTo(releaseId: string, before: Issue[], now: Issue[], isUnfinished: (i: Issue) => boolean): string | null {
-  const was = before.filter(i => i.releaseId === releaseId && isUnfinished(i)).map(i => i.id)
   const byId = new Map(now.map(i => [i.id, i]))
-  for (const id of was) {
-    const to = byId.get(id)?.releaseId
-    if (to && to !== releaseId) return to
+  for (const b of before.filter(i => i.fixReleaseIds?.includes(releaseId) && isUnfinished(i))) {
+    const after = byId.get(b.id)?.fixReleaseIds ?? []
+    const to = !after.includes(releaseId) && after.find(r => !b.fixReleaseIds!.includes(r))
+    if (to) return to
   }
   return null
 }

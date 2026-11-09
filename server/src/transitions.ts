@@ -54,7 +54,7 @@ export async function ruleContext(d: Db, item: any, me: Me | null): Promise<Rule
     d.query<{ open: number }>(
       `select count(*)::int as open from issues c join statuses s on s.id = c.status_id
         where c.parent_id = $1 and c.deleted_at is null and s.category <> 'done'`, [item.id]) as any,
-    item.parentId ? d.query<any>('select status_id, custom, release_id, sprint_id, priority, labels, due_date, start_date, estimate, time_estimate, resolution, assignee_id, description, type from issues where id = $1', [item.parentId]) : Promise.resolve([]),
+    item.parentId ? d.query<any>('select status_id, custom, fix_release_ids, sprint_id, priority, labels, due_date, start_date, estimate, time_estimate, resolution, assignee_id, description, type from issues where id = $1', [item.parentId]) : Promise.resolve([]),
     me ? d.query<{ groupId: string }>('select group_id from group_members where user_id = $1', [me.id]) : Promise.resolve([]),
   ])
   const names = await d.query<{ id: string; name: string }>(
