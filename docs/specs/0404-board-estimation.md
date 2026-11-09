@@ -1,6 +1,6 @@
 # 0404 Each Scrum board's estimation statistic: story points, original time estimate, or issue count
 
-Status: Approved (PO, 9 Nov 2026: "proceed")
+Status: Ported (aws-jira `e76cebe`, strand `6368cd3`), approved by the PO on 9 Nov 2026; awaiting verification
 Parity rows: AG-07
 
 ## Context and Jira reference
