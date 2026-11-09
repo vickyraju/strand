@@ -100,6 +100,7 @@ The roadmap, in order. Bugs come first, then the permission model, then the data
 | [0710](0710-remove-license-cleanup.md) | Remove License cleanup | 7 | Ported |
 | [0711](0711-authentication-methods.md) | Authentication methods: Entra SSO configured in Administration, login form, fallback, recovery | 7 | Ported |
 | [0712](0712-user-directories.md) | User directories: Active Directory / LDAP sign-in and sync | 7 | Ported |
+| [0714](0714-local-users.md) | Local users: Jira's internal directory (create, edit, passwords) | 7 | Approved |
 | 0801 | Jira inventory tool, run by the product owner | 8 | Planned |
 | 0802 | Jira DC importer with dry run and reconciliation | 8 | Planned |
 | 0803 | Planning like Advanced Roadmaps (decision after 0802) | 8 | Planned |
