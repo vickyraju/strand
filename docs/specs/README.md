@@ -55,11 +55,11 @@ The roadmap, in order. Bugs come first, then the permission model, then the data
 | [0302](0302-global-rank.md) | One rank across projects | 3 | Ported |
 | [0303](0303-hierarchy.md) | Hierarchy enforced on the server | 3 | Ported |
 | [0304](0304-versions-components.md) | Versions and components: move on delete, merge, archive | 3 | Ported |
-| 0305 | Priorities and resolutions as admin lists; resolution set by the transition | 3 | Planned |
+| [0305](0305-priorities-resolutions.md) | Priorities and resolutions as admin lists | 3 | In review |
 | [0306](0306-time-tracking.md) | Time tracking settings | 3 | Ported |
 | [0307](0307-labels.md) | Labels without spaces | 3 | Ported |
 | [0308](0308-project-key.md) | Project key pattern | 3 | Ported |
-| [0309](0309-unique-names.md) | Names that must be unique: projects, versions, components, filters per owner | 3 | Approved |
+| [0309](0309-unique-names.md) | Names that must be unique: projects, versions, components, filters per owner | 3 | Ported |
 | 0401 | Sprint completion counts work in the board's last column as done | 4 | Planned |
 | 0402 | Sprint report | 4 | Planned |
 | 0403 | Reopen and delete completed sprints | 4 | Planned |

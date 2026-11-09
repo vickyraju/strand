@@ -1,6 +1,6 @@
 # 0309 Names that must be unique: projects, versions, components, filters per owner
 
-Status: Approved (PO, 9 Nov 2026: "i approve everything"; "yes proceed")
+Status: Ported (aws-jira `6c0384a`, strand `450feb9`), approved by the PO on 9 Nov 2026; awaiting verification
 Parity rows: PRJ-08, ISS-25, SR-07
 
 ## Context and Jira reference
