@@ -1,6 +1,6 @@
 # 0303 The hierarchy is kept by the server: epic > item > sub-item
 
-Status: Approved (PO, 9 Nov 2026: "i approve everything" for the next two hours of work)
+Status: Ported (aws-jira `e20b20f`, strand `dd53515`), approved by the PO on 9 Nov 2026; awaiting verification
 Parity rows: ISS-02
 
 ## Context and Jira reference
