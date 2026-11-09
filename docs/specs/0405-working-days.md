@@ -1,6 +1,6 @@
 # 0405 Working days on a board
 
-Status: Approved (PO, 9 Nov 2026: "proceed")
+Status: Ported (aws-jira `6b56667`, strand `07ec127`), approved by the PO on 9 Nov 2026; awaiting verification
 Parity rows: AG-08
 
 ## Context and Jira reference
