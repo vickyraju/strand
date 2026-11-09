@@ -1,12 +1,11 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { parseDuration, formatDuration } from './time.ts'
+import { parseDuration, formatDuration, DEFAULT_TIME } from './time.ts'
 
 test('durations parse the way people type them', () => {
   assert.equal(parseDuration('1h 30m'), 90)
   assert.equal(parseDuration('45m'), 45)
   assert.equal(parseDuration('2d'), 960)
-  assert.equal(parseDuration('1.5'), 90)
   assert.equal(parseDuration('1d4h'), 720)
   assert.equal(parseDuration('soon'), null)
   assert.equal(parseDuration('3 apples'), null)
@@ -14,4 +13,22 @@ test('durations parse the way people type them', () => {
   assert.equal(formatDuration(90), '1h 30m')
   assert.equal(formatDuration(120), '2h')
   assert.equal(formatDuration(0), '0m')
+})
+
+test('[0306.R2] weeks and days follow the settings; a bare number is in the default unit', () => {
+  assert.equal(parseDuration('1w 2d 4h 30m'), 5 * 480 + 2 * 480 + 270)                     // 8h days, 5-day weeks (Jira's defaults)
+  const short = { ...DEFAULT_TIME, hoursPerDay: 6, daysPerWeek: 4 }
+  assert.equal(parseDuration('1w 1d', short), 4 * 360 + 360)
+  assert.equal(parseDuration('90'), 90)                                                    // minutes by default, as in Jira
+  assert.equal(parseDuration('1.5', { ...DEFAULT_TIME, defaultUnit: 'h' }), 90)
+  assert.equal(parseDuration('2', { ...DEFAULT_TIME, defaultUnit: 'd' }), 960)
+  assert.equal(parseDuration('1', { ...DEFAULT_TIME, defaultUnit: 'w' }), 2400)
+})
+
+test('[0306.R3][0306.R4] minutes show in the chosen format', () => {
+  const m = 2400 + 2 * 480 + 3 * 60 + 30
+  assert.equal(formatDuration(m), '1w 2d 3h 30m')
+  assert.equal(formatDuration(720, { ...DEFAULT_TIME, format: 'days' }), '1.5d')
+  assert.equal(formatDuration(750, { ...DEFAULT_TIME, format: 'hours' }), '12.5h')
+  assert.equal(formatDuration(720, { ...DEFAULT_TIME, hoursPerDay: 6 }), '2d')
 })

@@ -13,7 +13,8 @@ import {
 import { UserPicker } from './UserPicker'
 import { ProjectIcon } from './ProjectView'
 import { fieldText } from './CustomFields'
-import { loggedMinutes, formatDuration } from '../data/time'
+import { loggedMinutes } from '../data/time'
+import { useDurations } from '../api/settings-public'
 
 export type TableGroup = 'status' | 'assignee' | 'priority' | 'epic' | 'project' | 'none'
 type Col = `f:${string}` | 'type' | 'key' | 'project' | 'status' | 'assignee' | 'priority' | 'labels' | 'estimate' | 'logged' | 'due' | 'updated'
@@ -40,6 +41,7 @@ export default function IssueTable({ issues, id, groupBy, onGroupBy, project, sh
 }) {
   const { state, dispatch } = useStore()
   const { openIssue, toast, moveIssue } = useApp()
+  const { format } = useDurations()
   const storageKey = `forge:table:${id}`
   const [cols, setCols] = useState<Record<Col, boolean>>(() => ({
     type: true, key: true, project: !!showProjectColumn, status: true, assignee: true, priority: true,
@@ -315,7 +317,7 @@ export default function IssueTable({ issues, id, groupBy, onGroupBy, project, sh
                       )}
                       {cols.labels && <td className="col-labels"><span className="cell-flex">{i.labels.slice(0, 2).map(l => <span key={l} className="tag">{l}</span>)}{i.labels.length > 2 && <span className="muted">+{i.labels.length - 2}</span>}</span></td>}
                       {cols.estimate && <td className="col-num">{i.estimate ?? ''}</td>}
-                      {cols.logged && <td className="col-time muted">{loggedMinutes(i) ? `${formatDuration(loggedMinutes(i))}${i.timeEstimate ? ` / ${formatDuration(i.timeEstimate)}` : ''}` : ''}</td>}
+                      {cols.logged && <td className="col-time muted">{loggedMinutes(i) ? `${format(loggedMinutes(i))}${i.timeEstimate ? ` / ${format(i.timeEstimate)}` : ''}` : ''}</td>}
                       {cols.due && <td className={`col-due${i.dueDate && isOverdue(i.dueDate) && !done ? ' text-danger' : ''}`}>{i.dueDate ? formatDate(i.dueDate) : ''}</td>}
                       {customCols.map(f => <td key={f.id} className={`col-custom${f.kind === 'number' ? ' col-num' : ''}`}><span className="cell-ellipsis">{fieldText(f, i.custom[f.id])}</span></td>)}
                       {cols.updated && <td className="col-updated muted">{timeAgo(i.updatedAt)}</td>}

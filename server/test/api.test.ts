@@ -3699,7 +3699,7 @@ test('system settings: admins change policies at runtime (validated, audited); e
   const { clearSettingsCache } = await import('../src/settings.ts')
   const put = (key: string, value: object, who = 'owner@x.com') => call('PUT', `/api/v1/admin/settings/${key}`, value, who)
   const all = (await call('GET', '/api/v1/admin/settings')).body
-  assert.deepEqual(all.map((s: any) => s.key), ['rateLimiting', 'attachments', 'accessTokens', 'searchAndBulk', 'licenseCleanup', 'groups', 'testing', 'dueReminders', 'email', 'deletedItems'])
+  assert.deepEqual(all.map((s: any) => s.key), ['rateLimiting', 'attachments', 'accessTokens', 'searchAndBulk', 'licenseCleanup', 'groups', 'testing', 'dueReminders', 'email', 'deletedItems', 'timeTracking'])
   assert.equal(all.find((s: any) => s.key === 'rateLimiting').value.enabled, false)                  // no limit unless an admin sets one
   assert.equal((await call('GET', '/api/v1/admin/settings', undefined, 'set.member@x.com')).status, 403)
   assert.equal((await put('attachments', { enabled: true, maxSizeMb: 5 }, 'set.member@x.com')).status, 403)
@@ -3709,7 +3709,7 @@ test('system settings: admins change policies at runtime (validated, audited); e
 
   // public settings: what the web app needs, for anyone signed in (not rate limiting)
   const pub = (await call('GET', '/api/v1/settings/public', undefined, 'set.member@x.com')).body
-  assert.deepEqual(Object.keys(pub).sort(), ['accessTokens', 'attachments', 'dueReminders', 'groups', 'searchAndBulk', 'testing'])
+  assert.deepEqual(Object.keys(pub).sort(), ['accessTokens', 'attachments', 'dueReminders', 'groups', 'searchAndBulk', 'testing', 'timeTracking'])
 
   // attachments: size limit and the switch
   await call('POST', '/api/v1/projects', { name: 'Settings', key: 'SET', template: 'kanban' })
@@ -3939,4 +3939,14 @@ test('[0304.R1][0304.R2][0304.R3][0304.R4] versions and components as in Jira: d
   assert.deepEqual((await call('GET', `/api/v1/projects/VAD/components/${api}/usage`)).body, { items: 2 })
   assert.equal((await call('DELETE', `/api/v1/projects/VAD/components/${api}?moveTo=${web}`)).status, 204)
   assert.deepEqual([(await get(d.key)).componentIds, (await get(e.key)).componentIds], [[web], [web]])
+})
+
+test('[0306.R1] time tracking settings: Jira’s defaults, public to everyone, checked when saved', { skip }, async () => {
+  assert.deepEqual((await call('GET', '/api/v1/settings/public')).body.timeTracking, { hoursPerDay: 8, daysPerWeek: 5, format: 'pretty', defaultUnit: 'm' })
+  const put = (value: object) => call('PUT', '/api/v1/admin/settings/timeTracking', value)
+  assert.equal((await put({ hoursPerDay: 25, daysPerWeek: 5, format: 'pretty', defaultUnit: 'm' })).status, 400)
+  assert.equal((await put({ hoursPerDay: 8, daysPerWeek: 5, format: 'weeks', defaultUnit: 'm' })).status, 400)
+  assert.equal((await put({ hoursPerDay: 7.5, daysPerWeek: 4, format: 'days', defaultUnit: 'h' })).status, 200)
+  assert.equal((await call('GET', '/api/v1/settings/public')).body.timeTracking.hoursPerDay, 7.5)
+  await put({ hoursPerDay: 8, daysPerWeek: 5, format: 'pretty', defaultUnit: 'm' })
 })
