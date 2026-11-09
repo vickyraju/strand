@@ -111,7 +111,7 @@ async function upsertPerson(d: Db, dir: Directory, p: Person, workspaceId: strin
     if (u) {
       // whoever controls the directory's mail attribute could otherwise take over an administrator's account
       const [x] = await d.query<{ privileged: boolean }>(
-        `select is_system_admin($1) or exists (select 1 from memberships where user_id = $1 and role = 'owner') as privileged`, [u.id])
+        `select is_system_admin($1) or exists (select 1 from memberships where user_id = $1 and role in ('owner', 'admin')) as privileged`, [u.id])
       if (x!.privileged) return { skipped: 'Its email belongs to a Strand administrator, whose account is never linked by email' }
       change = 'linked'
     }
