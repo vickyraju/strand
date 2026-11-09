@@ -24,6 +24,7 @@ test('bodyOf includes the client id and skips fields without a value', () => {
   const b = bodyOf(mk('7', { estimate: 3 }))
   assert.equal(b.id, '7'); assert.equal(b.statusId, 's1'); assert.equal(b.estimate, 3)
   assert.equal('assigneeId' in b, false)
+  assert.equal('rank' in b, false)                // [0302.R2] the server puts new work last
 })
 
 test('diffIssues classifies new, returned, removed and edited issues', () => {
@@ -45,7 +46,7 @@ function harness(over: Partial<SyncDeps> = {}) {
     call: (async (method: string, path: string, body: any, headers: any) => {
       calls.push({ method, path, body, headers })
       const key = /issues\/([A-Z]+-\w+)/.exec(path)?.[1]
-      if (method === 'POST' && path.endsWith('/issues')) return { ...body, statusId: body.statusId, key: 'PAY-100', version: 1, reporterId: 'u1', createdAt: '2026-10-01T00:00:00Z', updatedAt: '2026-10-01T00:00:00Z' }
+      if (method === 'POST' && path.endsWith('/issues')) return { ...body, statusId: body.statusId, key: 'PAY-100', version: 1, rank: 1000, reporterId: 'u1', createdAt: '2026-10-01T00:00:00Z', updatedAt: '2026-10-01T00:00:00Z' }
       if (method === 'PATCH') return { ...issues.find(i => `PAY-${i.id}` === key || i.key === key)!, statusId: 's1', version: 2, createdAt: '2026-10-01T00:00:00Z', updatedAt: '2026-10-02T00:00:00Z', ...body }
       if (method === 'POST' && path.endsWith('/restore')) return { ...issues[0], statusId: 's1', version: 5, key: key!, createdAt: '2026-10-01T00:00:00Z', updatedAt: '2026-10-01T00:00:00Z' }
       return undefined

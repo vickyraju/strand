@@ -75,7 +75,7 @@ Checked against Atlassian's Data Center documentation on 5 November 2026 (Jira S
 |---|---|---|---|---|---|---|---|
 | ISS-01 | Fix version / affects version | Both multi-value | Both multi-value; releasing moves unresolved work by replacing the released version | match | match | 0301 | |
 | ISS-02 | Hierarchy | Epic > standard > sub-task, enforced ([levels](https://confluence.atlassian.com/jiraportfolioserver/configuring-initiatives-and-other-hierarchy-levels-802170489.html)) | Only on screen; the server allows cycles and cross-project parents (`issues.ts`) | diverges | match | 0303 | |
-| ISS-03 | Rank | One rank across projects (LexoRank) | Per-project numbers (`issues.ts`) | diverges | match | 0302 | Boards and sprints now span projects. |
+| ISS-03 | Rank | One rank across projects (LexoRank) | One order per workspace; new work last; crowded ranks respread around the move only | match | match | 0302 | Fractions instead of LexoRank strings: same order, no rebalancing job. |
 | ISS-04 | Priorities | Admin list, priority schemes, default | Fixed five, default none | diverges | match | 0305 | |
 | ISS-05 | Resolutions | Admin list; set by transition screen or post function, independent of status category ([resolutions](https://confluence.atlassian.com/adminjiraserver/defining-resolution-field-values-938847105.html)) | Fixed four, set by the Done category (trigger); changing a status's category rewrites every item's resolution | diverges | match | 0305 | |
 | ISS-06 | Labels | No spaces (*unconfirmed* for DC) | Spaces allowed; the length limits apply on edit but not on create (`issues.ts`) | diverges | match | 0307 | |

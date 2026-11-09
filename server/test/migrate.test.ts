@@ -81,3 +81,25 @@ test('[0301.R2][0301.R7] fix versions become a list (one version or none) and wo
     await c.end()
   }
 })
+
+test('[0302.R5] ranks are renumbered once per workspace, in their order, ties broken by id', { skip }, async () => {
+  const { readFileSync } = await import('node:fs')
+  const sql = readFileSync(new URL('../migrations/20261126090000_global_rank.sql', import.meta.url), 'utf8')
+  const c = new pg.Client({ connectionString: url })
+  await c.connect()
+  const schema = `gr_${process.pid}`
+  try {
+    await c.query(`create schema ${schema}; set search_path = ${schema}, public`)
+    await c.query(`create table issues (id uuid primary key, workspace_id uuid, rank double precision, deleted_at timestamptz)`)
+    const [w1, w2] = ['00000000-0000-4000-8000-0000000000c1', '00000000-0000-4000-8000-0000000000c2']
+    const id = (n: number) => `00000000-0000-4000-8000-00000000000${n}`
+    // workspace 1: two projects both started at 1000, so their items tie; workspace 2 on its own
+    await c.query(`insert into issues values ($1, $5, 1000, null), ($2, $5, 1000, null), ($3, $5, 2000, null), ($4, $6, 1000, null)`, [id(2), id(1), id(3), id(4), w1, w2])
+    await c.query(sql)
+    const { rows } = await c.query(`select id, workspace_id, rank from issues order by workspace_id, rank`)
+    assert.deepEqual(rows.map((r: any) => [r.id, r.rank]), [[id(1), 1024], [id(2), 2048], [id(3), 3072], [id(4), 1024]])
+  } finally {
+    await c.query(`drop schema ${schema} cascade`)
+    await c.end()
+  }
+})

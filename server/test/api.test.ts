@@ -3824,3 +3824,40 @@ test('[0301.R1][0301.R3][0301.R5][0301.R6][0301.R8] several fix versions: set, s
   assert.equal((await fix('FXI-1')).length, 1)
   assert.equal((await fix('FXI-2')).length, 2)
 })
+
+test('[0302.R1][0302.R2][0302.R3][0302.R4] one rank order across projects: new work goes last, imports after it, and crowded ranks respread only their neighbours', { skip }, async () => {
+  for (const [name, key] of [['Rank A', 'RKA'], ['Rank B', 'RKB']]) await call('POST', '/api/v1/projects', { name, key, template: 'kanban' })
+  const make = async (key: string, title: string, extra = {}) => (await call('POST', `/api/v1/projects/${key}/issues`, { title, ...extra })).body
+  const a1 = await make('RKA', 'a1'), b1 = await make('RKB', 'b1'), a2 = await make('RKA', 'a2'), b2 = await make('RKB', 'b2', { rank: -5 })
+  // R2: each new item comes after every other in the workspace, whatever rank the request sent
+  assert.ok(a1.rank < b1.rank && b1.rank < a2.rank && a2.rank < b2.rank)
+  const order = async () => (await pool.query(`select id from issues where workspace_id = (select workspace_id from issues where id = $1) order by rank, id`, [a1.id])).rows.map(r => r.id)
+  const ranks = async () => new Map((await pool.query(`select id, rank from issues where workspace_id = (select workspace_id from issues where id = $1)`, [a1.id])).rows.map(r => [r.id, r.rank]))
+  for (let i = 0; i < 110; i++) await make('RKA', `filler ${i}`)                    // more than 50 neighbours after the crowded spot
+  // R1, R4: crowd b1 and a2 together, then rank b2 between them: only neighbours move, and the order across both projects holds
+  await pool.query('update issues set rank = $2 where id = $1', [a2.id, b1.rank + 1e-9])
+  const before = (await order()).filter(id => id !== b2.id), was = await ranks()
+  const moved = (await call('PATCH', `/api/v1/issues/${b2.key}`, { rank: b1.rank + 5e-10 })).body
+  assert.equal(moved.version, b2.version + 1)
+  const expected = [...before]; expected.splice(expected.indexOf(a2.id), 0, b2.id)
+  assert.deepEqual(await order(), expected)
+  const now = await ranks()
+  const changed = [...now].filter(([id, r]) => was.get(id) !== r).length
+  assert.ok(changed > 1 && changed <= 102, `respread ${changed} items`)
+  const sorted = [...now.values()].sort((x, y) => x - y)
+  assert.ok(sorted.every((r, i) => i === 0 || r - sorted[i - 1]! > 1e-6), 'ranks are apart again')
+  // R3: an imported project keeps its order, after everything already there
+  const top = Math.max(...now.values())
+  const r = await call('POST', '/api/v1/import', {
+    version: 4, starred: [], views: [], comments: [], activity: [], sprints: [],
+    projects: [{ id: 'rp', key: 'RKI', name: 'Imported ranks', template: 'kanban', color: '#112233', nextNumber: 3, createdAt: 1,
+      statuses: [{ id: 's1', name: 'To do', color: '#000000', category: 'todo' }], transitions: [], fields: [], templates: [], rules: [], releases: [] }],
+    issues: [
+      { id: 'q2', key: 'RKI-2', projectId: 'rp', type: 'task', title: 'Second', status: 's1', priority: 'none', labels: [], rank: 2, createdAt: 1, updatedAt: 1, custom: {} },
+      { id: 'q1', key: 'RKI-1', projectId: 'rp', type: 'task', title: 'First', status: 's1', priority: 'none', labels: [], rank: 1, createdAt: 1, updatedAt: 1, custom: {} },
+    ],
+  })
+  assert.equal(r.status, 200)
+  const [first, second] = [(await call('GET', '/api/v1/issues/RKI-1')).body.rank, (await call('GET', '/api/v1/issues/RKI-2')).body.rank]
+  assert.ok(top < first && first < second)
+})

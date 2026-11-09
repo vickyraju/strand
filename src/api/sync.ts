@@ -26,10 +26,10 @@ const wire = (f: Scalar) => (f === 'status' ? 'statusId' : f)
 const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null)
 export const sameScalars = (a: Issue, b: Issue) => SCALARS.every(f => same(a[f], b[f]))
 
-/** Fields to send when creating: everything that has a value. */
+/** Fields to send when creating: everything that has a value, but its rank (the server puts new work last, spec 0302). */
 export function bodyOf(issue: Issue): Record<string, unknown> {
   const out: Record<string, unknown> = { id: issue.id }
-  for (const f of SCALARS) if (issue[f] !== undefined) out[wire(f)] = issue[f]
+  for (const f of SCALARS) if (issue[f] !== undefined && f !== 'rank') out[wire(f)] = issue[f]
   return out
 }
 

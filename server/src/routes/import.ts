@@ -80,6 +80,8 @@ const plugin: FastifyPluginAsyncZod = async app => {
       // Issues in two passes so parents can be referenced regardless of order
       const mine = issues.filter(i => done.has(i.projectId))
       for (const i of mine) nid(i.id)
+      // they keep their order, after every item already in the workspace (one rank order, spec 0302 R3)
+      const [{ base }] = await d.query<{ base: number }>('select coalesce(max(rank), 0) + 1024 as base from issues where workspace_id = $1', [me.workspaceId]) as any
       for (const i of mine) {
         const fieldIds = new Map<string, string>()
         const pr = s.projects.find((p: any) => p.id === i.projectId)
@@ -91,7 +93,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
           description: i.description ?? '', status_id: nid(i.status), priority: i.priority, assignee_id: i.assigneeId ? me.id : null,
           reporter_id: me.id, labels: i.labels ?? [], estimate: i.estimate ?? null, time_estimate: i.timeEstimate ?? null,
           due_date: i.dueDate ?? null, start_date: i.startDate ?? null, sprint_id: maybe(i.sprintId), fix_release_ids: (i.fixReleaseIds ?? (i.releaseId ? [i.releaseId] : [])).map(maybe).filter(Boolean),   // a file from before spec 0301 has one
-          custom: JSON.stringify(custom), rank: i.rank ?? 0, created_at: ms(i.createdAt), updated_at: ms(i.updatedAt),
+          custom: JSON.stringify(custom), rank: base + (i.rank ?? 0), created_at: ms(i.createdAt), updated_at: ms(i.updatedAt),
         })
         report.issues++
         report.skippedAttachments += (i.attachments ?? []).length

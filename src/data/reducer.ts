@@ -702,7 +702,7 @@ export function reducer(state: State, action: Action, now = Date.now()): State {
         watcherIds: [...new Set([actor, action.issue.assigneeId].filter((x): x is string => !!x))],
         links: [], attachments: [], worklogs: [], custom: action.issue.custom ?? {}, createdAt: now, updatedAt: now,
         ...(action.issue.timeEstimate != null ? { timeRemaining: action.issue.timeEstimate } : {}),
-        rank: Math.max(0, ...state.issues.filter(i => i.projectId === project.id).map(i => i.rank)) + 1,
+        rank: state.issues.reduce((m, i) => Math.max(m, i.rank), 0) + 1,   // last of all, as the server will put it (spec 0302)
       }
       const next: State = {
         ...state,
