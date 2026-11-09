@@ -1,6 +1,6 @@
 # 0712 User directories: Active Directory and LDAP, Read Only, as in Jira
 
-Status: Approved (PO, 10 Nov 2026: "as we have ldap sync configured other than sso, a admin user can use his corpid and password to login"; "do how it's done in jira dc as it is")
+Status: Ported (aws-jira `31c8c95`, strand `0baa3c2`), approved by the PO on 10 Nov 2026; awaiting verification
 Parity rows: DIR-01, DIR-02, DIR-03, DIR-04
 
 ## Context and Jira reference
