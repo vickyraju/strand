@@ -2,6 +2,7 @@
 // upload starts, offer the right token lifetimes, and so on). Loaded once and shared; without a server, the built-in values.
 import { useEffect, useState } from 'react'
 import { api, apiEnabled } from './client'
+import { DEFAULT_TIME, parseDuration, formatDuration, type TimeSettings } from '../data/time'
 
 export interface PublicSettings {
   attachments: { enabled: boolean; maxSizeMb: number }
@@ -10,6 +11,7 @@ export interface PublicSettings {
   testing: { finalStatusesHavePrecedence: boolean; resultImportMaxMb: number; resultImportMaxTests: number }
   groups: { whoCanCreate: 'everyone' | 'admins' }
   dueReminders: { enabled: boolean; daysAhead: number; daysLate: number; dueSoonDays: number }
+  timeTracking: TimeSettings
 }
 
 /** The same values as the server's defaults; used without a server and until the real ones arrive. */
@@ -20,6 +22,7 @@ export const DEFAULT_SETTINGS: PublicSettings = {
   testing: { finalStatusesHavePrecedence: true, resultImportMaxMb: 10, resultImportMaxTests: 2000 },
   groups: { whoCanCreate: 'everyone' },
   dueReminders: { enabled: true, daysAhead: 1, daysLate: 3, dueSoonDays: 3 },
+  timeTracking: DEFAULT_TIME,
 }
 
 let loading: Promise<PublicSettings> | undefined
@@ -43,4 +46,10 @@ export function usePublicSettings(): PublicSettings {
     return () => { listeners.delete(setS) }
   }, [])
   return s
+}
+
+/** Reading and showing durations with this workspace's time tracking settings (spec 0306). */
+export function useDurations() {
+  const t = usePublicSettings().timeTracking
+  return { parse: (text: string) => parseDuration(text, t), format: (minutes: number) => formatDuration(minutes, t) }
 }

@@ -56,7 +56,7 @@ The roadmap, in order. Bugs come first, then the permission model, then the data
 | [0303](0303-hierarchy.md) | Hierarchy enforced on the server | 3 | Ported |
 | [0304](0304-versions-components.md) | Versions and components: move on delete, merge, archive | 3 | Ported |
 | 0305 | Priorities and resolutions as admin lists; resolution set by the transition | 3 | Planned |
-| 0306 | Time tracking settings | 3 | Planned |
+| [0306](0306-time-tracking.md) | Time tracking settings | 3 | Approved |
 | 0307 | Labels without spaces | 3 | Planned |
 | 0308 | Project key pattern | 3 | Planned |
 | 0309 | Names that must be unique: projects, versions, components, filters per owner, groups | 3 | Planned |

@@ -5,11 +5,13 @@ import { canAdmin } from '../data/access'
 import type { Adjust } from '../../server/src/shared/estimates.ts'
 import { useApp } from '../appContext'
 import { Avatar, Modal, formatDate } from './ui'
-import { parseDuration, formatDuration, loggedMinutes } from '../data/time'
+import { loggedMinutes } from '../data/time'
+import { useDurations } from '../api/settings-public'
 
 /** Jira's time tracking in the details panel: logged against the original estimate, and what is left (the remaining
  *  estimate, which counts down as work is logged and can be set by hand). */
 export function TimeField({ issue }: { issue: Issue }) {
+  const { format } = useDurations()
   const { dispatch } = useStore()
   const [open, setOpen] = useState(false)
   const logged = loggedMinutes(issue)
@@ -20,13 +22,13 @@ export function TimeField({ issue }: { issue: Issue }) {
 
   return (
     <div className="time-field">
-      <button className="time-bar-btn" onClick={() => setOpen(true)} title="Log time" aria-label={`Log time. ${logged ? formatDuration(logged) : 'Nothing'} logged${remaining ? `, ${formatDuration(remaining)} remaining` : ''}`}>
+      <button className="time-bar-btn" onClick={() => setOpen(true)} title="Log time" aria-label={`Log time. ${logged ? format(logged) : 'Nothing'} logged${remaining ? `, ${format(remaining)} remaining` : ''}`}>
         <span className="time-bar">
           <span className={`time-logged${over ? ' over' : ''}`} style={{ width: `${(logged / scale) * 100}%` }} />
         </span>
         <span className="time-nums">
-          <span>{logged ? `${formatDuration(logged)} logged` : 'No time logged'}</span>
-          {(est > 0 || issue.timeRemaining !== undefined) && <span className={over ? 'text-danger' : 'muted'}>{formatDuration(remaining)} remaining</span>}
+          <span>{logged ? `${format(logged)} logged` : 'No time logged'}</span>
+          {(est > 0 || issue.timeRemaining !== undefined) && <span className={over ? 'text-danger' : 'muted'}>{format(remaining)} remaining</span>}
         </span>
       </button>
       <DurationInput label="Original estimate" value={issue.timeEstimate} onSave={v => dispatch({ type: 'updateIssues', ids: [issue.id], patch: { timeEstimate: v } })} />
@@ -38,7 +40,8 @@ export function TimeField({ issue }: { issue: Issue }) {
 
 /** A duration typed as "2d 4h", saved when it loses focus (empty clears it; something unreadable goes back). */
 function DurationInput({ label, value, onSave }: { label: string; value: number | undefined; onSave: (v: number | undefined) => void }) {
-  const shown = value ? formatDuration(value) : value === 0 ? '0m' : ''
+  const { parse, format } = useDurations()
+  const shown = value ? format(value) : value === 0 ? '0m' : ''
   const [text, setText] = useState(shown)
   const [was, setWas] = useState(value)
   if (was !== value) { setWas(value); setText(shown) }                        // changed elsewhere (logging work)
@@ -48,7 +51,7 @@ function DurationInput({ label, value, onSave }: { label: string; value: number 
       <input className="field-input" value={text} placeholder="e.g. 2d 4h" aria-label={label}
         onChange={e => setText(e.target.value)}
         onBlur={() => {
-          const v = text.trim() ? parseDuration(text) : undefined
+          const v = text.trim() ? parse(text) : undefined
           if (v === null || v === value) { setText(shown); return }
           onSave(v)
         }}
@@ -63,6 +66,7 @@ const MODES: { id: Mode; label: string }[] = [
 ]
 
 function LogTimeDialog({ issue, onClose }: { issue: Issue; onClose: () => void }) {
+  const { parse, format } = useDurations()
   const { state, dispatch } = useStore()
   const { toast } = useApp()
   const [spent, setSpent] = useState('')
@@ -71,8 +75,8 @@ function LogTimeDialog({ issue, onClose }: { issue: Issue; onClose: () => void }
   const [mode, setMode] = useState<Mode>('auto')
   const [amount, setAmount] = useState('')
   const [editing, setEditing] = useState<string | null>(null)
-  const minutes = parseDuration(spent)
-  const by = mode === 'new' || mode === 'manual' ? parseDuration(amount) : 0
+  const minutes = parse(spent)
+  const by = mode === 'new' || mode === 'manual' ? parse(amount) : 0
   const adjust: Adjust | null = mode === 'new' ? (by === null ? null : { adjustEstimate: 'new', newEstimate: by })
     : mode === 'manual' ? (by === null ? null : { adjustEstimate: 'manual', reduceBy: by }) : { adjustEstimate: mode }
   const logs = [...issue.worklogs].sort((a, b) => b.date.localeCompare(a.date) || b.at - a.at)
@@ -88,7 +92,7 @@ function LogTimeDialog({ issue, onClose }: { issue: Issue; onClose: () => void }
         e.preventDefault()
         if (!minutes || !adjust) return
         dispatch({ type: 'logWork', issueId: issue.id, minutes, date, note, adjust })
-        toast(`Logged ${formatDuration(minutes)} on ${issue.key}`)
+        toast(`Logged ${format(minutes)} on ${issue.key}`)
         setSpent(''); setNote(''); setAmount(''); setMode('auto')
       }}>
         <div className="form-row">
@@ -101,9 +105,9 @@ function LogTimeDialog({ issue, onClose }: { issue: Issue; onClose: () => void }
             <input id="lt-date" className="input" type="date" value={date} max={new Date().toISOString().slice(0, 10)} onChange={e => setDate(e.target.value)} />
           </div>
         </div>
-        <p className={`hint${spent && !minutes ? ' error' : ''}`}>{spent && !minutes ? 'Use a format like 45m, 2h, 1h 30m or 1d (8 hours).' : minutes ? `= ${formatDuration(minutes)}` : 'Use d (8 hours), h and m, e.g. 1h 30m.'}</p>
+        <p className={`hint${spent && !minutes ? ' error' : ''}`}>{spent && !minutes ? 'Use a format like 45m, 2h, 1h 30m or 1d (8 hours).' : minutes ? `= ${format(minutes)}` : 'Use d (8 hours), h and m, e.g. 1h 30m.'}</p>
         <fieldset className="wf-fieldset" style={{ marginTop: 10 }}>
-          <legend className="label">Remaining estimate{issue.timeRemaining !== undefined ? ` (now ${formatDuration(issue.timeRemaining) || '0m'})` : ''}</legend>
+          <legend className="label">Remaining estimate{issue.timeRemaining !== undefined ? ` (now ${format(issue.timeRemaining) || '0m'})` : ''}</legend>
           <div className="form-row" style={{ alignItems: 'center', gap: 6 }}>
             <div className="segmented sm" role="radiogroup" aria-label="Remaining estimate">
               {MODES.map(m => <button type="button" key={m.id} role="radio" aria-checked={mode === m.id} className={mode === m.id ? 'on' : ''} onClick={() => setMode(m.id)}>{m.label}</button>)}
@@ -117,7 +121,7 @@ function LogTimeDialog({ issue, onClose }: { issue: Issue; onClose: () => void }
 
       {logs.length > 0 && (
         <>
-          <h3 className="section-label" style={{ marginTop: 20 }}>Work log · {formatDuration(loggedMinutes(issue))}</h3>
+          <h3 className="section-label" style={{ marginTop: 20 }}>Work log · {format(loggedMinutes(issue))}</h3>
           <div className="worklog">
             {logs.map(w => {
               const who = userOf(state, w.userId)
@@ -126,7 +130,7 @@ function LogTimeDialog({ issue, onClose }: { issue: Issue; onClose: () => void }
               return (
                 <div key={w.id} className="worklog-row">
                   <Avatar user={who} size={22} />
-                  <span className="worklog-text"><b>{who?.name}</b> logged <b>{formatDuration(w.minutes)}</b>{w.note ? ` · ${w.note}` : ''}</span>
+                  <span className="worklog-text"><b>{who?.name}</b> logged <b>{format(w.minutes)}</b>{w.note ? ` · ${w.note}` : ''}</span>
                   <span className="muted sm nowrap">{formatDate(w.date)}</span>
                   {(mine || admin) && <>
                     <button className="icon-btn sm" onClick={() => setEditing(w.id)} aria-label="Change work log" title="Change"><Pencil size={13} /></button>
@@ -143,10 +147,11 @@ function LogTimeDialog({ issue, onClose }: { issue: Issue; onClose: () => void }
 }
 
 function EditRow({ w, onSave, onDone }: { w: Worklog; onSave: (minutes: number, date: string, note: string) => void; onDone: () => void }) {
-  const [spent, setSpent] = useState(formatDuration(w.minutes))
+  const { parse, format } = useDurations()
+  const [spent, setSpent] = useState(format(w.minutes))
   const [date, setDate] = useState(w.date)
   const [note, setNote] = useState(w.note)
-  const minutes = parseDuration(spent)
+  const minutes = parse(spent)
   return (
     <form className="worklog-row" onSubmit={e => { e.preventDefault(); if (minutes) onSave(minutes, date, note) }}>
       <input className="input input-sm" style={{ width: 90 }} aria-label="Time spent" value={spent} onChange={e => setSpent(e.target.value)} aria-invalid={!minutes} />

@@ -17,6 +17,7 @@ export const SETTINGS_PAGES = [
   { id: 'rate-limiting', label: 'Rate limiting' }, { id: 'attachments', label: 'Attachments' }, { id: 'access-tokens', label: 'Personal access tokens' },
   { id: 'search-and-bulk', label: 'Search, export and bulk' }, { id: 'email', label: 'Email notifications' }, { id: 'groups', label: 'Group creation' },
   { id: 'testing', label: 'Testing' }, { id: 'due-dates', label: 'Due dates' }, { id: 'deleted-items', label: 'Deleted work items' },
+  { id: 'time-tracking', label: 'Time tracking' },
 ] as const
 
 interface Setting<V = any> { key: string; label: string; description: string; value: V; default: V }
@@ -80,6 +81,12 @@ export default function SystemSettings({ page = SETTINGS_PAGES[0].id }: { page?:
         { key: 'finalStatusesHavePrecedence', label: 'A finished result outweighs a newer run that hasn’t finished', type: 'toggle', hint: 'Off: a test’s status is always its latest run’s' },
         { key: 'resultImportMaxMb', label: 'Largest CI results file (MB)', type: 'number', min: 1, max: 20 },
         { key: 'resultImportMaxTests', label: 'Most test results in one import', type: 'number', min: 10, max: 20000 },
+      ]} />}
+      {page === 'time-tracking' && <SimpleSection setting={of('timeTracking')} save={v => save('timeTracking', v)} fields={[
+        { key: 'hoursPerDay', label: 'Working hours per day', type: 'number', min: 1, max: 24, hint: 'How long “1d” is' },
+        { key: 'daysPerWeek', label: 'Working days per week', type: 'number', min: 1, max: 7, hint: 'How long “1w” is' },
+        { key: 'format', label: 'Show time as', type: 'select', options: [['pretty', 'Pretty (1w 2d 3h 30m)'], ['days', 'Days (1.5d)'], ['hours', 'Hours (12h)']] },
+        { key: 'defaultUnit', label: 'A number typed without a unit is in', type: 'select', options: [['m', 'Minutes'], ['h', 'Hours'], ['d', 'Days'], ['w', 'Weeks']] },
       ]} />}
       {page === 'deleted-items' && <SimpleSection setting={of('deletedItems')} save={v => save('deletedItems', v)} fields={[
         { key: 'retentionDays', label: 'Keep deleted work items for this many days', type: 'number', min: 1, max: 365, hint: 'Until then a project admin can restore them (Project settings › Deleted work items); after, they are removed for good' },
@@ -146,7 +153,7 @@ function EmailSection({ setting, save }: { setting: Setting<{ enabled: boolean; 
   )
 }
 
-interface Field { key: string; label: string; type: 'toggle' | 'number'; min?: number; max?: number; hint?: string }
+interface Field { key: string; label: string; type: 'toggle' | 'number' | 'select'; min?: number; max?: number; hint?: string; options?: [string, string][] }
 
 /** A setting made of switches and numbers: edit, then Save (or Reset to the saved value). */
 function SimpleSection({ setting, fields, save }: { setting: Setting; fields: Field[]; save: (v: object) => Promise<Record<string, string> | null> }) {
@@ -164,6 +171,10 @@ function SimpleSection({ setting, fields, save }: { setting: Setting; fields: Fi
             <span className="settings-label">{f.label}{f.hint && <span className="muted sm">{f.hint}</span>}</span>
             {f.type === 'toggle'
               ? <Toggle on={!!draft[f.key]} onChange={on => setDraft({ ...draft, [f.key]: on })} label={f.label} />
+              : f.type === 'select'
+              ? <select className="input" style={{ width: 'auto' }} value={draft[f.key] ?? ''} onChange={e => setDraft({ ...draft, [f.key]: e.target.value })} aria-invalid={!!errors[f.key]}>
+                  {f.options!.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                </select>
               : <input className="input" type="number" style={{ width: 120 }} min={f.min} max={f.max} value={draft[f.key] ?? ''}
                   onChange={e => setDraft({ ...draft, [f.key]: e.target.value === '' ? '' : Number(e.target.value) })} aria-invalid={!!errors[f.key]} />}
             {errors[f.key] && <span className="hint error">{errors[f.key]}</span>}

@@ -30248,7 +30248,7 @@
             "in": "path",
             "name": "key",
             "required": true,
-            "description": "One of: rateLimiting, attachments, accessTokens, searchAndBulk, licenseCleanup, groups, testing, dueReminders, email, deletedItems"
+            "description": "One of: rateLimiting, attachments, accessTokens, searchAndBulk, licenseCleanup, groups, testing, dueReminders, email, deletedItems, timeTracking"
           }
         ],
         "responses": {

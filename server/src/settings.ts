@@ -127,6 +127,18 @@ export const SETTINGS = {
     schema: z.object({ retentionDays: z.number().int().min(1).max(365).describe('Days a deleted work item is kept') }),
     default: { retentionDays: 30 },
   },
+  timeTracking: {
+    label: 'Time tracking',
+    description: 'How long a day and a week of work are, how time is shown, and what a number typed without a unit means (Jira’s time tracking settings). Stored times don’t change.',
+    public: true,
+    schema: z.object({
+      hoursPerDay: z.number().min(1).max(24).describe('Working hours in a day: how long “1d” is'),
+      daysPerWeek: z.number().min(1).max(7).describe('Working days in a week: how long “1w” is'),
+      format: z.enum(['pretty', 'days', 'hours']).describe('pretty: 1w 2d 3h 30m; days: 1.5d; hours: 12h'),
+      defaultUnit: z.enum(['m', 'h', 'd', 'w']).describe('The unit of a number typed without one'),
+    }),
+    default: { hoursPerDay: 8, daysPerWeek: 5, format: 'pretty', defaultUnit: 'm' },
+  },
   projectBackups: {
     label: 'Project backups',
     description: 'Whether deleting a project backs it up first, and where. Managed on the Project backups page.',

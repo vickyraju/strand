@@ -1,24 +1,42 @@
 import type { Issue } from './reducer.ts'
 
-/** "1h 30m", "45m", "2d" (8h days) → minutes. Returns null when it can't be read. */
-export function parseDuration(text: string): number | null {
+/** Jira's time tracking settings (System settings › Time tracking, spec 0306): how long a day and a week are, how time is
+ *  shown, and the unit of a number typed alone. Times themselves are always minutes. */
+export interface TimeSettings { hoursPerDay: number; daysPerWeek: number; format: 'pretty' | 'days' | 'hours'; defaultUnit: 'm' | 'h' | 'd' | 'w' }
+export const DEFAULT_TIME: TimeSettings = { hoursPerDay: 8, daysPerWeek: 5, format: 'pretty', defaultUnit: 'm' }
+
+const unitMinutes = (t: TimeSettings) => ({ m: 1, h: 60, d: t.hoursPerDay * 60, w: t.daysPerWeek * t.hoursPerDay * 60 })
+
+/** "1w 2d 4h 30m", "45m", "2d" → minutes; a bare number is in the default unit. Returns null when it can't be read. */
+export function parseDuration(text: string, t: TimeSettings = DEFAULT_TIME): number | null {
   const s = text.trim().toLowerCase()
   if (!s) return null
-  if (/^\d+(\.\d+)?$/.test(s)) return Math.round(Number(s) * 60)  // bare number = hours
+  const unit = unitMinutes(t)
+  if (/^\d+(\.\d+)?$/.test(s)) return Math.round(Number(s) * unit[t.defaultUnit]) || null
   let total = 0
   let matched = ''
-  for (const m of s.matchAll(/(\d+(?:\.\d+)?)\s*(d|h|m)/g)) {
-    total += Number(m[1]) * (m[2] === 'd' ? 480 : m[2] === 'h' ? 60 : 1)
+  for (const m of s.matchAll(/(\d+(?:\.\d+)?)\s*(w|d|h|m)/g)) {
+    total += Number(m[1]) * unit[m[2] as keyof typeof unit]
     matched += m[0]
   }
   return matched.replace(/\s/g, '') === s.replace(/\s/g, '') && total > 0 ? Math.round(total) : null
 }
 
-export function formatDuration(minutes: number) {
+/** Minutes as the settings show them: pretty (1w 2d 3h 30m), days (1.5d) or hours (12.5h). */
+export function formatDuration(minutes: number, t: TimeSettings = DEFAULT_TIME) {
   if (minutes <= 0) return '0m'
-  const h = Math.floor(minutes / 60), m = minutes % 60
-  return [h ? `${h}h` : '', m ? `${m}m` : ''].filter(Boolean).join(' ')
+  const unit = unitMinutes(t)
+  const round = (n: number) => String(Math.round(n * 100) / 100)
+  if (t.format === 'days') return `${round(minutes / unit.d)}d`
+  if (t.format === 'hours') return `${round(minutes / unit.h)}h`
+  let left = minutes
+  const parts: string[] = []
+  for (const u of ['w', 'd', 'h'] as const) {
+    const n = Math.floor(left / unit[u])
+    if (n) { parts.push(`${n}${u}`); left -= n * unit[u] }
+  }
+  if (left) parts.push(`${Math.round(left)}m`)
+  return parts.join(' ')
 }
 
 export const loggedMinutes = (i: Issue) => i.worklogs.reduce((n, w) => n + w.minutes, 0)
-
