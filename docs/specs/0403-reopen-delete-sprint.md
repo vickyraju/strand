@@ -1,6 +1,6 @@
 # 0403 Reopen a completed sprint; delete a completed sprint
 
-Status: Approved (PO, 9 Nov 2026: "i approve everything"; "continue")
+Status: Ported (aws-jira `21dd834`, strand `b9767d7`), approved by the PO on 9 Nov 2026; awaiting verification
 Parity rows: AG-04, AG-05
 
 ## Context and Jira reference
