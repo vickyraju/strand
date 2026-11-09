@@ -49,13 +49,21 @@ export const sprintSync = createCollectionSync<Sprint>({
     if (a.state === 'planned' && b.state === 'active') {
       sprintDeps.applySprint(mapSprint(await api('POST', `${base}/start`, { endsAt: iso(b.endsAt ?? Date.now() + 14 * 864e5) })))
       await sprintDeps.reloadProject(b.projectId)
+    } else if (a.state === 'closed' && b.state === 'active') {
+      // reopened (spec 0403): the server brings its work back
+      sprintDeps.applySprint(mapSprint(await api('POST', `${base}/reopen`)))
+      for (const projectId of projectsIn(b, sprintDeps.getIssues())) await sprintDeps.reloadProject(projectId)
     } else if (a.state === 'active' && b.state === 'closed') {
       sprintDeps.applySprint(mapSprint(await api('POST', `${base}/complete`, { moveTo: moveToOf(b, sprintDeps.getIssues()) })))
       // the server moved the unfinished work of every project in the sprint: take their copies (and versions) again
       for (const projectId of projectsIn(b, sprintDeps.getIssues())) await sprintDeps.reloadProject(projectId)
     }
   },
-  remove: async s => { await api('DELETE', `/api/projects/${keyOf(s.projectId)}/sprints/${s.id}`) },
+  remove: async s => {
+    await api('DELETE', `/api/projects/${keyOf(s.projectId)}/sprints/${s.id}`)
+    // a completed sprint's unfinished work went to the board's next sprint (spec 0403): take the items again
+    if (s.state === 'closed') await sprintDeps.reloadProject(s.projectId)
+  },
   // the project itself was deleted: the project delete removes its sprints
   shouldDelete: s => !!sprintDeps.projectKey(s.projectId),
   recover: () => sprintDeps.reloadAll(),

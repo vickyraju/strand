@@ -3480,6 +3480,7 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     'GET /projects/{key}/releases/{id}/usage': ['read', `/projects/${K}/releases/${release}/usage`],   // 0304.R5
     'GET /projects/{key}/components/{id}/usage': ['read', `/projects/${K}/components/${component}/usage`],   // 0304.R5
     'GET /projects/{key}/sprints/{id}/report': ['read', `/projects/${K}/sprints/${sprint}/report`],   // 0402.R8
+    'POST /projects/{key}/sprints/{id}/reopen': ['padmin', `/projects/${K}/sprints/${sprint}/reopen`],   // 0403.R1
     'POST /projects/{key}/sprints':['write', `/projects/${K}/sprints`, { name: 's' }],   // 0101.R8
     'PATCH /projects/{key}/sprints/{id}': ['write', `/projects/${K}/sprints/${sprint}`, { name: 'x' }],   // 0101.R8
     'DELETE /projects/{key}/sprints/{id}': ['write', `/projects/${K}/sprints/${sprint}`],   // 0101.R8
@@ -4164,4 +4165,53 @@ test('[0402.R1][0402.R2][0402.R3][0402.R4][0402.R5][0402.R6][0402.R7][0402.R8] S
   assert.deepEqual(keys((await call('GET', `/api/v1/projects/RPT/sprints/${s1.id}/report`, undefined, 'rpt.viewer@x.com')).body.notCompleted), [c.key])
   // R8: someone who can't see the project gets nothing
   assert.equal((await call('GET', `/api/v1/projects/RPT/sprints/${s1.id}/report`, undefined, 'rpt.out@x.com')).status, 404)
+})
+
+test('[0403.R1][0403.R2][0403.R3] reopening and deleting a completed sprint, as in Jira', { skip }, async () => {
+  const p = (await call('POST', '/api/v1/projects', { name: 'Reopened', key: 'ROP', template: 'scrum' })).body
+  await join('ROP', 'rop.member@x.com')
+  const done = p.statuses.find((s: any) => s.category === 'done').id, todo = p.statuses[0].id
+  const ends = { endsAt: new Date(Date.now() + 864e5).toISOString() }
+  const sprint = async (name: string) => (await call('POST', '/api/v1/projects/ROP/sprints', { name })).body
+  const mk = (title: string, sprintId: string) => call('POST', '/api/v1/projects/ROP/issues', { title, sprintId }).then(r => r.body)
+  const sprintOf = async (key: string) => (await call('GET', `/api/v1/issues/${key}`)).body.sprintId
+  const s1 = await sprint('Reopen me')
+  const a = await mk('A', s1.id), b = await mk('B', s1.id), c = await mk('C', s1.id)
+  await call('POST', `/api/v1/projects/ROP/sprints/${s1.id}/start`, ends)
+  await call('PATCH', `/api/v1/issues/${a.key}`, { statusId: done })
+  await call('POST', `/api/v1/projects/ROP/sprints/${s1.id}/complete`, { moveTo: null })          // B and C go to the backlog
+  // R1: a member can't; while another sprint is active it's refused; then it comes back with its work, except work in an active sprint
+  const s2 = await sprint('Next one')
+  await call('PATCH', `/api/v1/issues/${c.key}`, { sprintId: s2.id })
+  await call('POST', `/api/v1/projects/ROP/sprints/${s2.id}/start`, ends)
+  assert.equal((await call('POST', `/api/v1/projects/ROP/sprints/${s1.id}/reopen`, undefined, 'rop.member@x.com')).status, 403)
+  const busy = await call('POST', `/api/v1/projects/ROP/sprints/${s1.id}/reopen`)
+  assert.equal(busy.status, 409); assert.match(busy.body.error, /Next one is active/)
+  await call('POST', `/api/v1/projects/ROP/sprints/${s2.id}/complete`, { moveTo: null })       // C back to the backlog, s2 closed
+  await call('PATCH', `/api/v1/issues/${c.key}`, { sprintId: null })
+  const s3 = await sprint('Active elsewhere')
+  const reopened = await call('POST', `/api/v1/projects/ROP/sprints/${s1.id}/reopen`)
+  assert.equal(reopened.status, 200); assert.deepEqual([reopened.body.state, reopened.body.completedAt], ['active', null])
+  assert.deepEqual([await sprintOf(a.key), await sprintOf(b.key), await sprintOf(c.key)], [s1.id, s1.id, s1.id])
+  assert.ok((await pool.query(`select 1 from audit_log where action = 'sprint.reopened'`)).rows.length)
+  // R2: deleting an active sprint is refused; completed again and deleted, its unfinished work goes to the next planned sprint
+  assert.equal((await call('DELETE', `/api/v1/projects/ROP/sprints/${s1.id}`)).status, 409)
+  await call('POST', `/api/v1/projects/ROP/sprints/${s1.id}/complete`, { moveTo: s3.id })        // B, C to s3; A stays (completed)
+  await call('PATCH', `/api/v1/issues/${a.key}`, { statusId: todo })                           // A is unfinished again
+  await call('PATCH', `/api/v1/issues/${b.key}`, { sprintId: null })
+  assert.equal((await call('DELETE', `/api/v1/projects/ROP/sprints/${s1.id}`)).status, 204)
+  assert.deepEqual([await sprintOf(a.key), await sprintOf(c.key)], [s3.id, s3.id])
+  // with no planned sprint left: the backlog; completed work keeps no sprint
+  const d = await mk('D', s3.id)
+  await call('POST', `/api/v1/projects/ROP/sprints/${s3.id}/start`, ends)
+  await call('PATCH', `/api/v1/issues/${d.key}`, { statusId: done })
+  await call('POST', `/api/v1/projects/ROP/sprints/${s3.id}/complete`, { moveTo: null })
+  await call('PATCH', `/api/v1/issues/${b.key}`, { sprintId: null })
+  await pool.query('update issues set sprint_id = $1 where id = $2', [s3.id, a.id])             // unfinished work still in it
+  assert.equal((await call('DELETE', `/api/v1/projects/ROP/sprints/${s3.id}`)).status, 204)
+  assert.deepEqual([await sprintOf(a.key), await sprintOf(d.key)], [null, null])
+  // R3: a planned sprint's work goes to the backlog
+  const s4 = await sprint('Planned'); const e = await mk('E', s4.id)
+  assert.equal((await call('DELETE', `/api/v1/projects/ROP/sprints/${s4.id}`)).status, 204)
+  assert.equal(await sprintOf(e.key), null)
 })

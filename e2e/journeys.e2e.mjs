@@ -1344,3 +1344,19 @@ test('[0402.R1] the Sprint Report lists what a sprint completed and what it didn
   assert.match(notDone, /Unfinished work/); assert.match(notDone, new RegExp(`${late.key} \\*`))
   assert.deepEqual(o.problems, [])
 })
+
+test('[0403.R4] a project admin reopens a completed sprint from the Sprint Report; its unfinished work comes back', { skip, timeout: 90_000 }, async () => {
+  await owner('POST', '/projects', { name: 'Reopening', key: 'RPN', template: 'scrum' })
+  const s1 = (await owner('POST', '/projects/RPN/sprints', { name: 'Closed too soon' })).body
+  const item = (await owner('POST', '/projects/RPN/issues', { title: 'Not finished', sprintId: s1.id, estimate: 2 })).body
+  await owner('POST', `/projects/RPN/sprints/${s1.id}/start`, { endsAt: new Date(Date.now() + 864e5).toISOString() })
+  await owner('POST', `/projects/RPN/sprints/${s1.id}/complete`, { moveTo: null })
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url('/project/RPN/reports/sprint'))
+  await o.click('button:has-text("Reopen sprint")')
+  const state = async () => (await owner('GET', '/projects/RPN')).body.sprints.find(s => s.id === s1.id).state
+  for (let i = 0; i < 40 && (await state()) !== 'active'; i++) await new Promise(r => setTimeout(r, 250))
+  assert.equal(await state(), 'active')
+  assert.equal((await owner('GET', `/issues/${item.key}`)).body.sprintId, s1.id)
+  assert.deepEqual(o.problems, [])
+})
