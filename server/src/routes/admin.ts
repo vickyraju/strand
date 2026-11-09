@@ -6,6 +6,7 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { db, tx, type Db } from '../db.ts'
 import { HttpError, requireAdmin, type Me } from '../auth.ts'
 import { audit, changes } from '../audit.ts'
+import { priorities, resolutions } from '../lists.ts'
 import { enqueue, kickJobs, registerJob } from '../jobs.ts'
 import { allowedBackupBuckets, backupBucket, backupSettings } from '../backups.ts'
 import { s3 } from '../storage.ts'
@@ -296,8 +297,10 @@ const plugin: FastifyPluginAsyncZod = async app => {
   })
 
   // what the web app needs to behave like the server (limits it shows or checks before sending)
-  app.get('/settings/public', { schema: { tags: ['Me'], summary: 'Settings every signed-in person may see: attachment, token, export, bulk and due-date limits' } }, async req =>
-    Object.fromEntries(await Promise.all((Object.keys(SETTINGS) as SettingKey[]).filter(k => SETTINGS[k].public).map(async k => [k, await getSetting(req.me.workspaceId, k)]))))
+  app.get('/settings/public', { schema: { tags: ['Me'], summary: 'Settings every signed-in person may see: attachment, token, export, bulk and due-date limits, and the priority and resolution lists' } }, async req => ({
+    ...Object.fromEntries(await Promise.all((Object.keys(SETTINGS) as SettingKey[]).filter(k => SETTINGS[k].public).map(async k => [k, await getSetting(req.me.workspaceId, k)]))),
+    priorities: await priorities(db, req.me.workspaceId), resolutions: await resolutions(db, req.me.workspaceId),   // spec 0305: the app's pickers read them
+  }))
 
   // ── Backups taken when a project is deleted (a workspace setting, for global admins) ──
   app.get('/admin/settings/project-backups', { schema: { tags: TAG, summary: 'Whether deleting a project backs it up first, and where (global admins)' } }, async req => {

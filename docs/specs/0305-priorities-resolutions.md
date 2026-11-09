@@ -1,6 +1,6 @@
 # 0305 Priorities and resolutions as admin lists
 
-Status: In review (two questions for the product owner, below)
+Status: Approved (PO, 9 Nov 2026: default priority Medium; the resolution follows each workflow)
 Parity rows: ISS-04, ISS-05
 
 ## Context and Jira reference
@@ -26,7 +26,7 @@ Parity rows: ISS-04, ISS-05
 - **R1: Priorities list.** Administration › Priorities: add, rename, recolour, choose an icon, reorder, and mark one as the default. Names are unique, ignoring case.
   - Today's five are kept, with the same keys, so existing items don't change.
   - New priorities get keys of their own.
-- **R2: The default priority** is given to new work when none is chosen, including CSV import and the API. *(Question 1.)*
+- **R2: The default priority** is given to new work when none is chosen, including CSV import and the API. It is Medium out of the box, as in Jira; an admin can choose another. Existing items keep theirs.
 - **R3: Deleting a priority** asks where its items, templates and automation rules go. At least one priority must remain.
 - **R4: Search and order by priority** follow the list:
   - JQL `priority = High` matches by name;
@@ -34,17 +34,12 @@ Parity rows: ISS-04, ISS-05
 - **R5: Resolutions list.** Administration › Resolutions: add, rename, describe, reorder, mark the default, delete (moving items to another).
   - Renaming carries over to every item that has it.
   - Today's four are kept.
-- **R6: When the resolution is set.** *(Question 2.)*
+- **R6: Each workflow says how its items get a resolution** (Administration › Workflows, the workflow's settings). An item follows the workflow its work type uses in its project's scheme.
+  - **On reaching Done** (the default, and every existing workflow keeps it): reaching a Done status sets the resolution list's default, unless the move chose one. Leaving Done clears it. This is Jira Software's simplified workflows.
+  - **Only by transition rules** (Jira's classic workflows): reaching Done sets nothing on its own. A transition's "Set field → Resolution" rule or the transition screen sets it, and items that reach Done without one stay Unresolved.
+  - In both modes, leaving Done clears the resolution. Jira's classic workflows need a "clear resolution" post function for that; Strand does it always, so an item is never open and resolved at once. This is a deliberate simplification.
+  - "Resolved" is when the resolution was set.
 - **R7: Screens.** Every priority and resolution picker, icon and filter reads the lists: create, detail, table, board, bulk edit, transition dialog, rules editor, templates, automation and search.
-
-## Questions for the product owner
-
-1. **Default priority for new work.** Jira's is Medium. Strand's is "No priority" today.
-   - **Recommendation:** make Medium the default, as in Jira. An admin can choose another.
-   - The question is whether existing habits around "No priority" matter.
-2. **When the resolution is set.** Jira sets it per transition (screen or post function). Jira Software's simplified workflows set it on reaching Done, as Strand does today for any Done-category status.
-   - **Recommendation:** keep today's behaviour, which matches Jira Software's simplified workflows, and use the list's default as the resolution set on reaching Done. Transition rules can already set a resolution explicitly.
-   - The alternative, resolution only through transition rules, means every existing workflow needs a rule added, or items stay unresolved.
 
 ## Permissions
 
@@ -53,7 +48,8 @@ Global admins edit both lists. Everyone reads them.
 ## Data model and migration
 
 - `priorities (workspace_id, key, name, description, color, icon, position, is_default)`, seeded with today's five for every workspace, and for new workspaces.
-- `resolutions (workspace_id, name, description, position, is_default)`, seeded with today's four.
+- `resolutions (workspace_id, name, description, position, is_default)`, seeded with today's four (Done is the default).
+- `workflows.resolution_on_done boolean not null default true`. The resolution trigger reads it, and the list's default.
 - The fixed checks on `issues.priority` and on templates are dropped; the API checks against the list.
 - `strand` gets the same migration in `supabase/migrations`.
 
@@ -82,7 +78,7 @@ Both lists are small (tens of rows), cached per workspace like System settings. 
 | R1–R3 | Server tests: add, rename, reorder, default, delete with move; a new item gets the default |
 | R4 | Server test: JQL by name, ORDER BY and > follow the list order after a reorder |
 | R5 | Server test: rename carries to items; delete moves them |
-| R6 | Per the decision |
+| R6 | Server test: a workflow set to "only by transition rules" leaves an item reaching Done unresolved, and a Set field rule resolves it; "on reaching Done" sets the list's default |
 | R7 | Browser journey: an admin adds "Blocker" above High; it appears in the item's picker and sorts first |
 
 ## Strand branch
@@ -93,4 +89,14 @@ Same rules.
 
 - **Priority schemes** (a different list per project): later, if needed.
 
+## Open questions
+
+None.
+
 ## Changelog
+
+- 9 Nov 2026: the product owner chose Medium as the default priority, and per-workflow resolution (R6).
+- 9 Nov 2026, while building (within the approved rules):
+  - The CSV export's Priority column shows the priority's name, not its key.
+  - An automation rule or transition rule naming a priority no longer in the list fails (automation) or is skipped with a history note (transition), as for a missing assignee.
+  - The resolution setting sits in the workflow editor's header, and saves at once, apart from the diagram's draft.

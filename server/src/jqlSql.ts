@@ -4,7 +4,8 @@ import { HttpError, type Me } from './auth.ts'
 import { parseJql, relative, JqlError, type Clause, type Node, type Query, type Value } from './shared/jql.ts'
 
 const CATEGORY: Record<string, string> = { 'to do': 'todo', todo: 'todo', 'in progress': 'in-progress', 'in-progress': 'in-progress', done: 'done' }
-const PRIORITY_RANK = `case i.priority when 'urgent' then 5 when 'high' then 4 when 'medium' then 3 when 'low' then 2 else 1 end`
+/** Higher for higher priorities: the list's order (Administration › Priorities, spec 0305 R4), first is highest. */
+const PRIORITY_RANK = `(select -pr.position from priorities pr where pr.workspace_id = i.workspace_id and pr.key = i.priority)`
 const DATES: Record<string, string> = { created: 'i.created_at', updated: 'i.updated_at', resolved: 'i.resolved_at', due: 'i.due_date', start: 'i.start_date' }
 const NUMBERS: Record<string, string> = { estimate: 'i.estimate', timeEstimate: 'i.time_estimate', timeRemaining: 'i.time_remaining' }
 const EMPTY: Record<string, string> = {
@@ -159,7 +160,7 @@ export async function jqlToSql(d: Db, me: Me, q: Query, args: unknown[]): Promis
         if (!cat) throw new HttpError(400, 'JQL: statusCategory is "To Do", "In Progress" or Done', { jql: 'Unknown status category' })
         return `st.category = ${put(cat)}`
       }
-      case 'priority': return `i.priority = lower(${put(text(v, 'priority'))})`
+      case 'priority': { const t = put(text(v, 'priority')); return `i.priority in (select pr.key from priorities pr where pr.workspace_id = i.workspace_id and (lower(pr.name) = lower(${t}) or pr.key = lower(${t})))` }
       case 'assignee': return person('i.assignee_id', v)
       case 'reporter': return person('i.reporter_id', v)
       case 'labels': return `${put(text(v, 'labels'))} = any(i.labels)`
@@ -209,9 +210,8 @@ export async function jqlToSql(d: Db, me: Me, q: Query, args: unknown[]): Promis
       if (c.field in DATES) return `${DATES[c.field]} ${c.op} (${when(v)})::timestamptz${c.field === 'due' || c.field === 'start' ? '::date' : ''}`
       if (c.field in NUMBERS) return `${NUMBERS[c.field]} ${c.op} ${number(v)}`
       if (c.field === 'priority') {
-        const rank = { urgent: 5, highest: 5, high: 4, medium: 3, low: 2, lowest: 2, none: 1 }[text(v, 'priority').toLowerCase()]
-        if (!rank) throw new HttpError(400, 'JQL: priority is urgent, high, medium, low or none', { jql: 'Unknown priority' })
-        return `(${PRIORITY_RANK}) ${c.op} ${put(rank)}`
+        const t = put(text(v, 'priority'))   // compared by place in the list; an unknown name matches nothing
+        return `(${PRIORITY_RANK}) ${c.op} (select -pr.position from priorities pr where pr.workspace_id = i.workspace_id and (lower(pr.name) = lower(${t}) or pr.key = lower(${t})))`
       }
       if (isCustom(c.field)) {
         const v0 = c.values[0]!

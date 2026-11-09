@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { checkPriority } from '../lists.ts'
 import { label, labels } from '../shared/labels.ts'
 import type { FastifyRequest } from 'fastify'
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
@@ -82,7 +83,7 @@ const childPatch = {
     position: z.number().int() }).partial(),
   templates: z.object({
     name: z.string().min(1), type: z.string().min(1).max(40), title: z.string(), description: z.string(),
-    priority: z.enum(['urgent', 'high', 'medium', 'low', 'none']), labels, estimate: z.number().nullable(),
+    priority: z.string().min(1).max(40), labels, estimate: z.number().nullable(),
   }).partial(),
   rules: z.object({
     name: z.string().min(1), enabled: z.boolean(),
@@ -113,6 +114,12 @@ const projectBody = z.object({
 
 const keyP = z.object({ key: z.string().describe('Project key (PAY) or id (uuid)') })
 const keyIdP = keyP.extend({ id: uuid })
+
+/** Templates and automation rules name priorities of the list (spec 0305). */
+async function checkPriorities(ws: string, kind: string, body: Record<string, any>) {
+  if (kind === 'templates') await checkPriority(db, ws, body.priority)
+  if (kind === 'rules') for (const a of (body.actions ?? []) as { kind: string; value?: string }[]) if (a.kind === 'priority') await checkPriority(db, ws, a.value ?? '', 'actions')
+}
 
 /** One of the project's versions that work may move to: not archived and not `not` (spec 0304). */
 async function usableRelease(d: Db, projectId: string, id: string, not: string | null, field: string) {
@@ -369,6 +376,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
       await requireProjectAdmin(req, p)
       const body = req.body as Record<string, unknown>
       if (kind === 'fields' && body.options) body.options = withOptionIds(body.options as Opt[])
+      await checkPriorities(req.me.workspaceId, kind, body)
       const w = pick(body, [...cfg.cols], json)
       // Ordered collections (statuses, fields) go to the end unless the caller says where
       if ((cfg.cols as readonly string[]).includes('position') && body.position === undefined) {
@@ -392,6 +400,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
       await requireProjectAdmin(req, p)
       const patch = req.body as Record<string, unknown>
       if (kind === 'fields' && patch.options) patch.options = withOptionIds(patch.options as Opt[])
+      await checkPriorities(req.me.workspaceId, kind, patch)
       const w = pick(patch, [...cfg.cols], json)
       if (!w.keys.length) throw new HttpError(400, 'Nothing to update')
       return tx(async d => {
@@ -869,7 +878,7 @@ async function typeWorkflowList(d: Db, projectId: string) {
   const status = new Map((await d.query<{ id: string; globalStatusId: string }>('select id, global_status_id from statuses where project_id = $1', [projectId])).map(s => [s.globalStatusId, s.id]))
   return [...byType].map(([typeKey, wid]) => {
     const w = wfs.get(wid) ?? def
-    return { typeKey, workflowId: w.id, workflow: w.name, statusIds: w.statuses.map(g => status.get(g)).filter((x): x is string => !!x) }
+    return { typeKey, workflowId: w.id, workflow: w.name, statusIds: w.statuses.map(g => status.get(g)).filter((x): x is string => !!x), resolutionOnDone: w.resolutionOnDone }
   })
 }
 

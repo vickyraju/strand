@@ -6,7 +6,7 @@ import { parseCsv, guessMapping, mapRows, IMPORT_FIELDS, type ImportField } from
 import { useApp } from '../appContext'
 import { apiEnabled } from '../api/client'
 import ServerImport from './ServerImport'
-import { Modal, TypeIcon, typeMeta, typeList, PRIORITY_META, PRIORITIES, plural } from './ui'
+import { Modal, TypeIcon, typeMeta, typeList, priorityLabel, priorityKeys, plural } from './ui'
 
 // ── Templates ──────────────────────────────────────────────
 
@@ -32,7 +32,7 @@ export function TemplatesPanel({ project }: { project: Project }) {
               <TypeIcon type={t.type} size={18} />
               <div className="person-text">
                 <span className="strong">{t.name}</span>
-                <span className="muted sm">{typeMeta(t.type, project).label} · {PRIORITY_META[t.priority].label}{t.labels.length ? ` · ${t.labels.join(', ')}` : ''}</span>
+                <span className="muted sm">{typeMeta(t.type, project).label} · {priorityLabel(t.priority)}{t.labels.length ? ` · ${t.labels.join(', ')}` : ''}</span>
               </div>
               <button className="btn btn-ghost btn-sm" onClick={() => setEditing(t)}>Edit</button>
               <button className="icon-btn" onClick={() => { setTemplates(project.templates.filter(x => x.id !== t.id)); toast(`Deleted ${t.name}`) }} aria-label={`Delete ${t.name}`} title="Delete"><Trash2 size={14} /></button>
@@ -73,7 +73,7 @@ export function TemplateDialog({ template, project, onClose, onSave }: { templat
         <div style={{ flex: 1 }}>
           <label className="label" htmlFor="tp-pri">Priority</label>
           <select id="tp-pri" className="input" value={t.priority} onChange={e => setT({ ...t, priority: e.target.value as Priority })}>
-            {PRIORITIES.map(p => <option key={p} value={p}>{PRIORITY_META[p].label}</option>)}
+            {priorityKeys().map(p => <option key={p} value={p}>{priorityLabel(p)}</option>)}
           </select>
         </div>
         <div style={{ width: 110 }}>

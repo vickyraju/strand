@@ -2041,13 +2041,18 @@
                               "description": "uuid"
                             },
                             "description": "Statuses an item of this type can be in; new ones start in the first"
+                          },
+                          "resolutionOnDone": {
+                            "type": "boolean",
+                            "description": "Reaching Done sets the default resolution (spec 0305)"
                           }
                         },
                         "required": [
                           "typeKey",
                           "workflowId",
                           "workflow",
-                          "statusIds"
+                          "statusIds",
+                          "resolutionOnDone"
                         ],
                         "additionalProperties": false
                       }
@@ -3151,13 +3156,18 @@
                               "description": "uuid"
                             },
                             "description": "Statuses an item of this type can be in; new ones start in the first"
+                          },
+                          "resolutionOnDone": {
+                            "type": "boolean",
+                            "description": "Reaching Done sets the default resolution (spec 0305)"
                           }
                         },
                         "required": [
                           "typeKey",
                           "workflowId",
                           "workflow",
-                          "statusIds"
+                          "statusIds",
+                          "resolutionOnDone"
                         ],
                         "additionalProperties": false
                       }
@@ -4037,13 +4047,18 @@
                               "description": "uuid"
                             },
                             "description": "Statuses an item of this type can be in; new ones start in the first"
+                          },
+                          "resolutionOnDone": {
+                            "type": "boolean",
+                            "description": "Reaching Done sets the default resolution (spec 0305)"
                           }
                         },
                         "required": [
                           "typeKey",
                           "workflowId",
                           "workflow",
-                          "statusIds"
+                          "statusIds",
+                          "resolutionOnDone"
                         ],
                         "additionalProperties": false
                       }
@@ -5102,13 +5117,18 @@
                               "description": "uuid"
                             },
                             "description": "Statuses an item of this type can be in; new ones start in the first"
+                          },
+                          "resolutionOnDone": {
+                            "type": "boolean",
+                            "description": "Reaching Done sets the default resolution (spec 0305)"
                           }
                         },
                         "required": [
                           "typeKey",
                           "workflowId",
                           "workflow",
-                          "statusIds"
+                          "statusIds",
+                          "resolutionOnDone"
                         ],
                         "additionalProperties": false
                       }
@@ -6024,13 +6044,18 @@
                               "description": "uuid"
                             },
                             "description": "Statuses an item of this type can be in; new ones start in the first"
+                          },
+                          "resolutionOnDone": {
+                            "type": "boolean",
+                            "description": "Reaching Done sets the default resolution (spec 0305)"
                           }
                         },
                         "required": [
                           "typeKey",
                           "workflowId",
                           "workflow",
-                          "statusIds"
+                          "statusIds",
+                          "resolutionOnDone"
                         ],
                         "additionalProperties": false
                       }
@@ -7417,13 +7442,8 @@
                   },
                   "priority": {
                     "type": "string",
-                    "enum": [
-                      "urgent",
-                      "high",
-                      "medium",
-                      "low",
-                      "none"
-                    ]
+                    "minLength": 1,
+                    "maxLength": 40
                   },
                   "labels": {
                     "maxItems": 50,
@@ -7639,13 +7659,8 @@
                   },
                   "priority": {
                     "type": "string",
-                    "enum": [
-                      "urgent",
-                      "high",
-                      "medium",
-                      "low",
-                      "none"
-                    ]
+                    "minLength": 1,
+                    "maxLength": 40
                   },
                   "labels": {
                     "maxItems": 50,
@@ -11344,13 +11359,18 @@
                               "description": "uuid"
                             },
                             "description": "Statuses an item of this type can be in; new ones start in the first"
+                          },
+                          "resolutionOnDone": {
+                            "type": "boolean",
+                            "description": "Reaching Done sets the default resolution (spec 0305)"
                           }
                         },
                         "required": [
                           "typeKey",
                           "workflowId",
                           "workflow",
-                          "statusIds"
+                          "statusIds",
+                          "resolutionOnDone"
                         ],
                         "additionalProperties": false
                       }
@@ -15870,13 +15890,7 @@
                           },
                           "priority": {
                             "type": "string",
-                            "enum": [
-                              "urgent",
-                              "high",
-                              "medium",
-                              "low",
-                              "none"
-                            ]
+                            "description": "A priority key (GET /priorities)"
                           },
                           "assigneeId": {
                             "nullable": true,
@@ -15994,14 +16008,8 @@
                           },
                           "resolution": {
                             "nullable": true,
-                            "description": "Set while the item is in a Done status",
-                            "type": "string",
-                            "enum": [
-                              "Done",
-                              "Won't do",
-                              "Duplicate",
-                              "Cannot reproduce"
-                            ]
+                            "description": "A resolution name (GET /resolutions), set while the item is in a Done status",
+                            "type": "string"
                           },
                           "resolvedAt": {
                             "nullable": true,
@@ -16337,13 +16345,7 @@
                           },
                           "priority": {
                             "type": "string",
-                            "enum": [
-                              "urgent",
-                              "high",
-                              "medium",
-                              "low",
-                              "none"
-                            ]
+                            "description": "A priority key (GET /priorities)"
                           },
                           "assigneeId": {
                             "nullable": true,
@@ -16461,14 +16463,8 @@
                           },
                           "resolution": {
                             "nullable": true,
-                            "description": "Set while the item is in a Done status",
-                            "type": "string",
-                            "enum": [
-                              "Done",
-                              "Won't do",
-                              "Duplicate",
-                              "Cannot reproduce"
-                            ]
+                            "description": "A resolution name (GET /resolutions), set while the item is in a Done status",
+                            "type": "string"
                           },
                           "resolvedAt": {
                             "nullable": true,
@@ -16650,13 +16646,9 @@
                   },
                   "priority": {
                     "type": "string",
-                    "enum": [
-                      "urgent",
-                      "high",
-                      "medium",
-                      "low",
-                      "none"
-                    ]
+                    "minLength": 1,
+                    "maxLength": 40,
+                    "description": "A priority key from GET /priorities (urgent, high, medium, low, none, or one an admin added)"
                   },
                   "statusId": {
                     "type": "string",
@@ -16898,14 +16890,10 @@
                   },
                   "resolution": {
                     "nullable": true,
-                    "description": "How a finished item ended. Only for items in a Done status; reaching Done sets \"Done\" unless you say otherwise (null: the default)",
+                    "description": "How a finished item ended: a name from GET /resolutions. Only for items in a Done status; a workflow that resolves on reaching Done sets the default unless you say otherwise",
                     "type": "string",
-                    "enum": [
-                      "Done",
-                      "Won't do",
-                      "Duplicate",
-                      "Cannot reproduce"
-                    ]
+                    "minLength": 1,
+                    "maxLength": 100
                   },
                   "id": {
                     "description": "Client-chosen id: lets the app keep its local id, and makes a retried create a conflict instead of a duplicate",
@@ -16971,13 +16959,7 @@
                     },
                     "priority": {
                       "type": "string",
-                      "enum": [
-                        "urgent",
-                        "high",
-                        "medium",
-                        "low",
-                        "none"
-                      ]
+                      "description": "A priority key (GET /priorities)"
                     },
                     "assigneeId": {
                       "nullable": true,
@@ -17095,14 +17077,8 @@
                     },
                     "resolution": {
                       "nullable": true,
-                      "description": "Set while the item is in a Done status",
-                      "type": "string",
-                      "enum": [
-                        "Done",
-                        "Won't do",
-                        "Duplicate",
-                        "Cannot reproduce"
-                      ]
+                      "description": "A resolution name (GET /resolutions), set while the item is in a Done status",
+                      "type": "string"
                     },
                     "resolvedAt": {
                       "nullable": true,
@@ -17347,13 +17323,7 @@
                     },
                     "priority": {
                       "type": "string",
-                      "enum": [
-                        "urgent",
-                        "high",
-                        "medium",
-                        "low",
-                        "none"
-                      ]
+                      "description": "A priority key (GET /priorities)"
                     },
                     "assigneeId": {
                       "nullable": true,
@@ -17471,14 +17441,8 @@
                     },
                     "resolution": {
                       "nullable": true,
-                      "description": "Set while the item is in a Done status",
-                      "type": "string",
-                      "enum": [
-                        "Done",
-                        "Won't do",
-                        "Duplicate",
-                        "Cannot reproduce"
-                      ]
+                      "description": "A resolution name (GET /resolutions), set while the item is in a Done status",
+                      "type": "string"
                     },
                     "resolvedAt": {
                       "nullable": true,
@@ -17685,13 +17649,7 @@
                     },
                     "priority": {
                       "type": "string",
-                      "enum": [
-                        "urgent",
-                        "high",
-                        "medium",
-                        "low",
-                        "none"
-                      ]
+                      "description": "A priority key (GET /priorities)"
                     },
                     "assigneeId": {
                       "nullable": true,
@@ -17809,14 +17767,8 @@
                     },
                     "resolution": {
                       "nullable": true,
-                      "description": "Set while the item is in a Done status",
-                      "type": "string",
-                      "enum": [
-                        "Done",
-                        "Won't do",
-                        "Duplicate",
-                        "Cannot reproduce"
-                      ]
+                      "description": "A resolution name (GET /resolutions), set while the item is in a Done status",
+                      "type": "string"
                     },
                     "resolvedAt": {
                       "nullable": true,
@@ -18114,13 +18066,7 @@
                           },
                           "priority": {
                             "type": "string",
-                            "enum": [
-                              "urgent",
-                              "high",
-                              "medium",
-                              "low",
-                              "none"
-                            ]
+                            "description": "A priority key (GET /priorities)"
                           },
                           "assigneeId": {
                             "nullable": true,
@@ -18238,14 +18184,8 @@
                           },
                           "resolution": {
                             "nullable": true,
-                            "description": "Set while the item is in a Done status",
-                            "type": "string",
-                            "enum": [
-                              "Done",
-                              "Won't do",
-                              "Duplicate",
-                              "Cannot reproduce"
-                            ]
+                            "description": "A resolution name (GET /resolutions), set while the item is in a Done status",
+                            "type": "string"
                           },
                           "resolvedAt": {
                             "nullable": true,
@@ -18454,13 +18394,9 @@
                   },
                   "priority": {
                     "type": "string",
-                    "enum": [
-                      "urgent",
-                      "high",
-                      "medium",
-                      "low",
-                      "none"
-                    ]
+                    "minLength": 1,
+                    "maxLength": 40,
+                    "description": "A priority key from GET /priorities (urgent, high, medium, low, none, or one an admin added)"
                   },
                   "statusId": {
                     "type": "string",
@@ -18707,14 +18643,10 @@
                   },
                   "resolution": {
                     "nullable": true,
-                    "description": "How a finished item ended. Only for items in a Done status; reaching Done sets \"Done\" unless you say otherwise (null: the default)",
+                    "description": "How a finished item ended: a name from GET /resolutions. Only for items in a Done status; a workflow that resolves on reaching Done sets the default unless you say otherwise",
                     "type": "string",
-                    "enum": [
-                      "Done",
-                      "Won't do",
-                      "Duplicate",
-                      "Cannot reproduce"
-                    ]
+                    "minLength": 1,
+                    "maxLength": 100
                   }
                 }
               }
@@ -18789,13 +18721,7 @@
                     },
                     "priority": {
                       "type": "string",
-                      "enum": [
-                        "urgent",
-                        "high",
-                        "medium",
-                        "low",
-                        "none"
-                      ]
+                      "description": "A priority key (GET /priorities)"
                     },
                     "assigneeId": {
                       "nullable": true,
@@ -18913,14 +18839,8 @@
                     },
                     "resolution": {
                       "nullable": true,
-                      "description": "Set while the item is in a Done status",
-                      "type": "string",
-                      "enum": [
-                        "Done",
-                        "Won't do",
-                        "Duplicate",
-                        "Cannot reproduce"
-                      ]
+                      "description": "A resolution name (GET /resolutions), set while the item is in a Done status",
+                      "type": "string"
                     },
                     "resolvedAt": {
                       "nullable": true,
@@ -20006,13 +19926,9 @@
                       },
                       "priority": {
                         "type": "string",
-                        "enum": [
-                          "urgent",
-                          "high",
-                          "medium",
-                          "low",
-                          "none"
-                        ]
+                        "minLength": 1,
+                        "maxLength": 40,
+                        "description": "A priority key from GET /priorities (urgent, high, medium, low, none, or one an admin added)"
                       },
                       "assigneeId": {
                         "nullable": true,
@@ -20251,14 +20167,10 @@
                       },
                       "resolution": {
                         "nullable": true,
-                        "description": "How a finished item ended. Only for items in a Done status; reaching Done sets \"Done\" unless you say otherwise (null: the default)",
+                        "description": "How a finished item ended: a name from GET /resolutions. Only for items in a Done status; a workflow that resolves on reaching Done sets the default unless you say otherwise",
                         "type": "string",
-                        "enum": [
-                          "Done",
-                          "Won't do",
-                          "Duplicate",
-                          "Cannot reproduce"
-                        ]
+                        "minLength": 1,
+                        "maxLength": 100
                       }
                     }
                   },
@@ -20333,13 +20245,7 @@
                     },
                     "priority": {
                       "type": "string",
-                      "enum": [
-                        "urgent",
-                        "high",
-                        "medium",
-                        "low",
-                        "none"
-                      ]
+                      "description": "A priority key (GET /priorities)"
                     },
                     "assigneeId": {
                       "nullable": true,
@@ -20457,14 +20363,8 @@
                     },
                     "resolution": {
                       "nullable": true,
-                      "description": "Set while the item is in a Done status",
-                      "type": "string",
-                      "enum": [
-                        "Done",
-                        "Won't do",
-                        "Duplicate",
-                        "Cannot reproduce"
-                      ]
+                      "description": "A resolution name (GET /resolutions), set while the item is in a Done status",
+                      "type": "string"
                     },
                     "resolvedAt": {
                       "nullable": true,
@@ -20647,13 +20547,9 @@
                       },
                       "priority": {
                         "type": "string",
-                        "enum": [
-                          "urgent",
-                          "high",
-                          "medium",
-                          "low",
-                          "none"
-                        ]
+                        "minLength": 1,
+                        "maxLength": 40,
+                        "description": "A priority key from GET /priorities (urgent, high, medium, low, none, or one an admin added)"
                       },
                       "statusId": {
                         "type": "string",
@@ -20900,14 +20796,10 @@
                       },
                       "resolution": {
                         "nullable": true,
-                        "description": "How a finished item ended. Only for items in a Done status; reaching Done sets \"Done\" unless you say otherwise (null: the default)",
+                        "description": "How a finished item ended: a name from GET /resolutions. Only for items in a Done status; a workflow that resolves on reaching Done sets the default unless you say otherwise",
                         "type": "string",
-                        "enum": [
-                          "Done",
-                          "Won't do",
-                          "Duplicate",
-                          "Cannot reproduce"
-                        ]
+                        "minLength": 1,
+                        "maxLength": 100
                       }
                     }
                   }
@@ -20967,13 +20859,7 @@
                           },
                           "priority": {
                             "type": "string",
-                            "enum": [
-                              "urgent",
-                              "high",
-                              "medium",
-                              "low",
-                              "none"
-                            ]
+                            "description": "A priority key (GET /priorities)"
                           },
                           "assigneeId": {
                             "nullable": true,
@@ -21091,14 +20977,8 @@
                           },
                           "resolution": {
                             "nullable": true,
-                            "description": "Set while the item is in a Done status",
-                            "type": "string",
-                            "enum": [
-                              "Done",
-                              "Won't do",
-                              "Duplicate",
-                              "Cannot reproduce"
-                            ]
+                            "description": "A resolution name (GET /resolutions), set while the item is in a Done status",
+                            "type": "string"
                           },
                           "resolvedAt": {
                             "nullable": true,
@@ -22004,13 +21884,7 @@
                     },
                     "priority": {
                       "type": "string",
-                      "enum": [
-                        "urgent",
-                        "high",
-                        "medium",
-                        "low",
-                        "none"
-                      ]
+                      "description": "A priority key (GET /priorities)"
                     },
                     "assigneeId": {
                       "nullable": true,
@@ -22128,14 +22002,8 @@
                     },
                     "resolution": {
                       "nullable": true,
-                      "description": "Set while the item is in a Done status",
-                      "type": "string",
-                      "enum": [
-                        "Done",
-                        "Won't do",
-                        "Duplicate",
-                        "Cannot reproduce"
-                      ]
+                      "description": "A resolution name (GET /resolutions), set while the item is in a Done status",
+                      "type": "string"
                     },
                     "resolvedAt": {
                       "nullable": true,
@@ -31124,22 +30992,33 @@
     },
     "/api/v1/settings/public": {
       "get": {
-        "summary": "Settings every signed-in person may see: attachment, token, export, bulk and due-date limits",
+        "summary": "Settings every signed-in person may see: attachment, token, export, bulk and due-date limits, and the priority and resolution lists",
         "tags": [
           "Me"
         ],
         "responses": {
           "200": {
-            "description": "attachments, accessTokens, searchAndBulk, dueReminders",
+            "description": "attachments, accessTokens, searchAndBulk, dueReminders, timeTracking, projectKeys…; and the priorities and resolutions lists",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "additionalProperties": {
-                    "type": "object",
-                    "additionalProperties": {}
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "additionalProperties": {}
+                      },
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "additionalProperties": {}
+                        }
+                      }
+                    ]
                   },
-                  "description": "attachments, accessTokens, searchAndBulk, dueReminders"
+                  "description": "attachments, accessTokens, searchAndBulk, dueReminders, timeTracking, projectKeys…; and the priorities and resolutions lists"
                 }
               }
             }
@@ -32138,13 +32017,7 @@
                       },
                       "priority": {
                         "type": "string",
-                        "enum": [
-                          "urgent",
-                          "high",
-                          "medium",
-                          "low",
-                          "none"
-                        ]
+                        "description": "A priority key (GET /priorities)"
                       },
                       "assigneeId": {
                         "nullable": true,
@@ -32262,14 +32135,8 @@
                       },
                       "resolution": {
                         "nullable": true,
-                        "description": "Set while the item is in a Done status",
-                        "type": "string",
-                        "enum": [
-                          "Done",
-                          "Won't do",
-                          "Duplicate",
-                          "Cannot reproduce"
-                        ]
+                        "description": "A resolution name (GET /resolutions), set while the item is in a Done status",
+                        "type": "string"
                       },
                       "resolvedAt": {
                         "nullable": true,
@@ -32514,13 +32381,7 @@
                           },
                           "priority": {
                             "type": "string",
-                            "enum": [
-                              "urgent",
-                              "high",
-                              "medium",
-                              "low",
-                              "none"
-                            ]
+                            "description": "A priority key (GET /priorities)"
                           },
                           "assigneeId": {
                             "nullable": true,
@@ -32638,14 +32499,8 @@
                           },
                           "resolution": {
                             "nullable": true,
-                            "description": "Set while the item is in a Done status",
-                            "type": "string",
-                            "enum": [
-                              "Done",
-                              "Won't do",
-                              "Duplicate",
-                              "Cannot reproduce"
-                            ]
+                            "description": "A resolution name (GET /resolutions), set while the item is in a Done status",
+                            "type": "string"
                           },
                           "resolvedAt": {
                             "nullable": true,
@@ -32889,13 +32744,7 @@
                       },
                       "priority": {
                         "type": "string",
-                        "enum": [
-                          "urgent",
-                          "high",
-                          "medium",
-                          "low",
-                          "none"
-                        ]
+                        "description": "A priority key (GET /priorities)"
                       },
                       "assigneeId": {
                         "nullable": true,
@@ -33013,14 +32862,8 @@
                       },
                       "resolution": {
                         "nullable": true,
-                        "description": "Set while the item is in a Done status",
-                        "type": "string",
-                        "enum": [
-                          "Done",
-                          "Won't do",
-                          "Duplicate",
-                          "Cannot reproduce"
-                        ]
+                        "description": "A resolution name (GET /resolutions), set while the item is in a Done status",
+                        "type": "string"
                       },
                       "resolvedAt": {
                         "nullable": true,
@@ -34649,13 +34492,7 @@
                       },
                       "priority": {
                         "type": "string",
-                        "enum": [
-                          "urgent",
-                          "high",
-                          "medium",
-                          "low",
-                          "none"
-                        ]
+                        "description": "A priority key (GET /priorities)"
                       },
                       "assigneeId": {
                         "nullable": true,
@@ -34773,14 +34610,8 @@
                       },
                       "resolution": {
                         "nullable": true,
-                        "description": "Set while the item is in a Done status",
-                        "type": "string",
-                        "enum": [
-                          "Done",
-                          "Won't do",
-                          "Duplicate",
-                          "Cannot reproduce"
-                        ]
+                        "description": "A resolution name (GET /resolutions), set while the item is in a Done status",
+                        "type": "string"
                       },
                       "resolvedAt": {
                         "nullable": true,
@@ -35032,13 +34863,7 @@
                     },
                     "priority": {
                       "type": "string",
-                      "enum": [
-                        "urgent",
-                        "high",
-                        "medium",
-                        "low",
-                        "none"
-                      ]
+                      "description": "A priority key (GET /priorities)"
                     },
                     "assigneeId": {
                       "nullable": true,
@@ -35156,14 +34981,8 @@
                     },
                     "resolution": {
                       "nullable": true,
-                      "description": "Set while the item is in a Done status",
-                      "type": "string",
-                      "enum": [
-                        "Done",
-                        "Won't do",
-                        "Duplicate",
-                        "Cannot reproduce"
-                      ]
+                      "description": "A resolution name (GET /resolutions), set while the item is in a Done status",
+                      "type": "string"
                     },
                     "resolvedAt": {
                       "nullable": true,
@@ -36399,13 +36218,7 @@
                         },
                         "priority": {
                           "type": "string",
-                          "enum": [
-                            "urgent",
-                            "high",
-                            "medium",
-                            "low",
-                            "none"
-                          ]
+                          "description": "A priority key (GET /priorities)"
                         },
                         "assigneeId": {
                           "nullable": true,
@@ -36523,14 +36336,8 @@
                         },
                         "resolution": {
                           "nullable": true,
-                          "description": "Set while the item is in a Done status",
-                          "type": "string",
-                          "enum": [
-                            "Done",
-                            "Won't do",
-                            "Duplicate",
-                            "Cannot reproduce"
-                          ]
+                          "description": "A resolution name (GET /resolutions), set while the item is in a Done status",
+                          "type": "string"
                         },
                         "resolvedAt": {
                           "nullable": true,
@@ -41271,6 +41078,10 @@
                       "type": "object",
                       "additionalProperties": {}
                     },
+                    "resolutionOnDone": {
+                      "type": "boolean",
+                      "description": "Reaching Done sets the default resolution (else only transition rules set it)"
+                    },
                     "schemes": {
                       "type": "array",
                       "items": {
@@ -41305,6 +41116,7 @@
                     "statuses",
                     "transitions",
                     "layout",
+                    "resolutionOnDone",
                     "schemes",
                     "projectCount"
                   ],
@@ -42595,6 +42407,10 @@
                       "type": "object",
                       "additionalProperties": {}
                     },
+                    "resolutionOnDone": {
+                      "type": "boolean",
+                      "description": "Reaching Done sets the default resolution (else only transition rules set it)"
+                    },
                     "schemes": {
                       "type": "array",
                       "items": {
@@ -42629,6 +42445,7 @@
                     "statuses",
                     "transitions",
                     "layout",
+                    "resolutionOnDone",
                     "schemes",
                     "projectCount"
                   ],
@@ -42724,7 +42541,7 @@
     },
     "/api/v1/admin/workflows/{id}": {
       "patch": {
-        "summary": "Rename a workflow or change its description (system administrators)",
+        "summary": "Rename a workflow, change its description, or say how its items get a resolution (system administrators)",
         "tags": [
           "Workflows"
         ],
@@ -42743,6 +42560,10 @@
                   "description": {
                     "type": "string",
                     "maxLength": 500
+                  },
+                  "resolutionOnDone": {
+                    "type": "boolean",
+                    "description": "true: reaching a Done status sets the default resolution (Jira Software’s simplified workflows); false: only transition rules set it (classic workflows)"
                   }
                 }
               }
@@ -42867,6 +42688,10 @@
                       "type": "object",
                       "additionalProperties": {}
                     },
+                    "resolutionOnDone": {
+                      "type": "boolean",
+                      "description": "Reaching Done sets the default resolution (else only transition rules set it)"
+                    },
                     "schemes": {
                       "type": "array",
                       "items": {
@@ -42901,6 +42726,7 @@
                     "statuses",
                     "transitions",
                     "layout",
+                    "resolutionOnDone",
                     "schemes",
                     "projectCount"
                   ],
@@ -43578,6 +43404,10 @@
                           "type": "object",
                           "additionalProperties": {}
                         },
+                        "resolutionOnDone": {
+                          "type": "boolean",
+                          "description": "Reaching Done sets the default resolution (else only transition rules set it)"
+                        },
                         "schemes": {
                           "type": "array",
                           "items": {
@@ -43612,6 +43442,7 @@
                         "statuses",
                         "transitions",
                         "layout",
+                        "resolutionOnDone",
                         "schemes",
                         "projectCount"
                       ],
@@ -46612,13 +46443,7 @@
                           },
                           "priority": {
                             "type": "string",
-                            "enum": [
-                              "urgent",
-                              "high",
-                              "medium",
-                              "low",
-                              "none"
-                            ]
+                            "description": "A priority key (GET /priorities)"
                           },
                           "assigneeId": {
                             "nullable": true,
@@ -46736,14 +46561,8 @@
                           },
                           "resolution": {
                             "nullable": true,
-                            "description": "Set while the item is in a Done status",
-                            "type": "string",
-                            "enum": [
-                              "Done",
-                              "Won't do",
-                              "Duplicate",
-                              "Cannot reproduce"
-                            ]
+                            "description": "A resolution name (GET /resolutions), set while the item is in a Done status",
+                            "type": "string"
                           },
                           "resolvedAt": {
                             "nullable": true,
@@ -47102,6 +46921,902 @@
               }
             }
           },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/priorities": {
+      "get": {
+        "summary": "Priorities, highest first; one is the default for new work",
+        "tags": [
+          "Priorities and resolutions"
+        ],
+        "responses": {
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/resolutions": {
+      "get": {
+        "summary": "Resolutions, in order; one is set on reaching Done when a workflow resolves on its own",
+        "tags": [
+          "Priorities and resolutions"
+        ],
+        "responses": {
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/priorities": {
+      "post": {
+        "summary": "Add a priority (global admins)",
+        "tags": [
+          "Priorities and resolutions"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 60
+                  },
+                  "description": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 500
+                  },
+                  "color": {
+                    "type": "string",
+                    "pattern": "^#[0-9a-fA-F]{6}$"
+                  },
+                  "icon": {
+                    "type": "string",
+                    "enum": [
+                      "chevrons-up",
+                      "chevron-up",
+                      "equal",
+                      "chevron-down",
+                      "chevrons-down",
+                      "minus",
+                      "flame",
+                      "alert-triangle",
+                      "arrow-up",
+                      "arrow-down"
+                    ]
+                  },
+                  "position": {
+                    "description": "Place in the list (0 is the highest); default: last",
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "isDefault": {
+                    "default": false,
+                    "description": "New work gets it when none is chosen",
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "name",
+                  "color",
+                  "icon"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/priorities/{key}": {
+      "patch": {
+        "summary": "Rename, recolour, move or make a priority the default (global admins)",
+        "tags": [
+          "Priorities and resolutions"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 60
+                  },
+                  "description": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 500
+                  },
+                  "color": {
+                    "type": "string",
+                    "pattern": "^#[0-9a-fA-F]{6}$"
+                  },
+                  "icon": {
+                    "type": "string",
+                    "enum": [
+                      "chevrons-up",
+                      "chevron-up",
+                      "equal",
+                      "chevron-down",
+                      "chevrons-down",
+                      "minus",
+                      "flame",
+                      "alert-triangle",
+                      "arrow-up",
+                      "arrow-down"
+                    ]
+                  },
+                  "position": {
+                    "description": "Place in the list (0 is the highest); default: last",
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "isDefault": {
+                    "description": "Make it the default (another one is chosen by making it the default)",
+                    "type": "boolean",
+                    "enum": [
+                      true
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 40
+            },
+            "in": "path",
+            "name": "key",
+            "required": true
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Remove a priority: work items, templates and rules that have it get `moveTo` (global admins)",
+        "tags": [
+          "Priorities and resolutions"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 40
+            },
+            "in": "query",
+            "name": "moveTo",
+            "required": true,
+            "description": "The priority that replaces it"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 40
+            },
+            "in": "path",
+            "name": "key",
+            "required": true
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/resolutions": {
+      "post": {
+        "summary": "Add a resolution (global admins)",
+        "tags": [
+          "Priorities and resolutions"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 60
+                  },
+                  "description": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 500
+                  },
+                  "position": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "isDefault": {
+                    "default": false,
+                    "description": "Set on reaching Done when the workflow resolves on its own",
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/resolutions/{id}": {
+      "patch": {
+        "summary": "Rename (work items follow), describe, move or make a resolution the default (global admins)",
+        "tags": [
+          "Priorities and resolutions"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 60
+                  },
+                  "description": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 500
+                  },
+                  "position": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "isDefault": {
+                    "type": "boolean",
+                    "enum": [
+                      true
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Remove a resolution: work items that have it get `moveTo` (global admins)",
+        "tags": [
+          "Priorities and resolutions"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "query",
+            "name": "moveTo",
+            "required": true,
+            "description": "The resolution that replaces it"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
           "400": {
             "description": "Invalid input; `errors` maps each bad field to a message",
             "content": {

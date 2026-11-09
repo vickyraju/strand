@@ -4,7 +4,8 @@ import { apiEnabled } from '../api/client'
 import { AuditLogDialog, DryRun } from './AutomationLog'
 import { useStore, uid, userOf, type Project, type Rule, type RuleAction, type RuleTrigger, type Priority } from '../data/store'
 import { useApp } from '../appContext'
-import { Empty, Modal, Toggle, PRIORITY_META, PRIORITIES, plural } from './ui'
+import { Empty, Modal, Toggle, priorityLabel, priorityKeys, plural } from './ui'
+import { defaultPriority } from '../data/lists'
 import { UserSelect } from './UserPicker'
 
 const ACTION_LABEL: Record<RuleAction['kind'], string> = {
@@ -20,7 +21,7 @@ export function describeTrigger(p: Project, t: RuleTrigger) {
 function describeAction(p: Project, a: RuleAction, users: { id: string; name: string }[]) {
   switch (a.kind) {
     case 'assign':   return a.to === 'reporter' ? 'assign the reporter' : a.to === 'lead' ? 'assign the project lead' : a.to === 'unassign' ? 'remove the assignee' : `assign ${users.find(u => u.id === a.to)?.name ?? 'someone'}`
-    case 'priority': return `set priority to ${PRIORITY_META[a.value]?.label ?? `“${a.value}” (not a priority)`}`
+    case 'priority': return `set priority to ${priorityKeys().includes(a.value) ? priorityLabel(a.value) : `“${a.value}” (not a priority)`}`
     case 'label':    return `add label “${a.value}”`
     case 'status':   return `move to ${p.statuses.find(s => s.id === a.value)?.name ?? 'a deleted status'}`
     case 'comment':  return 'add a comment'
@@ -162,8 +163,8 @@ function RuleModal({ project, rule, onClose, onSave }: { project: Project; rule:
             </div>
           )}
           {a.kind === 'priority' && (
-            <select className="input" aria-label="Priority" value={PRIORITY_META[a.value] ? a.value : 'medium'} onChange={e => setAction(i, { kind: 'priority', value: e.target.value as Priority })}>
-              {PRIORITIES.map(p => <option key={p} value={p}>{PRIORITY_META[p].label}</option>)}
+            <select className="input" aria-label="Priority" value={priorityKeys().includes(a.value) ? a.value : defaultPriority()} onChange={e => setAction(i, { kind: 'priority', value: e.target.value as Priority })}>
+              {priorityKeys().map(p => <option key={p} value={p}>{priorityLabel(p)}</option>)}
             </select>
           )}
           {a.kind === 'label' && <input className="input" aria-label="Label" value={a.value} placeholder="e.g. shipped" onChange={e => setAction(i, { kind: 'label', value: e.target.value })} />}

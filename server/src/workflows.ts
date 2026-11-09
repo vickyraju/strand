@@ -13,7 +13,7 @@ import { enqueue, registerJob } from './jobs.ts'
 import type { TransitionRules } from './shared/transitionRules.ts'
 
 export interface LibTransition { id: string; name: string; fromIds: string[] | null; toId: string | null; rules: TransitionRules }
-interface Wf { id: string; name: string; statuses: string[]; transitions: LibTransition[] }
+interface Wf { id: string; name: string; statuses: string[]; transitions: LibTransition[]; resolutionOnDone: boolean }
 interface Global { id: string; name: string; description: string; color: string; category: string }
 interface Scheme { id: string; defaultWorkflowId: string; mappings: Record<string, string> }
 interface Current { id: string; globalStatusId: string | null; name: string; category: string }
@@ -96,7 +96,7 @@ export async function typeWorkflows(d: Db, projectId: string, schemeId?: string)
   if (!s) throw new HttpError(404, 'No such workflow scheme')
   const types = await d.query<{ key: string }>('select key from work_types where project_id = $1 order by position, key', [projectId])
   const byType = new Map(types.map(t => [t.key, s.mappings[t.key] ?? s.defaultWorkflowId]))
-  const rows = await d.query<Wf>('select id, name, statuses, transitions from workflows where id = any($1)', [[s.defaultWorkflowId, ...byType.values()]])
+  const rows = await d.query<Wf>('select id, name, statuses, transitions, resolution_on_done from workflows where id = any($1)', [[s.defaultWorkflowId, ...byType.values()]])
   const wfs = new Map(rows.map(w => [w.id, w]))
   return { scheme: s, types: types.map(t => t.key), byType, wfs, def: wfs.get(s.defaultWorkflowId)! }
 }

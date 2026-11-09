@@ -19,7 +19,7 @@ import { planMove } from './TransitionDialog'
 import { BOARD_INSTRUCTIONS, boardAnnouncements, boardCollision, planDrop, statusesIn, useBoardSensors } from './boardDnd'
 import { CompleteSprintModal, NO_SPRINTS } from './BacklogView'
 import CreateBoard from './boards/CreateBoard'
-import { Avatar, Empty, Loading, LoadError, Picker, Popover, Toggle, PriorityIcon, PRIORITY_META, PRIORITIES, TypeIcon, StatusLozenge, plural } from './ui'
+import { Avatar, Empty, Loading, LoadError, Picker, Popover, Toggle, PriorityIcon, priorityLabel, priorityKeys, TypeIcon, StatusLozenge, plural } from './ui'
 
 export const FIELD_LABELS: [CardField, string][] = [
   ['type', 'Work type'], ['key', 'Key'], ['epic', 'Epic'], ['labels', 'Labels'], ['due', 'Due date'],
@@ -195,8 +195,8 @@ function BoardScreen({ project, board, switcher, quick: asked, onChanged }: {
       ]
     }
     if (groupBy === 'priority') {
-      return PRIORITIES.map(p => ({
-        key: p, label: <><PriorityIcon priority={p} /><b>{PRIORITY_META[p].label}</b></>, match: (i: Issue) => i.priority === p, patch: { priority: p },
+      return priorityKeys().map(p => ({
+        key: p, label: <><PriorityIcon priority={p} /><b>{priorityLabel(p)}</b></>, match: (i: Issue) => i.priority === p, patch: { priority: p },
       }))
     }
     if (groupBy === 'project') {

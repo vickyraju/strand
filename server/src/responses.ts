@@ -61,12 +61,14 @@ export const ProjectListItem = z.object({
 })
 export const ProjectPage = z.object({ items: z.array(ProjectListItem), next: nullable(z.string()).describe('Pass back as `cursor`; null on the last page') })
 export const UserPage = z.object({ items: z.array(User), next: nullable(z.string()) })
-export const TypeWorkflow = z.object({ typeKey: z.string(), workflowId: id, workflow: z.string(), statusIds: z.array(id).describe('Statuses an item of this type can be in; new ones start in the first') })
+export const TypeWorkflow = z.object({ typeKey: z.string(), workflowId: id, workflow: z.string(), statusIds: z.array(id).describe('Statuses an item of this type can be in; new ones start in the first'),
+  resolutionOnDone: z.boolean().describe('Reaching Done sets the default resolution (spec 0305)') })
 const WfStatus = z.object({ id, name: z.string(), description: z.string(), color: z.string(), category: z.enum(['todo', 'in-progress', 'done']) })
 const LibTransition = z.object({ id: z.string(), name: z.string(), fromIds: nullable(z.array(id)), toId: nullable(id), rules: z.record(z.string(), z.unknown()) })
 export const Workflow = z.object({
   id, name: z.string(), description: z.string(), version: z.number(), updatedAt: ts, statuses: z.array(WfStatus).describe('In order: new work starts in the first'),
   transitions: z.array(LibTransition), layout: z.record(z.string(), z.unknown()),
+  resolutionOnDone: z.boolean().describe('Reaching Done sets the default resolution (else only transition rules set it)'),
   schemes: z.array(z.object({ id, name: z.string() })), projectCount: z.number().describe('Projects using it, through their scheme'),
 })
 export const WorkflowScheme = z.object({
@@ -105,13 +107,13 @@ export const ProjectDetail = z.object({
 
 const issueFields = {
   id, key: z.string().describe('e.g. PAY-12'), projectId: id, number: z.number(), type: z.string().describe('Work type key'),
-  title: z.string(), description: z.string(), statusId: id, priority: z.enum(['urgent', 'high', 'medium', 'low', 'none']),
+  title: z.string(), description: z.string(), statusId: id, priority: z.string().describe('A priority key (GET /priorities)'),
   assigneeId: nullable(id), reporterId: nullable(id), labels: z.array(z.string()), estimate: nullable(z.number()), timeEstimate: nullable(z.number()), timeRemaining: nullable(z.number()), componentIds: z.array(id), affectsReleaseIds: z.array(id), securityLevelId: nullable(id),
   testSpec: nullable(z.unknown()).describe('Test steps, Gherkin or definition (Tests and Pre-Conditions)'), testFolderId: nullable(id).describe('Test repository folder'),
   testEnvironments: z.array(z.string()).describe('Test Executions: what it ran against'), revision: z.string().describe('Test Executions: build or revision'),
   dueDate: nullable(day), startDate: nullable(day), sprintId: nullable(id), fixReleaseIds: z.array(id), parentId: nullable(id),
   custom: z.record(z.string(), z.union([z.string(), z.number()])), rank: z.number(), version: z.number().describe('Send as If-Match to reject stale edits'),
-  resolution: nullable(z.enum(['Done', "Won't do", 'Duplicate', 'Cannot reproduce'])).describe('Set while the item is in a Done status'),
+  resolution: nullable(z.string()).describe('A resolution name (GET /resolutions), set while the item is in a Done status'),
   resolvedAt: nullable(ts).describe('When the item last reached a Done status'),
   createdAt: ts, updatedAt: ts,
 }
@@ -384,7 +386,7 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'GET /groups/search': z.array(z.object({ id, name: z.string(), members: z.number(), kind: z.enum(['system', 'directory', 'strand']), owners: z.array(z.string()) })),
   'GET /admin/settings': z.array(SettingView),
   'PUT /admin/settings/:key': SettingView,
-  'GET /settings/public': z.record(z.string(), z.record(z.string(), z.unknown())).describe('attachments, accessTokens, searchAndBulk, dueReminders'),
+  'GET /settings/public': z.record(z.string(), z.union([z.record(z.string(), z.unknown()), z.array(z.record(z.string(), z.unknown()))])).describe('attachments, accessTokens, searchAndBulk, dueReminders, timeTracking, projectKeys…; and the priorities and resolutions lists'),
   'GET /admin/rate-limits/limited': z.array(z.object({
     userId: id, name: z.string(), email: z.string(), firstAt: ts, lastAt: ts, times: z.number().describe('Minutes in which they were refused at least once'),
   })),

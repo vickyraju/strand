@@ -11,14 +11,14 @@ import { available, ruleContext, transitionById, transitionTo, type TransitionRo
 import { statusesFor } from '../workflows.ts'
 import { actionChanges, problems, type RuleCtx } from '../shared/transitionRules.ts'
 import { labels } from '../shared/labels.ts'
+import { checkPriority, checkResolution, defaultPriority } from '../lists.ts'
 import { adjustRemaining, remainingWhenEstimated, type Adjust } from '../shared/estimates.ts'
 import { projectByKey } from './projects.ts'
 
 const uuid = z.string().uuid()
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
 const type = z.string().min(1).max(40).describe('A work type key of the project (GET /projects/:key: types): epic, story, task, bug, or one the project added')
-const priority = z.enum(['urgent', 'high', 'medium', 'low', 'none'])
-export const RESOLUTIONS = ['Done', "Won't do", 'Duplicate', 'Cannot reproduce'] as const
+const priority = z.string().min(1).max(40).describe('A priority key from GET /priorities (urgent, high, medium, low, none, or one an admin added)')
 
 export const ISSUE_ROW = `
   select i.id, p.key || '-' || i.number as key, i.project_id, i.number, i.type, i.title, i.description,
@@ -51,7 +51,7 @@ const patchBody = z.object({
   custom: z.record(z.string(), z.union([z.string(), z.number()])), rank: z.number(), testSpec: testSpec.nullable(),
   testFolderId: uuid.nullable().describe('Test repository folder (Tests only; null: the top)'),
   testEnvironments: z.array(z.string().trim().min(1).max(100)).max(20).describe('What a Test Execution ran against (Test Executions only)'), revision: z.string().max(200).describe('Build or revision a Test Execution ran against'),
-  resolution: z.enum(RESOLUTIONS).nullable().describe('How a finished item ended. Only for items in a Done status; reaching Done sets "Done" unless you say otherwise (null: the default)'),
+  resolution: z.string().min(1).max(100).nullable().describe('How a finished item ended: a name from GET /resolutions. Only for items in a Done status; a workflow that resolves on reaching Done sets the default unless you say otherwise'),
 }).partial()
 const FIELDS = Object.keys(patchBody.shape)
 
@@ -122,6 +122,10 @@ export async function runActions(d: Db, me: Me | null, issueId: string, t: Trans
   if (patch.assigneeId && !(await canJoinWork(d, now.projectId, patch.assigneeId as string))) {
     delete patch.assigneeId
     await d.query(`insert into activity (issue_id, actor_id, text) values ($1, $2, $3)`, [issueId, me?.id ?? null, `“${t.name}” skipped an assignment: that person is not in this project`])
+  }
+  if (patch.priority && !(await d.query('select 1 from priorities p join issues i on i.workspace_id = p.workspace_id where i.id = $1 and p.key = $2', [issueId, patch.priority])).length) {
+    delete patch.priority                                                     // a priority since removed from the list
+    await d.query(`insert into activity (issue_id, actor_id, text) values ($1, $2, $3)`, [issueId, me?.id ?? null, `“${t.name}” skipped setting a priority that is no longer in the list`])
   }
   const changed = Object.keys(patch).filter(k => JSON.stringify(patch[k] ?? null) !== JSON.stringify(now[k] ?? null))
   if (changed.length) {
@@ -256,7 +260,9 @@ async function applyPatch(d: Db, me: Me, cur: any, patch: z.infer<typeof patchBo
   checkSpec(patch.type ?? cur.type, patch.testSpec)
   if ((patch.testEnvironments?.length || patch.revision) && (patch.type ?? cur.type) !== 'test_execution') throw new HttpError(400, 'Only Test Executions have environments and a revision')
   await checkFolder(d, cur.projectId, patch.type ?? cur.type, patch.testFolderId)
+  if (patch.priority !== undefined && patch.priority !== cur.priority) await checkPriority(d, me.workspaceId, patch.priority)
   if (patch.resolution) {
+    await checkResolution(d, me.workspaceId, patch.resolution)
     const [st] = await d.query<{ category: string }>('select category from statuses where id = $1', [patch.statusId ?? cur.statusId])
     if (st?.category !== 'done') throw new HttpError(400, 'Only a finished item has a resolution', { resolution: 'Move the item to a Done status first' })
   }
@@ -442,6 +448,9 @@ export async function insertIssue(d: Db, me: Me, projectId: string, b: Record<st
   await checkParts(d, projectId, b)
   await checkLevel(d, me, projectId, b.securityLevelId, me.id, b.assigneeId ?? null)
   await checkLevels(d, me, projectId, null, b.type ?? 'task', b.parentId)
+  // no priority chosen: the list's default (Medium out of the box, as in Jira; spec 0305 R2)
+  if (b.priority === undefined) b = { ...b, priority: await defaultPriority(d, me.workspaceId) }
+  else await checkPriority(d, me.workspaceId, b.priority)
   await checkSprint(d, me, b.sprintId)
   if (b.assigneeId === undefined && b.componentIds?.length) { const who = await defaultAssignee(d, projectId, b.componentIds); if (who) b = { ...b, assigneeId: who } }
   // new work starts where its type's workflow starts, or in a status of that workflow

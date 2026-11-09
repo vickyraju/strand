@@ -84,7 +84,8 @@ const plugin: FastifyPluginAsyncZod = async app => {
     args.push(max + 1)
     const rows = await db.query<any>(
       `select p.key || '-' || i.number as key, p.key as project,
-              coalesce((select wt.name from work_types wt where wt.project_id = i.project_id and wt.key = i.type), i.type) as type, i.title, st.name as status, i.priority,
+              coalesce((select wt.name from work_types wt where wt.project_id = i.project_id and wt.key = i.type), i.type) as type, i.title, st.name as status,
+              coalesce((select pr.name from priorities pr where pr.workspace_id = i.workspace_id and pr.key = i.priority), i.priority) as priority,
               a.name as assignee, r.name as reporter, i.labels, i.estimate, i.time_estimate, i.start_date, i.due_date,
               sp.name as sprint, par_p.key || '-' || par.number as parent, i.resolution,
               (select string_agg(c.name, ', ' order by c.name) from components c where c.id = any(i.component_ids)) as components,

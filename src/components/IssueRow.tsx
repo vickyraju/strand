@@ -64,7 +64,7 @@ export default function IssueRow({ issue, project, showProject, trailing, select
       {issue.estimate != null && <span className="points">{issue.estimate}</span>}
       <Picker value={issue.status} options={statusOptions(project, issue.status, moveContext(state, issue))} onChange={s => moveIssue(issue.id, s)}
         className={`status-cell sm cat-${status?.category}`} title="Change status" trigger={status?.name} />
-      <Picker value={issue.priority} options={priorityOptions} onChange={priority => set({ priority })}
+      <Picker value={issue.priority} options={priorityOptions()} onChange={priority => set({ priority })}
         className="icon-btn sm" title="Change priority" trigger={<PriorityIcon priority={issue.priority} />} />
       {trailing}
       {showUpdated && <span className="row-updated hide-sm">{timeAgo(issue.updatedAt)}</span>}

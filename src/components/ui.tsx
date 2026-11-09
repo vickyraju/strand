@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
-import { Bookmark, Bug, SquareCheck, Zap, ChevronsUp, ChevronUp, Equal, ChevronDown, Minus, Check, UserRound, X, Flag, Star, Wrench, BookOpen, Shield, Lightbulb, Rocket, Circle, FlaskConical, ClipboardList, Layers, Map as MapIcon, PlayCircle } from 'lucide-react'
+import { Bookmark, Bug, SquareCheck, Zap, ChevronsUp, ChevronUp, Equal, ChevronDown, ChevronsDown, Minus, Flame, AlertTriangle, ArrowUp, ArrowDown, Check, UserRound, X, Flag, Star, Wrench, BookOpen, Shield, Lightbulb, Rocket, Circle, FlaskConical, ClipboardList, Layers, Map as MapIcon, PlayCircle } from 'lucide-react'
+import { priorityList, priorityOf } from '../data/lists'
 import type { RuleCtx } from '../data/transitionRules'
 import { errorMessage } from '../api/client'
 import { useStore, transitionsFrom, statusesFor, typesOf, BUILTIN_TYPES, type IssueType, type Priority, type Project, type Status, type User } from '../data/store'
@@ -40,17 +41,19 @@ export function TypeIcon({ type, size = 14, project }: { type: IssueType; size?:
 
 // ── Priority ───────────────────────────────────────────────
 
-export const PRIORITY_META: Record<Priority, { label: string; Icon: typeof Bug; color: string }> = {
-  urgent: { label: 'Urgent',      Icon: ChevronsUp,  color: '#DC2626' },
-  high:   { label: 'High',        Icon: ChevronUp,   color: '#EA580C' },
-  medium: { label: 'Medium',      Icon: Equal,       color: '#D97706' },
-  low:    { label: 'Low',         Icon: ChevronDown, color: '#2563EB' },
-  none:   { label: 'No priority', Icon: Minus,       color: '#A8A29E' },
+/** The icons a priority can have (Administration › Priorities). */
+export const PRIORITY_ICONS: Record<string, typeof Bug> = {
+  'chevrons-up': ChevronsUp, 'chevron-up': ChevronUp, equal: Equal, 'chevron-down': ChevronDown, 'chevrons-down': ChevronsDown,
+  minus: Minus, flame: Flame, 'alert-triangle': AlertTriangle, 'arrow-up': ArrowUp, 'arrow-down': ArrowDown,
 }
-export const PRIORITIES: Priority[] = ['urgent', 'high', 'medium', 'low', 'none']
+/** A priority's name from the workspace's list (spec 0305). */
+export const priorityLabel = (p: Priority) => priorityOf(p).name
+/** The priorities' keys, highest first. */
+export const priorityKeys = () => priorityList().map(p => p.key)
 
 export function PriorityIcon({ priority, size = 14 }: { priority: Priority; size?: number }) {
-  const { Icon, color, label } = PRIORITY_META[priority]
+  const { icon, color, name: label } = priorityOf(priority)
+  const Icon = PRIORITY_ICONS[icon] ?? Minus
   return <Icon size={size} strokeWidth={2.25} color={color} style={{ flexShrink: 0 }} aria-label={label} role="img" />
 }
 
@@ -383,8 +386,9 @@ export function statusOptions(project: Project, from?: string, ctx?: RuleCtx, ty
     }))
 }
 
-export const priorityOptions: PickerOption<Priority>[] =
-  PRIORITIES.map(p => ({ value: p, label: PRIORITY_META[p].label, icon: <PriorityIcon priority={p} /> }))
+/** The priorities to choose from, highest first. */
+export const priorityOptions = (): PickerOption<Priority>[] =>
+  priorityList().map(p => ({ value: p.key, label: p.name, icon: <PriorityIcon priority={p.key} /> }))
 
 /** Work types to choose from: the project's (without one, every loaded project's); `allowEpic` false leaves out the parent level. */
 export const typeOptions = (project?: Pick<Project, 'types'>, allowEpic = true, all: Pick<Project, 'types'>[] = []): PickerOption<IssueType>[] =>

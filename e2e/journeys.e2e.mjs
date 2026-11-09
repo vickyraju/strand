@@ -409,7 +409,11 @@ test('JQL search: switching keeps the filters as JQL; a query on a custom field 
 test('automation: a dry run shows what a rule would do; the audit log shows each run and a failure', { skip, timeout: 60_000 }, async () => {
   await owner('POST', '/projects', { name: 'Robots', key: 'RBT', template: 'kanban' })
   const item = (await owner('POST', '/projects/RBT/issues', { title: 'Try me', priority: 'low' })).body
-  await owner('POST', '/projects/RBT/rules', { name: 'Broken one', trigger: { kind: 'created' }, actions: [{ kind: 'priority', value: 'bogus' }] })
+  const rule = (await owner('POST', '/projects/RBT/rules', { name: 'Broken one', trigger: { kind: 'created' }, actions: [{ kind: 'priority', value: 'high' }] })).body
+  // broken since it was saved (saving checks the priority list, spec 0305): its priority isn't in the list any more
+  const pg = (await import('node:module')).createRequire(new URL('../server/package.json', import.meta.url))('pg')
+  const c = new pg.Client({ connectionString: process.env.E2E_DATABASE_URL }); await c.connect()
+  await c.query(`update rules set actions = '[{"kind": "priority", "value": "bogus"}]' where id = $1`, [rule.id]); await c.end()
   await owner('POST', '/projects/RBT/issues', { title: 'Triggers it' })
   const o = await signIn('owner@e2e.test')
   await o.goto(url('/project/RBT/settings/automation'))
@@ -1289,5 +1293,33 @@ test('[0304.R5] versions as in Jira: deleting one used by work items moves them 
   await o.waitForSelector('text=Show archived (1)')
   for (let i = 0; i < 40 && !(await owner('GET', '/projects/VRS')).body.releases.find(r => r.id === v3).archived; i++) await new Promise(r => setTimeout(r, 250))
   assert.equal((await owner('GET', '/projects/VRS')).body.releases.find(r => r.id === v3).archived, true)
+  assert.deepEqual(o.problems, [])
+})
+
+test('[0305.R7] priorities are a list admins edit: Blocker added at the top shows in an item’s picker, first; new work gets the default, Medium', { skip, timeout: 90_000 }, async () => {
+  await owner('POST', '/projects', { name: 'Prioritised', key: 'PRI', template: 'kanban' })
+  const item = (await owner('POST', '/projects/PRI/issues', { title: 'Needs triage' })).body
+  assert.equal(item.priority, 'medium')
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url('/admin/priorities'))
+  await o.click('button:has-text("Add priority")')
+  await o.fill('#li-name', 'Blocker')
+  await o.click('.modal button:has-text("Add")')
+  await o.waitForSelector('input[aria-label="Blocker: name"]')
+  for (let n = 0; n < 6; n++) {                                                      // up to the top of the list
+    const up = o.locator('[aria-label="Move Blocker up"]')
+    if (await up.isDisabled()) break
+    await up.click(); await o.waitForTimeout(300)
+  }
+  await o.goto(url(`/i/${item.key}`))
+  await o.click('[title="Priority"]')
+  assert.match(await o.locator('.picker-menu .picker-item').first().innerText(), /Blocker/)
+  await o.click('.picker-menu .picker-item:has-text("Blocker")')
+  const prio = async () => (await owner('GET', `/issues/${item.key}`)).body.priority
+  for (let i = 0; i < 40 && (await prio()) === 'medium'; i++) await new Promise(r => setTimeout(r, 250))
+  assert.match(await prio(), /^p-/)
+  // put the list back: Blocker's items go to Urgent
+  const key = await prio()
+  assert.equal((await owner('DELETE', `/admin/priorities/${key}?moveTo=urgent`)).status, 204)
   assert.deepEqual(o.problems, [])
 })

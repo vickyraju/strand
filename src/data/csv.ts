@@ -1,5 +1,6 @@
 // CSV import: parse (RFC 4180: quoted fields, escaped quotes, newlines inside quotes) and map rows to work items.
 import { typesOf, type IssueType, type NewIssue, type Priority, type Project, type User } from './reducer.ts'
+import { defaultPriority, priorityList } from './lists.ts'
 
 export { parseCsv } from '../../server/src/shared/csv.ts'
 
@@ -63,7 +64,8 @@ export function mapRows(rows: string[][], mapping: Partial<Record<ImportField, n
         description: get(r, 'description'),
         type: typesOf(project).find(t => t.name.toLowerCase() === get(r, 'type').toLowerCase())?.key ?? TYPE[get(r, 'type').toLowerCase()] ?? 'task',
         status: status?.id ?? project.statuses[0].id,
-        priority: PRIORITY[get(r, 'priority').toLowerCase()] ?? 'medium',
+        // the list's names first, then Jira's usual words; else the default (spec 0305)
+        priority: priorityList().find(p => p.name.toLowerCase() === get(r, 'priority').toLowerCase())?.key ?? PRIORITY[get(r, 'priority').toLowerCase()] ?? defaultPriority(),
         assigneeId: assignee?.id,
         labels: get(r, 'labels').split(/[,;]|\s+/).map(l => l.trim()).filter(Boolean),
         estimate: get(r, 'estimate') && Number.isFinite(points) ? points : undefined,

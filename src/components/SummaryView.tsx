@@ -1,9 +1,10 @@
 import { CheckCircle2, Pencil, PlusCircle, CalendarClock, Gauge } from 'lucide-react'
+import { priorityOf } from '../data/lists'
 import { useStore, userOf, isDone, timeAgo, type Project } from '../data/store'
 import { lastWeek } from '../data/analytics'
 import { useApp } from '../appContext'
 import { Donut, HBars } from './charts'
-import { Avatar, Empty, TypeIcon, typeList, PRIORITIES, PRIORITY_META, PriorityIcon, plural } from './ui'
+import { Avatar, Empty, TypeIcon, typeList, priorityKeys, priorityLabel, PriorityIcon, plural } from './ui'
 
 export default function SummaryView({ project }: { project: Project }) {
   const { state } = useStore()
@@ -102,7 +103,7 @@ export default function SummaryView({ project }: { project: Project }) {
         <section className="panel">
           <h2 className="panel-title">Priority breakdown</h2>
           <p className="muted">Open work by priority.</p>
-          <HBars data={PRIORITIES.map(p => ({ key: p, label: <><PriorityIcon priority={p} />{PRIORITY_META[p].label}</>, value: open.filter(i => i.priority === p).length, color: PRIORITY_META[p].color }))} />
+          <HBars data={priorityKeys().map(p => ({ key: p, label: <><PriorityIcon priority={p} />{priorityLabel(p)}</>, value: open.filter(i => i.priority === p).length, color: priorityOf(p).color }))} />
         </section>
 
         <section className="panel">

@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
+import { priorityOf, priorityRank } from '../data/lists'
 import { ChevronDown, ChevronRight, ArrowUp, ArrowDown, Plus, Columns3, Ban } from 'lucide-react'
 import {
   useStore, userOf, projectOf, blockersOf, indexOf, timeAgo, uid, moveContext,
-  type Issue, type Priority, type Project, type NewIssue,
+  type Issue, type Project, type NewIssue,
 } from '../data/store'
 import { useApp, useNavList } from '../appContext'
 import BulkBar from './BulkBar'
 import {
-  Avatar, Checkbox, Picker, Popover, Toggle, TypeIcon, PriorityIcon, PRIORITY_META, PRIORITIES, typeMeta,
+  Avatar, Checkbox, Picker, Popover, Toggle, TypeIcon, PriorityIcon, priorityLabel, priorityKeys, typeMeta,
   statusOptions, priorityOptions, formatDate, isOverdue,
 } from './ui'
 import { UserPicker } from './UserPicker'
@@ -24,7 +25,6 @@ const COL_LABEL: Record<Col, string> = {
   type: 'Type', key: 'Key', project: 'Project', status: 'Status', assignee: 'Assignee', priority: 'Priority',
   labels: 'Labels', estimate: 'Points', logged: 'Time logged', due: 'Due', updated: 'Updated',
 }
-const PRIORITY_RANK: Record<Priority, number> = { urgent: 0, high: 1, medium: 2, low: 3, none: 4 }
 
 interface Group { key: string; label: React.ReactNode; color?: string; items: Issue[]; defaults?: Partial<NewIssue> }
 
@@ -88,7 +88,7 @@ export default function IssueTable({ issues, id, groupBy, onGroupBy, project, sh
         case 'title':    return i.title.toLowerCase()
         case 'status':   return projectFor(i).statuses.findIndex(s => s.id === i.status)
         case 'assignee': return userOf(state, i.assigneeId)?.name ?? '~'
-        case 'priority': return PRIORITY_RANK[i.priority]
+        case 'priority': return priorityRank(i.priority)   // the list's order (spec 0305)
         case 'estimate': return i.estimate ?? -1
         case 'due':      return i.dueDate ?? '9999'
         case 'updated':  return i.updatedAt
@@ -120,8 +120,8 @@ export default function IssueTable({ issues, id, groupBy, onGroupBy, project, sh
       }).sort((a, b) => (a.key === state.me?.id ? -1 : b.key === state.me?.id ? 1 : a.key === 'none' ? 1 : b.key === 'none' ? -1 : 0))
     }
     if (groupBy === 'priority') {
-      return PRIORITIES.map(p => ({
-        key: p, label: <><PriorityIcon priority={p} />{PRIORITY_META[p].label}</>, color: PRIORITY_META[p].color,
+      return priorityKeys().map(p => ({
+        key: p, label: <><PriorityIcon priority={p} />{priorityLabel(p)}</>, color: priorityOf(p).color,
         items: sorted.filter(i => i.priority === p), defaults: project ? { projectId: project.id, priority: p } : undefined,
       }))
     }
@@ -311,8 +311,8 @@ export default function IssueTable({ issues, id, groupBy, onGroupBy, project, sh
                       )}
                       {cols.priority && (
                         <td className="col-priority" onClick={e => e.stopPropagation()}>
-                          <Picker value={i.priority} options={priorityOptions} onChange={pr => set({ priority: pr })} title="Change priority"
-                            className="cell-btn" trigger={<><PriorityIcon priority={i.priority} />{PRIORITY_META[i.priority].label}</>} />
+                          <Picker value={i.priority} options={priorityOptions()} onChange={pr => set({ priority: pr })} title="Change priority"
+                            className="cell-btn" trigger={<><PriorityIcon priority={i.priority} />{priorityLabel(i.priority)}</>} />
                         </td>
                       )}
                       {cols.labels && <td className="col-labels"><span className="cell-flex">{i.labels.slice(0, 2).map(l => <span key={l} className="tag">{l}</span>)}{i.labels.length > 2 && <span className="muted">+{i.labels.length - 2}</span>}</span></td>}

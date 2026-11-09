@@ -47,6 +47,8 @@ async function act(d: Db, ctx: RuleCtx, r: Rule): Promise<Step[]> {
       }
       case 'priority':
         if (a.value === cur!.priority) { steps.push({ action: 'priority', outcome: 'unchanged' }); break }
+        if (!(await d.query('select 1 from priorities p join issues i on i.workspace_id = p.workspace_id where i.id = $1 and p.key = $2', [ctx.issueId, a.value])).length)
+          throw new Error(`“${a.value}” isn’t a priority in the list`)                // the rule fails, and only its changes are undone
         await set('priority', a.value)
         await history(d, ctx.issueId, 'priority', cur!.priority, a.value, 'Automation changed priority')
         steps.push({ action: 'priority', outcome: 'done' })
