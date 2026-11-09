@@ -56,6 +56,7 @@ Parity rows: DIR-01, DIR-02, DIR-03, DIR-04
 - **R7: Full synchronisation** reads all users and groups page by page.
   - Users are created or updated in batches, matched by unique id, then by email.
   - People with no email, or with an email that another directory's user already has, are skipped and listed in the result.
+  - A changed email, name or username in the directory changes it in Strand, recorded in the audit log as a change of that field (before and after). Linking by email stays automatic (PO, 10 Nov 2026).
 - **R8: Nobody is deleted.**
   - A user missing from the directory, or disabled there, is deactivated (and audited). One who comes back is reactivated.
   - A directory user's status belongs to the directory: People bulk deactivate and reactivate refuse them (409).
@@ -138,3 +139,5 @@ Same rules.
 None.
 
 ## Changelog
+
+- 10 Nov 2026: R6 never links an administrator's or the owner's account by email (security review). R7 records directory changes to email, name and username as field changes (PO).

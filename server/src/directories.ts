@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { escapeFilter, FilterParser } from 'ldapts'
 import { db, pool, tx, type Db } from './db.ts'
 import { HttpError, initials, joinSystemGroup, type Identity } from './auth.ts'
-import { audit, type Actor } from './audit.ts'
+import { audit, changes, type Actor } from './audit.ts'
 import { attr, connect, type Entry, type Ldap } from './ldap.ts'
 import { unseal } from './secrets.ts'
 import { enqueue, registerJob } from './jobs.ts'
@@ -133,6 +133,10 @@ async function upsertPerson(d: Db, dir: Directory, p: Person, workspaceId: strin
   if (change !== 'same' || u.active !== active)
     await d.query(`update users set email = $2, name = $3, initials = $4, username = $5, directory_id = $6, directory_guid = $7, active = $8 where id = $1`,
       [u.id, p.email, p.name, initials(p.name), p.username, dir.id, p.guid, active])
+  // a changed email, name or username is recorded as a change of that field (R7)
+  const was = { email: u.email, name: u.name, username: u.username }, now = { email: p.email, name: p.name, username: p.username }
+  const c = changes(was, now)
+  if (c.changed) await audit(d, actor(dir), { workspaceId, action: change === 'linked' ? 'user.linked' : 'user.updated', type: 'user', id: u.id, name: p.email, before: c.before, after: { ...c.after, why: change === 'linked' ? 'Linked to the directory by email' : 'Changed in the directory' } })
   if (u.active !== active)
     await audit(d, actor(dir), { workspaceId, action: active ? 'user.reactivated' : 'user.deactivated', type: 'user', id: u.id, name: p.email, after: { why: active ? 'Active in the directory again' : 'Disabled in the directory' } })
   await d.query(`insert into memberships (workspace_id, user_id, role) values ($1, $2, 'member') on conflict do nothing`, [workspaceId, u.id])
