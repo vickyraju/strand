@@ -4565,6 +4565,12 @@ test('[0712.R7][0712.R8][0712.R9][0712.R10][0712.R11] synchronising a directory:
   mail('owner@x.com')
   assert.ok((await sync()).users.skipped.some((s: any) => s.name === 'klee'))
   assert.equal((await pool.query(`select active, email from users where username = 'klee'`)).rows[0].active, true)
+  // R7: a new email in the directory changes the field in Strand, recorded as a change
+  mail('kim.lee@corp.test')
+  assert.equal((await sync()).users.updated, 1)
+  assert.equal((await pool.query(`select email from users where username = 'klee'`)).rows[0].email, 'kim.lee@corp.test')
+  const [changed] = (await pool.query(`select before, after from audit_log where action = 'user.updated' and target = 'kim.lee@corp.test'`)).rows
+  assert.deepEqual([changed.before.email, changed.after.email], ['klee@corp.test', 'kim.lee@corp.test'])
   mail('klee@corp.test')
   // R11: no users found where there were some: nothing changes
   const all = corp.entries
