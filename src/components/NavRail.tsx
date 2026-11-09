@@ -4,6 +4,7 @@ import {
   ChevronRight, ChevronDown, Bookmark, Columns2, ListChecks, List, BarChart3, Gauge, Hash, GanttChart, CalendarDays, Rocket, Star, SlidersHorizontal,
 } from 'lucide-react'
 import { useStore } from '../data/store'
+import { plansInBacklog } from '../data/reducer'
 import { isGlobalAdmin } from '../data/access'
 import { apiEnabled } from '../api/client'
 import { useApp } from '../appContext'
@@ -82,7 +83,7 @@ export default function NavRail({ collapsed, onCollapseToggle, onCmdK, route, dr
             </button>
           )}
         </div>
-        {open && PROJECT_LINKS.filter(l => !l.scrumOnly || p.template === 'scrum').map(l => (
+        {open && PROJECT_LINKS.filter(l => !l.scrumOnly || p.template === 'scrum' || !!p.boards?.some(plansInBacklog)).map(l => (
           <button key={l.tab}
             className={`nav-item nav-sub${active && route.name === 'project' && route.tab === l.tab ? ' active' : ''}`}
             onClick={() => navigate(href({ name: 'project', key: p.key, tab: l.tab }))}>

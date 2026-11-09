@@ -2613,6 +2613,9 @@
                           },
                           "position": {
                             "type": "number"
+                          },
+                          "hasBacklog": {
+                            "type": "boolean"
                           }
                         },
                         "required": [
@@ -2620,7 +2623,8 @@
                           "name",
                           "type",
                           "jql",
-                          "position"
+                          "position",
+                          "hasBacklog"
                         ],
                         "additionalProperties": false
                       },
@@ -3679,6 +3683,9 @@
                           },
                           "position": {
                             "type": "number"
+                          },
+                          "hasBacklog": {
+                            "type": "boolean"
                           }
                         },
                         "required": [
@@ -3686,7 +3693,8 @@
                           "name",
                           "type",
                           "jql",
-                          "position"
+                          "position",
+                          "hasBacklog"
                         ],
                         "additionalProperties": false
                       },
@@ -4521,6 +4529,9 @@
                           },
                           "position": {
                             "type": "number"
+                          },
+                          "hasBacklog": {
+                            "type": "boolean"
                           }
                         },
                         "required": [
@@ -4528,7 +4539,8 @@
                           "name",
                           "type",
                           "jql",
-                          "position"
+                          "position",
+                          "hasBacklog"
                         ],
                         "additionalProperties": false
                       },
@@ -5542,6 +5554,9 @@
                           },
                           "position": {
                             "type": "number"
+                          },
+                          "hasBacklog": {
+                            "type": "boolean"
                           }
                         },
                         "required": [
@@ -5549,7 +5564,8 @@
                           "name",
                           "type",
                           "jql",
-                          "position"
+                          "position",
+                          "hasBacklog"
                         ],
                         "additionalProperties": false
                       },
@@ -6420,6 +6436,9 @@
                           },
                           "position": {
                             "type": "number"
+                          },
+                          "hasBacklog": {
+                            "type": "boolean"
                           }
                         },
                         "required": [
@@ -6427,7 +6446,8 @@
                           "name",
                           "type",
                           "jql",
-                          "position"
+                          "position",
+                          "hasBacklog"
                         ],
                         "additionalProperties": false
                       },
@@ -44357,6 +44377,10 @@
                       "position": {
                         "type": "number"
                       },
+                      "hasBacklog": {
+                        "type": "boolean",
+                        "description": "Kanban: it has a Kanban backlog (spec 0406)"
+                      },
                       "canManage": {
                         "type": "boolean"
                       },
@@ -44370,6 +44394,7 @@
                       "type",
                       "jql",
                       "position",
+                      "hasBacklog",
                       "canManage",
                       "canManageSprints"
                     ],
@@ -44754,6 +44779,16 @@
                     ],
                     "description": "The board’s administrators besides the project’s admins"
                   },
+                  "kanbanBacklog": {
+                    "maxItems": 200,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                    },
+                    "description": "Kanban boards: the statuses in the Kanban backlog, Jira’s leftmost column; none turns it off (spec 0406)"
+                  },
                   "type": {
                     "type": "string",
                     "enum": [
@@ -44979,6 +45014,14 @@
                     "position": {
                       "type": "number"
                     },
+                    "kanbanBacklog": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "description": "uuid"
+                      },
+                      "description": "Kanban: the statuses in the Kanban backlog; empty when it is off (spec 0406)"
+                    },
                     "canManage": {
                       "type": "boolean",
                       "description": "I may change it"
@@ -45032,6 +45075,7 @@
                     "workingDays",
                     "cardColors",
                     "position",
+                    "kanbanBacklog",
                     "canManage",
                     "canManageSprints",
                     "admins"
@@ -45342,6 +45386,14 @@
                     "position": {
                       "type": "number"
                     },
+                    "kanbanBacklog": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "description": "uuid"
+                      },
+                      "description": "Kanban: the statuses in the Kanban backlog; empty when it is off (spec 0406)"
+                    },
                     "canManage": {
                       "type": "boolean",
                       "description": "I may change it"
@@ -45395,6 +45447,7 @@
                     "workingDays",
                     "cardColors",
                     "position",
+                    "kanbanBacklog",
                     "canManage",
                     "canManageSprints",
                     "admins"
@@ -45778,6 +45831,16 @@
                       "groupIds"
                     ],
                     "description": "The board’s administrators besides the project’s admins"
+                  },
+                  "kanbanBacklog": {
+                    "maxItems": 200,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                    },
+                    "description": "Kanban boards: the statuses in the Kanban backlog, Jira’s leftmost column; none turns it off (spec 0406)"
                   }
                 }
               }
@@ -45994,6 +46057,14 @@
                     "position": {
                       "type": "number"
                     },
+                    "kanbanBacklog": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "description": "uuid"
+                      },
+                      "description": "Kanban: the statuses in the Kanban backlog; empty when it is off (spec 0406)"
+                    },
                     "canManage": {
                       "type": "boolean",
                       "description": "I may change it"
@@ -46047,6 +46118,7 @@
                     "workingDays",
                     "cardColors",
                     "position",
+                    "kanbanBacklog",
                     "canManage",
                     "canManageSprints",
                     "admins"

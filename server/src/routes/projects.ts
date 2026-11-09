@@ -931,7 +931,7 @@ export async function projectDetail(d: Db, ws: string, key: string, role: Projec
   const fields = await by('field_defs', 'position'), templates = await by('item_templates', 'name')
   const rules = await by('rules', 'id'), releases = await by('releases', 'release_date nulls last, id'), components = await by('components', 'lower(name)')
   const sprints = await by('sprints', 'created_at'), workflows = await typeWorkflowList(d, p.id)
-  const boards = await d.query('select id, name, type, jql, position from boards where project_id = $1 order by position, lower(name), id', [p.id])
+  const boards = await d.query(`select id, name, type, jql, position, jsonb_array_length(kanban_backlog) > 0 as has_backlog from boards where project_id = $1 order by position, lower(name), id`, [p.id])
   return { ...project, role, statuses, transitions, types, fields, templates, rules, releases, components, sprints, workflows, boards }
 }
 

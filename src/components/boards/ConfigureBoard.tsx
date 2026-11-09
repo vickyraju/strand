@@ -197,17 +197,24 @@ function General({ board, project, can, save }: { board: Board; project: Project
 
 // ── Columns ────────────────────────────────────────────────
 
+const KANBAN_BACKLOG = 'kanban-backlog'
+
 function Columns({ board, statuses, can, save }: { board: Board; statuses: GStatus[] | null; can: boolean; save: Save }) {
   const [cols, setCols] = useState<Column[]>(board.columns)
-  useEffect(() => setCols(board.columns), [board])
+  // a Kanban board's Kanban backlog (spec 0406): Jira's leftmost column; statuses in it turn the backlog on
+  const kanban = board.type === 'kanban'
+  const [backlog, setBacklog] = useState<string[]>(board.kanbanBacklog ?? [])
+  useEffect(() => { setCols(board.columns); setBacklog(board.kanbanBacklog ?? []) }, [board])
   const [dragged, setDragged] = useState<string | null>(null)
   const s = useSaving(save)
-  const dirty = JSON.stringify(cols) !== JSON.stringify(board.columns)
+  const dirty = JSON.stringify(cols) !== JSON.stringify(board.columns) || JSON.stringify(backlog) !== JSON.stringify(board.kanbanBacklog ?? [])
   const byId = new Map((statuses ?? []).map(x => [x.id, x]))
-  const unmapped = (statuses ?? []).filter(x => !cols.some(c => c.statusIds.includes(x.id)))
-  /** Put a status in a column (null: take it off the board). */
-  const moveStatus = (sid: string, to: string | null) =>
+  const unmapped = (statuses ?? []).filter(x => !cols.some(c => c.statusIds.includes(x.id)) && !backlog.includes(x.id))
+  /** Put a status in a column (KANBAN_BACKLOG: the Kanban backlog; null: take it off the board). */
+  const moveStatus = (sid: string, to: string | null) => {
+    setBacklog(to === KANBAN_BACKLOG ? [...backlog.filter(x => x !== sid), sid] : backlog.filter(x => x !== sid))
     setCols(cols.map(c => ({ ...c, statusIds: c.id === to ? [...c.statusIds.filter(x => x !== sid), sid] : c.statusIds.filter(x => x !== sid) })))
+  }
   const patch = (id: string, p: Partial<Column>) => setCols(cols.map(c => (c.id === id ? { ...c, ...p } : c)))
   const shift = (i: number, by: number) => { const next = [...cols]; const [c] = next.splice(i, 1); next.splice(i + by, 0, c!); setCols(next) }
   const num = (v: string) => (v === '' ? undefined : Math.max(0, Math.floor(Number(v))))
@@ -222,7 +229,8 @@ function Columns({ board, statuses, can, save }: { board: Board; statuses: GStat
         <span className={`lozenge lozenge-${st?.category ?? 'todo'}`}>{st?.name ?? 'Unknown status'}</span>
         {can && (
           <Menu title={`Move ${st?.name ?? 'status'} to…`} className="icon-btn sm" trigger={<MoveHorizontal size={13} />}
-            items={[...cols.filter(c => c.id !== at).map(c => ({ label: c.name || 'Untitled column', onClick: () => moveStatus(sid, c.id) })),
+            items={[...(kanban && at !== KANBAN_BACKLOG ? [{ label: 'Kanban backlog', onClick: () => moveStatus(sid, KANBAN_BACKLOG) }] : []),
+              ...cols.filter(c => c.id !== at).map(c => ({ label: c.name || 'Untitled column', onClick: () => moveStatus(sid, c.id) })),
               ...(at ? [{ label: 'Not on the board', onClick: () => moveStatus(sid, null), divider: true }] : [])]} />
         )}
       </li>
@@ -235,6 +243,16 @@ function Columns({ board, statuses, can, save }: { board: Board; statuses: GStat
       {can && <button className="btn btn-secondary btn-sm" style={{ marginTop: 10 }} onClick={() => setCols([...cols, { id: newId(), name: 'New column', statusIds: [] }])}><Plus size={13} />Add column</button>}
       {!statuses ? <Loading rows={2} /> : (
         <div className="map-columns">
+          {kanban && (
+            <div className="map-column map-kanban-backlog" {...(can ? drop(KANBAN_BACKLOG) : {})} aria-label="Column Kanban backlog">
+              <div className="map-column-hdr"><b>Kanban backlog</b></div>
+              <p className="muted sm" style={{ margin: '4px 0 8px' }}>Its work is planned on the Backlog tab, not shown on the board.</p>
+              <ul className="map-statuses">
+                {backlog.map(sid => chip(sid, KANBAN_BACKLOG))}
+                {!backlog.length && <li className="muted sm">Off: drop a status here to turn the backlog on</li>}
+              </ul>
+            </div>
+          )}
           {cols.map((c, i) => (
             <div key={c.id} className="map-column" {...(can ? drop(c.id) : {})} aria-label={`Column ${c.name}`}>
               <div className="map-column-hdr">
@@ -264,8 +282,8 @@ function Columns({ board, statuses, can, save }: { board: Board; statuses: GStat
           </div>
         </div>
       )}
-      {can && <SaveRow dirty={dirty} busy={s.busy} message={s.message} onReset={() => setCols(board.columns)}
-        onSave={() => s.run({ columns: cols.map(c => ({ ...c, name: c.name.trim() || 'Untitled column' })) })} />}
+      {can && <SaveRow dirty={dirty} busy={s.busy} message={s.message} onReset={() => { setCols(board.columns); setBacklog(board.kanbanBacklog ?? []) }}
+        onSave={() => s.run({ columns: cols.map(c => ({ ...c, name: c.name.trim() || 'Untitled column' })), ...(kanban ? { kanbanBacklog: backlog } : {}) })} />}
     </section>
   )
 }
