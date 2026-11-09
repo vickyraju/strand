@@ -1,6 +1,6 @@
 # 0305 Priorities and resolutions as admin lists
 
-Status: Approved (PO, 9 Nov 2026: default priority Medium; the resolution follows each workflow)
+Status: Ported (aws-jira `aed77a6`, strand `b02e09e`), approved by the PO on 9 Nov 2026 (default Medium; resolution per workflow); awaiting verification
 Parity rows: ISS-04, ISS-05
 
 ## Context and Jira reference

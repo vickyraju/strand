@@ -55,7 +55,7 @@ The roadmap, in order. Bugs come first, then the permission model, then the data
 | [0302](0302-global-rank.md) | One rank across projects | 3 | Ported |
 | [0303](0303-hierarchy.md) | Hierarchy enforced on the server | 3 | Ported |
 | [0304](0304-versions-components.md) | Versions and components: move on delete, merge, archive | 3 | Ported |
-| [0305](0305-priorities-resolutions.md) | Priorities and resolutions as admin lists | 3 | Approved |
+| [0305](0305-priorities-resolutions.md) | Priorities and resolutions as admin lists | 3 | Ported |
 | [0306](0306-time-tracking.md) | Time tracking settings | 3 | Ported |
 | [0307](0307-labels.md) | Labels without spaces | 3 | Ported |
 | [0308](0308-project-key.md) | Project key pattern | 3 | Ported |
