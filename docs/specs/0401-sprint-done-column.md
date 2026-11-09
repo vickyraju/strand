@@ -1,6 +1,6 @@
 # 0401 Completing a sprint: done means the board's rightmost column
 
-Status: Approved (PO, 9 Nov 2026: "i approve everything"; "continue")
+Status: Ported (aws-jira `b1e3bb4`, strand `089faff`), approved by the PO on 9 Nov 2026; awaiting verification
 Parity rows: AG-03
 
 ## Context and Jira reference
