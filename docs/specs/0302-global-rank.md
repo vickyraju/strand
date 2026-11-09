@@ -1,6 +1,6 @@
 # 0302 One rank order for all work items
 
-Status: Approved (PO, 9 Nov 2026: "i approve everything" for the next two hours of work)
+Status: Ported (aws-jira `b5a7bc8`, strand `d523754`), approved by the PO on 9 Nov 2026; awaiting verification
 Parity rows: ISS-03
 
 ## Context and Jira reference
