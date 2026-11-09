@@ -68,7 +68,7 @@ The roadmap, in order. Bugs come first, then the permission model, then the data
 | 0406 | Kanban backlog | 4 | Planned |
 | 0407 | Epics and versions panels | 4 | Planned |
 | [0408](0408-flagging.md) | Flagging a work item | 4 | Ported |
-| [0409](0409-card-colours.md) | Card colours | 4 | Approved |
+| [0409](0409-card-colours.md) | Card colours | 4 | Ported |
 | 0410 | Control chart | 4 | Planned |
 | 0411 | Version, epic, epic burndown, release burndown and burnup reports | 4 | Planned |
 | 0501 | Move items between projects; old keys redirect | 5 | Planned |

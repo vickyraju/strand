@@ -1,6 +1,6 @@
 # 0409 Card colours on a board
 
-Status: Approved (PO, 9 Nov 2026: "proceed")
+Status: Ported (aws-jira `a17208e`, strand `76a22ed`), approved by the PO on 9 Nov 2026; awaiting verification
 Parity rows: AG-11
 
 ## Context and Jira reference
