@@ -15,6 +15,8 @@ export interface Board {
   id: string; workspaceId: string; projectId: string; name: string; type: 'kanban' | 'scrum'; jql: string
   columns: Column[]; swimlanes: Lanes; quickFilters: { id: string; name: string; jql: string }[]; cardFields: Record<string, boolean>
   doneDays: number | null; estimation: 'points' | 'time' | 'count'; workingDays: { weekdays: number[]; nonWorking: string[] }; cardColors: CardColors; position: number; createdBy: string | null
+  /** Kanban: the statuses in the Kanban backlog (spec 0406); empty when it is off */
+  kanbanBacklog: string[]
 }
 
 /** Jira's two quick filters every new board starts with. */
@@ -48,14 +50,16 @@ export async function followStatuses(d: Db, p: { id: string; key: string }, orde
   if (!gained.length && !lost.length) return
   const names = new Map((await d.query<{ globalStatusId: string; name: string }>('select global_status_id, name from statuses where project_id = $1', [p.id])).map(s => [s.globalStatusId, s.name]))
   for (const b of await d.query<Board>('select * from boards where project_id = $1 for update', [p.id])) {
-    let cols = b.columns
+    let cols = b.columns, backlog = b.kanbanBacklog
     if (lost.length && b.jql.trim().toLowerCase() === `project = ${p.key}`.toLowerCase()) {
       const kept = cols.map(c => ({ ...c, statusIds: c.statusIds.filter(g => !lost.includes(g)) }))
       cols = kept.filter((c, i) => c.statusIds.length || !cols[i]!.statusIds.length)
       if (!cols.length) cols = kept.slice(0, 1)
+      backlog = backlog.filter(g => !lost.includes(g))                                 // the Kanban backlog too (spec 0406 R8)
     }
+    if (backlog.length !== b.kanbanBacklog.length) await d.query('update boards set kanban_backlog = $2 where id = $1', [b.id, JSON.stringify(backlog)])
     for (const g of gained) {
-      if (cols.some(c => c.statusIds.includes(g))) continue
+      if (cols.some(c => c.statusIds.includes(g)) || backlog.includes(g)) continue
       const before = order.slice(0, order.indexOf(g)).reverse().map(x => cols.findIndex(c => c.statusIds.includes(x))).find(i => i >= 0) ?? -1
       cols = [...cols.slice(0, before + 1), { id: randomUUID(), name: names.get(g) ?? 'New status', statusIds: [g] }, ...cols.slice(before + 1)]
     }
@@ -134,7 +138,13 @@ export async function boardWhere(d: Db, me: Me, b: Board, o: { quick?: string[];
   }
   args.push(b.id)
   const boardArg = `$${args.length}`
+  const kanbanBacklog = b.type === 'kanban' && b.kanbanBacklog.length > 0
   if (o.scope === 'board' && b.type === 'scrum') where.push(`i.sprint_id = (select id from sprints where board_id = ${boardArg} and state = 'active')`)
+  // a Kanban backlog (spec 0406): its items stay off the board; its Backlog tab has them and the board's first column's
+  else if (kanbanBacklog && o.scope !== 'all') {
+    args.push(o.scope === 'board' ? b.kanbanBacklog : [...b.kanbanBacklog, ...(b.columns[0]?.statusIds ?? [])])
+    where.push(`${o.scope === 'board' ? 'not ' : ''}(st.global_status_id::text = any($${args.length}::text[]))`, `${boardArg}::uuid is not null`)
+  }
   // the backlog: the board's open sprints (done work included, as it counts there) and unfinished work in no sprint
   else if (o.scope === 'backlog') where.push(`(i.sprint_id in (select id from sprints where board_id = ${boardArg} and state <> 'closed') or (i.sprint_id is null and st.category <> 'done'))`)
   else where.push(`${boardArg}::uuid is not null`)                                        // keeps the parameter used

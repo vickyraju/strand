@@ -21,6 +21,24 @@ export function planBacklogDrop(o: { dragged: string[]; overId: string; containe
   return o.dragged.map(id => ({ id, container: rest === BACKLOG ? null : rest }))
 }
 
+// ── The Kanban backlog (spec 0406) ───────────────────────
+
+/** A Kanban backlog's two sections: Jira's Backlog and the board's first column ("Selected for Development"). */
+export const KB_BACKLOG = 'kb-backlog', KB_SELECTED = 'kb-selected'
+
+/** Moving items into a Kanban backlog section: each to the first of the section's statuses its own workflow allows (no
+ *  move when it is already in one). All or nothing (R6): if any can't, none moves, and the reason is given. */
+export function planSectionMove<I extends { id: string; status: string }>(items: I[], plan: (i: I) => { patch: { status?: string } } | { blocked: string }):
+  { moves: { id: string; status: string }[] } | { blocked: string } {
+  const moves: { id: string; status: string }[] = []
+  for (const i of items) {
+    const p = plan(i)
+    if ('blocked' in p) return { blocked: items.length > 1 ? `None moved: ${p.blocked}` : p.blocked }
+    if (p.patch.status) moves.push({ id: i.id, status: p.patch.status })
+  }
+  return { moves }
+}
+
 // ── Collisions and the keyboard ──────────────────────────
 
 /** Under the pointer, the most specific target wins: a row, then the end of a list, then the box. With the keyboard (no pointer) the

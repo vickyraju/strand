@@ -7,6 +7,7 @@ import { WorkflowPanel } from './ProjectWorkflow'
 const TestRepository = lazy(() => import('./testing/TestRepository'))
 import { Plus, Star, FolderPlus, Columns2, List, ListChecks, Settings, Gauge, BarChart3, GanttChart, CalendarDays, Rocket, Check, Info, Zap, Users, FlaskConical, Archive } from 'lucide-react'
 import { useStore, userOf, isDone, timeAgo, PROJECT_COLORS, type Project, type ProjectPatch } from '../data/store'
+import { plansInBacklog } from '../data/reducer'
 import { useApp } from '../appContext'
 import { can, canAdmin, isGlobalAdmin } from '../data/access'
 import { navigate, href, type ProjectTab } from '../router'
@@ -227,7 +228,7 @@ export function ProjectView({ project, tab, sub, quick }: { project: Project; ta
   const { state } = useStore()
   const { openProject } = useApp()
   // a Scrum project, or one with a Scrum board, has a backlog
-  const scrum = project.template === 'scrum' || !!project.boards?.some(b => b.type === 'scrum')
+  const scrum = project.template === 'scrum' || !!project.boards?.some(plansInBacklog)   // a Backlog tab: Scrum boards, Kanban boards with a backlog
   const tabs: { id: ProjectTab; Icon: typeof List }[] = [
     { id: 'summary', Icon: Gauge },
     ...(scrum ? [{ id: 'backlog' as const, Icon: ListChecks }] : []),
@@ -274,7 +275,7 @@ export function ProjectView({ project, tab, sub, quick }: { project: Project; ta
       {tab === 'summary'  && <SummaryView project={project} />}
       {tab === 'board'    && <BoardView project={project} sub={sub} quick={quick} />}
       {tab === 'boards'   && (sub ? <ConfigureBoard key={sub} project={project} boardId={sub} /> : <div className="settings"><BoardsPanel project={project} /></div>)}
-      {tab === 'backlog'  && (scrum ? <BacklogView project={project} sub={sub} /> : <Empty icon={<ListChecks size={22} />} title="Backlog is for Scrum boards" body="Kanban boards plan work directly on the board. A project admin can create a Scrum board from the board menu." />)}
+      {tab === 'backlog'  && (scrum ? <BacklogView project={project} sub={sub} /> : <Empty icon={<ListChecks size={22} />} title="No backlog" body="Scrum boards have a backlog. A Kanban board gets one when a board admin puts statuses in its Kanban backlog column (Configure board › Columns)." />)}
       {tab === 'list'     && <ListTab project={project} />}
       {tab === 'timeline' && <TimelineView project={project} />}
       {tab === 'calendar' && <CalendarView project={project} />}

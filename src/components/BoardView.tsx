@@ -392,9 +392,12 @@ function BoardScreen({ project, board, switcher, quick: asked, onChanged }: {
           icon={<Columns2 size={22} strokeWidth={1.5} />}
           title="Visualize your work with a board"
           body={sprint ? `${sprint.name} has no work items yet. Add some from the backlog, or create one here.`
+            : board.kanbanBacklog?.length ? 'Nothing in progress. Work waiting in the Kanban backlog shows here once it is moved to the board’s first column.'
             : board.jql && board.jql !== `project = ${project.key}` ? `No work items match this board’s filter: ${board.jql}`
             : 'Track, organize and prioritize your team’s work. Get started by creating a work item.'}
-          action={<button className="btn btn-primary" onClick={() => createIssue({ projectId: project.id, sprintId: sprint?.id })}><Plus size={15} />Create work item</button>}
+          action={board.kanbanBacklog?.length
+            ? <button className="btn btn-primary" onClick={() => openProject(project.id, 'backlog', local ? undefined : board.id)}>Go to backlog</button>
+            : <button className="btn btn-primary" onClick={() => createIssue({ projectId: project.id, sprintId: sprint?.id })}><Plus size={15} />Create work item</button>}
         />
       </div>
     )

@@ -5,7 +5,8 @@ import { typeMeta } from './ui'
 import { useDurations } from '../api/settings-public'
 import { DndContext, DragOverlay, useDraggable, useDroppable, type DragEndEvent, type DragOverEvent, type DragStartEvent } from '@dnd-kit/core'
 import { ChevronDown, ChevronRight, Kanban, ListChecks, Plus, MoreHorizontal, ArrowRightLeft, Pencil, Trash2, Play, ArrowUpToLine, ArrowDownToLine } from 'lucide-react'
-import { useStore, statOf, doneColumn, doneOnBoard, userOf, indexOf, uid, type Board, type Project, type Sprint, type Issue } from '../data/store'
+import { useStore, statOf, doneColumn, doneOnBoard, userOf, indexOf, uid, plansInBacklog, type Board, type Project, type Sprint, type Issue } from '../data/store'
+import KanbanBacklog from './KanbanBacklog'
 import { apiEnabled } from '../api/client'
 import { lastBoard, useBoard, useBoardItems, useBoards } from '../api/boards'
 import { useEnsureProjects } from '../api/useEnsureProjects'
@@ -24,10 +25,10 @@ const NEW = 'new-sprint'
 
 const fmt = (ts?: number) => ts ? new Date(ts).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : ''
 
-/** The Backlog tab: a Scrum board's backlog (the board in the address, else the one last used here, else the project's
- *  first Scrum board). A local workspace has one, the project's. */
+/** The Backlog tab: a Scrum board's backlog, or a Kanban board's Kanban backlog (spec 0406): the board in the address,
+ *  else the one last used here, else the project's first such board. A local workspace has one, the project's. */
 export default function BacklogView({ project, sub }: { project: Project; sub?: string }) {
-  const boards = useBoards(project).filter(b => b.type === 'scrum')
+  const boards = useBoards(project).filter(plansInBacklog)
   const remembered = lastBoard.get(project.id)
   const id = apiEnabled ? (boards.find(b => b.id === sub) ?? boards.find(b => b.id === remembered) ?? boards[0])?.id : undefined
   const { board, error, reload } = useBoard(id)
@@ -37,7 +38,7 @@ export default function BacklogView({ project, sub }: { project: Project; sub?: 
     if (sub !== id) navigate(href({ name: 'project', key: project.key, tab: 'backlog', sub: id }), { replace: true })
   }, [id, sub])   // eslint-disable-line react-hooks/exhaustive-deps
   if (!apiEnabled) return <Backlog project={project} />
-  if (!boards.length) return <Empty icon={<ListChecks size={22} />} title="No Scrum board" body="The backlog belongs to a Scrum board. A project admin can create one from the board menu." />
+  if (!boards.length) return <Empty icon={<ListChecks size={22} />} title="No backlog" body="The backlog belongs to a Scrum board, or a Kanban board with a Kanban backlog (Configure board › Columns)." />
   if (error) return <LoadError error={error} onRetry={reload} />
   if (!board) return <Loading rows={4} />
   const switcher = boards.length > 1 && (
@@ -45,6 +46,7 @@ export default function BacklogView({ project, sub }: { project: Project; sub?: 
       onChange={b => navigate(href({ name: 'project', key: project.key, tab: 'backlog', sub: b }))}
       trigger={<><Kanban size={15} /><b>{board.name}</b><ChevronDown size={14} /></>} />
   )
+  if (board.type === 'kanban') return <KanbanBacklog key={board.id} project={project} board={board} switcher={switcher} />
   return <Backlog key={board.id} project={project} board={board} switcher={switcher} />
 }
 

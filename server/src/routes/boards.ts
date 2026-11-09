@@ -43,6 +43,7 @@ const settings = {
     nonWorking: z.array(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)).max(365).describe('Holidays and other dates nobody works (YYYY-MM-DD)'),
   }).describe('The burndown’s guideline falls only on working days (spec 0405)'),
   admins: z.object({ userIds: z.array(uuid).max(100), groupIds: z.array(uuid).max(100) }).describe('The board’s administrators besides the project’s admins'),
+  kanbanBacklog: z.array(uuid).max(200).describe('Kanban boards: the statuses in the Kanban backlog, Jira’s leftmost column; none turns it off (spec 0406)'),
 }
 /** The projects a query names in a `project =` or `project in` clause (keys upper-cased, names lower-cased), anywhere in it. */
 const namedProjects = (n: Node | null): string[] =>
@@ -60,13 +61,13 @@ async function boardOut(d: Db, me: Me, id: string) {
      union all select 'group', g.id, g.display_name from board_admins a join groups g on g.id = a.group_id where a.board_id = $1 order by 1, 3`, [b.id])
   const [p] = await d.query<{ key: string }>('select key from projects where id = $1', [b.projectId])
   return { id: b.id, projectId: b.projectId, projectKey: p!.key, name: b.name, type: b.type, jql: b.jql, columns: b.columns, swimlanes: b.swimlanes, quickFilters: b.quickFilters,
-    cardFields: b.cardFields, doneDays: b.doneDays, estimation: b.estimation, workingDays: b.workingDays, cardColors: b.cardColors, position: b.position, canManage, canManageSprints: (await sprintManager(d, me, b)).ok, admins }
+    cardFields: b.cardFields, doneDays: b.doneDays, estimation: b.estimation, workingDays: b.workingDays, cardColors: b.cardColors, kanbanBacklog: b.kanbanBacklog, position: b.position, canManage, canManageSprints: (await sprintManager(d, me, b)).ok, admins }
 }
 
-/** Every status a column names is one of the workspace's; a status in two columns is refused. */
-async function checkColumns(d: Db, ws: string, columns: { statusIds: string[] }[]) {
-  const ids = columns.flatMap(c => c.statusIds)
-  if (new Set(ids).size !== ids.length) throw new HttpError(400, 'A status can be in one column only', { columns: 'A status is in two columns' })
+/** Every status a column (or the Kanban backlog) names is one of the workspace's; a status in two places is refused. */
+async function checkColumns(d: Db, ws: string, columns: { statusIds: string[] }[], backlog: string[] = []) {
+  const ids = [...backlog, ...columns.flatMap(c => c.statusIds)]
+  if (new Set(ids).size !== ids.length) throw new HttpError(400, backlog.length ? 'A status can be in one column only, or in the Kanban backlog' : 'A status can be in one column only', { columns: 'A status is in two places' })
   if (ids.length && (await d.query('select id from wf_statuses where workspace_id = $1 and id = any($2)', [ws, ids])).length !== ids.length)
     throw new HttpError(400, 'A column names a status that doesn’t exist', { columns: 'Unknown status' })
 }
@@ -90,7 +91,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     const mine = new Set((await db.query<{ boardId: string }>(
       `select a.board_id from board_admins a join boards b on b.id = a.board_id where b.project_id = $1
          and (a.user_id = $2 or a.group_id in (select group_id from group_members where user_id = $2))`, [p.id, req.me.id])).map(r => r.boardId))
-    return Promise.all(rows.map(async b => ({ id: b.id, name: b.name, type: b.type, jql: b.jql, position: b.position, canManage: p.role === 'admin' || mine.has(b.id),
+    return Promise.all(rows.map(async b => ({ id: b.id, name: b.name, type: b.type, jql: b.jql, position: b.position, hasBacklog: b.kanbanBacklog.length > 0, canManage: p.role === 'admin' || mine.has(b.id),
       canManageSprints: (await sprintManager(db, req.me, b)).ok })))
   })
 
@@ -133,12 +134,14 @@ const plugin: FastifyPluginAsyncZod = async app => {
       doneDays: b.doneDays !== undefined ? b.doneDays : before.doneDays, estimation: b.estimation ?? before.estimation,
       cardColors: b.cardColors ? { ...before.cardColors, ...b.cardColors, ...(b.cardColors.queries ? { queries: withIds(b.cardColors.queries) } : {}) } as CardColors : before.cardColors,   // switching keeps the others' colours
       workingDays: b.workingDays ? { weekdays: [...new Set(b.workingDays.weekdays)].sort(), nonWorking: [...new Set(b.workingDays.nonWorking)].sort() } : before.workingDays,
+      kanbanBacklog: b.kanbanBacklog ?? before.kanbanBacklog,
     }
     if (b.estimation && before.type !== 'scrum') throw new HttpError(400, 'Only a Scrum board has an estimation statistic', { estimation: 'Kanban boards don’t estimate' })
+    if (b.kanbanBacklog?.length && before.type !== 'kanban') throw new HttpError(400, 'Only a Kanban board has a Kanban backlog', { kanbanBacklog: 'Scrum boards plan in their backlog' })
     await checkQueries(d, req.me, next)
-    if (b.columns) await checkColumns(d, req.me.workspaceId, next.columns)
-    await d.query(`update boards set name = $2, jql = $3, columns = $4, swimlanes = $5, quick_filters = $6, card_fields = $7, done_days = $8, estimation = $9, working_days = $10, card_colors = $11, updated_at = now() where id = $1`,
-      [before.id, next.name, next.jql, JSON.stringify(next.columns), JSON.stringify(next.swimlanes), JSON.stringify(next.quickFilters), JSON.stringify(next.cardFields), next.doneDays, next.estimation, JSON.stringify(next.workingDays), JSON.stringify(next.cardColors)])
+    if (b.columns || b.kanbanBacklog) await checkColumns(d, req.me.workspaceId, next.columns, next.kanbanBacklog)
+    await d.query(`update boards set name = $2, jql = $3, columns = $4, swimlanes = $5, quick_filters = $6, card_fields = $7, done_days = $8, estimation = $9, working_days = $10, card_colors = $11, kanban_backlog = $12, updated_at = now() where id = $1`,
+      [before.id, next.name, next.jql, JSON.stringify(next.columns), JSON.stringify(next.swimlanes), JSON.stringify(next.quickFilters), JSON.stringify(next.cardFields), next.doneDays, next.estimation, JSON.stringify(next.workingDays), JSON.stringify(next.cardColors), JSON.stringify(next.kanbanBacklog)])
     if (b.admins) await setAdmins(d, req.me.workspaceId, before.id, b.admins)
     const c = changes({ name: before.name, jql: before.jql }, { name: next.name, jql: next.jql })
     const what = Object.keys(b).filter(k => k !== 'name' && k !== 'jql')

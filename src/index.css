@@ -1331,6 +1331,7 @@ h2.empty-title, h2.section-title, h2.side-title { margin: 0 }
 .map-columns { display: flex; gap: 10px; overflow-x: auto; padding: 4px 2px 8px; align-items: flex-start; margin-top: 12px }
 .map-column { flex: 0 0 220px; background: var(--sunken); border-radius: var(--radius-lg); padding: 8px; display: flex; flex-direction: column; gap: 8px; min-height: 140px }
 .map-unmapped { background: transparent; border: 1px dashed var(--border) }
+.map-kanban-backlog { background: var(--brand-soft); border-color: var(--brand-border) }
 .map-column-hdr { display: flex; align-items: center; gap: 2px }
 .map-column-hdr .input { height: 30px; font-weight: 600 }
 .map-limits { display: flex; gap: 8px; font-size: 12px; color: var(--text-2) }

@@ -110,6 +110,7 @@ export const Board = z.object({
   quickFilters: z.array(NamedQuery), cardFields: z.record(z.string(), z.boolean()), doneDays: nullable(z.number()), estimation: z.enum(['points', 'time', 'count']).describe('Scrum: what estimates count (spec 0404)'),
   workingDays: z.object({ weekdays: z.array(z.number()), nonWorking: z.array(z.string()) }).describe('Working weekdays (0 is Sunday) and non-working dates (spec 0405)'),
   cardColors: z.object({ by: z.enum(['none', 'types', 'priorities', 'assignees', 'queries']) }).passthrough().describe('Card colours (spec 0409)'), position: z.number(),
+  kanbanBacklog: z.array(id).describe('Kanban: the statuses in the Kanban backlog; empty when it is off (spec 0406)'),
   canManage: z.boolean().describe('I may change it'), canManageSprints: z.boolean().describe('I may create, start, complete and delete its sprints'), admins: z.array(z.object({ kind: z.enum(['user', 'group']), id, name: z.string() })),
 })
 export const ProjectDetail = z.object({
@@ -119,7 +120,7 @@ export const ProjectDetail = z.object({
   statuses: z.array(Status), transitions: z.array(Transition), types: z.array(WorkType), components: z.array(Component), securityLevels: z.array(SecurityLevel.omit({ items: true })), fields: z.array(Field), templates: z.array(Template),
   rules: z.array(Rule), releases: z.array(Release), sprints: z.array(Sprint),
   workflowSchemeId: id.describe('Its workflow scheme'), workflows: z.array(TypeWorkflow),
-  boards: z.array(z.object({ id, name: z.string(), type: z.enum(['kanban', 'scrum']), jql: z.string(), position: z.number() })).describe('Its boards, in order'),
+  boards: z.array(z.object({ id, name: z.string(), type: z.enum(['kanban', 'scrum']), jql: z.string(), position: z.number(), hasBacklog: z.boolean() })).describe('Its boards, in order'),
 })
 
 const issueFields = {
@@ -345,7 +346,7 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'GET /projects/:key/automation/runs': z.array(z.object({ id, ruleId: id, rule: z.string(), issueId: nullable(id), issueKey: nullable(z.string()), trigger: z.record(z.string(), z.unknown()),
     result: z.enum(['success', 'some_skipped', 'no_change', 'failed']), steps: z.array(Step), error: nullable(z.string()), at: ts })),
   'POST /projects/:key/automation/dry-run': z.object({ steps: z.array(Step), error: nullable(z.string()) }),
-  'GET /projects/:key/boards': z.array(z.object({ id, name: z.string(), type: z.enum(['kanban', 'scrum']), jql: z.string(), position: z.number(), canManage: z.boolean(), canManageSprints: z.boolean() })),
+  'GET /projects/:key/boards': z.array(z.object({ id, name: z.string(), type: z.enum(['kanban', 'scrum']), jql: z.string(), position: z.number(), hasBacklog: z.boolean().describe('Kanban: it has a Kanban backlog (spec 0406)'), canManage: z.boolean(), canManageSprints: z.boolean() })),
   'POST /projects/:key/boards': Board,
   'GET /boards/:id': Board,
   'GET /boards/:id/statuses': z.array(z.object({ id, name: z.string(), category: z.enum(['todo', 'in-progress', 'done']), color: z.string() })),

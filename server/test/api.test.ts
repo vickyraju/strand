@@ -4715,3 +4715,36 @@ test('[0714.R6][0714.R7][0714.R8] can’t access your account: one answer for ev
   if (was === undefined) delete process.env.EMAIL_TRANSPORT
 })
 
+test('[0406.R1][0406.R2][0406.R3][0406.R8] a Kanban backlog: its statuses leave the board for the Backlog tab, with the first column', { skip }, async () => {
+  assert.equal((await call('POST', '/api/v1/projects', { name: 'Kanban backlog', key: 'KBL', template: 'kanban' })).status, 201)
+  const p = (await call('GET', '/api/v1/projects/KBL')).body
+  const [board] = (await call('GET', '/api/v1/projects/KBL/boards')).body
+  const b = (await call('GET', `/api/v1/boards/${board.id}`)).body
+  assert.deepEqual(b.kanbanBacklog, [])
+  const g = (name: string) => p.statuses.find((s: any) => s.name === name).globalStatusId
+  const todo = g('To do'), doing = g('In progress')
+  const item = async (title: string, status: string) => {
+    const i = (await call('POST', '/api/v1/projects/KBL/issues', { title })).body
+    if (status !== todo) await call('PATCH', `/api/v1/issues/${i.key}`, { statusId: p.statuses.find((s: any) => s.globalStatusId === status).id })
+    return i.key
+  }
+  const planned = await item('Planned later', todo), going = await item('Under way', doing)
+  // R1: a status is in one place only; Scrum boards have none
+  const both = await call('PATCH', `/api/v1/boards/${b.id}`, { kanbanBacklog: [todo] })
+  assert.equal(both.status, 400); assert.ok(both.body.errors.columns)
+  const columns = b.columns.map((c: any) => ({ ...c, statusIds: c.statusIds.filter((x: string) => x !== todo) })).filter((c: any) => c.statusIds.length)
+  const on = await call('PATCH', `/api/v1/boards/${b.id}`, { columns, kanbanBacklog: [todo] })
+  assert.equal(on.status, 200, JSON.stringify(on.body))
+  assert.deepEqual(on.body.kanbanBacklog, [todo])
+  const scrum = (await call('POST', '/api/v1/projects/KBL/boards', { name: 'Scrum one', type: 'scrum' })).body
+  assert.equal((await call('PATCH', `/api/v1/boards/${scrum.id}`, { kanbanBacklog: [todo] })).status, 400)
+  // R2, R3: the board leaves out the backlog's items; the backlog has them and the first column's
+  const keys = async (scope: string) => (await call('GET', `/api/v1/boards/${b.id}/issues?scope=${scope}`)).body.items.map((i: any) => i.key).sort()
+  assert.ok(!(await keys('board')).includes(planned)); assert.ok((await keys('board')).includes(going))
+  assert.deepEqual((await keys('backlog')).filter((k: string) => k === planned || k === going).sort(), [planned, going].sort())
+  // R8: a status the project loses leaves the Kanban backlog too
+  const { followStatuses } = await import('../src/boards.ts'), { db } = await import('../src/db.ts')
+  await followStatuses(db, { id: p.id, key: 'KBL' }, [], [], [todo])
+  assert.deepEqual((await call('GET', `/api/v1/boards/${b.id}`)).body.kanbanBacklog, [])
+})
+

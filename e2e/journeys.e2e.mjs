@@ -1490,3 +1490,33 @@ test('[0714.R2][0714.R5][0714.R8] an admin creates a local user in People; they 
   assert.deepEqual([...o.problems, ...p.problems], [])
 })
 
+test('[0406.R1][0406.R2][0406.R4] a Kanban backlog: To do goes into it; the item leaves the board, waits in the Backlog tab, and is dragged to the next column', { skip, timeout: 120_000 }, async () => {
+  await owner('POST', '/projects', { name: 'Kanban planned', key: 'KBP', template: 'kanban' })
+  const item = (await owner('POST', '/projects/KBP/issues', { title: 'Plan me first' })).body
+  const [board] = (await owner('GET', '/projects/KBP/boards')).body
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url(`/project/KBP/boards/${board.id}`))
+  // R1: To do goes into the Kanban backlog (its emptied column goes)
+  await o.click('[aria-label="Move To do to…"]')
+  await o.click('[role="menu"] button:has-text("Kanban backlog")')
+  await o.click('[aria-label="Remove To do"]')
+  await o.click('#columns button:has-text("Save")')
+  await o.waitForSelector('#columns button:has-text("Save"):disabled')
+  assert.equal((await owner('GET', `/boards/${board.id}`)).body.kanbanBacklog.length, 1)
+  // R2: the board no longer shows it; R3: the Backlog tab does
+  await o.goto(url(`/project/KBP/board/${board.id}`))
+  await o.waitForSelector('text=Nothing in progress')
+  assert.equal(await o.locator('text=Plan me first').count(), 0)
+  await o.click('button:has-text("Go to backlog")')
+  await o.waitForSelector('[aria-label="Backlog"] >> text=Plan me first')
+  // R4: moved to the next column (In progress), it is on the board
+  await o.click(`[aria-label="Move ${item.key}"]`)
+  await o.click('[role="menu"] button:has-text("Move to In progress")')
+  await o.waitForSelector('[aria-label="In progress"] >> text=Plan me first')
+  await o.goto(url(`/project/KBP/board/${board.id}`))
+  await o.waitForSelector('.col-name')
+  assert.deepEqual(await o.locator('.col-name').allTextContents(), ['In progress', 'Done'])   // To do is the Kanban backlog's now
+  await o.waitForSelector('text=Plan me first')
+  assert.deepEqual(o.problems, [])
+})
+

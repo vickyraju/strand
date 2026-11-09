@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { BACKLOG, backlogAnnouncements, backlogKeyboard, boxTarget, endTarget, planBacklogDrop, rowTarget } from './backlogDnd.ts'
+import { BACKLOG, backlogAnnouncements, backlogKeyboard, boxTarget, endTarget, planBacklogDrop, planSectionMove, rowTarget } from './backlogDnd.ts'
 
 // ── what a drop does ──
 
@@ -22,6 +22,17 @@ test('dropping on the end of a list, or on its box, sends the items to the end o
     assert.deepEqual(planBacklogDrop({ dragged: ['x', 'y'], overId: over, containerOf }), [{ id: 'x', container: 'sprint2' }, { id: 'y', container: 'sprint2' }])
   for (const over of [endTarget(BACKLOG), boxTarget(BACKLOG)])
     assert.deepEqual(planBacklogDrop({ dragged: ['x'], overId: over, containerOf }), [{ id: 'x', container: null }])      // null is how moveIssue says "backlog"
+})
+
+// ── the Kanban backlog's sections (spec 0406) ──
+
+const sectionPlan = (blockedIds: string[]) => (i: { id: string; status: string }) =>
+  blockedIds.includes(i.id) ? { blocked: `The workflow doesn’t allow ${i.id}` } : i.status === 'sel' ? { patch: {} } : { patch: { status: 'sel' } }
+
+test('[0406.R4][0406.R6] moving into a section: each item to an allowed status there; one already there stays; one forbidden stops them all', () => {
+  assert.deepEqual(planSectionMove([{ id: 'a', status: 'todo' }, { id: 'b', status: 'sel' }], sectionPlan([])), { moves: [{ id: 'a', status: 'sel' }] })
+  assert.deepEqual(planSectionMove([{ id: 'a', status: 'todo' }], sectionPlan(['a'])), { blocked: 'The workflow doesn’t allow a' })
+  assert.deepEqual(planSectionMove([{ id: 'a', status: 'todo' }, { id: 'c', status: 'todo' }], sectionPlan(['c'])), { blocked: 'None moved: The workflow doesn’t allow c' })
 })
 
 // ── the keyboard ──

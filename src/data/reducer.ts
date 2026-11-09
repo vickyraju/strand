@@ -138,7 +138,9 @@ export interface Project {
 }
 
 /** A board in a project's list (Jira's boards): which one, its kind, and its filter. */
-export interface BoardRef { id: string; name: string; type: 'kanban' | 'scrum'; jql: string; position: number }
+export interface BoardRef { id: string; name: string; type: 'kanban' | 'scrum'; jql: string; position: number; /** Kanban: it has a Kanban backlog (spec 0406) */ hasBacklog?: boolean }
+/** A board with a Backlog tab: Scrum boards, and Kanban boards with a Kanban backlog (spec 0406). */
+export const plansInBacklog = (b: Pick<BoardRef, 'type' | 'hasBacklog'>) => b.type === 'scrum' || !!b.hasBacklog
 /** A board in full: its columns (global statuses mapped to columns), swimlanes, quick filters and card fields. */
 /** A board's card colours (spec 0409). */
 export interface CardColors {
@@ -165,6 +167,8 @@ export interface Board extends BoardRef {
   workingDays?: { weekdays: number[]; nonWorking: string[] }
   /** Card colours (Jira's "Colors based on", spec 0409); each method keeps its own colours */
   cardColors?: CardColors
+  /** Kanban: the statuses in the Kanban backlog; empty when it is off (spec 0406) */
+  kanbanBacklog?: string[]
   canManage: boolean
   /** I may create, start, complete and delete its sprints (spec 0101; unset in a local workspace) */
   canManageSprints?: boolean
