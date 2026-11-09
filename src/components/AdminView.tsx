@@ -17,6 +17,7 @@ import WorkflowBuilder from './WorkflowBuilder'
 import LinkTypesAdmin from './LinkTypesAdmin'
 import ListsAdmin from './ListsAdmin'
 import AuthMethods from './AuthMethods'
+import UserDirectories from './UserDirectories'
 import SharedViewsAdmin from './SharedViewsAdmin'
 import ArchivedProjects from './admin/ArchivedProjects'
 
@@ -42,6 +43,7 @@ export default function AdminView({ section = 'people', item }: { section?: Admi
       {section === 'people' && <People />}
       {section === 'groups' && <GroupsView admin={admin} openId={item && UUID.test(item) ? item : null} onOpen={id => navigate(href({ name: 'admin', section: 'groups', ...(id ? { item: id } : {}) }))} />}
       {section === 'auth-methods' && <AuthMethods />}
+      {section === 'directories' && <UserDirectories />}
       {section === 'workflows' && <WorkflowsAdmin tab={item === 'statuses' || item === 'schemes' ? item : 'workflows'} />}
       {section === 'link-types' && <LinkTypesAdmin />}
       {(section === 'priorities' || section === 'resolutions') && <ListsAdmin kind={section} />}
@@ -71,7 +73,7 @@ function useLoad<T>(path: string) {
 
 interface Person {
   id: string; name: string; email: string; initials: string; color: string; title: string | null; active: boolean; role: 'owner' | 'admin' | 'member'; projects: number
-  lastActiveAt: string | null; lastSignInAt: string | null; groups: { id: string; name: string }[]
+  lastActiveAt: string | null; lastSignInAt: string | null; directory?: string | null; groups: { id: string; name: string }[]
 }
 type BulkAction = 'deactivate' | 'reactivate' | 'add-to-group' | 'remove-from-group'
 const BULK: Record<BulkAction, string> = { deactivate: 'Deactivate', reactivate: 'Reactivate', 'add-to-group': 'Add to group…', 'remove-from-group': 'Remove from group…' }
@@ -170,7 +172,7 @@ function People() {
                 <tr key={p.id}>
                   <td><input type="checkbox" aria-label={`Select ${p.name}`} checked={everyone || picked.has(p.id)} disabled={everyone} onChange={e => pick([p], e.target.checked)} /></td>
                   <td><span className="admin-person"><Avatar user={{ ...p, title: p.title ?? undefined }} size={24} /><span className="admin-person-name">{p.name}{p.title && <span className="muted sm">{p.title}</span>}</span></span></td>
-                  <td className="muted">{p.email}</td>
+                  <td className="muted">{p.email}{p.directory && <span className="tag" style={{ marginLeft: 6 }} title="Their details and status come from this user directory">Directory: {p.directory}</span>}</td>
                   <td>{p.role === 'member' ? 'Member' : p.role === 'owner' ? 'Owner' : 'Admin'}</td>
                   <td className="muted sm admin-wrap">{p.groups.length > 4 ? `${p.groups.slice(0, 3).map(g => g.name).join(', ')} and ${p.groups.length - 3} more` : p.groups.map(g => g.name).join(', ')}</td>
                   <td className="muted" title={p.lastSignInAt ? `Last sign-in ${new Date(p.lastSignInAt).toLocaleString()}` : 'Never signed in'}>{p.lastActiveAt ? timeAgo(Date.parse(p.lastActiveAt)) : 'Never'}</td>

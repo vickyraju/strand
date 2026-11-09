@@ -131,8 +131,9 @@ async function checkEntra(e: z.infer<typeof entraBody>) {
   if (!(await get(doc.jwks_uri))?.keys) throw new HttpError(400, 'Entra’s signing keys couldn’t be loaded', { tenantId: 'Keys not reachable' })
 }
 
-/** Changing how people sign in needs a sign-in, not an access token (R11); recovery_admin is there to do exactly this (R10). */
-function requireNoToken(req: FastifyRequest) {
+/** Changing how people sign in needs a system admin's sign-in, not an access token (R11); recovery_admin is there to do
+ *  exactly this (R10). User directories (spec 0712) use it too. */
+export function requireNoToken(req: FastifyRequest) {
   requireAdmin(req)
   if (req.me.via === 'pat') throw new HttpError(403, 'Sign in with your account to change authentication methods')
 }

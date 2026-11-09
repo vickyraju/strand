@@ -50,7 +50,7 @@ const sameSecret = (got: unknown) => {
 /** The login page offers the dev login (GET /auth/config). */
 export const devLogin = devAuth
 
-const initials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]!.toUpperCase()).join('') || '?'
+export const initials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]!.toUpperCase()).join('') || '?'
 
 /** Who signed in: from Entra (with its `oid`), or from the login form (a directory's username, spec 0711). */
 export interface Identity { oid?: string; username?: string; email: string; name: string; admin: boolean }

@@ -1546,6 +1546,13 @@ h2.empty-title, h2.section-title, h2.side-title { margin: 0 }
 .apply-banner { display: flex; align-items: center; gap: 16px; padding: 10px 14px; margin-bottom: 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--sunken) }
 .apply-banner > :first-child { flex: 1 }
 .recovery-banner { margin: 8px 16px 0 }
+.dir-form { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px }
+.dir-form > :is(p, .check-row, .dir-section, .form-row, .dir-steps) { grid-column: 1 / -1 }
+.dir-field { margin-bottom: 10px; min-width: 0 }
+.form-row > .dir-field { flex: 1 }
+.dir-section { font-size: 13px; font-weight: 600; margin: 14px 0 8px; padding-top: 10px; border-top: 1px solid var(--border) }
+.dir-form > .dir-section:first-of-type { border-top: 0; padding-top: 0; margin-top: 0 }
+.dir-steps { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 4px; font-size: 13px }
 .apply-banner.warn { background: #FFFBEB; border-color: #FDE68A }
 .group-picker { position: relative; display: inline-block; min-width: 220px }
 .group-picker-menu { position: absolute; z-index: 30; left: 0; right: 0; top: calc(100% + 4px); list-style: none; margin: 0; padding: 4px; max-height: 280px; overflow-y: auto }
