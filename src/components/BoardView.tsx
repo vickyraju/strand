@@ -491,7 +491,7 @@ function BoardScreen({ project, board, switcher, quick: asked, onChanged }: {
       </DndContext>
 
       {completing && sprint && (
-        <CompleteSprintModal sprint={sprint} project={project} boardId={local ? undefined : board.id}
+        <CompleteSprintModal sprint={sprint} project={project} board={board} boardId={local ? undefined : board.id}
           others={state.sprints.filter(s => (s.boardId ? s.boardId === board.id : s.projectId === project.id) && s.state === 'planned')}
           onClose={() => setCompleting(false)} />
       )}

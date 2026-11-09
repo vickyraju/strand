@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { reducer, migrate, EMPTY, isDone, moveContext, transitionsFrom, loopsFrom, itemsInRelease, type Action, type State, type Issue } from './reducer.ts'
+import { reducer, migrate, EMPTY, isDone, moveContext, transitionsFrom, loopsFrom, itemsInRelease, doneColumn, type Action, type State, type Issue } from './reducer.ts'
 import { withSample } from './testdata.ts'
 
 /** Do the next actions as someone else (the reducer attributes actions to the signed-in person) */
@@ -63,7 +63,7 @@ test('notifications go to the people involved, never to the actor', () => {
   assert.deepEqual(forOwner.map(n => n.kind), ['mentioned'])
 })
 
-test('completing a sprint moves unfinished work and records velocity', () => {
+test('[0401.R3] completing a sprint moves unfinished work and records velocity', () => {
   let { s } = workspace()
   s = run([
     { type: 'createIssue', id: 'i2', issue: { projectId: 'p1', title: 'Done one', estimate: 3 } },
@@ -82,6 +82,27 @@ test('completing a sprint moves unfinished work and records velocity', () => {
   assert.equal(closed.completed, 3)
   assert.equal(s.issues.find(i => i.id === 'i1')!.sprintId, undefined)
   assert.equal(s.issues.find(i => i.id === 'i2')!.sprintId, sprint)
+})
+
+test('[0401.R2] completing a sprint on a board: completed means its rightmost column, not the Done category', () => {
+  let { s } = workspace()
+  s = run([
+    { type: 'createIssue', id: 'i2', issue: { projectId: 'p1', title: 'Ready', estimate: 2 } },
+    { type: 'createIssue', id: 'i3', issue: { projectId: 'p1', title: 'Closed', estimate: 4 } },
+    { type: 'createSprint', projectId: 'p1' },
+  ], s)
+  const sprint = s.sprints[0].id
+  s = run([
+    { type: 'updateIssues', ids: ['i2', 'i3'], patch: { sprintId: sprint } },
+    { type: 'startSprint', id: sprint, endsAt: Date.now() },
+    { type: 'updateIssues', ids: ['i2'], patch: { status: 'in-progress' } },
+    { type: 'updateIssues', ids: ['i3'], patch: { status: 'done' } },
+  ], s)
+  const board = { columns: [{ id: 'a', name: 'Done', statusIds: ['done'] }, { id: 'b', name: 'Ready to ship', statusIds: ['in-progress'] }, { id: 'c', name: 'Empty', statusIds: [] }] }
+  assert.deepEqual(doneColumn(board), ['in-progress'])
+  s = run([{ type: 'completeSprint', id: sprint, doneStatusIds: doneColumn(board) }], s)
+  assert.equal(s.sprints[0].completed, 2)
+  assert.deepEqual([s.issues.find(i => i.id === 'i2')!.sprintId, s.issues.find(i => i.id === 'i3')!.sprintId], [sprint, undefined])
 })
 
 test('deleting a project removes everything inside it', () => {
