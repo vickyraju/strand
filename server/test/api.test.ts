@@ -4443,6 +4443,12 @@ test('[0712.R5][0712.R6][0712.R12] the login form with user directories: first m
   assert.equal((await login('lperson', 'linked-pass')).statusCode, 200)
   assert.equal((await pool.query(`select count(*)::int as n from users where email = 'linked.person@corp.test'`)).rows[0].n, 1)
   assert.equal((await pool.query(`select directory_id from users where email = 'linked.person@corp.test'`)).rows[0].directory_id, corpDir.id)
+  // an administrator's account is never linked by email: the directory's mail attribute can't take it over
+  corp.passwords[`CN=Fake Owner,OU=People,${BASE}`] = 'fake-pass'
+  corp.entries.push(adUser('Fake Owner', 'fowner', { mail: 'owner@x.com' }))
+  assert.equal((await login('fowner', 'fake-pass')).statusCode, 401)
+  assert.equal((await pool.query(`select directory_id from users where email = 'owner@x.com'`)).rows[0].directory_id, null)
+  corp.entries.pop()
   // a wrong password, a disabled account: the same message
   for (const [u, p] of [['jdoe', 'nope'], ['bsmith', 'bob-pass']]) {
     const r = await login(u!, p!)

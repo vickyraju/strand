@@ -52,6 +52,7 @@ Parity rows: DIR-01, DIR-02, DIR-03, DIR-04
   - A directory that can't be reached answers 503 ("can't be reached right now"), which is not counted as a wrong password.
 - **R6: First sign-in before a sync.** A person who signs in before the first sync is created then, with their groups.
   - People are matched by the directory's unique id, then by email. A person Entra or SCIM already created is linked, not duplicated.
+  - A system administrator's or the owner's account is never linked by email (skipped and reported): whoever controls the directory's email attribute must not be able to take it over.
 - **R7: Full synchronisation** reads all users and groups page by page.
   - Users are created or updated in batches, matched by unique id, then by email.
   - People with no email, or with an email that another directory's user already has, are skipped and listed in the result.
