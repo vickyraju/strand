@@ -97,7 +97,7 @@ The roadmap, in order. Bugs come first, then the permission model, then the data
 | 0707 | Development panel | 7 | Planned |
 | 0708 | Languages (decision) | 7 | Planned |
 | 0709 | Automation: conditions, schedules, global rules | 7 | Planned |
-| [0710](0710-remove-license-cleanup.md) | Remove License cleanup | 7 | Approved |
+| [0710](0710-remove-license-cleanup.md) | Remove License cleanup | 7 | Ported |
 | 0711 | Authentication methods: Entra SSO configured in Administration, login form, fallback, recovery | 7 | Planned |
 | 0712 | User directories: Active Directory / LDAP sign-in and sync | 7 | Planned |
 | 0801 | Jira inventory tool, run by the product owner | 8 | Planned |

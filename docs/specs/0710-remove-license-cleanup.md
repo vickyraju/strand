@@ -1,6 +1,6 @@
 # 0710 Remove License cleanup
 
-Status: Approved (PO, 10 Nov 2026: "we don't need the license cleanup, so let's remove it completely as we are building the product there is no concept of license to be purchased or paid for")
+Status: Ported (aws-jira `5811ed7`, strand `31d7aa1`), approved by the PO on 10 Nov 2026; awaiting verification
 Parity rows: AD-06 (removed), PRM-17
 
 ## Context
