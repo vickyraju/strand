@@ -1242,3 +1242,22 @@ test('[0301.R1][0301.R3] several fix versions: set two on an item, then find it 
   await o.press('textarea[aria-label="JQL query"]', 'Enter')
   await o.waitForSelector('text=1 result')
 })
+
+test('[0303.R6] the parent picker offers Jira’s levels: an epic or an item under it, never a sub-item; the server keeps the choice', { skip, timeout: 90_000 }, async () => {
+  await owner('POST', '/projects', { name: 'Levels', key: 'HIE', template: 'kanban' })
+  const epic = (await owner('POST', '/projects/HIE/issues', { title: 'Payments epic', type: 'epic' })).body
+  const item = (await owner('POST', '/projects/HIE/issues', { title: 'Card form', parentId: epic.id })).body
+  await owner('POST', '/projects/HIE/issues', { title: 'Validate expiry', parentId: item.id })
+  const lone = (await owner('POST', '/projects/HIE/issues', { title: 'Loose end' })).body
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url(`/i/${lone.key}`))
+  await o.click('[title="Parent"]')
+  const offered = await o.locator('.picker-menu .picker-item').allTextContents()
+  assert.ok(offered.some(t => t.includes('Payments epic')) && offered.some(t => t.includes('Card form')))
+  assert.ok(!offered.some(t => t.includes('Validate expiry')))                      // a sub-item has no sub-items
+  await o.click('.picker-menu .picker-item:has-text("Card form")')
+  const parentOf = async () => (await owner('GET', `/issues/${lone.key}`)).body.parentId
+  for (let i = 0; i < 40 && (await parentOf()) !== item.id; i++) await new Promise(r => setTimeout(r, 250))
+  assert.equal(await parentOf(), item.id)
+  assert.deepEqual(o.problems, [])
+})

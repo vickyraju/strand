@@ -2741,7 +2741,7 @@ test('[0202.R1][0202.R2][0202.R3][0202.R4][0202.R5][0202.R7] deleting work items
   const mk = (title: string, extra: object = {}) => call('POST', '/api/v1/projects/DEL/issues', { title, ...extra }).then(r => r.body)
   const epic = await mk('Epic', { type: 'epic' })
   const story = await mk('Story', { parentId: epic.id }), other = await mk('Other story', { parentId: epic.id })
-  const sub = await mk('Sub', { parentId: story.id }), subsub = await mk('Sub-sub', { parentId: sub.id })
+  const sub = await mk('Sub', { parentId: story.id }), subsub = await mk('Sub 2', { parentId: story.id })   // one level of sub-items since 0303
   const alone = await mk('Alone')
   const get = async (key: string) => (await call('GET', `/api/v1/issues/${key}`)).status === 200
   // R1: a member can't delete, one or many; R2: nor restore
@@ -2761,7 +2761,7 @@ test('[0202.R1][0202.R2][0202.R3][0202.R4][0202.R5][0202.R7] deleting work items
   assert.equal(left.parentId, null)
   // R7: the list shows what was deleted itself, newest first, with who and how many went with it; admins only
   const list = await call('GET', '/api/v1/projects/DEL/deleted', undefined, 'del.admin@x.com')
-  assert.deepEqual(list.body.items.map((x: any) => [x.key, x.subItems, x.deletedBy]), [[epic.key, 0, 'del.admin'], [story.key, 1, 'del.admin']])
+  assert.deepEqual(list.body.items.map((x: any) => [x.key, x.subItems, x.deletedBy]), [[epic.key, 0, 'del.admin'], [story.key, 2, 'del.admin']])
   assert.ok(Date.parse(list.body.items[0].removedAt) - Date.parse(list.body.items[0].deletedAt) >= 29 * 864e5)
   assert.equal((await call('GET', '/api/v1/projects/DEL/deleted', undefined, 'del.member@x.com')).status, 403)
   assert.deepEqual((await call('GET', '/api/v1/projects/DEL/deleted?query=epi', undefined, 'del.admin@x.com')).body.items.map((x: any) => x.key), [epic.key])
@@ -3865,4 +3865,35 @@ test('[0302.R1][0302.R2][0302.R3][0302.R4] one rank order across projects: new w
   assert.equal(r.status, 200)
   const [first, second] = [(await call('GET', '/api/v1/issues/RKI-1')).body.rank, (await call('GET', '/api/v1/issues/RKI-2')).body.rank]
   assert.ok(top < first && first < second)
+})
+
+test('[0303.R1][0303.R2][0303.R3][0303.R4] the hierarchy is kept by the server: epic > item > sub-item, sub-items in their parent’s project, a parent you can see', { skip }, async () => {
+  for (const [name, key] of [['Levels', 'LVL'], ['Levels too', 'LV2'], ['Hidden levels', 'LVH']]) await call('POST', '/api/v1/projects', { name, key, template: 'kanban' })
+  await join('LVL', 'lvl.mem@x.com'); await join('LV2', 'lvl.mem@x.com')
+  const mk = async (key: string, title: string, extra = {}, who = 'owner@x.com') => call('POST', `/api/v1/projects/${key}/issues`, { title, ...extra }, who)
+  const epic = (await mk('LVL', 'Epic', { type: 'epic' })).body, other = (await mk('LV2', 'Other epic', { type: 'epic' })).body
+  const item = (await mk('LVL', 'Item', { parentId: epic.id })).body
+  const sub = (await mk('LVL', 'Sub', { parentId: item.id })).body
+  const err = (r: any) => [r.status, r.body.error]
+  // R1: an epic has no parent; a sub-item has no sub-items; an item with sub-items stays an item
+  assert.deepEqual(err(await mk('LVL', 'x', { type: 'epic', parentId: epic.id })), [400, 'An epic has no parent'])
+  assert.deepEqual(err(await mk('LVL', 'x', { parentId: sub.id })), [400, 'A sub-item can’t have sub-items'])
+  const lone = (await mk('LVL', 'Lone')).body
+  assert.deepEqual(err(await call('PATCH', `/api/v1/issues/${item.key}`, { parentId: lone.id })), [400, 'An item with sub-items can’t become a sub-item'])
+  assert.deepEqual(err(await call('PATCH', `/api/v1/issues/${epic.key}`, { parentId: lone.id })), [400, 'An epic has no parent'])
+  // R2: a sub-item stays in its parent's project; an epic may be in another project
+  assert.deepEqual(err(await mk('LV2', 'x', { parentId: item.id })), [400, 'A sub-item is in its parent’s project'])
+  assert.equal((await call('PATCH', `/api/v1/issues/${lone.key}`, { parentId: other.id })).status, 200)
+  // R3: a parent in a project I can't see, or a deleted one, is no parent at all
+  const hidden = (await mk('LVH', 'Hidden epic', { type: 'epic' })).body
+  assert.deepEqual(err(await mk('LVL', 'x', { parentId: hidden.id }, 'lvl.mem@x.com')), [400, 'No such parent'])
+  const gone = (await mk('LVL', 'Gone')).body
+  await call('DELETE', `/api/v1/issues/${gone.key}`)
+  assert.deepEqual(err(await mk('LVL', 'x', { parentId: gone.id })), [400, 'No such parent'])
+  // R4: type changes keep the levels
+  assert.equal((await call('PATCH', `/api/v1/issues/${epic.key}`, { type: 'task' })).status, 400)            // it has items
+  assert.equal((await call('PATCH', `/api/v1/issues/${item.key}`, { type: 'epic' })).status, 400)            // it has a parent (and sub-items)
+  const solo = (await mk('LVL', 'Solo')).body
+  await mk('LVL', 'Solo sub', { parentId: solo.id })
+  assert.deepEqual(err(await call('PATCH', `/api/v1/issues/${solo.key}`, { type: 'epic' })), [400, 'An item with sub-items can’t become an epic'])
 })

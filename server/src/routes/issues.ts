@@ -240,6 +240,8 @@ async function applyPatch(d: Db, me: Me, cur: any, patch: z.infer<typeof patchBo
     await audit(d, { me, ip: o.ip }, { action: 'issue.workflow_overridden', type: 'issue', id: cur.id, name: cur.key, project: { id: cur.projectId, key: cur.key.split('-')[0] },
       before: { statusId: cur.statusId }, after: { statusId: patch.statusId } })
   if (patch.parentId === cur.id) throw new HttpError(400, 'An item cannot be its own parent')
+  if ((patch.parentId !== undefined && patch.parentId !== cur.parentId) || retyping)
+    await checkLevels(d, me, cur.projectId, cur, patch.type ?? cur.type, patch.parentId !== undefined ? patch.parentId : cur.parentId)
   // a first original estimate starts the remaining one (Jira's time tracking)
   if (patch.timeEstimate != null && patch.timeRemaining === undefined && cur.timeRemaining === null) patch = { ...patch, timeRemaining: patch.timeEstimate }
   // whatever happens, the item ends in a status of its type's workflow (a type change may need a new status)
@@ -295,6 +297,28 @@ async function applyPatch(d: Db, me: Me, cur: any, patch: z.infer<typeof patchBo
   if (patch.rank !== undefined) for (const p of await keepRanksApart(d, me.workspaceId, cur.id, patch.rank)) await publish(d, p, { type: 'issues.reranked' })
   await publish(d, cur.projectId, { type: 'issue.updated', id: cur.id, key: cur.key, editors: await editorsOf(d, cur.id) })
   return (await d.query<any>(`${ISSUE_ROW} where i.id = $1`, [cur.id]))[0]
+}
+
+/** Jira's levels (spec 0303): an epic has no parent; an item's parent is an epic, in any project; a sub-item's parent is an
+ *  item of the same project. A parent must be one I can see; an item with sub-items stays an item; an epic with items
+ *  stays an epic. `item` is the item being changed (null when it is new). */
+async function checkLevels(d: Db, me: Me, projectId: string, item: { id: string; type: string } | null, type: string, parentId: string | null | undefined) {
+  const has = async (where: string) => !!item && (await d.query(`select 1 from issues where parent_id = $1 and deleted_at is null and ${where} limit 1`, [item.id])).length > 0
+  if (item && item.type === 'epic' && type !== 'epic' && await has('true'))
+    throw new HttpError(400, 'An epic with work items stays an epic: move its items to another epic first', { type: 'The epic has items' })
+  if (item && type === 'epic' && item.type !== 'epic' && await has('true'))
+    throw new HttpError(400, 'An item with sub-items can’t become an epic', { type: 'It has sub-items' })
+  if (!parentId) return
+  if (type === 'epic') throw new HttpError(400, 'An epic has no parent', { parentId: 'Epics have no parent' })
+  const args: unknown[] = [parentId, me.workspaceId]
+  const [p] = await d.query<{ id: string; type: string; projectId: string; grandType: string | null }>(
+    `select i.id, i.type, i.project_id, g.type as grand_type from issues i left join issues g on g.id = i.parent_id
+      where i.id = $1 and i.workspace_id = $2 and i.deleted_at is null and ${visible(me, 'i.project_id', args)} and ${levelOk(me, args.push(me.id))}`, args)   // within my security level too
+  if (!p) throw new HttpError(400, 'No such parent', { parentId: 'No such parent' })
+  if (p.type === 'epic') return
+  if (p.grandType && p.grandType !== 'epic') throw new HttpError(400, 'A sub-item can’t have sub-items', { parentId: 'That item is a sub-item' })
+  if (p.projectId !== projectId) throw new HttpError(400, 'A sub-item is in its parent’s project', { parentId: 'In another project' })
+  if (await has('true')) throw new HttpError(400, 'An item with sub-items can’t become a sub-item', { parentId: 'It has sub-items' })
 }
 
 /** Components, fix versions and affects versions must be the project's own. */
@@ -407,6 +431,7 @@ export async function insertIssue(d: Db, me: Me, projectId: string, b: Record<st
   await checkFolder(d, projectId, b.type ?? 'task', b.testFolderId)
   await checkParts(d, projectId, b)
   await checkLevel(d, me, projectId, b.securityLevelId, me.id, b.assigneeId ?? null)
+  await checkLevels(d, me, projectId, null, b.type ?? 'task', b.parentId)
   await checkSprint(d, me, b.sprintId)
   if (b.assigneeId === undefined && b.componentIds?.length) { const who = await defaultAssignee(d, projectId, b.componentIds); if (who) b = { ...b, assigneeId: who } }
   // new work starts where its type's workflow starts, or in a status of that workflow
