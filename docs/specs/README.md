@@ -57,8 +57,8 @@ The roadmap, in order. Bugs come first, then the permission model, then the data
 | [0304](0304-versions-components.md) | Versions and components: move on delete, merge, archive | 3 | Ported |
 | 0305 | Priorities and resolutions as admin lists; resolution set by the transition | 3 | Planned |
 | [0306](0306-time-tracking.md) | Time tracking settings | 3 | Ported |
-| [0307](0307-labels.md) | Labels without spaces | 3 | Approved |
-| [0308](0308-project-key.md) | Project key pattern | 3 | Approved |
+| [0307](0307-labels.md) | Labels without spaces | 3 | Ported |
+| [0308](0308-project-key.md) | Project key pattern | 3 | Ported |
 | 0309 | Names that must be unique: projects, versions, components, filters per owner, groups | 3 | Planned |
 | 0401 | Sprint completion counts work in the board's last column as done | 4 | Planned |
 | 0402 | Sprint report | 4 | Planned |
