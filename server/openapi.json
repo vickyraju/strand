@@ -590,6 +590,314 @@
         }
       }
     },
+    "/api/v1/auth/config": {
+      "get": {
+        "summary": "How to sign in: whether the login form shows, and Microsoft Entra’s public settings (no sign-in needed)",
+        "tags": [
+          "Sign-in"
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "loginForm": {
+                      "type": "boolean"
+                    },
+                    "fallback": {
+                      "type": "boolean"
+                    },
+                    "entra": {
+                      "nullable": true,
+                      "description": "Null when Microsoft sign-in is off",
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "tenantId": {
+                          "type": "string"
+                        },
+                        "clientId": {
+                          "type": "string"
+                        },
+                        "authority": {
+                          "type": "string"
+                        },
+                        "scope": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "tenantId",
+                        "clientId",
+                        "authority",
+                        "scope"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "loginForm",
+                    "fallback",
+                    "entra"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/login": {
+      "post": {
+        "summary": "Sign in with a username and password (the login form); returns a session token to send as `Authorization: Bearer`",
+        "tags": [
+          "Sign-in"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "username": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  "password": {
+                    "type": "string",
+                    "maxLength": 1024
+                  },
+                  "remember": {
+                    "default": false,
+                    "description": "“Remember my login on this computer”",
+                    "type": "boolean"
+                  },
+                  "fallback": {
+                    "default": false,
+                    "description": "Signing in through the authentication fallback (`/?auth_fallback`)",
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "username",
+                  "password"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "token": {
+                      "type": "string",
+                      "description": "Send as Authorization: Bearer"
+                    },
+                    "expiresAt": {
+                      "type": "string",
+                      "description": "ISO 8601 timestamp"
+                    }
+                  },
+                  "required": [
+                    "token",
+                    "expiresAt"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "summary": "Sign out: the session token sent with it stops working everywhere at once",
+        "tags": [
+          "Sign-in"
+        ],
+        "responses": {
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/integrations/github/webhook/": {
       "post": {
         "summary": "GitHub webhook receiver (signed with X-Hub-Signature-256; called by GitHub, not by clients)",
@@ -744,6 +1052,20 @@
                         "description": "uuid"
                       },
                       "description": "Groups I am in (transition rules can name groups)"
+                    },
+                    "via": {
+                      "type": "string",
+                      "enum": [
+                        "entra",
+                        "password",
+                        "recovery",
+                        "pat"
+                      ],
+                      "description": "How this request signed in"
+                    },
+                    "recovery": {
+                      "type": "boolean",
+                      "description": "System admins: Strand is running in recovery mode (spec 0711)"
                     }
                   },
                   "required": [
@@ -753,7 +1075,9 @@
                     "workspaceId",
                     "role",
                     "admin",
-                    "groupIds"
+                    "groupIds",
+                    "via",
+                    "recovery"
                   ],
                   "additionalProperties": false
                 }
@@ -28636,7 +28960,7 @@
             "in": "path",
             "name": "key",
             "required": true,
-            "description": "One of: rateLimiting, attachments, accessTokens, searchAndBulk, groups, testing, dueReminders, email, deletedItems, projectKeys, timeTracking"
+            "description": "One of: rateLimiting, attachments, accessTokens, searchAndBulk, signIn, groups, testing, dueReminders, email, deletedItems, projectKeys, timeTracking"
           }
         ],
         "responses": {
@@ -46692,6 +47016,499 @@
           }
         ],
         "responses": {
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/authentication": {
+      "get": {
+        "summary": "Authentication methods: the login form, its fallback, and Microsoft Entra (system administrators)",
+        "tags": [
+          "Sign-in"
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "loginForm": {
+                      "type": "boolean"
+                    },
+                    "fallback": {
+                      "type": "boolean"
+                    },
+                    "entra": {
+                      "nullable": true,
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "tenantId": {
+                          "type": "string"
+                        },
+                        "apiClientId": {
+                          "type": "string"
+                        },
+                        "webClientId": {
+                          "type": "string"
+                        },
+                        "authority": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "enabled",
+                        "name",
+                        "tenantId",
+                        "apiClientId",
+                        "webClientId",
+                        "authority"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "recovery": {
+                      "type": "boolean",
+                      "description": "Recovery mode is on (STRAND_RECOVERY_PASSWORD)"
+                    }
+                  },
+                  "required": [
+                    "loginForm",
+                    "fallback",
+                    "entra",
+                    "recovery"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Show or hide the login form, and turn the authentication fallback on or off (system administrators)",
+        "tags": [
+          "Sign-in"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "loginForm": {
+                    "type": "boolean"
+                  },
+                  "fallback": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "loginForm",
+                  "fallback"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "loginForm": {
+                      "type": "boolean"
+                    },
+                    "fallback": {
+                      "type": "boolean"
+                    },
+                    "entra": {
+                      "nullable": true,
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "tenantId": {
+                          "type": "string"
+                        },
+                        "apiClientId": {
+                          "type": "string"
+                        },
+                        "webClientId": {
+                          "type": "string"
+                        },
+                        "authority": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "enabled",
+                        "name",
+                        "tenantId",
+                        "apiClientId",
+                        "webClientId",
+                        "authority"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "recovery": {
+                      "type": "boolean",
+                      "description": "Recovery mode is on (STRAND_RECOVERY_PASSWORD)"
+                    }
+                  },
+                  "required": [
+                    "loginForm",
+                    "fallback",
+                    "entra",
+                    "recovery"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/authentication/entra": {
+      "put": {
+        "summary": "Configure Microsoft Entra sign-in, and turn it on or off. Turning it on checks that Entra answers for the tenant (system administrators)",
+        "tags": [
+          "Sign-in"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "name": {
+                    "default": "Microsoft",
+                    "description": "The sign-in button says “Continue with <name>”",
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 60
+                  },
+                  "tenantId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "description": "Directory (tenant) ID"
+                  },
+                  "apiClientId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "description": "The API app registration: the audience of the tokens"
+                  },
+                  "webClientId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "description": "The single-page app registration the browser signs in with"
+                  },
+                  "authority": {
+                    "description": "https://login.microsoftonline.com, or a sovereign cloud",
+                    "default": "https://login.microsoftonline.com",
+                    "type": "string",
+                    "format": "uri"
+                  }
+                },
+                "required": [
+                  "enabled",
+                  "tenantId",
+                  "apiClientId",
+                  "webClientId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "loginForm": {
+                      "type": "boolean"
+                    },
+                    "fallback": {
+                      "type": "boolean"
+                    },
+                    "entra": {
+                      "nullable": true,
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "tenantId": {
+                          "type": "string"
+                        },
+                        "apiClientId": {
+                          "type": "string"
+                        },
+                        "webClientId": {
+                          "type": "string"
+                        },
+                        "authority": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "enabled",
+                        "name",
+                        "tenantId",
+                        "apiClientId",
+                        "webClientId",
+                        "authority"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "recovery": {
+                      "type": "boolean",
+                      "description": "Recovery mode is on (STRAND_RECOVERY_PASSWORD)"
+                    }
+                  },
+                  "required": [
+                    "loginForm",
+                    "fallback",
+                    "entra",
+                    "recovery"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
           "400": {
             "description": "Invalid input; `errors` maps each bad field to a message",
             "content": {

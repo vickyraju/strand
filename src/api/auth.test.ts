@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { authorizeUrl, challengeOf, needsRefresh, randomToken, scopeFor } from './auth.ts'
+import { authorizeUrl, challengeOf, needsRefresh, randomToken, showsLoginForm, type EntraClient } from './auth.ts'
 import { buildRequest, withPrefix, API_PREFIX } from './client.ts'
 
 test('PKCE: the challenge matches the RFC 7636 test vector', async () => {
@@ -13,14 +13,23 @@ test('random tokens are url-safe and different every time', () => {
   assert.notEqual(a, b)
 })
 
-test('the authorize URL asks for a code with PKCE, the API scope and the state', () => {
-  const u = new URL(authorizeUrl({ authority: 'https://login.example', tenant: 'T', clientId: 'C', redirectUri: 'https://app.example/', challenge: 'CH', state: 'ST' }))
+test('the authorize URL asks for a code with PKCE, the scope the server publishes, and the state', () => {
+  const e: EntraClient = { name: 'Microsoft', tenantId: 'T', clientId: 'C', authority: 'https://login.example', scope: 'api://A/access_as_user openid' }
+  const u = new URL(authorizeUrl(e, { redirectUri: 'https://app.example/', challenge: 'CH', state: 'ST' }))
   assert.equal(u.origin + u.pathname, 'https://login.example/T/oauth2/v2.0/authorize')
   const q = u.searchParams
   assert.deepEqual([q.get('client_id'), q.get('response_type'), q.get('redirect_uri'), q.get('state')], ['C', 'code', 'https://app.example/', 'ST'])
   assert.deepEqual([q.get('code_challenge'), q.get('code_challenge_method')], ['CH', 'S256'])
-  assert.equal(q.get('scope'), scopeFor('C'))
-  assert.match(scopeFor('C'), /^api:\/\/C\/access_as_user .*offline_access/)
+  assert.equal(q.get('scope'), 'api://A/access_as_user openid')
+})
+
+test('[0711.R6][0711.R7] the login form shows when the admin shows it, with ?auth_fallback, or when Microsoft is off', () => {
+  const entra: EntraClient = { name: 'Microsoft', tenantId: 'T', clientId: 'C', authority: 'https://login.example', scope: 's' }
+  assert.equal(showsLoginForm({ loginForm: true, fallback: false, entra }, ''), true)
+  assert.equal(showsLoginForm({ loginForm: false, fallback: false, entra }, ''), false)           // straight to Microsoft
+  assert.equal(showsLoginForm({ loginForm: false, fallback: true, entra }, '?auth_fallback'), true)
+  assert.equal(showsLoginForm({ loginForm: false, fallback: false, entra }, '?auth_fallback'), true)   // recovery_admin still gets in
+  assert.equal(showsLoginForm({ loginForm: false, fallback: false, entra: null }, ''), true)
 })
 
 test('a token is refreshed a minute before it expires', () => {

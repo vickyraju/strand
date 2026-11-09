@@ -1,14 +1,13 @@
-// Microsoft Entra ID sign-in for the browser: OAuth 2.0 authorization code flow with PKCE (no client secret, no library).
-// The API receives the access token as a bearer token and checks it against Entra's published signing keys.
+// Signing in from the browser (spec 0711). Two ways, as the server's Authentication methods say (GET /auth/config):
+// - Microsoft Entra ID: OAuth 2.0 authorization code flow with PKCE (no client secret, no library). The API receives the
+//   access token as a bearer token and checks it against Entra's published signing keys.
+// - The login form: a username and password, answered with a Strand session token (`jbs_…`).
 // Entra setup (single-page application registration, exposed `access_as_user` scope) is described in the README.
+import { API_URL, buildRequest, withPrefix } from './client.ts'
 
-const TENANT: string | undefined = import.meta.env?.VITE_ENTRA_TENANT_ID ?? (typeof process !== 'undefined' ? process.env.VITE_ENTRA_TENANT_ID : undefined)
-const CLIENT: string | undefined = import.meta.env?.VITE_ENTRA_CLIENT_ID ?? (typeof process !== 'undefined' ? process.env.VITE_ENTRA_CLIENT_ID : undefined)
-const authorityEnv: string | undefined = import.meta.env?.VITE_ENTRA_AUTHORITY ?? (typeof process !== 'undefined' ? process.env.VITE_ENTRA_AUTHORITY : undefined)
-// Public cloud by default; set VITE_ENTRA_AUTHORITY for a sovereign cloud (e.g. https://login.microsoftonline.us)
-const AUTHORITY = (authorityEnv ?? 'https://login.microsoftonline.com').replace(/\/$/, '')
-
-export const authConfigured = !!TENANT && !!CLIENT
+/** Entra's public settings, as the server publishes them. */
+export interface EntraClient { name: string; tenantId: string; clientId: string; authority: string; scope: string }
+export interface AuthConfig { loginForm: boolean; fallback: boolean; entra: EntraClient | null }
 
 // —— Pure helpers (unit-tested) ——
 
@@ -20,28 +19,34 @@ export async function challengeOf(verifier: string): Promise<string> {
 }
 export const randomToken = (bytes = 32) => b64url(crypto.getRandomValues(new Uint8Array(bytes)))
 
-export const scopeFor = (clientId: string) => `api://${clientId}/access_as_user openid profile email offline_access`
-
-export function authorizeUrl(o: { authority: string; tenant: string; clientId: string; redirectUri: string; challenge: string; state: string }): string {
+export function authorizeUrl(e: EntraClient, o: { redirectUri: string; challenge: string; state: string }): string {
   const q = new URLSearchParams({
-    client_id: o.clientId, response_type: 'code', redirect_uri: o.redirectUri, response_mode: 'query',
-    scope: scopeFor(o.clientId), state: o.state, code_challenge: o.challenge, code_challenge_method: 'S256',
+    client_id: e.clientId, response_type: 'code', redirect_uri: o.redirectUri, response_mode: 'query',
+    scope: e.scope, state: o.state, code_challenge: o.challenge, code_challenge_method: 'S256',
   })
-  return `${o.authority}/${o.tenant}/oauth2/v2.0/authorize?${q}`
+  return `${e.authority}/${e.tenantId}/oauth2/v2.0/authorize?${q}`
 }
 
-export interface Session { access: string; refresh?: string; expiresAt: number }
+/** Entra sessions carry their refresh token and the settings they came from; login-form sessions only the token. */
+export interface Session { access: string; refresh?: string; expiresAt: number; entra?: EntraClient; remember?: boolean }
 /** Refresh a minute early so a request never leaves with a token that expires in flight. */
 export const needsRefresh = (s: Session, now = Date.now()) => s.expiresAt - 60_000 <= now
 
+/** The login form shows when the admin shows it, with `?auth_fallback` (R6, and recovery mode), or when nothing else is on. */
+export const showsLoginForm = (c: AuthConfig, search: string) => c.loginForm || !c.entra || new URLSearchParams(search).has('auth_fallback')
+
 // —— Session (browser only) ——
 
-const SESSION = 'jira-build:session', PENDING = 'jira-build:signin'   // sessionStorage: gone when the tab closes
+// sessionStorage: gone when the tab closes; a remembered login-form session lives in localStorage
+const SESSION = 'jira-build:session', PENDING = 'jira-build:signin'
 const redirectUri = () => location.origin + '/'
 
-const load = (): Session | null => { try { return JSON.parse(sessionStorage.getItem(SESSION) ?? 'null') } catch { return null } }
-let session: Session | null = typeof sessionStorage === 'undefined' ? null : load()
-const save = () => (session ? sessionStorage.setItem(SESSION, JSON.stringify(session)) : sessionStorage.removeItem(SESSION))
+const read = (s: Storage) => { try { return JSON.parse(s.getItem(SESSION) ?? 'null') as Session | null } catch { return null } }
+let session: Session | null = typeof sessionStorage === 'undefined' ? null : read(sessionStorage) ?? read(localStorage)
+const save = () => {
+  sessionStorage.removeItem(SESSION); localStorage.removeItem(SESSION)
+  if (session) (session.remember ? localStorage : sessionStorage).setItem(SESSION, JSON.stringify(session))
+}
 
 /** The server turned the token down: forget it and tell the app to show the sign-in screen. */
 export function forgetSession() {
@@ -52,21 +57,21 @@ export const hasSession = () => !!session
 
 class RejectedError extends Error {}   // Entra answered and said no (as opposed to the network failing)
 
-async function tokenRequest(params: Record<string, string>): Promise<Session> {
-  const res = await fetch(`${AUTHORITY}/${TENANT}/oauth2/v2.0/token`, {
+async function tokenRequest(e: EntraClient, params: Record<string, string>): Promise<Session> {
+  const res = await fetch(`${e.authority}/${e.tenantId}/oauth2/v2.0/token`, {
     method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ client_id: CLIENT!, scope: scopeFor(CLIENT!), ...params }),
+    body: new URLSearchParams({ client_id: e.clientId, scope: e.scope, ...params }),
   })
   const d = await res.json().catch(() => null)
   if (!res.ok || !d?.access_token) throw new RejectedError(String(d?.error_description ?? 'Sign-in failed').split(/\r?\n/)[0])
-  return { access: d.access_token, refresh: d.refresh_token, expiresAt: Date.now() + (Number(d.expires_in) || 3600) * 1000 }
+  return { access: d.access_token, refresh: d.refresh_token, expiresAt: Date.now() + (Number(d.expires_in) || 3600) * 1000, entra: e }
 }
 
 /** Send the browser to Microsoft to sign in; it comes back to `/` with a code that `completeSignIn` exchanges. */
-export async function signIn() {
+export async function signIn(entra: EntraClient) {
   const verifier = randomToken(), state = randomToken(16)
-  sessionStorage.setItem(PENDING, JSON.stringify({ verifier, state, returnTo: location.pathname + location.search + location.hash }))
-  location.assign(authorizeUrl({ authority: AUTHORITY, tenant: TENANT!, clientId: CLIENT!, redirectUri: redirectUri(), challenge: await challengeOf(verifier), state }))
+  sessionStorage.setItem(PENDING, JSON.stringify({ verifier, state, entra, returnTo: location.pathname + location.search + location.hash }))
+  location.assign(authorizeUrl(entra, { redirectUri: redirectUri(), challenge: await challengeOf(verifier), state }))
 }
 
 /** On return from Microsoft: check `state`, swap the code for tokens, and put the URL back to where the user was.
@@ -74,14 +79,20 @@ export async function signIn() {
 export async function completeSignIn(): Promise<boolean> {
   const q = new URLSearchParams(location.search)
   if (!q.has('state') || !(q.has('code') || q.has('error'))) return false
-  const pending = JSON.parse(sessionStorage.getItem(PENDING) ?? 'null') as { verifier: string; state: string; returnTo: string } | null
+  const pending = JSON.parse(sessionStorage.getItem(PENDING) ?? 'null') as { verifier: string; state: string; entra: EntraClient; returnTo: string } | null
   sessionStorage.removeItem(PENDING)
   history.replaceState(null, '', pending?.returnTo ?? '/')                      // the code must not stay in the address bar
   if (q.has('error')) throw new Error(q.get('error_description')?.split(/\r?\n/)[0] ?? 'Sign-in was cancelled')
   if (!pending || q.get('state') !== pending.state) throw new Error('That sign-in was not started in this tab. Please try again.')
-  session = await tokenRequest({ grant_type: 'authorization_code', code: q.get('code')!, redirect_uri: redirectUri(), code_verifier: pending.verifier })
+  session = await tokenRequest(pending.entra, { grant_type: 'authorization_code', code: q.get('code')!, redirect_uri: redirectUri(), code_verifier: pending.verifier })
   save()
   return true
+}
+
+/** The login form signed in: keep the server's session token for the tab or, remembered, on this computer. */
+export function passwordSignedIn(token: string, expiresAt: string, remember: boolean) {
+  session = { access: token, expiresAt: Date.parse(expiresAt), remember }
+  save()
 }
 
 let refreshing: Promise<string | null> | null = null
@@ -91,8 +102,8 @@ export async function accessToken(): Promise<string | null> {
   if (!session) return null
   if (!needsRefresh(session)) return session.access
   const old = session
-  if (!old.refresh) { forgetSession(); return null }
-  refreshing ??= tokenRequest({ grant_type: 'refresh_token', refresh_token: old.refresh })
+  if (!old.refresh || !old.entra) { forgetSession(); return null }               // a login-form session simply ends
+  refreshing ??= tokenRequest(old.entra, { grant_type: 'refresh_token', refresh_token: old.refresh })
     .then(s => { session = { ...s, refresh: s.refresh ?? old.refresh }; save(); return session.access })
     .catch(e => {
       if (e instanceof RejectedError) { forgetSession(); return null }
@@ -102,8 +113,11 @@ export async function accessToken(): Promise<string | null> {
   return refreshing
 }
 
-export function signOut() {
-  if (!authConfigured) { location.reload(); return }
+/** Sign out: a login-form session ends on the server at once; an Entra one signs out at Microsoft too. */
+export async function signOut() {
+  const s = session
   session = null; save()
-  location.assign(`${AUTHORITY}/${TENANT}/oauth2/v2.0/logout?post_logout_redirect_uri=${encodeURIComponent(redirectUri())}`)
+  if (s?.entra) { location.assign(`${s.entra.authority}/${s.entra.tenantId}/oauth2/v2.0/logout?post_logout_redirect_uri=${encodeURIComponent(redirectUri())}`); return }
+  if (s && API_URL) await fetch(...buildRequest(API_URL, s.access, 'POST', withPrefix('/api/auth/logout'))).catch(() => {})
+  location.assign('/')
 }

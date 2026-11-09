@@ -13,6 +13,8 @@ const root = new URL('..', import.meta.url).pathname
 export const dbUrl = process.env.E2E_DATABASE_URL
 export const skip = !dbUrl && 'E2E_DATABASE_URL not set (it is wiped, so it must be a scratch database)'
 const TENANT = '11111111-1111-4111-8111-111111111111', CLIENT = '22222222-2222-4222-8222-222222222222'
+/** recovery_admin's password (spec 0711 recovery mode is on for every run). */
+export const RECOVERY_PASSWORD = 'e2e-recovery-password-0711'
 
 const children = []
 let jwksServer, authority, apiUrl, webUrl, browser
@@ -63,7 +65,11 @@ export async function start() {
   try { await c.query('drop schema public cascade; create schema public') } finally { await c.end() }   // an open connection would keep the run from ending
   execFileSync('node', ['scripts/migrate.ts'], { cwd: `${root}server`, env: { ...process.env, DATABASE_URL: dbUrl }, stdio: 'ignore' })
 
-  jwksServer = createServer((_q, r) => { r.setHeader('content-type', 'application/json'); r.end(JSON.stringify({ keys: [jwk] })) })
+  // Entra's discovery document and its keys (the API's Authentication methods check both before Entra is turned on)
+  jwksServer = createServer((q, r) => {
+    r.setHeader('content-type', 'application/json')
+    r.end(JSON.stringify(q.url.endsWith('/.well-known/openid-configuration') ? { issuer: `${authority}/${TENANT}/v2.0`, jwks_uri: `${authority}/keys` } : { keys: [jwk] }))
+  })
   await new Promise(r => jwksServer.listen(0, '127.0.0.1', r))
   authority = `http://127.0.0.1:${jwksServer.address().port}`
   const [apiPort, webPort] = [await freePort(), await freePort()]
@@ -76,11 +82,12 @@ export async function start() {
     children.push(p)
   }
   run(['src/index.ts'], `${root}server`, {
-    DATABASE_URL: dbUrl, PORT: String(apiPort), NODE_ENV: 'test', ENTRA_TENANT_ID: TENANT, ENTRA_CLIENT_ID: CLIENT, ENTRA_AUTHORITY: authority,
+    DATABASE_URL: dbUrl, PORT: String(apiPort), NODE_ENV: 'test', ENTRA_TENANT_ID: TENANT, ENTRA_CLIENT_ID: CLIENT, ENTRA_WEB_CLIENT_ID: CLIENT, ENTRA_AUTHORITY: authority,
+    STRAND_RECOVERY_PASSWORD: RECOVERY_PASSWORD,
     CORS_ORIGINS: webUrl, JOBS_POLL_MS: '500', DUE_SCAN_INTERVAL_MS: '0', FILE_SWEEP_MS: '0', S3_BUCKET: '',
   })
   run(['node_modules/vite/bin/vite.js', '--port', String(webPort), '--strictPort', '--host', 'localhost'], root, {
-    VITE_API_URL: apiUrl, VITE_API_PREFIX: '/api/v1', VITE_ENTRA_TENANT_ID: TENANT, VITE_ENTRA_CLIENT_ID: CLIENT, VITE_ENTRA_AUTHORITY: authority,
+    VITE_API_URL: apiUrl, VITE_API_PREFIX: '/api/v1',
   })
   await until('the API', async () => (await fetch(`${apiUrl}/ready`)).ok)
   await until('the web app', async () => (await fetch(webUrl)).ok)
@@ -99,16 +106,22 @@ export async function stop() {
 
 /** A browser tab signed in as `email`, showing the app. Collects page errors in `page.problems`. */
 export async function signIn(email, roles = []) {
+  const page = await signedOut('/', [tokenFor(email, roles)])
+  await page.waitForSelector('nav')
+  return page
+}
+
+/** A browser tab at `path` that nobody has signed in to (or, given a token, that starts with it, as signIn does). */
+export async function signedOut(path, [token] = []) {
   const ctx = await browser.newContext({ viewport: { width: 1400, height: 900 }, acceptDownloads: true })
-  await ctx.addInitScript(([token]) => {
-    sessionStorage.setItem('jira-build:session', JSON.stringify({ access: token, expiresAt: Date.now() + 3_600_000 }))
-  }, [tokenFor(email, roles)])
+  if (token) await ctx.addInitScript(([t]) => {
+    sessionStorage.setItem('jira-build:session', JSON.stringify({ access: t, expiresAt: Date.now() + 3_600_000 }))
+  }, [token])
   const page = await ctx.newPage()
   page.problems = []
   page.on('pageerror', e => page.problems.push(e.message))
-  page.on('console', m => { if (m.type() === 'error' && !/status of 40[34]/.test(m.text())) page.problems.push(m.text().slice(0, 200)) })
-  await page.goto(webUrl)
-  await page.waitForSelector('nav')
+  page.on('console', m => { if (m.type() === 'error' && !/status of 40[1349]/.test(m.text())) page.problems.push(m.text().slice(0, 200)) })
+  await page.goto(webUrl + path)
   return page
 }
 

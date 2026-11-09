@@ -415,6 +415,8 @@ export interface State {
   ownerId:       string | null
   /** Workspace owner or admin: administers every project (from the server; unset for a workspace kept in this browser) */
   isAdmin?:      boolean
+  /** The server is in recovery mode (spec 0711): shown to system administrators as a banner. */
+  recovery?:     boolean
   /** Groups I am in (transition rules can name groups). */
   groupIds?:     string[]
   /** The workspace's link types (from the server; Jira's defaults otherwise). */

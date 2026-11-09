@@ -1,7 +1,7 @@
 // The main journeys, end to end in a real browser. Each one checks what a person sees and what the server keeps.
 import { test, before, after } from 'node:test'
 import assert from 'node:assert/strict'
-import { start, stop, skip, signIn, as, url, PEOPLE, postRaw } from './harness.mjs'
+import { start, stop, skip, signIn, signedOut, as, url, PEOPLE, postRaw, RECOVERY_PASSWORD } from './harness.mjs'
 
 const owner = as('owner@e2e.test'), maya = as('maya@e2e.test'), vic = as('vic@e2e.test')
 const idOf = async email => (await as(email)('GET', '/me')).body.id
@@ -1377,4 +1377,22 @@ test('[0409.R3] a board’s card colours by priority: the admin chooses Prioriti
   await card.waitFor()
   assert.equal(await card.evaluate(el => getComputedStyle(el).getPropertyValue('--stripe').trim().toUpperCase()), '#DC2626')
   assert.deepEqual(o.problems, [])
+})
+
+test('[0711.R6][0711.R9][0711.R10] with the login form hidden, recovery_admin signs in at /?auth_fallback, sees the recovery banner and shows the form again', { skip, timeout: 90_000 }, async () => {
+  assert.equal((await owner('PUT', '/admin/authentication', { loginForm: false, fallback: false })).status, 200)
+  const p = await signedOut('/?auth_fallback')
+  await p.fill('#login-username', 'recovery_admin')
+  await p.fill('#login-password', 'not the password')
+  await p.click('button:has-text("Log in")')
+  await p.waitForSelector('text=Sorry, your username and password are incorrect - please try again.')
+  await p.fill('#login-password', RECOVERY_PASSWORD)
+  await p.click('button:has-text("Log in")')
+  await p.waitForSelector('nav')
+  await p.waitForSelector('text=Strand is running in recovery mode')
+  await p.goto(url('/admin/auth-methods'))
+  await p.click('[aria-label="Show the login form on the login page"]')
+  await p.waitForSelector('text=Login form shown')
+  assert.equal((await owner('GET', '/admin/authentication')).body.loginForm, true)
+  assert.deepEqual(p.problems, [])
 })

@@ -14,12 +14,16 @@ Work management: projects, boards, backlogs and sprints, issues, timeline, inbox
 
 Settings are listed, with comments, in `server/.env.example` (API) and `.env.example` (web build).
 
+How people sign in is set in **Administration › Authentication methods** (spec 0711): Microsoft Entra single sign-on, the username and password login form, or both, each turned on or off without a restart. On first start the API stores Entra's settings from `ENTRA_*`; after that the page wins.
+
 Entra ID needs two app registrations (the web app's sign-in; scripts use tokens instead):
 
 | Registration | Settings |
 |---|---|
-| API | Expose an API with the scope `access_as_user`; app role `Strand.Admin` for administrators. Its client id is `ENTRA_CLIENT_ID` on the API. |
-| Web app | Single-page application, redirect URI `https://<site>/`, API permission on `access_as_user`. Its client id is `VITE_ENTRA_CLIENT_ID` in the web build. |
+| API | Expose an API with the scope `access_as_user`; app role `Strand.Admin` for administrators. Its client id is the **API client ID** (`ENTRA_CLIENT_ID`). |
+| Web app | Single-page application, redirect URI `https://<site>/`, API permission on `access_as_user`. Its client id is the **Web client ID** (`ENTRA_WEB_CLIENT_ID`). |
+
+Locked out (Entra misconfigured, the login form hidden)? Set `STRAND_RECOVERY_PASSWORD` (16 characters or more) on the API, sign in as `recovery_admin` at `https://<site>/?auth_fallback`, fix the methods, then remove the variable.
 
 ## API access with personal access tokens
 
@@ -67,7 +71,7 @@ envsubst < deploy/k8s/migrate-job.yaml | kubectl apply -f - && kubectl -n jira-b
 envsubst < deploy/k8s/jira-build.yaml  | kubectl apply -f - && kubectl -n jira-build rollout status deployment/jira-build-api
 ```
 
-**Web app.** Build with `VITE_API_URL` (the CloudFront address), `VITE_ENTRA_TENANT_ID` and `VITE_ENTRA_CLIENT_ID` set, then copy `dist/` to the web bucket:
+**Web app.** Build with `VITE_API_URL` (the CloudFront address) set, then copy `dist/` to the web bucket:
 
 ```bash
 npm ci && npm run build
