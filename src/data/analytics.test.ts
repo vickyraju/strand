@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { reducer, EMPTY, type State } from './reducer.ts'
 import { withSample } from './testdata.ts'
 import { toReportData } from '../api/map.ts'
-import { burndown, cumulativeFlow, cycleTimes, velocity, createdVsResolved, statusAt, statusHistory } from './analytics.ts'
+import { burndown, cumulativeFlow, cycleTimes, velocity, createdVsResolved, statusAt, statusHistory, guideline, isWorkingDay } from './analytics.ts'
 
 function sample(): State {
   const s0 = reducer(EMPTY, { type: 'setOwner', name: 'Alex Morgan' })
@@ -76,4 +76,14 @@ test('reports from server data (items plus status changes) match reports from th
   for (const sp of s.sprints.filter(x => x.projectId === p.id && x.startedAt))
     assert.deepEqual(ids(burndown(fromServer, p, sp, now)), ids(burndown(s, p, sp, now)))
   }
+})
+
+test('[0405.R2] the burndown guideline falls only on working days, flat across a weekend and a holiday', () => {
+  // Monday 2 Nov 2026 to Monday 9 Nov: Sat 7 and Sun 8 are off, and Wednesday 4 is a holiday
+  const day = (d: number) => new Date(2026, 10, d).getTime()
+  const timeline = [2, 3, 4, 5, 6, 7, 8, 9].map(day)
+  const w = { weekdays: [1, 2, 3, 4, 5], nonWorking: ['2026-11-04'] }
+  assert.deepEqual(guideline(timeline, 8, w), [8, 6, 6, 4, 2, 2, 2, 0])
+  assert.deepEqual(guideline(timeline, 7), [7, 6, 5, 4, 3, 2, 1, 0])                     // no working days set: every day
+  assert.equal(isWorkingDay(day(7), w), false)
 })

@@ -14,7 +14,7 @@ export interface Lanes { by: 'none' | 'assignee' | 'epic' | 'priority' | 'projec
 export interface Board {
   id: string; workspaceId: string; projectId: string; name: string; type: 'kanban' | 'scrum'; jql: string
   columns: Column[]; swimlanes: Lanes; quickFilters: { id: string; name: string; jql: string }[]; cardFields: Record<string, boolean>
-  doneDays: number | null; estimation: 'points' | 'time' | 'count'; position: number; createdBy: string | null
+  doneDays: number | null; estimation: 'points' | 'time' | 'count'; workingDays: { weekdays: number[]; nonWorking: string[] }; position: number; createdBy: string | null
 }
 
 /** Jira's two quick filters every new board starts with. */

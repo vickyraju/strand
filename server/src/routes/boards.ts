@@ -32,6 +32,10 @@ const settings = {
   cardFields: z.record(z.string().max(40), z.boolean()),
   doneDays: z.number().int().min(1).max(3650).nullable().describe('Kanban: leave out Done items not updated for this many days (null: show them all)'),
   estimation: z.enum(['points', 'time', 'count']).describe('Scrum: what estimates count (story points, original time estimate, issue count); spec 0404'),
+  workingDays: z.object({
+    weekdays: z.array(z.number().int().min(0).max(6)).min(1, 'Choose at least one working day').max(7).describe('Working weekdays, 0 for Sunday'),
+    nonWorking: z.array(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)).max(365).describe('Holidays and other dates nobody works (YYYY-MM-DD)'),
+  }).describe('The burndown’s guideline falls only on working days (spec 0405)'),
   admins: z.object({ userIds: z.array(uuid).max(100), groupIds: z.array(uuid).max(100) }).describe('The board’s administrators besides the project’s admins'),
 }
 /** The projects a query names in a `project =` or `project in` clause (keys upper-cased, names lower-cased), anywhere in it. */
@@ -50,7 +54,7 @@ async function boardOut(d: Db, me: Me, id: string) {
      union all select 'group', g.id, g.display_name from board_admins a join groups g on g.id = a.group_id where a.board_id = $1 order by 1, 3`, [b.id])
   const [p] = await d.query<{ key: string }>('select key from projects where id = $1', [b.projectId])
   return { id: b.id, projectId: b.projectId, projectKey: p!.key, name: b.name, type: b.type, jql: b.jql, columns: b.columns, swimlanes: b.swimlanes, quickFilters: b.quickFilters,
-    cardFields: b.cardFields, doneDays: b.doneDays, estimation: b.estimation, position: b.position, canManage, canManageSprints: (await sprintManager(d, me, b)).ok, admins }
+    cardFields: b.cardFields, doneDays: b.doneDays, estimation: b.estimation, workingDays: b.workingDays, position: b.position, canManage, canManageSprints: (await sprintManager(d, me, b)).ok, admins }
 }
 
 /** Every status a column names is one of the workspace's; a status in two columns is refused. */
@@ -121,12 +125,13 @@ const plugin: FastifyPluginAsyncZod = async app => {
       swimlanes: b.swimlanes ? lanesOf(b.swimlanes) : before.swimlanes,
       quickFilters: b.quickFilters ? withIds(b.quickFilters) : before.quickFilters, cardFields: b.cardFields ?? before.cardFields,
       doneDays: b.doneDays !== undefined ? b.doneDays : before.doneDays, estimation: b.estimation ?? before.estimation,
+      workingDays: b.workingDays ? { weekdays: [...new Set(b.workingDays.weekdays)].sort(), nonWorking: [...new Set(b.workingDays.nonWorking)].sort() } : before.workingDays,
     }
     if (b.estimation && before.type !== 'scrum') throw new HttpError(400, 'Only a Scrum board has an estimation statistic', { estimation: 'Kanban boards don’t estimate' })
     await checkQueries(d, req.me, next)
     if (b.columns) await checkColumns(d, req.me.workspaceId, next.columns)
-    await d.query(`update boards set name = $2, jql = $3, columns = $4, swimlanes = $5, quick_filters = $6, card_fields = $7, done_days = $8, estimation = $9, updated_at = now() where id = $1`,
-      [before.id, next.name, next.jql, JSON.stringify(next.columns), JSON.stringify(next.swimlanes), JSON.stringify(next.quickFilters), JSON.stringify(next.cardFields), next.doneDays, next.estimation])
+    await d.query(`update boards set name = $2, jql = $3, columns = $4, swimlanes = $5, quick_filters = $6, card_fields = $7, done_days = $8, estimation = $9, working_days = $10, updated_at = now() where id = $1`,
+      [before.id, next.name, next.jql, JSON.stringify(next.columns), JSON.stringify(next.swimlanes), JSON.stringify(next.quickFilters), JSON.stringify(next.cardFields), next.doneDays, next.estimation, JSON.stringify(next.workingDays)])
     if (b.admins) await setAdmins(d, req.me.workspaceId, before.id, b.admins)
     const c = changes({ name: before.name, jql: before.jql }, { name: next.name, jql: next.jql })
     const what = Object.keys(b).filter(k => k !== 'name' && k !== 'jql')

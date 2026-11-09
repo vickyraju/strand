@@ -93,7 +93,8 @@ const NamedQuery = z.object({ id: z.string(), name: z.string(), jql: z.string() 
 export const Board = z.object({
   id, projectId: id, projectKey: z.string(), name: z.string(), type: z.enum(['kanban', 'scrum']), jql: z.string().describe('The board filter'),
   columns: z.array(BoardColumn), swimlanes: z.object({ by: z.enum(['none', 'assignee', 'epic', 'priority', 'project', 'queries']), queries: z.array(NamedQuery).optional() }),
-  quickFilters: z.array(NamedQuery), cardFields: z.record(z.string(), z.boolean()), doneDays: nullable(z.number()), estimation: z.enum(['points', 'time', 'count']).describe('Scrum: what estimates count (spec 0404)'), position: z.number(),
+  quickFilters: z.array(NamedQuery), cardFields: z.record(z.string(), z.boolean()), doneDays: nullable(z.number()), estimation: z.enum(['points', 'time', 'count']).describe('Scrum: what estimates count (spec 0404)'),
+  workingDays: z.object({ weekdays: z.array(z.number()), nonWorking: z.array(z.string()) }).describe('Working weekdays (0 is Sunday) and non-working dates (spec 0405)'), position: z.number(),
   canManage: z.boolean().describe('I may change it'), canManageSprints: z.boolean().describe('I may create, start, complete and delete its sprints'), admins: z.array(z.object({ kind: z.enum(['user', 'group']), id, name: z.string() })),
 })
 export const ProjectDetail = z.object({

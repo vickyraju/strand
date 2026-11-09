@@ -4244,3 +4244,16 @@ test('[0404.R1][0404.R2][0404.R4] each Scrum board’s estimation statistic: poi
   const counted = (await call('POST', `/api/v1/projects/EST/sprints/${s2.id}/start`, { endsAt: new Date(Date.now() + 864e5).toISOString() })).body
   assert.deepEqual([counted.estimation, counted.committed], ['count', 2])
 })
+
+test('[0405.R1] a board’s working days: weekdays and days off, set by its admins', { skip }, async () => {
+  const p = (await call('POST', '/api/v1/projects', { name: 'Workweek', key: 'WWK', template: 'scrum' })).body
+  await join('WWK', 'wwk.member@x.com')
+  const board = (await call('GET', '/api/v1/projects/WWK/boards')).body[0]
+  assert.deepEqual((await call('GET', `/api/v1/boards/${board.id}`)).body.workingDays, { weekdays: [1, 2, 3, 4, 5], nonWorking: [] })
+  const set = (workingDays: object, who?: string) => call('PATCH', `/api/v1/boards/${board.id}`, { workingDays }, who)
+  assert.equal((await set({ weekdays: [1, 2, 3, 4], nonWorking: ['2026-12-25'] }, 'wwk.member@x.com')).status, 403)
+  assert.equal((await set({ weekdays: [], nonWorking: [] })).status, 400)
+  assert.equal((await set({ weekdays: [1], nonWorking: ['25/12/2026'] })).status, 400)
+  assert.deepEqual((await set({ weekdays: [4, 1, 2, 3, 3], nonWorking: ['2026-12-25', '2026-12-24'] })).body.workingDays, { weekdays: [1, 2, 3, 4], nonWorking: ['2026-12-24', '2026-12-25'] })
+  assert.ok(p.id)
+})
