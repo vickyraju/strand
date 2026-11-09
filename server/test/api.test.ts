@@ -3479,6 +3479,7 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     'POST /projects/{key}/releases/{id}/merge': ['padmin', `/projects/${K}/releases/${release}/merge`, { from: ['00000000-0000-4000-8000-000000000000'] }],   // 0304.R3
     'GET /projects/{key}/releases/{id}/usage': ['read', `/projects/${K}/releases/${release}/usage`],   // 0304.R5
     'GET /projects/{key}/components/{id}/usage': ['read', `/projects/${K}/components/${component}/usage`],   // 0304.R5
+    'GET /projects/{key}/sprints/{id}/report': ['read', `/projects/${K}/sprints/${sprint}/report`],   // 0402.R8
     'POST /projects/{key}/sprints':['write', `/projects/${K}/sprints`, { name: 's' }],   // 0101.R8
     'PATCH /projects/{key}/sprints/{id}': ['write', `/projects/${K}/sprints/${sprint}`, { name: 'x' }],   // 0101.R8
     'DELETE /projects/{key}/sprints/{id}': ['write', `/projects/${K}/sprints/${sprint}`],   // 0101.R8
@@ -4052,7 +4053,8 @@ test('[0305.R1][0305.R2][0305.R3][0305.R4][0305.R5] priorities and resolutions a
   assert.equal((await call('GET', `/api/v1/issues/${urgent.key}`)).body.priority, 'urgent')
   assert.equal((await call('GET', '/api/v1/projects/LST')).body.templates.find((t: any) => t.name === 'Hot').priority, 'urgent')
   assert.equal((await call('GET', '/api/v1/priorities')).body.find((p: any) => p.isDefault).key, 'urgent')
-  await call('PATCH', '/api/v1/admin/priorities/medium', { isDefault: true })
+  assert.equal((await call('PATCH', '/api/v1/admin/priorities/medium', { isDefault: true })).body.isDefault, true)
+  assert.deepEqual((await call('GET', '/api/v1/priorities')).body.filter((p: any) => p.isDefault).map((p: any) => p.key), ['medium'])
   // R5: resolutions: a rename carries to items; deleting moves them; an unknown one is refused
   const done = (await call('GET', '/api/v1/projects/LST')).body.statuses.find((s: any) => s.category === 'done').id
   await call('PATCH', `/api/v1/issues/${low.key}`, { statusId: done })
@@ -4116,4 +4118,36 @@ test('[0401.R1][0401.R2][0401.R4] completing a sprint: done means the board’s 
   const closedAfter = (await call('GET', `/api/v1/issues/${closed.key}`)).body
   assert.deepEqual([closedAfter.statusId, closedAfter.resolution], [closedBefore.statusId, closedBefore.resolution])
   assert.equal((await call('GET', `/api/v1/issues/${ready.key}`)).body.resolution, null)
+})
+
+test('[0402.R1][0402.R2][0402.R3][0402.R4][0402.R5][0402.R6][0402.R7][0402.R8] Sprint Report: completed, not completed, completed outside, removed; points at start; added marked', { skip }, async () => {
+  const p = (await call('POST', '/api/v1/projects', { name: 'Reported', key: 'RPT', template: 'scrum' })).body
+  const [todo, done] = [p.statuses[0], p.statuses.find((s: any) => s.category === 'done')]
+  await join('RPT', 'rpt.viewer@x.com', 'viewer')
+  const s1 = (await call('POST', '/api/v1/projects/RPT/sprints', { name: 'Reported 1' })).body
+  const mk = (title: string, extra: object = {}) => call('POST', '/api/v1/projects/RPT/issues', { title, ...extra }).then(r => r.body)
+  const a = await mk('A', { sprintId: s1.id, estimate: 3 }), b = await mk('B', { sprintId: s1.id, estimate: 2 }), d = await mk('D', { sprintId: s1.id, estimate: 1 })
+  const e = await mk('E', { estimate: 8 })
+  await call('PATCH', `/api/v1/issues/${e.key}`, { statusId: done.id })                       // resolved before it joins
+  assert.equal((await call('GET', `/api/v1/projects/RPT/sprints/${s1.id}/report`)).status, 400)   // planned: no report yet
+  await call('POST', `/api/v1/projects/RPT/sprints/${s1.id}/start`, { endsAt: new Date(Date.now() + 864e5).toISOString() })
+  await call('PATCH', `/api/v1/issues/${a.key}`, { estimate: 13 })                            // later changes don't show (R7)
+  const c = await mk('C', { estimate: 5 }); await call('PATCH', `/api/v1/issues/${c.key}`, { sprintId: s1.id })
+  await call('PATCH', `/api/v1/issues/${e.key}`, { sprintId: s1.id })
+  await call('PATCH', `/api/v1/issues/${d.key}`, { sprintId: null })                         // removed while it runs
+  await call('PATCH', `/api/v1/issues/${a.key}`, { statusId: done.id })
+  // active: a report of where things are now
+  const live = (await call('GET', `/api/v1/projects/RPT/sprints/${s1.id}/report`, undefined, 'rpt.viewer@x.com')).body
+  assert.deepEqual(live.completed.map((x: any) => x.key), [a.key])
+  await call('POST', `/api/v1/projects/RPT/sprints/${s1.id}/complete`, { moveTo: null })
+  await call('PATCH', `/api/v1/issues/${b.key}`, { statusId: todo.id })
+  const r = (await call('GET', `/api/v1/projects/RPT/sprints/${s1.id}/report`, undefined, 'rpt.viewer@x.com')).body
+  const keys = (l: any[]) => l.map((x: any) => x.key)
+  assert.deepEqual([keys(r.completed), keys(r.notCompleted).sort(), keys(r.completedOutside), keys(r.removed)], [[a.key], [b.key, c.key].sort(), [e.key], [d.key]])
+  assert.deepEqual(r.completed[0], { key: a.key, title: 'A', type: 'task', priority: 'medium', status: done.name, points: 3, addedAfterStart: false })
+  assert.equal(r.notCompleted.find((x: any) => x.key === c.key).addedAfterStart, true)
+  assert.equal(r.completedOutside[0].addedAfterStart, true)
+  assert.deepEqual(r.totals, { completed: 3, notCompleted: 7, completedOutside: 8, removed: 1 })
+  // R8: someone who can't see the project gets nothing
+  assert.equal((await call('GET', `/api/v1/projects/RPT/sprints/${s1.id}/report`, undefined, 'rpt.out@x.com')).status, 404)
 })

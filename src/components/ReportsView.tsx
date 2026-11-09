@@ -1,18 +1,19 @@
-import { createContext, useContext, useState } from 'react'
-import { TrendingDown, BarChart3, Layers, ArrowLeftRight, Timer, Users, ShieldCheck, GitMerge, ListChecks } from 'lucide-react'
+import { createContext, useContext, useEffect, useState } from 'react'
+import { TrendingDown, ClipboardCheck, BarChart3, Layers, ArrowLeftRight, Timer, Users, ShieldCheck, GitMerge, ListChecks } from 'lucide-react'
 import { userOf, isDone, CATEGORY_COLOR, type Project } from '../data/store'
 import { burndown, velocity, cumulativeFlow, createdVsResolved, cycleTimes, dayLabel } from '../data/analytics'
 import { useApp } from '../appContext'
 import { useReportState } from '../api/reports'
-import { apiEnabled } from '../api/client'
+import { api, apiEnabled, errorMessage } from '../api/client'
 import { CoverageReport, TraceabilityReport, TestRunsReport } from './testing/TestReports'
 import type { State } from '../data/reducer'
 import { LineChart, ColumnChart, Legend, Scatter, HBars } from './charts'
-import { Avatar, Empty, Picker, typeMeta, typeList, plural } from './ui'
+import { Avatar, Empty, Picker, typeMeta, typeList, plural, priorityLabel } from './ui'
 
-type ReportId = 'burndown' | 'velocity' | 'cfd' | 'created' | 'cycle' | 'workload' | 'test-coverage' | 'traceability' | 'test-runs'
+type ReportId = 'sprint' | 'burndown' | 'velocity' | 'cfd' | 'created' | 'cycle' | 'workload' | 'test-coverage' | 'traceability' | 'test-runs'
 
 const REPORTS: { id: ReportId; name: string; desc: string; Icon: typeof Layers; scrum?: boolean; testing?: boolean }[] = [
+  { id: 'sprint',   name: 'Sprint report',   desc: 'What a sprint completed, what it didn’t, and what changed while it ran.', Icon: ClipboardCheck, scrum: true },
   { id: 'burndown', name: 'Sprint burndown', desc: 'Work remaining in a sprint against the ideal pace.', Icon: TrendingDown, scrum: true },
   { id: 'velocity', name: 'Velocity',        desc: 'Points committed vs completed per sprint.',         Icon: BarChart3, scrum: true },
   { id: 'cfd',      name: 'Cumulative flow', desc: 'Work in each stage over time. Widening bands mean bottlenecks.', Icon: Layers },
@@ -57,6 +58,7 @@ export default function ReportsView({ project, report }: { project: Project; rep
           : data.error ? <p className="hint error" role="alert">{data.error}</p>
           : !data.state ? <p className="muted" role="status">Loading the project's history…</p>
           : <ReportState.Provider value={data.state}>
+        {current.id === 'sprint'   && <SprintReport project={project} />}
         {current.id === 'burndown' && <Burndown project={project} />}
         {current.id === 'velocity' && <Velocity project={project} />}
         {current.id === 'cfd'      && <Flow project={project} />}
@@ -98,16 +100,79 @@ function Burndown({ project }: { project: Project }) {
         <div><b>{remaining}</b><span>points remaining</span></div>
         <div><b>{plural(data.members.length, 'item')}</b><span>in sprint{pts !== data.total ? ` (${pts} pts now)` : ''}</span></div>
       </div>
-      {data.total === 0
-        ? <NoData text="Add story point estimates to the sprint’s work items to see the burndown." />
-        : <>
-          <LineChart ariaLabel={`Burndown for ${sprint.name}`} labels={data.labels} height={300}
-            series={[
-              { label: 'Remaining', color: '#DC2626', values: data.remaining },
-              { label: 'Guideline', color: '#A8A29E', values: data.ideal, dashed: true },
-            ]} />
-          <Legend items={[{ label: 'Remaining points', color: '#DC2626' }, { label: 'Guideline', color: '#A8A29E', dashed: true }]} />
-        </>}
+      <BurndownChart data={data} name={sprint.name} />
+    </>
+  )
+}
+
+/** A sprint's burndown: the remaining points against the guideline (Jira's red and grey lines). */
+function BurndownChart({ data, name }: { data: NonNullable<ReturnType<typeof burndown>>; name: string }) {
+  if (data.total === 0) return <NoData text="Add story point estimates to the sprint’s work items to see the burndown." />
+  return <>
+    <LineChart ariaLabel={`Burndown for ${name}`} labels={data.labels} height={300}
+      series={[
+        { label: 'Remaining', color: '#DC2626', values: data.remaining },
+        { label: 'Guideline', color: '#A8A29E', values: data.ideal, dashed: true },
+      ]} />
+    <Legend items={[{ label: 'Remaining points', color: '#DC2626' }, { label: 'Guideline', color: '#A8A29E', dashed: true }]} />
+  </>
+}
+
+interface ReportRow { key: string; title: string; type: string; priority: string; status: string; points: number | null; addedAfterStart: boolean }
+interface SprintReportData { completed: ReportRow[]; notCompleted: ReportRow[]; completedOutside: ReportRow[]; removed: ReportRow[]; totals: Record<string, number> }
+const SECTIONS: [keyof Omit<SprintReportData, 'totals'>, string][] = [
+  ['completed', 'Completed Issues'], ['notCompleted', 'Issues Not Completed'],
+  ['completedOutside', 'Issues completed outside of this sprint'], ['removed', 'Issues Removed From Sprint'],
+]
+
+/** Jira's Sprint Report (spec 0402): one started sprint's burndown, then what it completed, what it didn't, what was
+ *  already done when it joined, and what was taken out; points as they were at the start (* added later). */
+function SprintReport({ project }: { project: Project }) {
+  const { state } = useReport()
+  const { openIssue } = useApp()
+  const sprints = state.sprints.filter(s => s.projectId === project.id && s.startedAt).sort((a, b) => (b.startedAt ?? 0) - (a.startedAt ?? 0))
+  const [id, setId] = useState(sprints[0]?.id)
+  const sprint = sprints.find(s => s.id === id) ?? sprints[0]
+  const [report, setReport] = useState<{ id: string; data?: SprintReportData; error?: string } | null>(null)
+  useEffect(() => {
+    if (!sprint || !apiEnabled) return
+    let live = true
+    api<SprintReportData>('GET', `/api/projects/${project.key}/sprints/${sprint.id}/report`)
+      .then(data => live && setReport({ id: sprint.id, data }), e => live && setReport({ id: sprint.id, error: errorMessage(e) }))
+    return () => { live = false }
+  }, [project.key, sprint?.id])   // eslint-disable-line react-hooks/exhaustive-deps
+  if (!sprint) return <NoData text="Start a sprint from the backlog to see its report." />
+  if (!apiEnabled) return <NoData text="The sprint report needs Strand to be connected to a server." />
+  const data = burndown(state, project, sprint)!
+  const r = report?.id === sprint.id ? report : null
+  const added = r?.data && SECTIONS.some(([k]) => r.data![k].some(x => x.addedAfterStart))
+  return (
+    <>
+      <div className="report-tools">
+        <Picker value={sprint.id} options={sprints.map(s => ({ value: s.id, label: s.name, hint: s.state === 'active' ? 'Active' : 'Closed' }))}
+          onChange={setId} className="btn btn-secondary" title="Sprint" trigger={sprint.name} />
+        <span className="muted">{dayLabel(sprint.startedAt!)} – {dayLabel(sprint.completedAt ?? sprint.endsAt ?? Date.now())}{sprint.state === 'active' ? ' · active' : ''}</span>
+      </div>
+      {sprint.goal && <p><b>Goal:</b> {sprint.goal}</p>}
+      <BurndownChart data={data} name={sprint.name} />
+      {!r ? <p className="muted" role="status">Loading the sprint’s work…</p>
+        : r.error ? <p className="hint error" role="alert">{r.error}</p>
+        : SECTIONS.map(([k, title]) => r.data![k].length > 0 && (
+          <section key={k} aria-label={title} style={{ marginTop: 20 }}>
+            <h3 className="section-label">{title} <span className="muted">· {plural(r.data![k].length, 'item')} · {r.data!.totals[k]} points</span></h3>
+            <table className="table">
+              <thead><tr><th>Key</th><th>Summary</th><th>Type</th><th>Priority</th><th>Status</th><th className="col-num">Points</th></tr></thead>
+              <tbody>{r.data![k].map(x => (
+                <tr key={x.key} onClick={() => openIssue(x.key)}>
+                  <td className="nowrap">{x.key}{x.addedAfterStart && <span title="Added after the sprint started"> *</span>}</td>
+                  <td>{x.title}</td><td>{typeMeta(x.type, project).label}</td><td>{priorityLabel(x.priority)}</td><td>{x.status}</td>
+                  <td className="col-num">{x.points ?? '—'}</td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </section>
+        ))}
+      {added && <p className="muted sm">* Added after the sprint started. Points are as they were at the start, or when the sprint completed for work added later.</p>}
     </>
   )
 }

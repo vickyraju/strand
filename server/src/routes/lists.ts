@@ -51,7 +51,10 @@ const lists: FastifyPluginAsyncZod = async app => {
     return tx(async d => {
       const [before] = await d.query<any>('select key, name, description, color, icon, position, is_default from priorities where workspace_id = $1 and key = $2 for update', [ws, req.params.key])
       if (!before) throw new HttpError(404, 'No such priority')
-      if (b.isDefault) await d.query('update priorities set is_default = (key = $2) where workspace_id = $1', [ws, before.key])
+      if (b.isDefault) {                                   // one default at a time: clear it first (the index checks row by row)
+        await d.query('update priorities set is_default = false where workspace_id = $1 and is_default', [ws])
+        await d.query('update priorities set is_default = true where workspace_id = $1 and key = $2', [ws, before.key])
+      }
       await d.query('update priorities set name = coalesce($3, name), description = coalesce($4, description), color = coalesce($5, color), icon = coalesce($6, icon) where workspace_id = $1 and key = $2',
         [ws, before.key, b.name ?? null, b.description ?? null, b.color ?? null, b.icon ?? null]).catch(taken('priority'))
       if (b.position !== undefined) await place(d, 'priorities', 'key', ws, before.key, b.position)
@@ -104,7 +107,10 @@ const lists: FastifyPluginAsyncZod = async app => {
     return tx(async d => {
       const [before] = await d.query<any>('select id, name, description, position, is_default from resolutions where workspace_id = $1 and id = $2 for update', [ws, req.params.id])
       if (!before) throw new HttpError(404, 'No such resolution')
-      if (b.isDefault) await d.query('update resolutions set is_default = (id = $2) where workspace_id = $1', [ws, before.id])
+      if (b.isDefault) {
+        await d.query('update resolutions set is_default = false where workspace_id = $1 and is_default', [ws])
+        await d.query('update resolutions set is_default = true where id = $1', [before.id])
+      }
       await d.query('update resolutions set name = coalesce($3, name), description = coalesce($4, description) where workspace_id = $1 and id = $2',
         [ws, before.id, b.name ?? null, b.description ?? null]).catch(taken('resolution'))
       // work items hold the name: a rename carries to them, as Jira's do (they hold its id)
