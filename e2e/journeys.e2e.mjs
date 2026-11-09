@@ -1261,3 +1261,33 @@ test('[0303.R6] the parent picker offers Jira’s levels: an epic or an item und
   assert.equal(await parentOf(), item.id)
   assert.deepEqual(o.problems, [])
 })
+
+test('[0304.R5] versions as in Jira: deleting one used by work items moves them to another; merging folds one into another; archiving hides it', { skip, timeout: 90_000 }, async () => {
+  await owner('POST', '/projects', { name: 'Version admin', key: 'VRS', template: 'kanban' })
+  const rel = async name => (await owner('POST', '/projects/VRS/releases', { name })).body.id
+  const [v1, v2, v3] = [await rel('3.0'), await rel('3.1'), await rel('4.0')]
+  const item = (await owner('POST', '/projects/VRS/issues', { title: 'Shipping item', fixReleaseIds: [v1] })).body
+  const fix = async () => (await owner('GET', `/issues/${item.key}`)).body.fixReleaseIds
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url('/project/VRS/releases'))
+  await o.click('[aria-label="Actions for 3.0"]')
+  await o.click('[role="menuitem"]:has-text("Delete")')
+  await o.waitForSelector('text=1 work item has it as a fix version')
+  await o.selectOption('#del-fix', { label: '3.1' })
+  await o.click('.modal button:has-text("Delete version")')
+  for (let i = 0; i < 40 && (await fix())[0] !== v2; i++) await new Promise(r => setTimeout(r, 250))
+  assert.deepEqual(await fix(), [v2])
+  await o.click('[aria-label="Actions for 3.1"]')
+  await o.click('[role="menuitem"]:has-text("Merge into another version")')
+  await o.selectOption('#merge-into', { label: '4.0' })
+  await o.click('.modal button:has-text("Merge")')
+  for (let i = 0; i < 40 && (await fix())[0] !== v3; i++) await new Promise(r => setTimeout(r, 250))
+  assert.deepEqual(await fix(), [v3])
+  await o.waitForSelector('text=3.1', { state: 'detached' })
+  await o.click('[aria-label="Actions for 4.0"]')
+  await o.click('[role="menuitem"]:has-text("Archive")')
+  await o.waitForSelector('text=Show archived (1)')
+  for (let i = 0; i < 40 && !(await owner('GET', '/projects/VRS')).body.releases.find(r => r.id === v3).archived; i++) await new Promise(r => setTimeout(r, 250))
+  assert.equal((await owner('GET', '/projects/VRS')).body.releases.find(r => r.id === v3).archived, true)
+  assert.deepEqual(o.problems, [])
+})

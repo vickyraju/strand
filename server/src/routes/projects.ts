@@ -68,7 +68,7 @@ const CHILD = {
   fields:      { table: 'field_defs',     cols: ['name', 'kind', 'options', 'position'], json: ['options'] },
   templates:   { table: 'item_templates', cols: ['name', 'type', 'title', 'description', 'priority', 'labels', 'estimate'] },
   rules:       { table: 'rules',          cols: ['name', 'enabled', 'trigger', 'actions'], json: ['trigger', 'actions'] },
-  releases:    { table: 'releases',       cols: ['name', 'description', 'startDate', 'releaseDate'], ws: true },
+  releases:    { table: 'releases',       cols: ['name', 'description', 'startDate', 'releaseDate', 'archived', 'released'], ws: true },
   components:  { table: 'components',     cols: ['name', 'description', 'leadId', 'defaultAssignee'] },
 } as const
 type Kind = keyof typeof CHILD
@@ -87,7 +87,8 @@ const childPatch = {
     trigger: z.object({ kind: z.enum(['created', 'status', 'assigned']), to: uuid.optional() }),
     actions: z.array(z.object({ kind: z.enum(['assign', 'priority', 'label', 'status', 'comment']) }).passthrough()),
   }).partial(),
-  releases: z.object({ name: z.string().min(1), description: z.string(), startDate: z.string().nullable(), releaseDate: z.string().nullable() }).partial(),
+  releases: z.object({ name: z.string().min(1), description: z.string(), startDate: z.string().nullable(), releaseDate: z.string().nullable(),
+    archived: z.boolean().describe('Hidden from pickers and the Releases view; items keep it (spec 0304)'), released: z.literal(false).describe('Unrelease it (release it with POST …/release)') }).partial(),
   components: z.object({
     name: z.string().trim().min(1).max(100), description: z.string().max(2000), leadId: uuid.nullable(),
     defaultAssignee: z.enum(['none', 'component_lead', 'project_lead']).describe('Who new work in this component goes to when nobody is chosen'),
@@ -109,6 +110,22 @@ const projectBody = z.object({
 
 const keyP = z.object({ key: z.string().describe('Project key (PAY) or id (uuid)') })
 const keyIdP = keyP.extend({ id: uuid })
+
+/** One of the project's versions that work may move to: not archived and not `not` (spec 0304). */
+async function usableRelease(d: Db, projectId: string, id: string, not: string | null, field: string) {
+  const [r] = await d.query<{ id: string; name: string; archived: boolean }>('select id, name, archived from releases where id = $1 and project_id = $2', [id, projectId])
+  if (!r || id === not) throw new HttpError(400, 'Move the work to another of this project’s versions', { [field]: 'Unknown version' })
+  if (r.archived) throw new HttpError(400, `Version ${r.name} is archived`, { [field]: 'Archived' })
+  return r
+}
+
+/** Items of the project with `from` in the list column `col` get `to` in its place (once, keeping the order), or lose it. */
+async function replaceIn(d: Db, projectId: string, col: 'fix_release_ids' | 'affects_release_ids' | 'component_ids', from: string, to: string | null) {
+  await d.query(
+    `update issues set ${col} = array(select x from unnest(array_remove(array_replace(${col}, $2::uuid, $3::uuid), null)) with ordinality u(x, n) group by x order by min(n)),
+            version = version + 1, updated_at = now()
+      where project_id = $1 and ${col} @> array[$2::uuid]`, [projectId, from, to])
+}
 const T = { me: ['Account'], projects: ['Projects'], config: ['Project settings'], sprints: ['Sprints'] }
 
 const plugin: FastifyPluginAsyncZod = async app => {
@@ -376,8 +393,10 @@ const plugin: FastifyPluginAsyncZod = async app => {
         // Jira: a custom field's type can't change once it is made (spec 0105 R1)
         if (kind === 'fields' && patch.kind !== undefined && patch.kind !== before.kind)
           throw new HttpError(400, 'A field’s type can’t change. Make a new field of the type you need.', { kind: 'Fixed once made' })
-        const [row] = await d.query(
-          `update ${cfg.table} set ${w.cols.map((c, i) => `${c} = $${i + 3}`).join(', ')} where id = $1 and project_id = $2 returning *`,
+        // Jira: an archived version can't be changed until it is unarchived (spec 0304 R4)
+        if (kind === 'releases' && before.archived && patch.archived !== false) throw new HttpError(400, `Version ${before.name} is archived`)
+        const [row] = await d.query(   // unreleasing (Jira's Unrelease) clears the release date it was given
+          `update ${cfg.table} set ${w.cols.map((c, i) => `${c} = $${i + 3}`).join(', ')}${kind === 'releases' && patch.released === false ? ', released_at = null' : ''} where id = $1 and project_id = $2 returning *`,
           [req.params.id, p.id, ...w.vals])
         // renamed and deleted options carry through to every item that has them, as in Jira (spec 0105 R3, R5)
         if (kind === 'fields' && patch.options) await carryOptions(d, p.id, before.id, before.options ?? [], patch.options as Opt[])
@@ -389,19 +408,31 @@ const plugin: FastifyPluginAsyncZod = async app => {
 
     app.delete(`/projects/:key/${kind}/:id`, { schema: {
       tags: T.config, summary: `Remove a ${what}`, params: keyIdP,
+      querystring: z.object({
+        fixTo: uuid.optional().describe('Releases: the version that replaces it in items’ fix versions (default: removed from them)'),
+        affectsTo: uuid.optional().describe('Releases: the version that replaces it in items’ affects versions (default: removed from them)'),
+        moveTo: uuid.optional().describe('Components: the component that replaces it on items (default: removed from them)'),
+      }),
     } }, async (req, reply) => {
       const p = await projectByKey(db, req, req.params.key)
       await requireProjectAdmin(req, p)
+      const q = req.query as { fixTo?: string; affectsTo?: string; moveTo?: string }
       await tx(async d => {
+        if (kind === 'releases') {
+          for (const [field, to] of [['fixTo', q.fixTo], ['affectsTo', q.affectsTo]] as const) if (to) await usableRelease(d, p.id, to, req.params.id, field)
+          await replaceIn(d, p.id, 'fix_release_ids', req.params.id, q.fixTo ?? null)
+          await replaceIn(d, p.id, 'affects_release_ids', req.params.id, q.affectsTo ?? null)
+        }
+        if (kind === 'components') {
+          if (q.moveTo && (q.moveTo === req.params.id || !(await d.query('select 1 from components where id = $1 and project_id = $2', [q.moveTo, p.id])).length))
+            throw new HttpError(400, 'Move the work to another of this project’s components', { moveTo: 'Unknown component' })
+          await replaceIn(d, p.id, 'component_ids', req.params.id, q.moveTo ?? null)
+        }
         const [gone] = await d.query(`delete from ${cfg.table} where id = $1 and project_id = $2 returning *`, [req.params.id, p.id])
         if (!gone) throw new HttpError(404, 'Not found')
         await audit(d, req, { action: `project.${what.replace(' ', '_')}.deleted`, type: what, id: gone.id, name: gone.name ?? null, project: p, before: gone })
         // a deleted custom field takes its values with it, so no item keeps a value for a field that no longer exists
         if (kind === 'fields') await d.query('update issues set custom = custom - $2 where project_id = $1 and custom ? $2', [p.id, req.params.id])
-        // …and a deleted component or release lets go of the items that named it
-        if (kind === 'components') await d.query('update issues set component_ids = array_remove(component_ids, $2::uuid) where project_id = $1 and $2::uuid = any(component_ids)', [p.id, req.params.id])
-        if (kind === 'releases') await d.query(`update issues set fix_release_ids = array_remove(fix_release_ids, $2::uuid), affects_release_ids = array_remove(affects_release_ids, $2::uuid)
-          where project_id = $1 and (fix_release_ids @> array[$2::uuid] or $2::uuid = any(affects_release_ids))`, [p.id, req.params.id])
       })
       reply.code(204).send()
     })
@@ -660,6 +691,45 @@ const plugin: FastifyPluginAsyncZod = async app => {
     return { ...summary, jobId, importId }
   })
 
+  // How many work items use a version or a component: what deleting it would move or clear (spec 0304 R5)
+  app.get('/projects/:key/releases/:id/usage', { schema: { tags: T.config, summary: 'How many work items have this version as a fix and as an affects version', params: keyIdP } }, async req => {
+    const p = await projectByKey(db, req, req.params.key)
+    const [u] = await db.query<{ fix: number; affects: number }>(
+      `select count(*) filter (where fix_release_ids @> array[$2::uuid])::int as fix, count(*) filter (where affects_release_ids @> array[$2::uuid])::int as affects
+         from issues where project_id = $1 and deleted_at is null`, [p.id, req.params.id])
+    return u
+  })
+  app.get('/projects/:key/components/:id/usage', { schema: { tags: T.config, summary: 'How many work items are in this component', params: keyIdP } }, async req => {
+    const p = await projectByKey(db, req, req.params.key)
+    const [u] = await db.query<{ items: number }>(`select count(*)::int as items from issues where project_id = $1 and deleted_at is null and component_ids @> array[$2::uuid]`, [p.id, req.params.id])
+    return u
+  })
+
+  // Merging versions (Jira's): the items of `from` get this version instead, and those versions are deleted (spec 0304 R3)
+  app.post('/projects/:key/releases/:id/merge', { schema: {
+    tags: T.config, summary: 'Merge versions into this one: their items’ fix and affects versions point here, and they are deleted', params: keyIdP,
+    body: z.object({ from: z.array(uuid).min(1).max(50).describe('The versions merged into this one') }),
+  } }, async req => {
+    const p = await projectByKey(db, req, req.params.key)
+    await requireProjectAdmin(req, p)
+    const from = [...new Set(req.body.from)]
+    if (from.includes(req.params.id)) throw new HttpError(400, 'A version can’t be merged into itself', { from: 'Includes the target' })
+    return tx(async d => {
+      const target = await usableRelease(d, p.id, req.params.id, null, 'id')
+      const gone = await d.query<{ id: string; name: string; archived: boolean }>('select id, name, archived from releases where project_id = $1 and id = any($2::uuid[]) for update', [p.id, from])
+      if (gone.length !== from.length) throw new HttpError(400, 'Every version merged must be one of this project’s', { from: 'Unknown version' })
+      const archived = gone.find(g => g.archived)
+      if (archived) throw new HttpError(400, `Version ${archived.name} is archived`, { from: 'Archived' })
+      for (const g of gone) {
+        await replaceIn(d, p.id, 'fix_release_ids', g.id, target.id)
+        await replaceIn(d, p.id, 'affects_release_ids', g.id, target.id)
+      }
+      await d.query('delete from releases where id = any($1::uuid[])', [from])
+      await audit(d, req, { action: 'project.release.merged', type: 'release', id: target.id, name: target.name, project: p, before: { versions: gone.map(g => g.name) } })
+      return (await d.query('select * from releases where id = $1', [target.id]))[0]
+    })
+  })
+
   // Releasing a version: its unfinished work moves to `moveTo` (the released version is replaced by it, their other fix
   // versions stay), or stays where it is (Jira's "ignore"), spec 0301 R5
   app.post('/projects/:key/releases/:id/release', { schema: {
@@ -672,8 +742,9 @@ const plugin: FastifyPluginAsyncZod = async app => {
     return tx(async d => {
       const [r] = await d.query(`update releases set released = true, released_at = now() where id = $1 and project_id = $2 returning *`, [req.params.id, p.id])
       if (!r) throw new HttpError(404, 'Not found')
+      if (r.archived) throw new HttpError(400, `Version ${r.name} is archived`)
       if (moveTo) {
-        if (!(await d.query('select 1 from releases where id = $1 and project_id = $2', [moveTo, p.id])).length) throw new HttpError(400, 'Move the work to one of this project’s releases', { moveTo: 'Unknown release' })
+        await usableRelease(d, p.id, moveTo, req.params.id, 'moveTo')
         await d.query(
           `update issues set fix_release_ids = array(select x from unnest(array_replace(fix_release_ids, $1::uuid, $3::uuid)) with ordinality u(x, n) group by x order by min(n)), version = version + 1, updated_at = now()
             where fix_release_ids @> array[$1::uuid] and project_id = $2 and deleted_at is null

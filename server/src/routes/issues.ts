@@ -247,7 +247,7 @@ async function applyPatch(d: Db, me: Me, cur: any, patch: z.infer<typeof patchBo
   // whatever happens, the item ends in a status of its type's workflow (a type change may need a new status)
   if ((moving || retyping) && !(await statusesFor(d, cur.projectId, patch.type ?? cur.type)).includes(patch.statusId ?? cur.statusId))
     throw new HttpError(400, retyping && !moving ? 'Its status isn’t in the workflow for that work type: choose a status too' : 'That status isn’t in the workflow for this work type', { statusId: 'Not in this type’s workflow' })
-  await checkParts(d, cur.projectId, patch)
+  await checkParts(d, cur.projectId, patch, cur)
   if (patch.securityLevelId !== undefined && patch.securityLevelId !== cur.securityLevelId)
     await checkLevel(d, me, cur.projectId, patch.securityLevelId, cur.reporterId, patch.assigneeId !== undefined ? patch.assigneeId : cur.assigneeId)
   if (patch.sprintId !== undefined && patch.sprintId !== cur.sprintId) await checkSprint(d, me, patch.sprintId)
@@ -321,8 +321,17 @@ async function checkLevels(d: Db, me: Me, projectId: string, item: { id: string;
   if (await has('true')) throw new HttpError(400, 'An item with sub-items can’t become a sub-item', { parentId: 'It has sub-items' })
 }
 
-/** Components, fix versions and affects versions must be the project's own. */
-async function checkParts(d: Db, projectId: string, b: { componentIds?: string[]; fixReleaseIds?: string[]; affectsReleaseIds?: string[] }) {
+/** Components, fix versions and affects versions must be the project's own. An archived version stays on the items that
+ *  have it, but can't be added or removed (Jira's, spec 0304 R4); `prev` is the item before the change. */
+async function checkParts(d: Db, projectId: string, b: { componentIds?: string[]; fixReleaseIds?: string[]; affectsReleaseIds?: string[] }, prev: { fixReleaseIds?: string[]; affectsReleaseIds?: string[] } = {}) {
+  for (const f of ['fixReleaseIds', 'affectsReleaseIds'] as const) {
+    if (!b[f]) continue
+    const was = prev[f] ?? [], now = b[f]!
+    const touched = [...now.filter(x => !was.includes(x)), ...was.filter(x => !now.includes(x))]
+    if (!touched.length) continue
+    const [a] = await d.query<{ name: string }>('select name from releases where id = any($1::uuid[]) and archived limit 1', [touched])
+    if (a) throw new HttpError(400, `Version ${a.name} is archived`, { [f]: 'Archived version' })
+  }
   for (const [ids, table, field, what] of [[b.componentIds, 'components', 'componentIds', 'component'], [b.fixReleaseIds, 'releases', 'fixReleaseIds', 'release'], [b.affectsReleaseIds, 'releases', 'affectsReleaseIds', 'release']] as const) {
     if (!ids?.length) continue
     const [{ n }] = await d.query<{ n: number }>(`select count(*)::int as n from ${table} where project_id = $1 and id = any($2::uuid[])`, [projectId, [...new Set(ids)]]) as any

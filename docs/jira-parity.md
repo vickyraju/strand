@@ -89,8 +89,8 @@ Checked against Atlassian's Data Center documentation on 5 November 2026 (Jira S
 | ISS-12 | Remote links | Yes | Absent | absent | match | 0507 | |
 | ISS-13 | Archive single issues | DC 8.1+ ([dc]) | Absent | absent | match | 0508 | |
 | ISS-14 | Convert to and from sub-task | Yes | Absent | absent | match | 0509 | |
-| ISS-15 | Versions: merge, archive, delete with move, release moves unresolved items | Yes ([versions](https://confluence.atlassian.com/adminjiraserver/managing-versions-938847201.html)) | Delete clears the value; release moves unfinished work | partial | match | 0304 | Releasing with unresolved items is done (0301 R5). |
-| ISS-16 | Components: delete with swap | Yes ([components](https://confluence.atlassian.com/adminjiraserver/managing-components-938847187.html)) | Delete clears the value | diverges | match | 0304 | |
+| ISS-15 | Versions: merge, archive, delete with move, release moves unresolved items | Yes ([versions](https://confluence.atlassian.com/adminjiraserver/managing-versions-938847201.html)) | Delete moves fix and affects versions separately or removes them; merge; archive (hidden, locked on items); releasing moves unresolved work | match | match | 0301, 0304 | |
+| ISS-16 | Components: delete with swap | Yes ([components](https://confluence.atlassian.com/adminjiraserver/managing-components-938847187.html)) | Delete moves items to another component or removes it | match | match | 0304 | |
 | ISS-17 | Time tracking settings | Hours per day and days per week; `w` unit ([time](https://confluence.atlassian.com/adminjiraserver/configuring-time-tracking-938847808.html)) | 8-hour day hard-coded; no `w` (`src/data/time.ts`) | diverges | match | 0306 | |
 | ISS-18 | Log work: remaining-estimate modes | Auto, leave, set, reduce ([log work](https://confluence.atlassian.com/jirasoftwareserver111/logging-work-on-issues-1652921625.html)) | Same four (`server/src/shared/estimates.ts`) | match | match | — | |
 | ISS-19 | Clone | With links, sub-tasks, attachments | Children, links, sprint | match | match | — | |

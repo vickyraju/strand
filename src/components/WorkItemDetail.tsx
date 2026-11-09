@@ -111,6 +111,7 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
   const parent   = state.issues.find(i => i.id === issue.parentId)
   const epic     = parent?.type === 'epic' ? parent : parent ? state.issues.find(i => i.id === parent.parentId && i.type === 'epic') : undefined
   const children = state.issues.filter(i => i.parentId === issue.id)
+  const archivedIds = project.releases.filter(r => r.archived).map(r => r.id)   // kept on items, never added or removed (spec 0304)
   const childDone = children.filter(i => project.statuses.find(s => s.id === i.status)?.category === 'done').length
   const sprints  = state.sprints.filter(s => s.projectId === project.id && s.state !== 'closed')
   const sprint   = state.sprints.find(s => s.id === issue.sprintId)
@@ -452,7 +453,7 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
             )}
             {project.releases.length > 0 && issue.type !== 'epic' && (
               <Field label="Fix versions">
-                <MultiSelect label="Fix versions" all={project.releases.map(r => ({ key: r.id, name: r.name }))} value={issue.fixReleaseIds ?? []} onChange={fixReleaseIds => set({ fixReleaseIds })} />
+                <MultiSelect label="Fix versions" all={project.releases.map(r => ({ key: r.id, name: r.name }))} locked={archivedIds} value={issue.fixReleaseIds ?? []} onChange={fixReleaseIds => set({ fixReleaseIds })} />
               </Field>
             )}
             {(project.securityLevels?.length ?? 0) > 0 && (
@@ -472,7 +473,7 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
             )}
             {project.releases.length > 0 && issue.type !== 'epic' && (
               <Field label="Affects versions">
-                <MultiSelect label="Affects versions" all={project.releases.map(r => ({ key: r.id, name: r.name }))} value={issue.affectsReleaseIds ?? []} onChange={affectsReleaseIds => set({ affectsReleaseIds })} />
+                <MultiSelect label="Affects versions" all={project.releases.map(r => ({ key: r.id, name: r.name }))} locked={archivedIds} value={issue.affectsReleaseIds ?? []} onChange={affectsReleaseIds => set({ affectsReleaseIds })} />
               </Field>
             )}
             <Field label="Labels">

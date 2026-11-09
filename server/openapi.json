@@ -1902,6 +1902,10 @@
                             "nullable": true,
                             "type": "string",
                             "description": "ISO 8601 timestamp"
+                          },
+                          "archived": {
+                            "type": "boolean",
+                            "description": "Hidden from pickers; items keep it"
                           }
                         },
                         "required": [
@@ -1913,7 +1917,8 @@
                           "startDate",
                           "releaseDate",
                           "released",
-                          "releasedAt"
+                          "releasedAt",
+                          "archived"
                         ],
                         "additionalProperties": false
                       }
@@ -3007,6 +3012,10 @@
                             "nullable": true,
                             "type": "string",
                             "description": "ISO 8601 timestamp"
+                          },
+                          "archived": {
+                            "type": "boolean",
+                            "description": "Hidden from pickers; items keep it"
                           }
                         },
                         "required": [
@@ -3018,7 +3027,8 @@
                           "startDate",
                           "releaseDate",
                           "released",
-                          "releasedAt"
+                          "releasedAt",
+                          "archived"
                         ],
                         "additionalProperties": false
                       }
@@ -3888,6 +3898,10 @@
                             "nullable": true,
                             "type": "string",
                             "description": "ISO 8601 timestamp"
+                          },
+                          "archived": {
+                            "type": "boolean",
+                            "description": "Hidden from pickers; items keep it"
                           }
                         },
                         "required": [
@@ -3899,7 +3913,8 @@
                           "startDate",
                           "releaseDate",
                           "released",
-                          "releasedAt"
+                          "releasedAt",
+                          "archived"
                         ],
                         "additionalProperties": false
                       }
@@ -4948,6 +4963,10 @@
                             "nullable": true,
                             "type": "string",
                             "description": "ISO 8601 timestamp"
+                          },
+                          "archived": {
+                            "type": "boolean",
+                            "description": "Hidden from pickers; items keep it"
                           }
                         },
                         "required": [
@@ -4959,7 +4978,8 @@
                           "startDate",
                           "releaseDate",
                           "released",
-                          "releasedAt"
+                          "releasedAt",
+                          "archived"
                         ],
                         "additionalProperties": false
                       }
@@ -5865,6 +5885,10 @@
                             "nullable": true,
                             "type": "string",
                             "description": "ISO 8601 timestamp"
+                          },
+                          "archived": {
+                            "type": "boolean",
+                            "description": "Hidden from pickers; items keep it"
                           }
                         },
                         "required": [
@@ -5876,7 +5900,8 @@
                           "startDate",
                           "releaseDate",
                           "released",
-                          "releasedAt"
+                          "releasedAt",
+                          "archived"
                         ],
                         "additionalProperties": false
                       }
@@ -7223,6 +7248,39 @@
         "parameters": [
           {
             "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "query",
+            "name": "fixTo",
+            "required": false,
+            "description": "Releases: the version that replaces it in items’ fix versions (default: removed from them)"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "query",
+            "name": "affectsTo",
+            "required": false,
+            "description": "Releases: the version that replaces it in items’ affects versions (default: removed from them)"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "query",
+            "name": "moveTo",
+            "required": false,
+            "description": "Components: the component that replaces it on items (default: removed from them)"
+          },
+          {
+            "schema": {
               "type": "string"
             },
             "in": "path",
@@ -7767,6 +7825,39 @@
           "Project settings"
         ],
         "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "query",
+            "name": "fixTo",
+            "required": false,
+            "description": "Releases: the version that replaces it in items’ fix versions (default: removed from them)"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "query",
+            "name": "affectsTo",
+            "required": false,
+            "description": "Releases: the version that replaces it in items’ affects versions (default: removed from them)"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "query",
+            "name": "moveTo",
+            "required": false,
+            "description": "Components: the component that replaces it on items (default: removed from them)"
+          },
           {
             "schema": {
               "type": "string"
@@ -8351,6 +8442,39 @@
         "parameters": [
           {
             "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "query",
+            "name": "fixTo",
+            "required": false,
+            "description": "Releases: the version that replaces it in items’ fix versions (default: removed from them)"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "query",
+            "name": "affectsTo",
+            "required": false,
+            "description": "Releases: the version that replaces it in items’ affects versions (default: removed from them)"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "query",
+            "name": "moveTo",
+            "required": false,
+            "description": "Components: the component that replaces it on items (default: removed from them)"
+          },
+          {
+            "schema": {
               "type": "string"
             },
             "in": "path",
@@ -8483,6 +8607,17 @@
                     "nullable": true,
                     "type": "string"
                   },
+                  "archived": {
+                    "type": "boolean",
+                    "description": "Hidden from pickers and the Releases view; items keep it (spec 0304)"
+                  },
+                  "released": {
+                    "type": "boolean",
+                    "enum": [
+                      false
+                    ],
+                    "description": "Unrelease it (release it with POST …/release)"
+                  },
                   "id": {
                     "description": "Client-chosen id",
                     "type": "string",
@@ -8551,6 +8686,10 @@
                       "nullable": true,
                       "type": "string",
                       "description": "ISO 8601 timestamp"
+                    },
+                    "archived": {
+                      "type": "boolean",
+                      "description": "Hidden from pickers; items keep it"
                     }
                   },
                   "required": [
@@ -8562,7 +8701,8 @@
                     "startDate",
                     "releaseDate",
                     "released",
-                    "releasedAt"
+                    "releasedAt",
+                    "archived"
                   ],
                   "additionalProperties": false
                 }
@@ -8681,6 +8821,17 @@
                   "releaseDate": {
                     "nullable": true,
                     "type": "string"
+                  },
+                  "archived": {
+                    "type": "boolean",
+                    "description": "Hidden from pickers and the Releases view; items keep it (spec 0304)"
+                  },
+                  "released": {
+                    "type": "boolean",
+                    "enum": [
+                      false
+                    ],
+                    "description": "Unrelease it (release it with POST …/release)"
                   }
                 }
               }
@@ -8751,6 +8902,10 @@
                       "nullable": true,
                       "type": "string",
                       "description": "ISO 8601 timestamp"
+                    },
+                    "archived": {
+                      "type": "boolean",
+                      "description": "Hidden from pickers; items keep it"
                     }
                   },
                   "required": [
@@ -8762,7 +8917,8 @@
                     "startDate",
                     "releaseDate",
                     "released",
-                    "releasedAt"
+                    "releasedAt",
+                    "archived"
                   ],
                   "additionalProperties": false
                 }
@@ -8859,6 +9015,39 @@
           "Project settings"
         ],
         "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "query",
+            "name": "fixTo",
+            "required": false,
+            "description": "Releases: the version that replaces it in items’ fix versions (default: removed from them)"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "query",
+            "name": "affectsTo",
+            "required": false,
+            "description": "Releases: the version that replaces it in items’ affects versions (default: removed from them)"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "query",
+            "name": "moveTo",
+            "required": false,
+            "description": "Components: the component that replaces it on items (default: removed from them)"
+          },
           {
             "schema": {
               "type": "string"
@@ -9363,6 +9552,39 @@
           "Project settings"
         ],
         "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "query",
+            "name": "fixTo",
+            "required": false,
+            "description": "Releases: the version that replaces it in items’ fix versions (default: removed from them)"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "query",
+            "name": "affectsTo",
+            "required": false,
+            "description": "Releases: the version that replaces it in items’ affects versions (default: removed from them)"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "query",
+            "name": "moveTo",
+            "required": false,
+            "description": "Components: the component that replaces it on items (default: removed from them)"
+          },
           {
             "schema": {
               "type": "string"
@@ -12290,6 +12512,481 @@
         }
       }
     },
+    "/api/v1/projects/{key}/releases/{id}/usage": {
+      "get": {
+        "summary": "How many work items have this version as a fix and as an affects version",
+        "tags": [
+          "Project settings"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "description": "Project key (PAY) or id (uuid)"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "fix": {
+                      "type": "number",
+                      "description": "Live work items with it as a fix version"
+                    },
+                    "affects": {
+                      "type": "number",
+                      "description": "…as an affects version"
+                    }
+                  },
+                  "required": [
+                    "fix",
+                    "affects"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{key}/components/{id}/usage": {
+      "get": {
+        "summary": "How many work items are in this component",
+        "tags": [
+          "Project settings"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "description": "Project key (PAY) or id (uuid)"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "number",
+                      "description": "Live work items in it"
+                    }
+                  },
+                  "required": [
+                    "items"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{key}/releases/{id}/merge": {
+      "post": {
+        "summary": "Merge versions into this one: their items’ fix and affects versions point here, and they are deleted",
+        "tags": [
+          "Project settings"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "from": {
+                    "minItems": 1,
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                    },
+                    "description": "The versions merged into this one"
+                  }
+                },
+                "required": [
+                  "from"
+                ]
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "description": "Project key (PAY) or id (uuid)"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "workspaceId": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "projectId": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "startDate": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "YYYY-MM-DD"
+                    },
+                    "releaseDate": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "YYYY-MM-DD"
+                    },
+                    "released": {
+                      "type": "boolean"
+                    },
+                    "releasedAt": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "ISO 8601 timestamp"
+                    },
+                    "archived": {
+                      "type": "boolean",
+                      "description": "Hidden from pickers; items keep it"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "workspaceId",
+                    "projectId",
+                    "name",
+                    "description",
+                    "startDate",
+                    "releaseDate",
+                    "released",
+                    "releasedAt",
+                    "archived"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/projects/{key}/releases/{id}/release": {
       "post": {
         "summary": "Mark a release shipped; unfinished work may move to another release",
@@ -12383,6 +13080,10 @@
                       "nullable": true,
                       "type": "string",
                       "description": "ISO 8601 timestamp"
+                    },
+                    "archived": {
+                      "type": "boolean",
+                      "description": "Hidden from pickers; items keep it"
                     }
                   },
                   "required": [
@@ -12394,7 +13095,8 @@
                     "startDate",
                     "releaseDate",
                     "released",
-                    "releasedAt"
+                    "releasedAt",
+                    "archived"
                   ],
                   "additionalProperties": false
                 }
