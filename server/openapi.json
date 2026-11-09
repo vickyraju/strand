@@ -44109,6 +44109,36 @@
                     ],
                     "description": "Scrum: what estimates count (story points, original time estimate, issue count); spec 0404"
                   },
+                  "workingDays": {
+                    "type": "object",
+                    "properties": {
+                      "weekdays": {
+                        "minItems": 1,
+                        "maxItems": 7,
+                        "type": "array",
+                        "items": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 6
+                        },
+                        "description": "Working weekdays, 0 for Sunday"
+                      },
+                      "nonWorking": {
+                        "maxItems": 365,
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                        },
+                        "description": "Holidays and other dates nobody works (YYYY-MM-DD)"
+                      }
+                    },
+                    "required": [
+                      "weekdays",
+                      "nonWorking"
+                    ],
+                    "description": "The burndown’s guideline falls only on working days (spec 0405)"
+                  },
                   "admins": {
                     "type": "object",
                     "properties": {
@@ -44316,6 +44346,29 @@
                       ],
                       "description": "Scrum: what estimates count (spec 0404)"
                     },
+                    "workingDays": {
+                      "type": "object",
+                      "properties": {
+                        "weekdays": {
+                          "type": "array",
+                          "items": {
+                            "type": "number"
+                          }
+                        },
+                        "nonWorking": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "required": [
+                        "weekdays",
+                        "nonWorking"
+                      ],
+                      "additionalProperties": false,
+                      "description": "Working weekdays (0 is Sunday) and non-working dates (spec 0405)"
+                    },
                     "position": {
                       "type": "number"
                     },
@@ -44369,6 +44422,7 @@
                     "cardFields",
                     "doneDays",
                     "estimation",
+                    "workingDays",
                     "position",
                     "canManage",
                     "canManageSprints",
@@ -44634,6 +44688,29 @@
                       ],
                       "description": "Scrum: what estimates count (spec 0404)"
                     },
+                    "workingDays": {
+                      "type": "object",
+                      "properties": {
+                        "weekdays": {
+                          "type": "array",
+                          "items": {
+                            "type": "number"
+                          }
+                        },
+                        "nonWorking": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "required": [
+                        "weekdays",
+                        "nonWorking"
+                      ],
+                      "additionalProperties": false,
+                      "description": "Working weekdays (0 is Sunday) and non-working dates (spec 0405)"
+                    },
                     "position": {
                       "type": "number"
                     },
@@ -44687,6 +44764,7 @@
                     "cardFields",
                     "doneDays",
                     "estimation",
+                    "workingDays",
                     "position",
                     "canManage",
                     "canManageSprints",
@@ -44947,6 +45025,36 @@
                     ],
                     "description": "Scrum: what estimates count (story points, original time estimate, issue count); spec 0404"
                   },
+                  "workingDays": {
+                    "type": "object",
+                    "properties": {
+                      "weekdays": {
+                        "minItems": 1,
+                        "maxItems": 7,
+                        "type": "array",
+                        "items": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 6
+                        },
+                        "description": "Working weekdays, 0 for Sunday"
+                      },
+                      "nonWorking": {
+                        "maxItems": 365,
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                        },
+                        "description": "Holidays and other dates nobody works (YYYY-MM-DD)"
+                      }
+                    },
+                    "required": [
+                      "weekdays",
+                      "nonWorking"
+                    ],
+                    "description": "The burndown’s guideline falls only on working days (spec 0405)"
+                  },
                   "admins": {
                     "type": "object",
                     "properties": {
@@ -45144,6 +45252,29 @@
                       ],
                       "description": "Scrum: what estimates count (spec 0404)"
                     },
+                    "workingDays": {
+                      "type": "object",
+                      "properties": {
+                        "weekdays": {
+                          "type": "array",
+                          "items": {
+                            "type": "number"
+                          }
+                        },
+                        "nonWorking": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "required": [
+                        "weekdays",
+                        "nonWorking"
+                      ],
+                      "additionalProperties": false,
+                      "description": "Working weekdays (0 is Sunday) and non-working dates (spec 0405)"
+                    },
                     "position": {
                       "type": "number"
                     },
@@ -45197,6 +45328,7 @@
                     "cardFields",
                     "doneDays",
                     "estimation",
+                    "workingDays",
                     "position",
                     "canManage",
                     "canManageSprints",

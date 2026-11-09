@@ -55,7 +55,21 @@ export function sprintMembers(state: State, sprint: Sprint) {
     : state.issues.filter(i => i.sprintId === sprint.id)
 }
 
-export function burndown(state: State, project: Project, sprint: Sprint, now = Date.now()) {
+/** A board's working days (spec 0405): weekdays (0 is Sunday) and non-working dates (YYYY-MM-DD). */
+export interface WorkingDays { weekdays: number[]; nonWorking: string[] }
+const isoDay = (t: number) => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
+export const isWorkingDay = (t: number, w?: WorkingDays) => !w || (w.weekdays.includes(new Date(t).getDay()) && !w.nonWorking.includes(isoDay(t)))
+
+/** The guideline (Jira's grey line): from `total` to zero, falling only across working days, flat on the others. */
+export function guideline(timeline: number[], total: number, w?: WorkingDays) {
+  // each working day after the first takes an equal share; a day off keeps the previous value
+  const steps = timeline.map((t, k): number => (k > 0 && isWorkingDay(t, w) ? 1 : 0))
+  const all = steps.reduce((n, x) => n + x, 0)
+  let done = 0
+  return timeline.map((_, k) => { done += steps[k]!; return all ? Math.max(0, total - (total * done) / all) : total })
+}
+
+export function burndown(state: State, project: Project, sprint: Sprint, now = Date.now(), working?: WorkingDays) {
   if (!sprint.startedAt) return null
   const end = sprint.completedAt ?? sprint.endsAt ?? now
   const members = sprintMembers(state, sprint)
@@ -72,7 +86,7 @@ export function burndown(state: State, project: Project, sprint: Sprint, now = D
       return n + (st && categoryOf(project, st) === 'done' ? 0 : stat(i))
     }, 0)
   })
-  const ideal = timeline.map((_, k) => Math.max(0, total - (total * k) / Math.max(1, timeline.length - 1)))
+  const ideal = guideline(timeline, total, working)                      // flat on the board's days off (spec 0405)
   return { labels: timeline.map(dayLabel), remaining, ideal, total, members }
 }
 

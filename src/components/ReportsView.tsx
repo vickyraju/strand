@@ -1,7 +1,8 @@
 import { createContext, useContext, useEffect, useState } from 'react'
+import { useBoard } from '../api/boards'
 import { useDurations } from '../api/settings-public'
 import { TrendingDown, ClipboardCheck, BarChart3, Layers, ArrowLeftRight, Timer, Users, ShieldCheck, GitMerge, ListChecks } from 'lucide-react'
-import { useStore, userOf, isDone, CATEGORY_COLOR, type Project } from '../data/store'
+import { useStore, userOf, isDone, statOf, CATEGORY_COLOR, type Project } from '../data/store'
 import { burndown, velocity, cumulativeFlow, createdVsResolved, cycleTimes, dayLabel } from '../data/analytics'
 import { useApp } from '../appContext'
 import { useReportState } from '../api/reports'
@@ -86,10 +87,11 @@ function Burndown({ project }: { project: Project }) {
     .sort((a, b) => (b.startedAt ?? 0) - (a.startedAt ?? 0))
   const [id, setId] = useState(sprints[0]?.id)
   const sprint = sprints.find(s => s.id === id) ?? sprints[0]
+  const { board } = useBoard(apiEnabled ? sprint?.boardId : undefined)        // its working days (spec 0405)
   if (!sprint) return <NoData text="Start a sprint from the backlog to see its burndown." />
-  const data = burndown(state, project, sprint)!
+  const data = burndown(state, project, sprint, undefined, board?.workingDays)!
   const remaining = [...data.remaining].reverse().find(v => !Number.isNaN(v)) ?? data.total
-  const pts = data.members.reduce((n, i) => n + (i.estimate ?? 0), 0)
+  const pts = data.members.reduce((n, i) => n + statOf(i, sprint.estimation), 0)
 
   return (
     <>
@@ -101,7 +103,7 @@ function Burndown({ project }: { project: Project }) {
       <div className="kpis">
         <div><b>{stat(data.total, sprint.estimation)}</b><span>committed</span></div>
         <div><b>{stat(remaining, sprint.estimation)}</b><span>remaining</span></div>
-        <div><b>{plural(data.members.length, 'item')}</b><span>in sprint{pts !== data.total ? ` (${pts} pts now)` : ''}</span></div>
+        <div><b>{plural(data.members.length, 'item')}</b><span>in sprint{pts !== data.total ? ` (${stat(pts, sprint.estimation)} now)` : ''}</span></div>
       </div>
       <BurndownChart data={data} name={sprint.name} />
     </>
@@ -147,9 +149,10 @@ function SprintReport({ project }: { project: Project }) {
       .then(data => live && setReport({ id: sprint.id, data }), e => live && setReport({ id: sprint.id, error: errorMessage(e) }))
     return () => { live = false }
   }, [project.key, sprint?.id])   // eslint-disable-line react-hooks/exhaustive-deps
+  const { board } = useBoard(apiEnabled ? sprint?.boardId : undefined)        // its working days (spec 0405)
   if (!sprint) return <NoData text="Start a sprint from the backlog to see its report." />
   if (!apiEnabled) return <NoData text="The sprint report needs Strand to be connected to a server." />
-  const data = burndown(state, project, sprint)!
+  const data = burndown(state, project, sprint, undefined, board?.workingDays)!
   const r = report?.id === sprint.id ? report : null
   const added = r?.data && SECTIONS.some(([k]) => r.data![k].some(x => x.addedAfterStart))
   return (

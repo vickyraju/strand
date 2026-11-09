@@ -145,6 +145,8 @@ export interface Board extends BoardRef {
   doneDays: number | null
   /** Scrum: what estimates count (Jira's estimation statistic, spec 0404) */
   estimation?: Estimation
+  /** Working weekdays (0 is Sunday) and non-working dates: the burndown's guideline falls only on working days (spec 0405) */
+  workingDays?: { weekdays: number[]; nonWorking: string[] }
   canManage: boolean
   /** I may create, start, complete and delete its sprints (spec 0101; unset in a local workspace) */
   canManageSprints?: boolean

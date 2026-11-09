@@ -64,7 +64,7 @@ The roadmap, in order. Bugs come first, then the permission model, then the data
 | [0402](0402-sprint-report.md) | Sprint report | 4 | Ported |
 | [0403](0403-reopen-delete-sprint.md) | Reopen and delete completed sprints | 4 | Ported |
 | [0404](0404-board-estimation.md) | Per-board estimation statistic | 4 | Ported |
-| 0405 | Working days | 4 | Planned |
+| [0405](0405-working-days.md) | Working days on a board | 4 | Approved |
 | 0406 | Kanban backlog | 4 | Planned |
 | 0407 | Epics and versions panels | 4 | Planned |
 | 0408 | Flagging | 4 | Planned |

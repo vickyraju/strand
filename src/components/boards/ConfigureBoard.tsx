@@ -22,7 +22,7 @@ type Named = { id: string; name: string; jql: string }
 interface GStatus { id: string; name: string; category: 'todo' | 'in-progress' | 'done'; color: string }
 type Save = (patch: Partial<Omit<Board, 'admins'>> & { admins?: { userIds: string[]; groupIds: string[] } }) => Promise<void>
 
-const SECTIONS = [['general', 'General'], ['columns', 'Columns'], ['swimlanes', 'Swimlanes'], ['quick-filters', 'Quick filters'], ['card-layout', 'Card layout']] as const
+const SECTIONS = [['general', 'General'], ['columns', 'Columns'], ['swimlanes', 'Swimlanes'], ['quick-filters', 'Quick filters'], ['card-layout', 'Card layout'], ['working-days', 'Working days']] as const
 const LANES: [Board['swimlanes']['by'], string, string][] = [
   ['none', 'None', 'One lane for everything'], ['queries', 'Queries', 'A lane per query you write; an item goes in the first it matches'],
   ['assignee', 'Assignees', 'A lane per person'], ['epic', 'Epics', 'A lane per epic'], ['project', 'Projects', 'A lane per project'], ['priority', 'Priority', 'A lane per priority'],
@@ -94,6 +94,7 @@ export default function ConfigureBoard({ project, boardId }: { project: Project;
           <Swimlanes board={board} can={can} save={save} />
           <QuickFilters board={board} can={can} save={save} />
           <CardLayout board={board} can={can} save={save} />
+          <WorkingDays board={board} can={can} save={save} />
           {can && (
             <section className="panel" id="delete">
               <h2 className="panel-title">Delete board</h2>
@@ -407,6 +408,49 @@ export function BoardsPanel({ project }: { project: Project }) {
       </table>
       {creating && <CreateBoard project={project} onClose={() => setCreating(false)}
         onCreated={b => { setCreating(false); setVersion(v => v + 1); void reloadBoards(project.key, dispatch); navigate(href({ name: 'project', key: project.key, tab: 'board', sub: b.id })) }} />}
+    </section>
+  )
+}
+
+// ── Working days ───────────────────────────────────────────
+
+const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+
+/** Jira's working days (spec 0405): the team's working weekdays and days off; the burndown's guideline falls only on working days. */
+function WorkingDays({ board, can, save }: { board: Board; can: boolean; save: Save }) {
+  const initial = () => board.workingDays ?? { weekdays: [1, 2, 3, 4, 5], nonWorking: [] }
+  const [f, setF] = useState(initial)
+  const [date, setDate] = useState('')
+  useEffect(() => setF(initial()), [board])   // eslint-disable-line react-hooks/exhaustive-deps
+  const s = useSaving(save)
+  const dirty = JSON.stringify(f) !== JSON.stringify(initial())
+  const toggle = (d: number) => setF({ ...f, weekdays: f.weekdays.includes(d) ? f.weekdays.filter(x => x !== d) : [...f.weekdays, d].sort() })
+  return (
+    <section className="panel" id="working-days">
+      <h2 className="panel-title">Working days</h2>
+      <p className="muted">The days the team works. The burndown’s guideline only falls on working days.</p>
+      <span className="label">Standard working days</span>
+      <div className="btn-row" style={{ flexWrap: 'wrap' }}>
+        {[1, 2, 3, 4, 5, 6, 0].map(d => (
+          <label key={d} className="cell-flex"><input type="checkbox" disabled={!can} checked={f.weekdays.includes(d)} onChange={() => toggle(d)} />{WEEKDAYS[d]}</label>
+        ))}
+      </div>
+      <span className="label" style={{ marginTop: 14 }}>Non-working days</span>
+      <div className="chip-list">
+        {f.nonWorking.length === 0 && <span className="muted">None</span>}
+        {f.nonWorking.map(d => (
+          <span key={d} className="chip-static">{d}
+            {can && <button type="button" className="chip-x" aria-label={`Remove ${d}`} onClick={() => setF({ ...f, nonWorking: f.nonWorking.filter(x => x !== d) })}>×</button>}
+          </span>
+        ))}
+      </div>
+      {can && <div className="btn-row" style={{ marginTop: 8 }}>
+        <input type="date" className="input" aria-label="Non-working day" value={date} onChange={e => setDate(e.target.value)} />
+        <button type="button" className="btn btn-secondary btn-sm" disabled={!date || f.nonWorking.includes(date)}
+          onClick={() => { setF({ ...f, nonWorking: [...f.nonWorking, date].sort() }); setDate('') }}><Plus size={13} />Add date</button>
+      </div>}
+      {can && <SaveRow dirty={dirty} busy={s.busy} message={f.weekdays.length ? s.message : 'Choose at least one working day'} onReset={() => setF(initial())}
+        onSave={() => { if (f.weekdays.length) void s.run({ workingDays: f }) }} />}
     </section>
   )
 }
