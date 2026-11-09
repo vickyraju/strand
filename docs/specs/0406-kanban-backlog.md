@@ -1,6 +1,6 @@
 # 0406 Kanban backlog
 
-Status: Approved (PO, 10 Nov 2026: "proceed with phase 4")
+Status: Ported (aws-jira `ec6256d`, strand `fd9b0c7`), approved by the PO on 10 Nov 2026; awaiting verification
 Parity rows: AG-09
 
 ## Context and Jira reference
