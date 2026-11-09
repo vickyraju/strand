@@ -1,6 +1,6 @@
 # 0306 Time tracking settings: hours per day, days per week, display format, default unit
 
-Status: Approved (PO, 9 Nov 2026: "i approve everything"; "yes proceed")
+Status: Ported (aws-jira `4738a3a`, strand `c7ce53a`), approved by the PO on 9 Nov 2026; awaiting verification
 Parity rows: ISS-17
 
 ## Context and Jira reference
