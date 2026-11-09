@@ -49,7 +49,6 @@ Groups made in Strand have a fixed name since `20bfae4`. Groups from Entra (SCIM
 - **R7:** A directory group and its memberships can't be changed in Strand, by anyone, global admins included, as with a read-only directory in Jira. Only the directory adds or removes its members, renames it or deletes it.
   - **Groups page:** a directory group can't be deleted, and people can't be added to it or removed from it (as today).
   - **People › bulk changes:** "add to group" and "remove from group" refuse a directory group (as today).
-  - **License cleanup:** its "remove from groups" action takes people out of groups made in Strand only. Choosing a directory group for it is refused (400), and a directory group named in an existing rule is skipped.
   - **Why:** Jira undoes such a change at its next sync. Entra sends Strand only its own changes, so a change made in Strand would never be undone. Refusing it keeps Strand the same as the directory, which is what Jira's sync achieves.
   - **Groups made in Strand:** directory users can be added to them, as Jira's local groups allow.
 
@@ -98,7 +97,7 @@ None.
 | R4 | Server test: SCIM `POST` with a name taken by a Strand group returns 409 |
 | R5 | Server test: a SCIM rename keeps members and project roles; `membersOf` matches the new name and not the old; a rename to a taken name returns 409; the audit has `group.renamed` |
 | R6 | Server test: SCIM deleting the only group giving a project admin removes it; the audit lists that project as left without an admin; members are still in Strand |
-| R7 | Server tests: a global admin can't delete a directory group or change its members (403 or 400); license cleanup refuses a directory group in "remove from groups", and a run leaves directory memberships untouched |
+| R7 | Server tests: a global admin can't delete a directory group or change its members (403 or 400) |
 
 ## Strand branch
 
@@ -115,5 +114,7 @@ Same rules. Security levels that name a deleted group stop letting its members i
 None. The product owner decided on 5 Nov 2026: the directory is the source of truth for its groups and their members (R7), and groups aren't renamed there (R5).
 
 ## Changelog
+
+- 10 Nov 2026: License cleanup was removed (spec 0710), with its part of R7.
 
 - 5 Nov 2026, in review: R7 added (directory groups and memberships are read-only in Strand, as Jira's read-only directory); R5 reworded (renames aren't expected); the open question closed.

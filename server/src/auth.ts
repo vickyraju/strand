@@ -107,8 +107,8 @@ export async function authenticate(req: FastifyRequest) {
       }
     }
     if (!u!.active) { refused = u!.id; return null as unknown as Me }   // recorded after this (rolled back) transaction
-    // last use, at most once an hour; using Strand again cancels a pending cleanup warning
-    await d.query(`update users set last_active_at = now(), cleanup_warned_at = null where id = $1 and (last_active_at is null or last_active_at < now() - interval '1 hour')`, [u!.id])
+    // last use, at most once an hour
+    await d.query(`update users set last_active_at = now() where id = $1 and (last_active_at is null or last_active_at < now() - interval '1 hour')`, [u!.id])
     const oldest = () => d.query<{ id: string }>('select id from workspaces order by created_at limit 1')
     let [ws] = await oldest()
     let first = false
@@ -155,7 +155,7 @@ async function authenticateToken(token: string): Promise<Me> {
       order by w.created_at limit 1`, [hashToken(token)])
   if (!t) throw new HttpError(401, 'Invalid token')
   if (!t.active) { await noteRefused(t.userId, t.email); throw new HttpError(403, 'Account is deactivated') }
-  await db.query(`update users set last_active_at = now(), cleanup_warned_at = null where id = $1 and (last_active_at is null or last_active_at < now() - interval '1 hour')`, [t.userId])
+  await db.query(`update users set last_active_at = now() where id = $1 and (last_active_at is null or last_active_at < now() - interval '1 hour')`, [t.userId])
   if (!(await getSetting(t.workspaceId, 'accessTokens')).enabled) throw new HttpError(401, 'Personal access tokens are turned off')
   // "last used" is written at most once a minute per token, so a busy script does not turn every call into a write
   await db.query(`update personal_access_tokens set last_used_at = now() where id = $1 and (last_used_at is null or last_used_at < now() - interval '1 minute')`, [t.id])
