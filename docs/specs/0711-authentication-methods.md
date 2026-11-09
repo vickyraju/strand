@@ -1,6 +1,6 @@
 # 0711 Authentication methods: Entra SSO configured in Administration, the login form, fallback and recovery
 
-Status: Approved (PO, 10 Nov 2026: "make sso configurable in the admin section … so the system admin can configure the sso enable or disable it when needed"; "when sso is turned off it will show a username and password field to login, check how it is in Jira data center")
+Status: Ported (aws-jira `d3bdb3a`, strand `d4f1978`), approved by the PO on 10 Nov 2026; awaiting verification
 Parity rows: AUTH-01, AUTH-02, AUTH-03
 
 ## Context and Jira reference
