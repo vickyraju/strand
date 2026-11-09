@@ -1,6 +1,6 @@
 # 0402 Sprint Report
 
-Status: Approved (PO, 9 Nov 2026: "i approve everything"; "continue")
+Status: Ported (aws-jira `6012381`, strand `3e9389c`), approved by the PO on 9 Nov 2026; awaiting verification
 Parity rows: AG-12
 
 ## Context and Jira reference
