@@ -114,7 +114,6 @@ const CHECKS: [string, string, number][] = [
   ['Admin › Projects using a workflow: a page', `/api/v1/admin/workflows/${scrumWorkflow}/projects?limit=50`, 800],
   ['Admin › Projects using a workflow: search', `/api/v1/admin/workflows/${scrumWorkflow}/projects?limit=50&query=P59`, 800],
   ['Admin › Audit log: first page', '/api/v1/audit?limit=50', 800],
-  ['Admin › License cleanup: seats and runs', '/api/v1/admin/license-cleanup', 1500],
 ]
 const pct = (xs: number[], p: number) => xs.sort((a, b) => a - b)[Math.min(xs.length - 1, Math.floor(p * xs.length))]!
 let missed = 0

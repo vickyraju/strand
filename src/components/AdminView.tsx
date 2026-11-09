@@ -12,7 +12,6 @@ import AdminShell, { ITEMS } from './admin/AdminShell'
 import { GroupPicker, Progress, useJob, type GroupRef } from './admin/scale'
 import TestStatusesAdmin from './testing/TestStatusesAdmin'
 import GroupsView from './groups/GroupsView'
-import LicenseCleanup from './LicenseCleanup'
 import WorkflowsAdmin from './WorkflowsAdmin'
 import WorkflowBuilder from './WorkflowBuilder'
 import LinkTypesAdmin from './LinkTypesAdmin'
@@ -41,7 +40,6 @@ export default function AdminView({ section = 'people', item }: { section?: Admi
       sub={settingsPage ? SETTINGS_PAGES.map(p => ({ id: p.id, label: p.label, current: p.id === settingsPage })) : undefined}>
       {section === 'people' && <People />}
       {section === 'groups' && <GroupsView admin={admin} openId={item && UUID.test(item) ? item : null} onOpen={id => navigate(href({ name: 'admin', section: 'groups', ...(id ? { item: id } : {}) }))} />}
-      {section === 'license' && <LicenseCleanup />}
       {section === 'workflows' && <WorkflowsAdmin tab={item === 'statuses' || item === 'schemes' ? item : 'workflows'} />}
       {section === 'link-types' && <LinkTypesAdmin />}
       {(section === 'priorities' || section === 'resolutions') && <ListsAdmin kind={section} />}

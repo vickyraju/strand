@@ -775,35 +775,17 @@ test('groups: a member makes mobile-developers and adds a colleague; a project a
   assert.deepEqual([...m.problems, ...o.problems], [])
 })
 
-test('license cleanup: an admin previews who is idle, runs the cleanup, and the idle person loses their seat until they sign in again', { skip, timeout: 90_000 }, async () => {
+test('[0710.R1][0710.R3] Administration has no License cleanup; People still finds those inactive for a while', { skip, timeout: 90_000 }, async () => {
   const pg = (await import('node:module')).createRequire(new URL('../server/package.json', import.meta.url))('pg')
   const c = new pg.Client({ connectionString: process.env.E2E_DATABASE_URL }); await c.connect()
   const samId = await idOf('sam@e2e.test')
   await c.query(`update users set last_active_at = now() - interval '200 days' where id = $1`, [samId])   // Sam hasn't used Strand for 200 days
   await c.end()
   const o = await signIn('owner@e2e.test')
-  await o.goto(url('/admin/license'))
-  await o.fill('[aria-label="Inactive for (days)"]', '180')
-  await o.fill('[aria-label="Warn days before"]', '0')
-  await o.click('section[aria-label="License cleanup"] button:has-text("Save")')
-  await o.waitForSelector('text=Saved')
-  await o.click('button:has-text("Preview")')
-  await o.waitForSelector('[aria-label="Preview"] td:has-text("Sam Someone")')
-  // "Run now" says how many people it changes before it does
-  await o.click('button:has-text("Run now")')
-  await o.waitForSelector('.modal >> text=Run the cleanup now?')
-  assert.match(await o.locator('.modal').innerText(), /\d+ (person is|people are) changed now/)
-  await o.click('.modal button:has-text("Change")')
-  await o.waitForSelector('text=/Changed [1-9]/')
-  const seat = async () => (await as('owner@e2e.test')('GET', '/admin/users?query=sam')).body.items.find(u => u.id === samId).groups.some(g => g.name === 'users-access')
-  assert.equal(await seat(), false)
-  // People: filter to the inactive, and see the change; Sam signs in and is back
   await o.goto(url('/admin/people'))
+  assert.equal(await o.locator('nav >> text=License cleanup').count(), 0)
   await o.selectOption('[aria-label="Inactive"]', '180')
   await o.waitForSelector('td:has-text("Sam Someone")')
-  await signIn('sam@e2e.test')
-  await o.waitForTimeout(1000)
-  assert.equal(await seat(), true)
   assert.deepEqual(o.problems, [])
 })
 

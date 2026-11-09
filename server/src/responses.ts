@@ -128,7 +128,6 @@ export const TestRun = z.object({
   comment: z.string(), defectIds: z.array(id), evidenceIds: z.array(id), version: z.number(), createdAt: ts, updatedAt: ts,
   specChanged: z.boolean().describe('The test has changed since this run was made (reset to use the new one)'),
 })
-const CleanupPerson = z.object({ userId: id, email: z.string(), name: z.string(), lastActiveAt: nullable(ts) })
 const GroupMember = z.object({ id, name: z.string(), email: z.string(), initials: z.string(), color: z.string(), active: z.boolean() })
 export const GroupSummary = z.object({
   id, name: z.string(), description: z.string(), kind: z.enum(['system', 'directory', 'strand']).describe('system (users-access, system-administrators), directory (from Entra) or strand (made here)'),
@@ -261,15 +260,6 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'GET /groups': z.object({ items: z.array(GroupSummary), next: nullable(z.string()).describe('Pass back as `cursor`; null on the last page') }),
   'POST /admin/users/bulk': z.object({ changed: z.number(), unchanged: z.number().describe('Already as asked') }),
   'GET /admin/users/refused-sign-ins': z.array(z.object({ at: ts, userId: nullable(z.string()), email: nullable(z.string()), ip: nullable(z.string()), name: nullable(z.string()), active: nullable(z.boolean()) })),
-  'GET /admin/license-cleanup': z.object({
-    seats: z.object({ total: z.number().describe('People in users-access'), active30: z.number(), active90: z.number(), never: z.number().describe('Never used Strand') }),
-    runs: z.array(z.object({ id, trigger: z.string(), action: z.string(), startedAt: ts, finishedAt: nullable(ts), changedCount: z.number(), warnedCount: z.number(),
-      notes: z.string(), startedBy: nullable(z.string()) })).describe('Counts only: open a run for who it changed'),
-  }),
-  'POST /admin/license-cleanup/preview': z.object({ changeCount: z.number(), warnCount: z.number(),
-    change: z.array(CleanupPerson).describe('The first 100, longest away first'), warn: z.array(CleanupPerson).describe('The first 100') }),
-  'GET /admin/license-cleanup/runs/:id': z.object({ id, changed: z.array(CleanupPerson), warned: z.array(CleanupPerson) }),
-  'POST /admin/license-cleanup/run': z.object({ id, changed: z.number(), warned: z.number(), notes: z.string() }),
   'GET /groups/:id': GroupSummary.extend({
     people: z.array(GroupMember).describe('The first members by name (GET /groups/:id/members for the rest)'), morePeople: nullable(z.string()).describe('Cursor for the next page of members'),
     projects: z.array(z.object({ key: z.string(), name: z.string(), role: z.string() })).describe('Projects you can see where the group has a role'),

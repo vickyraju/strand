@@ -11,7 +11,6 @@ import { enqueue, kickJobs, registerJob } from '../jobs.ts'
 import { allowedBackupBuckets, backupBucket, backupSettings } from '../backups.ts'
 import { s3 } from '../storage.ts'
 import { SETTINGS, getSetting, isSettingKey, setSetting, type SettingKey } from '../settings.ts'
-import { previewSummary, runCleanup, scheduleCleanup, seats } from '../licenseCleanup.ts'
 
 const idP = z.object({ id: z.string().uuid() })
 
@@ -74,7 +73,7 @@ async function bulkChange(d: Db, who: { me: Me; ip?: string }, people: { id: str
     if (action === 'deactivate') {
       if (p.id === who.me.id) continue                                    // never yourself
       did = (await d.query('update users set active = false where id = $1 and active returning 1', [p.id])).length
-    } else if (action === 'reactivate') did = (await d.query('update users set active = true, cleanup_warned_at = null where id = $1 and not active returning 1', [p.id])).length
+    } else if (action === 'reactivate') did = (await d.query('update users set active = true where id = $1 and not active returning 1', [p.id])).length
     else if (action === 'add-to-group') did = (await d.query('insert into group_members (group_id, user_id) values ($1, $2) on conflict do nothing returning 1', [g!.id, p.id])).length
     else did = (await d.query('delete from group_members where group_id = $1 and user_id = $2 returning 1', [g!.id, p.id])).length
     if (did) { changed++; await audit(d, who, { action: `user.bulk.${action}`, type: 'user', id: p.id, name: p.email, after: g ? { group: g.displayName } : undefined }) }
@@ -150,38 +149,6 @@ const plugin: FastifyPluginAsyncZod = async app => {
                       where a.action = 'auth.refused_deactivated' and a.workspace_id = $1 order by a.at desc limit 100`, [req.me.workspaceId])
   })
 
-  // ── License cleanup (resolution's License Optimizer and automatic deactivation): seats, a preview, run now, history ──
-  app.get('/admin/license-cleanup', { schema: { tags: TAG, summary: 'Seats (people in users-access, and how recently they were active) and the latest cleanup runs (system administrators)' } }, async req => {
-    requireAdmin(req)
-    return {
-      seats: await seats(db, req.me.workspaceId),
-      // counts only: who a run changed is read when the run is opened (GET /admin/license-cleanup/runs/:id)
-      runs: await db.query(`select r.id, r.trigger, r.action, r.started_at, r.finished_at, jsonb_array_length(r.changed) as changed_count, jsonb_array_length(r.warned) as warned_count,
-                                   r.notes, u.name as started_by from license_cleanup_runs r left join users u on u.id = r.started_by
-                             where r.workspace_id = $1 order by r.started_at desc limit 50`, [req.me.workspaceId]),
-    }
-  })
-  app.get('/admin/license-cleanup/runs/:id', { schema: { tags: TAG, summary: 'Who one cleanup run changed and warned (system administrators)', params: idP } }, async req => {
-    requireAdmin(req)
-    const [r] = await db.query(`select r.id, r.changed, r.warned from license_cleanup_runs r where r.id = $1 and r.workspace_id = $2`, [req.params.id, req.me.workspaceId])
-    if (!r) throw new HttpError(404, 'No such run')
-    return r
-  })
-  app.post('/admin/license-cleanup/preview', { schema: { tags: TAG, summary: 'Who the cleanup would change and warn now, with the saved rule or one you send (nothing changes; system administrators)', body: z.object({ rule: z.record(z.string(), z.unknown()).optional() }) } }, async req => {
-    requireAdmin(req)
-    let rule = await getSetting(req.me.workspaceId, 'licenseCleanup')
-    if (req.body.rule) {
-      const parsed = SETTINGS.licenseCleanup.schema.safeParse({ ...rule, ...req.body.rule })
-      if (!parsed.success) throw new HttpError(400, 'That rule is not valid', Object.fromEntries(parsed.error.issues.map(i => [i.path.join('.') || 'rule', i.message])))
-      rule = parsed.data
-    }
-    return previewSummary(db, req.me.workspaceId, rule)
-  })
-  app.post('/admin/license-cleanup/run', { schema: { tags: TAG, summary: 'Run the cleanup now with the saved rule, even if the daily run is off (system administrators)' } }, async req => {
-    requireAdmin(req)
-    return runCleanup(req.me.workspaceId, 'manual', req)
-  })
-
   // ── System settings: policies a workspace admin controls (rate limiting, attachments, tokens, export and bulk sizes, due reminders) ──
   const keyP = z.object({ key: z.string().describe(`One of: ${Object.keys(SETTINGS).filter(k => !('ownRoutes' in SETTINGS[k as SettingKey])).join(', ')}`) })
   const view = async (ws: string, key: SettingKey) => {
@@ -201,12 +168,6 @@ const plugin: FastifyPluginAsyncZod = async app => {
     const parsed = SETTINGS[key].schema.safeParse(req.body)
     if (!parsed.success) throw new HttpError(400, 'That setting is not valid',
       Object.fromEntries(parsed.error.issues.map(i => [i.path.join('.') || 'value', i.message])))
-    // License cleanup takes people out of groups made in Strand only: the directory decides who is in its groups (spec 0104 R7)
-    if (key === 'licenseCleanup') {
-      const ids = (parsed.data as { groupIds: string[] }).groupIds
-      const dir = ids.length ? await db.query<{ displayName: string }>(`select display_name from groups where id = any($1::uuid[]) and source = 'directory'`, [ids]) : []
-      if (dir.length) throw new HttpError(400, `${dir.map(g => g.displayName).join(', ')} ${dir.length === 1 ? 'comes' : 'come'} from the directory (Entra): only it changes who is in ${dir.length === 1 ? 'it' : 'them'}`, { groupIds: 'A directory group' })
-    }
     // Jira: a new key pattern must still fit every existing key (spec 0308 R3)
     if (key === 'projectKeys') {
       const { pattern, maxLength } = parsed.data as { pattern: string; maxLength: number }
@@ -219,7 +180,6 @@ const plugin: FastifyPluginAsyncZod = async app => {
       await setSetting(d, req.me.workspaceId, key, parsed.data, req.me.id)
       const c = changes(before as any, parsed.data as any)
       if (c.changed) await audit(d, req, { action: `settings.${key}.updated`, type: 'settings', name: SETTINGS[key].label, before: c.before, after: c.after })
-      if (key === 'licenseCleanup' && (parsed.data as any).enabled) await scheduleCleanup(d, req.me.workspaceId)   // the next daily run
     })
     return view(req.me.workspaceId, key)
   })

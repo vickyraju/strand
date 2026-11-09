@@ -2585,77 +2585,40 @@ test('groups: anyone makes one and manages it; a project admin gives it a role; 
   for (const a of ['group.created', 'group.members_added', 'group.member_removed', 'group.owners_added', 'group.owner_removed']) assert.ok(actions.includes(a), a)
 })
 
-test('license cleanup: inactive people lose their seat and get it back at sign-in; warnings and reports by email; admins, leads and excluded groups are safe; bulk actions; refused sign-ins', { skip, timeout: 60_000 }, async () => {
-  process.env.EMAIL_TRANSPORT = 'memory'
-  const { sentEmails } = await import('../src/email.ts')
-  await call('PUT', '/api/v1/admin/settings/email', { enabled: true, from: 'Strand <strand@example.com>', appUrl: '' })
+test('[0710.R3] people admin: bulk deactivate and reactivate, refused sign-ins, back in users-access on sign-in, group changes, last active', { skip }, async () => {
   const id = async (w: string) => (await call('GET', '/api/v1/me', undefined, w)).body.id as string
-  const [idle, soon, lead, keep, fresh] = [await id('lc.idle@x.com'), await id('lc.soon@x.com'), await id('lc.lead@x.com'), await id('lc.keep@x.com'), await id('lc.fresh@x.com')]
-  // pretend time has passed: idle 120 days, soon 85 days (due in 5), lead and keep 200 days, fresh today
-  const ago = (u: string, days: number) => pool.query(`update users set last_active_at = now() - make_interval(days => $2), cleanup_warned_at = null where id = $1`, [u, days])
-  await ago(idle, 120); await ago(soon, 85); await ago(lead, 200); await ago(keep, 200)
-  // a long-idle system administrator (not the one running these calls, whose own requests keep them active) is never touched
-  const me0 = await id('lc.admin@x.com')
-  await pool.query(`insert into group_members (group_id, user_id) select id, $1 from groups where system_role = 'system-admins' on conflict do nothing`, [me0])
-  await ago(me0, 300)
-  await call('POST', '/api/v1/projects', { name: 'Led', key: 'LCL', template: 'kanban' })
-  await pool.query(`update projects set lead_id = $1 where key = 'LCL'`, [lead])
-  const keepers = (await call('POST', '/api/v1/groups', { name: 'lc-keepers' })).body.id
-  await call('POST', `/api/v1/groups/${keepers}/members`, { userIds: [keep] })
-  const rule = { enabled: true, inactiveDays: 90, action: 'remove-access', groupIds: [], warnDays: 7, excludedGroupIds: [keepers], protectLeads: true, reportTo: ['it@x.com'] }
-  // the rule is checked
-  assert.equal((await call('PUT', '/api/v1/admin/settings/licenseCleanup', { ...rule, action: 'remove-groups' })).body.errors?.groupIds, 'Choose the groups to take people out of')
-  assert.equal((await call('PUT', '/api/v1/admin/settings/licenseCleanup', rule)).status, 200)
-  const ourPeople = (xs: any[]) => xs.map((p: any) => p.userId).filter((u: string) => [idle, soon, lead, keep, fresh].includes(u)).sort()
-  // the preview changes nothing: idle would lose the seat, soon would be warned; lead and keep are safe
-  const pv = (await call('POST', '/api/v1/admin/license-cleanup/preview', {})).body
-  assert.equal(pv.changeCount, pv.change.length)
-  assert.deepEqual([ourPeople(pv.change), ourPeople(pv.warn)], [[idle], [soon]])
-  const seat = async (u: string) => (await pool.query(`select 1 from group_members gm join groups g on g.id = gm.group_id where g.system_role = 'default-users' and gm.user_id = $1`, [u])).rowCount === 1
-  assert.equal(await seat(idle), true)
-  // a preview of another rule, without saving it: protecting leads off puts the lead in
-  assert.ok(ourPeople((await call('POST', '/api/v1/admin/license-cleanup/preview', { rule: { protectLeads: false } })).body.change).includes(lead))
-  // run now: idle loses the seat; soon is warned once; the report goes to it@x.com
-  const before = sentEmails.length
-  const run = (await call('POST', '/api/v1/admin/license-cleanup/run')).body
-  assert.ok(run.changed >= 1 && run.warned >= 1)
-  assert.deepEqual([await seat(idle), await seat(soon), await seat(lead), await seat(keep), await seat(fresh)], [false, true, true, true, true])
-  assert.equal(await seat(me0), true)
-  const mails = sentEmails.slice(before)
-  assert.ok(mails.some(m => m.to === 'lc.soon@x.com' && /haven’t used Strand/.test(m.subject)))
-  assert.ok(mails.some(m => m.to === 'it@x.com' && /license cleanup/.test(m.subject) && /lc\.idle@x\.com/.test(m.text)))
-  assert.equal(ourPeople((await call('POST', '/api/v1/admin/license-cleanup/preview', {})).body.warn).length, 0)    // warned once only
-  // the run is kept, with who and why
-  const page = (await call('GET', '/api/v1/admin/license-cleanup')).body
-  assert.equal(page.runs[0].changed, undefined)                                             // the list stays small: counts only
-  assert.ok((await call('GET', `/api/v1/admin/license-cleanup/runs/${page.runs[0].id}`)).body.changed.some((p: any) => p.userId === idle))
-  assert.ok(page.seats.total >= 1)
-  // idle signs in again: back in users-access (License Optimizer's rule)
-  assert.equal((await call('POST', '/api/v1/me/sign-in', undefined, 'lc.idle@x.com')).status, 204)
-  assert.equal(await seat(idle), true)
-  // deactivate mode: sign-in refused, and the attempt listed for admins; bulk reactivation lets them back
-  await ago(idle, 120)
-  await call('PUT', '/api/v1/admin/settings/licenseCleanup', { ...rule, action: 'deactivate', warnDays: 0 })
-  await call('POST', '/api/v1/admin/license-cleanup/run')
-  assert.equal((await call('GET', '/api/v1/me', undefined, 'lc.idle@x.com')).status, 403)
-  assert.ok((await call('GET', '/api/v1/admin/users/refused-sign-ins')).body.some((r: any) => r.email === 'lc.idle@x.com'))
-  assert.deepEqual((await call('POST', '/api/v1/admin/users/bulk', { userIds: [idle], action: 'reactivate' })).body, { changed: 1, unchanged: 0 })
-  assert.equal((await call('GET', '/api/v1/me', undefined, 'lc.idle@x.com')).status, 200)
-  // bulk: into a group and out; nobody deactivates themselves; never without an active system administrator
-  assert.deepEqual((await call('POST', '/api/v1/admin/users/bulk', { userIds: [idle, soon], action: 'add-to-group', groupId: keepers })).body, { changed: 2, unchanged: 0 })
-  assert.deepEqual((await call('POST', '/api/v1/admin/users/bulk', { userIds: [idle], action: 'remove-from-group', groupId: keepers })).body, { changed: 1, unchanged: 0 })
-  const me = await id('owner@x.com')
-  assert.equal((await call('POST', '/api/v1/admin/users/bulk', { userIds: [me], action: 'deactivate' })).status, 400)
-  // the list shows last activity and groups
-  const row = (await call('GET', '/api/v1/admin/users?limit=200')).body.items.find((u: any) => u.id === soon)
-  assert.ok(row.lastActiveAt && row.groups.some((g: any) => g.name === 'lc-keepers'))
-  // activity is recorded on use, and clears a warning
+  const [idle, fresh] = [await id('pa.idle@x.com'), await id('pa.fresh@x.com')]
+  const keepers = (await call('POST', '/api/v1/groups', { name: 'pa-keepers' })).body.id
+  const access = async (u: string) => (await pool.query(`select 1 from group_members gm join groups g on g.id = gm.group_id where g.system_role = 'default-users' and gm.user_id = $1`, [u])).rowCount === 1
+  // out of users-access (as an admin may do): signing in puts them back
+  await pool.query(`delete from group_members where user_id = $1 and group_id = (select id from groups where system_role = 'default-users')`, [idle])
+  assert.equal(await access(idle), false)
+  assert.equal((await call('POST', '/api/v1/me/sign-in', undefined, 'pa.idle@x.com')).status, 204)
+  assert.equal(await access(idle), true)
+  // deactivated: refused at sign-in and listed; reactivated: back in
+  assert.deepEqual((await call('POST', '/api/v1/admin/users/bulk', { action: 'deactivate', userIds: [idle] })).body, { changed: 1, unchanged: 0 })
+  assert.equal((await call('GET', '/api/v1/me', undefined, 'pa.idle@x.com')).status, 403)
+  assert.ok((await call('GET', '/api/v1/admin/users/refused-sign-ins')).body.some((r: any) => r.email === 'pa.idle@x.com'))
+  assert.deepEqual((await call('POST', '/api/v1/admin/users/bulk', { action: 'reactivate', userIds: [idle] })).body, { changed: 1, unchanged: 0 })
+  assert.equal((await call('GET', '/api/v1/me', undefined, 'pa.idle@x.com')).status, 200)
+  // group changes in bulk; nobody deactivates themselves
+  assert.deepEqual((await call('POST', '/api/v1/admin/users/bulk', { action: 'add-to-group', groupId: keepers, userIds: [idle, fresh] })).body, { changed: 2, unchanged: 0 })
+  assert.deepEqual((await call('POST', '/api/v1/admin/users/bulk', { action: 'remove-from-group', groupId: keepers, userIds: [idle] })).body, { changed: 1, unchanged: 0 })
+  assert.equal((await call('POST', '/api/v1/admin/users/bulk', { action: 'deactivate', userIds: [await id('owner@x.com')] })).status, 400)
+  const row = (await call('GET', '/api/v1/admin/users?limit=200')).body.items.find((u: any) => u.id === fresh)
+  assert.ok(row.lastActiveAt && row.groups.some((g: any) => g.name === 'pa-keepers'))
+  // activity is recorded on use
   await pool.query('update users set last_active_at = null where id = $1', [fresh])
-  await call('GET', '/api/v1/me', undefined, 'lc.fresh@x.com')
+  await call('GET', '/api/v1/me', undefined, 'pa.fresh@x.com')
   assert.ok((await pool.query('select last_active_at from users where id = $1', [fresh])).rows[0].last_active_at)
-  await call('PUT', '/api/v1/admin/settings/licenseCleanup', { ...rule, enabled: false })
-  await call('PUT', '/api/v1/admin/settings/email', { enabled: false, from: '', appUrl: '' })
-  delete process.env.EMAIL_TRANSPORT
+})
+
+test('[0710.R1][0710.R2] License cleanup is gone: no routes, no setting, no table', { skip }, async () => {
+  for (const [m, path] of [['GET', '/api/v1/admin/license-cleanup'], ['POST', '/api/v1/admin/license-cleanup/preview'], ['POST', '/api/v1/admin/license-cleanup/run']] as const)
+    assert.equal((await call(m, path, m === 'POST' ? {} : undefined)).status, 404, path)
+  assert.equal((await call('GET', '/api/v1/admin/settings')).body.some((s: any) => s.key === 'licenseCleanup'), false)
+  assert.equal((await call('PUT', '/api/v1/admin/settings/licenseCleanup', { enabled: false })).status, 404)
+  assert.equal((await pool.query(`select to_regclass('license_cleanup_runs') as t`)).rows[0].t, null)
 })
 
 test('report data: every live item and every status change in order, for people who can see the project', { skip }, async () => {
@@ -3297,18 +3260,6 @@ test('[0104.R1][0104.R2][0104.R3][0104.R4][0104.R5][0104.R6][0104.R7] directory 
   assert.equal((await call('POST', `/api/v1/groups/${dg.id}/members`, { userIds: [eve] })).status, 403)
   assert.equal((await call('DELETE', `/api/v1/groups/${dg.id}/members/${dee}`)).status, 403)
   assert.equal((await call('POST', '/api/v1/admin/users/bulk', { userIds: [eve], action: 'add-to-group', groupId: dg.id })).status, 400)
-  const rule = { enabled: false, inactiveDays: 90, action: 'remove-groups', groupIds: [dg.id], warnDays: 7, excludedGroupIds: [], protectLeads: true, reportTo: [] }
-  const refused = await call('PUT', '/api/v1/admin/settings/licenseCleanup', rule)
-  assert.equal(refused.status, 400); assert.ok(refused.body.errors.groupIds)
-  // …and a rule that already names one (saved before this rule existed) leaves its members where they are
-  const { setSetting, getSetting } = await import('../src/settings.ts')
-  const ws = (await call('GET', '/api/v1/me')).body.workspaceId
-  const before = await getSetting(ws, 'licenseCleanup')
-  await setSetting(pool as any, ws, 'licenseCleanup', rule, (await call('GET', '/api/v1/me')).body.id)
-  await pool.query(`update users set last_active_at = now() - interval '400 days' where id = $1`, [dee])
-  await call('POST', '/api/v1/admin/license-cleanup/run')
-  assert.equal((await pool.query('select 1 from group_members where group_id = $1 and user_id = $2', [dg.id, dee])).rows.length, 1)
-  await setSetting(pool as any, ws, 'licenseCleanup', before, (await call('GET', '/api/v1/me')).body.id)
   // R6: deleting from the directory goes through and says which project was left without an admin; people stay
   assert.equal((await scim('DELETE', `/Groups/${dg.id}`)).statusCode, 204)
   const del = (await call('GET', '/api/v1/audit?action=group.deleted')).body.items.find((x: any) => x.targetId === dg.id)
@@ -3548,10 +3499,6 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     'POST /me/sign-in': ['any', '/me/sign-in'],
     'POST /admin/users/bulk': ['gadmin', '/admin/users/bulk', { userIds: [viewerId], action: 'reactivate' }],
     'GET /admin/users/refused-sign-ins': ['gadmin', '/admin/users/refused-sign-ins'],
-    'GET /admin/license-cleanup': ['gadmin', '/admin/license-cleanup'],
-    'POST /admin/license-cleanup/preview': ['gadmin', '/admin/license-cleanup/preview', {}],
-    'GET /admin/license-cleanup/runs/{id}': ['gadmin', `/admin/license-cleanup/runs/${'00000000-0000-4000-8000-000000000000'}`],
-    'POST /admin/license-cleanup/run': ['gadmin', '/admin/license-cleanup/run'],
     'GET /groups': ['any', '/groups'],
     'GET /groups/{id}/members': ['any', `/groups/${mgroup}/members`],
     'GET /groups/{id}': ['any', `/groups/${mgroup}`],
@@ -3709,7 +3656,7 @@ test('system settings: admins change policies at runtime (validated, audited); e
   const { clearSettingsCache } = await import('../src/settings.ts')
   const put = (key: string, value: object, who = 'owner@x.com') => call('PUT', `/api/v1/admin/settings/${key}`, value, who)
   const all = (await call('GET', '/api/v1/admin/settings')).body
-  assert.deepEqual(all.map((s: any) => s.key), ['rateLimiting', 'attachments', 'accessTokens', 'searchAndBulk', 'licenseCleanup', 'groups', 'testing', 'dueReminders', 'email', 'deletedItems', 'projectKeys', 'timeTracking'])
+  assert.deepEqual(all.map((s: any) => s.key), ['rateLimiting', 'attachments', 'accessTokens', 'searchAndBulk', 'groups', 'testing', 'dueReminders', 'email', 'deletedItems', 'projectKeys', 'timeTracking'])
   assert.equal(all.find((s: any) => s.key === 'rateLimiting').value.enabled, false)                  // no limit unless an admin sets one
   assert.equal((await call('GET', '/api/v1/admin/settings', undefined, 'set.member@x.com')).status, 403)
   assert.equal((await put('attachments', { enabled: true, maxSizeMb: 5 }, 'set.member@x.com')).status, 403)
