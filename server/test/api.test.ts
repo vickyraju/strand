@@ -479,7 +479,7 @@ test('creates answer 201 Created; updates and actions answer 200; deletes 204', 
   assert.equal((await call('POST', '/api/v1/issues/COD-1/comments', { body: 'hi' })).status, 201)
   assert.equal((await call('POST', '/api/v1/issues/COD-1/worklogs', { minutes: 5, date: '2026-10-01' })).status, 201)
   assert.equal((await call('POST', '/api/v1/projects/COD/sprints', { name: 'S' })).status, 201)
-  assert.equal((await call('POST', '/api/v1/views', { name: 'V', filters: { q: '' } })).status, 201)
+  assert.equal((await call('POST', '/api/v1/views', { name: 'Status codes view', filters: { q: '' } })).status, 201)
   assert.equal((await call('PATCH', '/api/v1/issues/COD-1', { title: 'two' })).status, 200)
   assert.equal((await call('DELETE', '/api/v1/issues/COD-1')).status, 204)
   // the documented response code matches: creates are described under 201
@@ -2952,7 +2952,7 @@ test('due reminders: many requests at once (as from several API pods) still make
 })
 
 test('audit log: who changed people, settings, workflow and deletions is recorded; only admins read it; nobody can change it', { skip }, async () => {
-  const p = (await call('POST', '/api/v1/projects', { name: 'Audited', key: 'AUD', template: 'kanban' })).body
+  const p = (await call('POST', '/api/v1/projects', { name: 'Audit trail', key: 'AUD', template: 'kanban' })).body
   await join('AUD', 'aud.admin@x.com', 'admin')
   const memberId = (await call('GET', '/api/v1/me', undefined, 'aud.member@x.com')).body.id
   await call('POST', '/api/v1/projects/AUD/members', { userIds: [memberId], role: 'member' }, 'aud.admin@x.com')
@@ -3171,7 +3171,7 @@ test('CSV export: the same items the search shows (only what you can see), reada
   assert.deepEqual(['plain', 'a,b', 'say "hi"', 'two\nlines', '=SUM(A1)', '+1', '-2', '@x', null, ['a', 'b']].map(csvCell),
     ['plain', '"a,b"', '"say ""hi"""', '"two\nlines"', "'=SUM(A1)", "'+1", "'-2", "'@x", '', '"a, b"'])
   await call('POST', '/api/v1/projects', { name: 'Exported', key: 'EXP', template: 'kanban' })
-  await call('POST', '/api/v1/projects', { name: 'Hidden', key: 'HID', template: 'kanban' })
+  await call('POST', '/api/v1/projects', { name: 'Hidden project', key: 'HID', template: 'kanban' })
   await join('EXP', 'exp.member@x.com')
   const me = (await call('GET', '/api/v1/me', undefined, 'exp.member@x.com')).body
   await call('POST', '/api/v1/projects/EXP/issues', { title: 'Plain row', assigneeId: me.id, labels: ['red', 'blue'] })
@@ -3399,7 +3399,7 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
   await fetch(ticket.uploadUrl, { method: 'PUT', body: 'a' }); await call('POST', `/api/v1/attachments/${ticket.id}/complete`)
   const group = (await pool.query(`insert into groups (display_name) values ('Matrix team') returning id`)).rows[0].id
   await call('POST', '/api/v1/projects/MTX/groups', { groupId: group, role: 'viewer' })
-  const view = (await call('POST', '/api/v1/views', { name: 'Mine', filters: {} })).body.id
+  const view = (await call('POST', '/api/v1/views', { name: 'Matrix view', filters: {} })).body.id
   const token = (await call('POST', '/api/v1/me/tokens', { name: 'mine' })).body.id
   const notification = (await pool.query(
     `insert into notifications (user_id, issue_id, kind, text) select $1, i.id, 'assigned', 'matrix' from issues i join projects p on p.id = i.project_id where p.key = 'MTX' limit 1 returning id`, [ownerId])).rows[0].id
@@ -3776,7 +3776,7 @@ test('system settings: admins change policies at runtime (validated, audited); e
 
 test('[0301.R1][0301.R3][0301.R5][0301.R6][0301.R8] several fix versions: set, searched, moved on release, removed with the version, exported and imported', { skip }, async () => {
   await call('POST', '/api/v1/projects', { name: 'Fix versions', key: 'FXV', template: 'kanban' })
-  await call('POST', '/api/v1/projects', { name: 'Elsewhere', key: 'FXO', template: 'kanban' })
+  await call('POST', '/api/v1/projects', { name: 'Fix versions elsewhere', key: 'FXO', template: 'kanban' })
   const rel = async (key: string, name: string) => (await call('POST', `/api/v1/projects/${key}/releases`, { name })).body.id as string
   const [a, b, c, other] = [await rel('FXV', '2.3'), await rel('FXV', '2.4'), await rel('FXV', '2.5'), await rel('FXO', '9.0')]
   // R1: a list of the project's versions; another project's is refused; the change is in the history
@@ -3994,4 +3994,32 @@ test('[0308.R1][0308.R2][0308.R3] project keys follow System settings: Jira’s 
   assert.equal((await mk('KA1')).status, 201)
   await put({ pattern: '[A-Z][A-Z]+', maxLength: 10 }).then(x => assert.equal(x.status, 400))   // KA1 no longer fits
   await call('DELETE', '/api/v1/projects/KA1')
+})
+
+test('[0309.R1][0309.R2][0309.R3] names Jira keeps unique: projects, versions and components per project, a person’s views', { skip }, async () => {
+  const proj = (name: string, key: string) => call('POST', '/api/v1/projects', { name, key, template: 'kanban' })
+  assert.equal((await proj('Unique Payments', 'UNQ')).status, 201)
+  const dup = await proj('unique payments ', 'UNQB')
+  assert.deepEqual([dup.status, dup.body.error, dup.body.errors?.name], [409, 'A project with that name already exists', 'Already used'])
+  assert.equal((await proj('Unique Other', 'UNQC')).status, 201)
+  assert.equal((await call('PATCH', '/api/v1/projects/UNQC', { name: 'UNIQUE PAYMENTS' })).status, 409)
+  // R2: versions and components, per project, ignoring case
+  assert.equal((await call('POST', '/api/v1/projects/UNQ/releases', { name: '2.0' })).status, 201)
+  assert.deepEqual([(await call('POST', '/api/v1/projects/UNQ/releases', { name: ' 2.0' })).status], [409])
+  assert.equal((await call('POST', '/api/v1/projects/UNQC/releases', { name: '2.0' })).status, 201)
+  assert.equal((await call('POST', '/api/v1/projects/UNQ/components', { name: 'API' })).status, 201)
+  assert.equal((await call('POST', '/api/v1/projects/UNQ/components', { name: 'api' })).body.error, 'This project already has a component with that name')
+  // R3: a person's views; giving one to someone who has that name, or can't see it, is refused
+  const view = (name: string, who: string, extra = {}) => call('POST', '/api/v1/views', { name, filters: {}, ...extra }, who)
+  assert.equal((await view('Mine', 'unq.ann@x.com')).status, 201)
+  assert.equal((await view('MINE', 'unq.ann@x.com')).status, 409)
+  const bob = (await call('GET', '/api/v1/me', undefined, 'unq.bob@x.com')).body.id
+  await view('Mine', 'unq.bob@x.com')
+  const shared = (await view('Shared one', 'unq.ann@x.com', { shared: true })).body
+  const hidden = (await view('Hidden one', 'unq.ann@x.com')).body
+  assert.equal((await call('PATCH', `/api/v1/views/${hidden.id}`, { ownerId: bob }, 'unq.ann@x.com')).status, 400)    // Bob can't see it
+  const ann = (await call('GET', '/api/v1/views', undefined, 'unq.ann@x.com')).body.find((v: any) => v.name === 'Mine')
+  await call('PATCH', `/api/v1/views/${ann.id}`, { shared: true }, 'unq.ann@x.com')
+  assert.equal((await call('PATCH', `/api/v1/views/${ann.id}`, { ownerId: bob }, 'unq.ann@x.com')).status, 409)        // Bob has a "Mine"
+  assert.equal((await call('PATCH', `/api/v1/views/${shared.id}`, { ownerId: bob }, 'unq.ann@x.com')).status, 200)
 })

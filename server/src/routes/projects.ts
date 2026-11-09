@@ -278,7 +278,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
          values ($1, $2, $3, $4, coalesce($5, '#6366f1'), $6, $7, $8) returning id`,
         [req.me.workspaceId, b.key, b.name, b.description ?? '', b.color ?? null, b.template, b.leadId ?? req.me.id, sc.id])
         // a key belongs to one project, also one this person can't see: say so instead of "already exists"
-        .catch(e => { if (e?.code === '23505') throw new HttpError(409, `${b.key} is already used by another project`, { key: 'Already used' }); throw e })
+        .catch(e => { if (e?.code === '23505' && e.constraint !== 'projects_name_unique') throw new HttpError(409, `${b.key} is already used by another project`, { key: 'Already used' }); throw e })
       // The creator administers the project from the start (and so does the lead, if that is someone else)
       for (const u of new Set([req.me.id, b.leadId ?? req.me.id]))
         await d.query(`insert into project_members (project_id, user_id, role, added_by) values ($1, $2, 'admin', $3) on conflict do nothing`, [p!.id, u, req.me.id])

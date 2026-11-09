@@ -352,6 +352,12 @@ const plugin: FastifyPluginAsyncZod = async app => {
       if (b.share) await checkShare(d, req.me, b.share, (v as { share?: z.infer<typeof share> }).share ?? [])
       if (b.ownerId && !(await d.query('select 1 from memberships m join users u on u.id = m.user_id where m.user_id = $1 and m.workspace_id = $2 and u.active', [b.ownerId, req.me.workspaceId])).length)
         throw new HttpError(400, 'The new owner must be an active person in the workspace', { ownerId: 'Not an active person here' })
+      // Jira: the new owner must be able to see the filter (spec 0309 R3); a name they already use is refused by the index
+      if (b.ownerId && b.ownerId !== v.ownerId && !(await d.query(
+        `select 1 from saved_views v where v.id = $1 and (v.shared or is_system_admin($2) or exists (select 1 from jsonb_array_elements(v.share) e where
+           (e->>'kind' = 'user' and e->>'id' = $2::text) or (e->>'kind' = 'group' and (e->>'id')::uuid in (select group_id from group_members where user_id = $2))
+           or (e->>'kind' = 'project' and (e->>'id')::uuid in (select project_id from project_access where user_id = $2))))`, [v.id, b.ownerId])).length)
+        throw new HttpError(400, 'The new owner must be able to see this view: share it with them first', { ownerId: 'Can’t see it' })
       await d.query(
         `update saved_views set name = coalesce($2, name), shared = coalesce($3, shared), share = coalesce($4::jsonb, share), filters = coalesce($5::jsonb, filters), owner_id = coalesce($6, owner_id)
           where id = $1`, [v.id, b.name ?? null, b.shared ?? null, b.share ? JSON.stringify(b.share) : null, b.filters ? JSON.stringify(b.filters) : null, b.ownerId ?? null])

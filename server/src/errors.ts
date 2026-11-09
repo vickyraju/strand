@@ -18,6 +18,14 @@ const fieldOf = (path: string | undefined, where: string | undefined) => {
   return p || where || 'body'
 }
 
+/** Unique names (spec 0309), by the index that keeps them unique. */
+const TAKEN: Record<string, string> = {
+  projects_name_unique: 'A project with that name already exists',
+  releases_name_unique: 'This project already has a version with that name',
+  components_name_unique: 'This project already has a component with that name',
+  saved_views_name_unique: 'That person already has a view with that name',
+}
+
 export function toErrorBody(err: any): { status: number; body: ErrorBody } {
   // Input validation (route schemas) → 400 with one message per field
   const issues: { path?: string; field?: string; message?: string }[] | undefined =
@@ -32,7 +40,8 @@ export function toErrorBody(err: any): { status: number; body: ErrorBody } {
   if (err instanceof HttpError) return { status: err.status, body: err.errors
     ? { error: err.message, code: err.status === 400 ? 'invalid_input' : codeFor(err.status), errors: err.errors }
     : { error: err.message, code: codeFor(err.status) } }
-  // Postgres constraint errors
+  // Postgres constraint errors; names Jira keeps unique say which (spec 0309)
+  if (err.code === '23505' && err.constraint in TAKEN) return { status: 409, body: { error: TAKEN[err.constraint], code: 'conflict', errors: { name: 'Already used' } } }
   if (err.code === '23505') return { status: 409, body: { error: 'Already exists', code: 'conflict' } }
   if (err.code === '23503') return { status: 409, body: { error: 'Still referenced by other records', code: 'conflict' } }
   if (err.code === '23514' || err.code === '22P02') return { status: 400, body: { error: 'Invalid value', code: 'invalid_input' } }
