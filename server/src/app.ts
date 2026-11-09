@@ -29,7 +29,7 @@ import groupsRoutes from './routes/groups.ts'
 import workflowRoutes from './routes/workflows.ts'
 import boardRoutes from './routes/boards.ts'
 import listRoutes from './routes/lists.ts'
-import authentication, { publicAuth } from './routes/authentication.ts'
+import authentication, { ownPassword, publicAuth } from './routes/authentication.ts'
 import directories from './routes/directories.ts'
 import { startDirectories } from './directories.ts'
 import { startAuth } from './authConfig.ts'
@@ -142,6 +142,7 @@ export async function build() {
       await v1.register(boardRoutes)
       await v1.register(listRoutes)
       await v1.register(authentication)
+      await v1.register(ownPassword)
       await v1.register(directories)
     }
     await api.register(routes, { prefix: '/api/v1' })

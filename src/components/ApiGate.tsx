@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { api, apiEnabled, errorMessage, getLogin, setLogin, ApiError } from '../api/client'
 import { completeSignIn, hasSession, passwordSignedIn, showsLoginForm, signIn, type AuthConfig } from '../api/auth'
 import { Logomark } from './NavRail'
+import { Modal } from './ui'
 
 type Phase = 'checking' | 'signed-out' | 'ready'
 
@@ -12,6 +13,7 @@ export default function ApiGate({ children }: { children: ReactNode }) {
   const [phase, setPhase] = useState<Phase>(apiEnabled ? 'checking' : 'ready')
   const [config, setConfig] = useState<AuthConfig | null>(null)
   const [error, setError] = useState('')
+  const [reset, setReset] = useState(() => new URLSearchParams(location.search).get('reset'))
 
   const check = () => (hasSession() || getLogin() ? api('GET', '/api/me').then(() => 'ready' as const, () => 'signed-out' as const) : Promise.resolve('signed-out' as const))
   useEffect(() => {
@@ -38,6 +40,12 @@ export default function ApiGate({ children }: { children: ReactNode }) {
 
   // A production build without an API would silently fall back to a local demo store: refuse instead.
   if (import.meta.env.PROD && !apiEnabled) return <Card title="Not configured" text="This build is missing VITE_API_URL." />
+  // a link from a password email (spec 0714): set the password first, then sign in
+  if (reset && phase !== 'checking') return <Card title="Set your password" text="Choose a new password for Strand."><ResetForm token={reset} onDone={() => {
+    const q = new URLSearchParams(location.search); q.delete('reset')
+    history.replaceState(null, '', location.pathname + (q.size ? `?${q}` : ''))
+    setReset(null)
+  }} /></Card>
   if (phase === 'ready') return <>{children}</>
   if (phase === 'checking') return null
   if (!config) return <Card title="Sign in" text="Strand can’t reach its server right now."><p role="alert" className="text-danger">{error}</p></Card>
@@ -63,6 +71,7 @@ function LoginForm({ onSignedIn }: { onSignedIn: () => void }) {
   const [remember, setRemember] = useState(false)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [forgot, setForgot] = useState(false)
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
     setBusy(true); setError('')
@@ -84,6 +93,56 @@ function LoginForm({ onSignedIn }: { onSignedIn: () => void }) {
         <input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)} />Remember my login on this computer
       </label>
       <button type="submit" className="btn btn-primary btn-lg welcome-btn" disabled={busy}>{busy ? 'Signing in…' : 'Log in'}</button>
+      <button type="button" className="btn btn-ghost btn-sm" style={{ marginTop: 10 }} onClick={() => setForgot(true)}>Can’t access your account?</button>
+      {forgot && <Forgot onClose={() => setForgot(false)} />}
+    </form>
+  )
+}
+
+/** Jira's "Can't access your account?": a username or email; the same answer whether or not the account exists (spec 0714 R6). */
+function Forgot({ onClose }: { onClose: () => void }) {
+  const [who, setWho] = useState('')
+  const [sent, setSent] = useState('')
+  const [error, setError] = useState('')
+  const submit = async () => {
+    setError('')
+    try { setSent((await api<{ message: string }>('POST', '/api/auth/forgot', { username: who })).message) } catch (e) { setError(errorMessage(e)) }
+  }
+  return (
+    <Modal title="Can’t access your account?" onClose={onClose} footer={sent
+      ? <button className="btn btn-primary" onClick={onClose}>Done</button>
+      : <><button className="btn btn-secondary" onClick={onClose}>Cancel</button><button className="btn btn-primary" disabled={!who.trim()} onClick={() => void submit()}>Send</button></>}>
+      {sent ? <p role="status">{sent}</p> : <form onSubmit={e => { e.preventDefault(); if (who.trim()) void submit() }}>
+        <p className="hint" style={{ marginTop: 0, marginBottom: 12 }}>We’ll email you a link to set a new password. If you sign in with your company account, your company sets your password, not Strand.</p>
+        <label className="label" htmlFor="forgot-who">Username or email</label>
+        <input id="forgot-who" className="input" autoFocus value={who} onChange={e => setWho(e.target.value)} />
+        {error && <p role="alert" className="text-danger" style={{ marginTop: 10 }}>{error}</p>}
+      </form>}
+    </Modal>
+  )
+}
+
+/** The link from a password email: a new password, typed twice. */
+function ResetForm({ token, onDone }: { token: string; onDone: () => void }) {
+  const [password, setPassword] = useState('')
+  const [again, setAgain] = useState('')
+  const [error, setError] = useState('')
+  const [done, setDone] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const submit = async () => {
+    if (password !== again) { setError('The two passwords are different'); return }
+    setBusy(true); setError('')
+    try { await api('POST', '/api/auth/reset', { token, password }); setDone(true) } catch (e) { setError(errorMessage(e)) } finally { setBusy(false) }
+  }
+  if (done) return <><p role="status">Your password is set. Sign in with it now.</p><button className="btn btn-primary btn-lg welcome-btn" onClick={onDone}>Go to sign in</button></>
+  return (
+    <form onSubmit={e => { e.preventDefault(); void submit() }}>
+      {error && <p role="alert" className="text-danger" style={{ marginBottom: 12 }}>{error}</p>}
+      <label className="label" htmlFor="reset-password">New password</label>
+      <input id="reset-password" className="input" type="password" autoComplete="new-password" autoFocus value={password} onChange={e => setPassword(e.target.value)} required />
+      <label className="label" htmlFor="reset-again" style={{ marginTop: 14 }}>Type it again</label>
+      <input id="reset-again" className="input" type="password" autoComplete="new-password" value={again} onChange={e => setAgain(e.target.value)} required />
+      <button type="submit" className="btn btn-primary btn-lg welcome-btn" disabled={busy || !password}>Set password</button>
     </form>
   )
 }

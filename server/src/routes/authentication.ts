@@ -5,8 +5,10 @@ import type { FastifyRequest } from 'fastify'
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
 import { db, tx } from '../db.ts'
-import { HttpError, SESSION_PREFIX, devLogin, hashToken, requireAdmin, signInAs, signedIn, joinSystemGroup, type Identity } from '../auth.ts'
+import { HttpError, SESSION_PREFIX, devLogin, hashToken, requireAdmin, requireSignIn, signInAs, signedIn, joinSystemGroup, type Identity } from '../auth.ts'
 import { audit, changes } from '../audit.ts'
+import { RESET_FORMAT, checkInternal, checkLength, internalPerson, newLink, recentlySent, sendLink, setPassword } from '../localUsers.ts'
+import { verifyPassword } from '../passwords.ts'
 import {
   DEFAULT_AUTHORITY, RECOVERY_USER, clearAuthConfigCache, getAuthConfig, issuerOf, recoveryPassword, scopeOf, signInSettings, type EntraConfig,
 } from '../authConfig.ts'
@@ -23,13 +25,16 @@ export const addPasswordChecker = (c: Checker) => { checkers.push(c) }
 
 const same = (a: string, b: string) => timingSafeEqual(createHash('sha256').update(a).digest(), createHash('sha256').update(b).digest())
 
-/** Whose password this is, or null. recovery_admin's is the recovery password; everyone else's, a directory's. */
+/** Whose password this is, or null. recovery_admin's is the recovery password; then the internal directory's (spec 0714);
+ *  then the user directories', in order. The first directory that has the username decides. */
 async function checkPassword(username: string, password: string): Promise<Identity | null> {
   if (!password) return null                                                          // an empty password never signs in
   if (username === RECOVERY_USER) {
     const p = recoveryPassword()
     return p && same(password, p) ? { username: RECOVERY_USER, email: RECOVERY_USER, name: 'Recovery admin', admin: true } : null
   }
+  const internal = await checkInternal(username, password)
+  if (internal !== undefined) return internal
   for (const c of checkers) { const who = await c(username, password); if (who) return who }
   return null
 }
@@ -101,6 +106,37 @@ export const publicAuth: FastifyPluginAsyncZod = async app => {
     return { token, expiresAt: row!.expiresAt }
   })
 
+  // "Can't access your account?" (spec 0714 R6): the same answer whoever asks; a link only for internal directory users
+  app.post('/auth/forgot', { schema: { tags: T, summary: 'Can’t access your account: email a link to set a new password (the same answer whether or not the account exists)',
+    body: z.object({ username: z.string().trim().min(1).max(320).describe('Username or email') }) } }, async (req, reply) => {
+    const p = await internalPerson(req.body.username)
+    if (p && !(await recentlySent(p.id))) {
+      // sent after answering, so how long it takes says nothing about whether the account exists
+      setImmediate(() => { void newLink(db, p.id).then(t => sendLink(p, t, 'reset')).catch(e => req.log.warn(`password link not sent: ${(e as Error).message}`)) })
+    }
+    reply.code(202)
+    return { message: 'If that account exists and keeps its password in Strand, we’ve sent it an email with a link to set a new password.' }
+  })
+
+  app.post('/auth/reset', { schema: { tags: T, summary: 'Set a password with the link from an email (once, within 24 hours)',
+    body: z.object({ token: z.string().max(100), password: z.string().max(1024) }) } }, async (req, reply) => {
+    const gone = new HttpError(400, 'This link has expired or was already used. Ask for a new one with “Can’t access your account?”.')
+    if (!RESET_FORMAT.test(req.body.token)) throw gone
+    await checkLength(req.body.password)
+    await tx(async d => {
+      const [r] = await d.query<{ userId: string; username: string | null; email: string }>(
+        `update password_resets r set used_at = now() from users u
+          where r.token_hash = $1 and r.used_at is null and r.expires_at > now() and u.id = r.user_id and u.active and u.directory_id is null
+          returning r.user_id, u.username, u.email`, [hashToken(req.body.token)])
+      if (!r) throw gone
+      await setPassword(d, r.userId, req.body.password)
+      if (r.username) await d.query('delete from login_failures where username = lower($1)', [r.username])
+      await d.query('update password_resets set used_at = now() where user_id = $1 and used_at is null', [r.userId])   // older links stop too
+      await audit(d, { system: 'Password link' }, { action: 'user.password_set', type: 'user', id: r.userId, name: r.email, after: { by: 'email link' } })
+    })
+    reply.code(204).send()
+  })
+
   app.post('/auth/logout', { schema: { tags: T, summary: 'Sign out: the session token sent with it stops working everywhere at once' } }, async (req, reply) => {
     const bearer = /^Bearer (.+)$/i.exec(req.headers.authorization ?? '')?.[1]
     if (bearer?.startsWith(SESSION_PREFIX)) await db.query('delete from user_sessions where token_hash = $1', [hashToken(bearer)])
@@ -116,6 +152,24 @@ const entraBody = z.object({
   webClientId: z.string().uuid().describe('The single-page app registration the browser signs in with'),
   authority: z.string().trim().url().default(DEFAULT_AUTHORITY).transform(a => a.replace(/\/$/, '')).describe('https://login.microsoftonline.com, or a sovereign cloud'),
 })
+
+/** Signed in through the login form or Entra, changing one's own password (spec 0714 R8). */
+export const ownPassword: FastifyPluginAsyncZod = async app => {
+  app.put('/me/password', { schema: { tags: T, summary: 'Change your own password (internal directory users who have one): the current one, then the new one; your other login-form sessions end',
+    body: z.object({ current: z.string().max(1024), password: z.string().max(1024) }) } }, async (req, reply) => {
+    requireSignIn(req, 'change your password')
+    const [u] = await db.query<{ passwordHash: string | null; directoryId: string | null }>('select password_hash, directory_id from users where id = $1', [req.me.id])
+    if (!u?.passwordHash || u.directoryId) throw new HttpError(409, 'Your password isn’t kept in Strand')
+    if (!(await verifyPassword(req.body.current, u.passwordHash))) throw new HttpError(400, 'That isn’t your current password', { current: 'Wrong password' })
+    await checkLength(req.body.password)
+    const bearer = /^Bearer (.+)$/i.exec(req.headers.authorization ?? '')?.[1]
+    await tx(async d => {
+      await setPassword(d, req.me.id, req.body.password, bearer?.startsWith(SESSION_PREFIX) ? hashToken(bearer) : undefined)
+      await audit(d, req, { action: 'user.password_set', type: 'user', id: req.me.id, name: req.me.email, after: { by: 'themselves' } })
+    })
+    reply.code(204).send()
+  })
+}
 
 /** Can this Entra configuration sign people in? Entra's discovery document names the same issuer, and its keys load. */
 async function checkEntra(e: z.infer<typeof entraBody>) {

@@ -31,6 +31,8 @@ export default function UserDirectories() {
   const [error, setError] = useState('')
   const [editing, setEditing] = useState<Dir | Type | null>(null)
   const [adding, setAdding] = useState(false)
+  const [internal, setInternal] = useState<{ name: string; users: number } | null>(null)
+  useEffect(() => { api<{ name: string; users: number }>('GET', '/api/admin/directories/internal').then(setInternal, () => {}) }, [dirs])
   const load = () => api<Dir[]>('GET', '/api/admin/directories').then(setDirs, e => setError(errorMessage(e)))
   useEffect(() => { void load() }, [])
   // while one synchronises, follow its progress
@@ -56,12 +58,16 @@ export default function UserDirectories() {
   return (
     <section>
       <PageAction><button className="btn btn-primary" onClick={() => setAdding(true)}><Plus size={14} />Add directory</button></PageAction>
-      {!dirs.length
-        ? <p className="muted">No user directories yet. Add your company’s Active Directory or LDAP server so people can sign in with their corp id and password, and their groups come with them.</p>
-        : <div className="card-table" style={{ marginInline: 0 }}>
+      {!dirs.length && <p className="muted" style={{ marginBottom: 12 }}>Add your company’s Active Directory or LDAP server so people can sign in with their corp id and password, and their groups come with them.</p>}
+      <div className="card-table" style={{ marginInline: 0 }}>
           <table className="table">
             <thead><tr><th>Order</th><th>Directory</th><th>Type</th><th className="col-num">People</th><th>Last synchronised</th><th /></tr></thead>
             <tbody>
+              {internal && <tr style={{ cursor: 'default' }}>
+                <td className="muted sm">Always first</td>
+                <td>{internal.name}</td><td className="muted">Internal</td><td className="col-num">{internal.users}</td>
+                <td className="muted">Kept in Strand: create and edit people in People</td><td />
+              </tr>}
               {dirs.map((d, i) => (
                 <tr key={d.id} style={{ cursor: 'default' }}>
                   <td style={{ whiteSpace: 'nowrap' }}>
@@ -81,7 +87,7 @@ export default function UserDirectories() {
               ))}
             </tbody>
           </table>
-        </div>}
+        </div>
       {adding && <Modal title="Add a user directory" onClose={() => setAdding(false)} footer={<button className="btn btn-secondary" onClick={() => setAdding(false)}>Cancel</button>}>
         <p style={{ marginBottom: 12 }}>Which kind of directory?</p>
         {(Object.keys(TYPES) as Type[]).map(t => (

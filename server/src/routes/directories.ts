@@ -41,6 +41,12 @@ const directories: FastifyPluginAsyncZod = async app => {
     return PRESETS
   })
 
+  app.get('/admin/directories/internal', { schema: { tags: T, summary: 'Strand’s internal directory: always first; how many active people it has (spec 0714)' } }, async req => {
+    requireNoToken(req)
+    const [r] = await db.query<{ users: number }>('select count(*)::int as users from users where directory_id is null and active and username is distinct from $1', ['recovery_admin'])
+    return { name: 'Strand internal directory', users: r!.users }
+  })
+
   app.get('/admin/directories/:id', { schema: { tags: T, summary: 'One user directory (its password is never returned)', params: id } }, async req => {
     requireNoToken(req)
     return one(req.params.id)

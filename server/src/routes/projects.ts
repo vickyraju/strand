@@ -160,6 +160,9 @@ const plugin: FastifyPluginAsyncZod = async app => {
   app.get('/me', { schema: { tags: T.me, summary: 'Current user and role' } }, async req => ({
     ...req.me, groupIds: (await db.query<{ groupId: string }>('select group_id from group_members where user_id = $1', [req.me.id])).map(g => g.groupId),
     recovery: req.me.admin && !!recoveryPassword(),          // admins see a banner while recovery mode is on (spec 0711 R10)
+    // where their password lives (spec 0714): Settings › Password shows for the internal directory's people who have one
+    ...(await db.query<{ hasPassword: boolean; directory: string | null }>(
+      'select password_hash is not null as has_password, (select name from user_directories where id = directory_id) as directory from users where id = $1', [req.me.id]))[0],
   }))
 
   const searchQ = z.object({

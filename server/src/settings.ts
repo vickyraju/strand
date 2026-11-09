@@ -74,8 +74,9 @@ export const SETTINGS = {
       lockMinutes: z.number().int().min(1).max(1440).describe('How long the username stays locked'),
       sessionIdleMinutes: z.number().int().min(5).max(10_080).describe('A sign-in ends after this long unused'),
       rememberDays: z.number().int().min(1).max(365).describe('“Remember my login on this computer” keeps it this many days'),
+      passwordMinLength: z.number().int().min(1).max(128).describe('Shortest password for people in the internal directory (spec 0714)'),
     }),
-    default: { maxFailures: 3, lockMinutes: 5, sessionIdleMinutes: 300, rememberDays: 14 },
+    default: { maxFailures: 3, lockMinutes: 5, sessionIdleMinutes: 300, rememberDays: 14, passwordMinLength: 8 },
   },
   groups: {
     label: 'Groups',
