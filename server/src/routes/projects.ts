@@ -799,10 +799,44 @@ const plugin: FastifyPluginAsyncZod = async app => {
     return s
   })
 
-  app.delete('/projects/:key/sprints/:id', { schema: { tags: T.sprints, summary: 'Delete a planned sprint', params: keyIdP } }, async (req, reply) => {
-    const { p } = await managedSprint(db, req)
-    await db.query(`delete from sprints where id = $1 and project_id = $2 and state = 'planned'`, [req.params.id, p.id])
+  // Deleting a sprint (Jira's): a planned one sends its work to the backlog; a completed one sends its unfinished work to
+  // the board's next planned sprint (else the backlog), and its completed work keeps no sprint (spec 0403 R2, R3)
+  app.delete('/projects/:key/sprints/:id', { schema: { tags: T.sprints, summary: 'Delete a planned or completed sprint (an active one: complete it first)', params: keyIdP } }, async (req, reply) => {
+    await tx(async d => {
+      const { p, s } = await managedSprint(d, req, true)
+      const [cur] = await d.query<any>('select state, name, board_id from sprints where id = $1', [s.id])
+      if (cur.state === 'active') throw new HttpError(409, 'Complete the sprint before deleting it')
+      if (cur.state === 'closed') {
+        const col = await doneColumnOf(d, cur.boardId)
+        const [next] = await d.query<{ id: string }>(`select id from sprints where board_id = $1 and state = 'planned' order by created_at, id limit 1`, [cur.boardId])
+        await d.query(
+          `update issues i set sprint_id = $3, version = version + 1, updated_at = now() from statuses st
+            where st.id = i.status_id and i.sprint_id = $1 and i.deleted_at is null and not ${col ? 'st.global_status_id = any($2::uuid[])' : `(st.category = 'done' and $2::uuid[] is null)`}`,
+          [s.id, col, next?.id ?? null])
+        await audit(d, req, { action: 'sprint.deleted', type: 'sprint', id: s.id, name: cur.name, project: p, after: { unfinishedTo: next?.id ?? 'backlog' } })
+      }
+      await d.query('delete from sprints where id = $1', [s.id])      // what is left in it (completed, or a planned sprint's work) keeps no sprint
+    })
     reply.code(204).send()
+  })
+
+  // Reopening a completed sprint (Jira's): active again on its board, with the work it held when it closed, except work
+  // now in an active sprint (spec 0403 R1)
+  app.post('/projects/:key/sprints/:id/reopen', { schema: { tags: T.sprints, summary: 'Reopen a completed sprint: active again, with the work it held (not while another sprint is active on its board)', params: keyIdP } }, async req => {
+    return tx(async d => {
+      const { p, s } = await managedSprint(d, req, true)
+      const [cur] = await d.query<any>('select state, name, board_id, issue_ids from sprints where id = $1', [s.id])
+      if (cur.state !== 'closed') throw new HttpError(409, 'Only a completed sprint can be reopened')
+      const [active] = await d.query<{ name: string }>(`select name from sprints where board_id = $1 and state = 'active'`, [cur.boardId])
+      if (active) throw new HttpError(409, `${active.name} is active on this board: complete it before reopening another sprint`)
+      const [row] = await d.query(`update sprints set state = 'active', completed_at = null, completed = null where id = $1 returning *`, [s.id])
+      await d.query(
+        `update issues set sprint_id = $1, version = version + 1, updated_at = now()
+          where id = any($2::uuid[]) and deleted_at is null and sprint_id is distinct from $1
+            and (sprint_id is null or sprint_id in (select id from sprints where state = 'planned'))`, [s.id, cur.issueIds ?? []])
+      await audit(d, req, { action: 'sprint.reopened', type: 'sprint', id: s.id, name: cur.name, project: p })
+      return row
+    })
   })
 
   app.post('/projects/:key/sprints/:id/start', { schema: {

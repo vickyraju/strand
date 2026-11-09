@@ -84,6 +84,22 @@ test('[0401.R3] completing a sprint moves unfinished work and records velocity',
   assert.equal(s.issues.find(i => i.id === 'i2')!.sprintId, sprint)
 })
 
+test('[0403.R1] reopening a completed sprint brings back its work, except work now in an active sprint', () => {
+  let { s } = workspace()
+  s = run([
+    { type: 'createIssue', id: 'i2', issue: { projectId: 'p1', title: 'Second' } },
+    { type: 'createSprint', projectId: 'p1', id: 'sp1' }, { type: 'createSprint', projectId: 'p1', id: 'sp2' },
+    { type: 'updateIssues', ids: ['i1', 'i2'], patch: { sprintId: 'sp1' } },
+    { type: 'startSprint', id: 'sp1', endsAt: Date.now() },
+    { type: 'completeSprint', id: 'sp1' },                                                 // both unfinished: to the backlog
+    { type: 'updateIssues', ids: ['i2'], patch: { sprintId: 'sp2' } },
+    { type: 'startSprint', id: 'sp2', endsAt: Date.now() },
+  ], s)
+  s = run([{ type: 'reopenSprint', id: 'sp1' }], s)
+  assert.equal(s.sprints.find(x => x.id === 'sp1')!.state, 'active')
+  assert.deepEqual([s.issues.find(i => i.id === 'i1')!.sprintId, s.issues.find(i => i.id === 'i2')!.sprintId], ['sp1', 'sp2'])
+})
+
 test('[0401.R2] completing a sprint on a board: completed means its rightmost column, not the Done category', () => {
   let { s } = workspace()
   s = run([

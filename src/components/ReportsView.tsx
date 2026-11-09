@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { TrendingDown, ClipboardCheck, BarChart3, Layers, ArrowLeftRight, Timer, Users, ShieldCheck, GitMerge, ListChecks } from 'lucide-react'
-import { userOf, isDone, CATEGORY_COLOR, type Project } from '../data/store'
+import { useStore, userOf, isDone, CATEGORY_COLOR, type Project } from '../data/store'
 import { burndown, velocity, cumulativeFlow, createdVsResolved, cycleTimes, dayLabel } from '../data/analytics'
 import { useApp } from '../appContext'
 import { useReportState } from '../api/reports'
@@ -8,7 +8,8 @@ import { api, apiEnabled, errorMessage } from '../api/client'
 import { CoverageReport, TraceabilityReport, TestRunsReport } from './testing/TestReports'
 import type { State } from '../data/reducer'
 import { LineChart, ColumnChart, Legend, Scatter, HBars } from './charts'
-import { Avatar, Empty, Picker, typeMeta, typeList, plural, priorityLabel } from './ui'
+import { Avatar, ConfirmDialog, Empty, Picker, typeMeta, typeList, plural, priorityLabel } from './ui'
+import { can } from '../data/access'
 
 type ReportId = 'sprint' | 'burndown' | 'velocity' | 'cfd' | 'created' | 'cycle' | 'workload' | 'test-coverage' | 'traceability' | 'test-runs'
 
@@ -129,7 +130,9 @@ const SECTIONS: [keyof Omit<SprintReportData, 'totals'>, string][] = [
  *  already done when it joined, and what was taken out; points as they were at the start (* added later). */
 function SprintReport({ project }: { project: Project }) {
   const { state } = useReport()
-  const { openIssue } = useApp()
+  const live = useStore()                       // reopening and deleting change the live workspace (the report reads a copy)
+  const { openIssue, toast } = useApp()
+  const [deleting, setDeleting] = useState(false)
   const sprints = state.sprints.filter(s => s.projectId === project.id && s.startedAt).sort((a, b) => (b.startedAt ?? 0) - (a.startedAt ?? 0))
   const [id, setId] = useState(sprints[0]?.id)
   const sprint = sprints.find(s => s.id === id) ?? sprints[0]
@@ -152,7 +155,17 @@ function SprintReport({ project }: { project: Project }) {
         <Picker value={sprint.id} options={sprints.map(s => ({ value: s.id, label: s.name, hint: s.state === 'active' ? 'Active' : 'Closed' }))}
           onChange={setId} className="btn btn-secondary" title="Sprint" trigger={sprint.name} />
         <span className="muted">{dayLabel(sprint.startedAt!)} – {dayLabel(sprint.completedAt ?? sprint.endsAt ?? Date.now())}{sprint.state === 'active' ? ' · active' : ''}</span>
+        {/* Jira's Sprint Report actions for a completed sprint (spec 0403) */}
+        {sprint.state === 'closed' && can(project, 'manageSprints') && <>
+          <div style={{ flex: 1 }} />
+          <button className="btn btn-secondary" onClick={() => { live.dispatch({ type: 'reopenSprint', id: sprint.id }); toast(`${sprint.name} reopened`) }}>Reopen sprint</button>
+          <button className="btn btn-secondary text-danger" onClick={() => setDeleting(true)}>Delete sprint</button>
+        </>}
       </div>
+      {deleting && <ConfirmDialog title={`Delete ${sprint.name}?`} action="Delete sprint" onClose={() => setDeleting(false)}
+        onConfirm={() => { live.dispatch({ type: 'deleteSprint', id: sprint.id }); setDeleting(false); toast(`${sprint.name} deleted`) }}>
+        <p>It goes for good, and no longer shows in velocity. Work it didn’t complete moves to the board’s next planned sprint, or the backlog; work it completed keeps no sprint.</p>
+      </ConfirmDialog>}
       {sprint.goal && <p><b>Goal:</b> {sprint.goal}</p>}
       <BurndownChart data={data} name={sprint.name} />
       {!r ? <p className="muted" role="status">Loading the sprint’s work…</p>

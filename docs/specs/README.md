@@ -62,7 +62,7 @@ The roadmap, in order. Bugs come first, then the permission model, then the data
 | [0309](0309-unique-names.md) | Names that must be unique: projects, versions, components, filters per owner | 3 | Ported |
 | [0401](0401-sprint-done-column.md) | Completing a sprint: done means the board’s rightmost column | 4 | Ported |
 | [0402](0402-sprint-report.md) | Sprint report | 4 | Ported |
-| 0403 | Reopen and delete completed sprints | 4 | Planned |
+| [0403](0403-reopen-delete-sprint.md) | Reopen and delete completed sprints | 4 | Approved |
 | 0404 | Estimation statistic and time tracking per board | 4 | Planned |
 | 0405 | Working days | 4 | Planned |
 | 0406 | Kanban backlog | 4 | Planned |

@@ -459,6 +459,7 @@ export type Action =
   | { type: 'startSprint'; id: string; endsAt: number }
   | { type: 'completeSprint'; id: string; moveTo?: string; doneStatusIds?: string[] }   // the board's rightmost column (spec 0401)
   | { type: 'deleteSprint'; id: string }
+  | { type: 'reopenSprint'; id: string }                                    // a completed sprint, active again (spec 0403)
   | { type: 'markRead'; ids: string[]; read?: boolean }
   | { type: 'archive'; ids: string[] }
   | { type: 'checkDue'; now: number }
@@ -948,6 +949,19 @@ export function reducer(state: State, action: Action, now = Date.now()): State {
         // Unfinished work moves to the chosen sprint, or back to the backlog
         issues: state.issues.map(i =>
           i.sprintId === sprint.id && !done(i) ? { ...i, sprintId: action.moveTo, updatedAt: now } : i),
+      }
+    }
+    // Reopening (Jira's): active again, with the work it held when it closed, except work in an active sprint
+    case 'reopenSprint': {
+      const s = state.sprints.find(x => x.id === action.id)
+      if (!s || s.state !== 'closed') return state
+      const active = new Set(state.sprints.filter(x => x.state === 'active').map(x => x.id))
+      const held = new Set(s.issueIds ?? [])
+      return {
+        ...state,
+        sprints: state.sprints.map(x => x.id === s.id ? { ...x, state: 'active', completedAt: undefined, completed: undefined } : x),
+        issues: state.issues.map(i => held.has(i.id) && !(i.sprintId && (active.has(i.sprintId) || state.sprints.find(x => x.id === i.sprintId)?.state === 'closed' && i.sprintId !== s.id))
+          ? { ...i, sprintId: s.id, updatedAt: now } : i),
       }
     }
     case 'deleteSprint':
