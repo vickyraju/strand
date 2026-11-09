@@ -61,7 +61,7 @@ Checked against Atlassian's Data Center documentation on 5 November 2026 (Jira S
 |---|---|---|---|---|---|---|---|
 | PRJ-01 | Archive a project | Jira admins only; archived data is read-only and hidden ([archiving](https://confluence.atlassian.com/adminjiraserver/archiving-a-project-938847621.html)) | Global admins only; read-only for everyone; hidden from lists, search and boards; Administration › Archived projects | match | match | 0102 | |
 | PRJ-02 | Project key change | Admins can change it; old keys keep working ([key](https://confluence.atlassian.com/adminjiraserver/editing-a-project-key-938847080.html)) | Key fixed | absent | match | 0703 | Needs key history (0501). |
-| PRJ-03 | Project key format | Uppercase letters by default ([key]) | Letters and digits (`projects.ts`) | diverges | match | 0308 | A System setting; existing keys kept. |
+| PRJ-03 | Project key format | Uppercase letters by default ([key]) | System settings › Project keys: Jira's default pattern [A-Z][A-Z]+ and 10 characters; a new pattern must fit existing keys | match | match | 0308 | Digits need an admin to widen the pattern, as in Jira. |
 | PRJ-04 | Categories, avatars | Yes | Colour only | absent | match | 0703 | |
 | PRJ-05 | Delete a project | Permanent | Job with an S3 backup and restore | better | diverge | — | Keep: "project backups" test. |
 | PRJ-06 | Templates | Scrum, Kanban, Basic, Business templates | Scrum, Kanban | partial | open | — | |
@@ -78,7 +78,7 @@ Checked against Atlassian's Data Center documentation on 5 November 2026 (Jira S
 | ISS-03 | Rank | One rank across projects (LexoRank) | One order per workspace; new work last; crowded ranks respread around the move only | match | match | 0302 | Fractions instead of LexoRank strings: same order, no rebalancing job. |
 | ISS-04 | Priorities | Admin list, priority schemes, default | Fixed five, default none | diverges | match | 0305 | |
 | ISS-05 | Resolutions | Admin list; set by transition screen or post function, independent of status category ([resolutions](https://confluence.atlassian.com/adminjiraserver/defining-resolution-field-values-938847105.html)) | Fixed four, set by the Done category (trigger); changing a status's category rewrites every item's resolution | diverges | match | 0305 | |
-| ISS-06 | Labels | No spaces (*unconfirmed* for DC) | Spaces allowed; the length limits apply on edit but not on create (`issues.ts`) | diverges | match | 0307 | |
+| ISS-06 | Labels | No spaces (*unconfirmed* for DC) | One word, at most 255 characters, checked everywhere; existing spaces became _ | match | match | 0307 | |
 | ISS-07 | Custom field types | 20+ types ([cf]) | Text, number, select, date, per project | partial | match | 0502 | |
 | ISS-08 | Custom field contexts, field configurations | Global fields with contexts; required and hidden ([context](https://confluence.atlassian.com/adminjiraserver/configuring-a-custom-field-938847235.html)) | Absent | absent | match | 0503, 0504 | |
 | ISS-24 | Custom field type and options | The type can't be changed; options have ids: a rename carries to issues, a disabled option stays on issues, a deleted one is cleared ([editing custom fields](https://confluence.atlassian.com/adminjiraserver/editing-or-deleting-custom-fields-1047552719.html)) | Same: type fixed, option ids, rename/disable/delete carry through | match | match | 0105 | |

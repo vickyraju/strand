@@ -13,6 +13,7 @@ import { useApp } from '../appContext'
 import { can, canEdit } from '../data/access'
 import DeleteItemsDialog from './DeleteItemsDialog'
 import { RESOLUTIONS } from '../data/reducer'
+import { splitLabels } from '../../server/src/shared/labels.ts'
 import { href, navigate } from '../router'
 import {
   Picker, Menu, TypeIcon, PriorityIcon, Avatar, Modal, typeMeta, MultiSelect, PRIORITY_META, StatusLozenge,
@@ -82,7 +83,7 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
 
   // Keep the labels box in step with changes made elsewhere (bulk edits, automation)
   const labelsKey = issue?.labels.join(', ') ?? ''
-  useEffect(() => { if (document.activeElement?.getAttribute('aria-label') !== 'Labels (comma separated)') setLabels(labelsKey) }, [labelsKey])
+  useEffect(() => { if (document.activeElement?.getAttribute('aria-label') !== 'Labels (separated by spaces)') setLabels(labelsKey) }, [labelsKey])
 
   // j / k step through the list the item was opened from
   const idx = navList.indexOf(issueId)
@@ -477,9 +478,9 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
               </Field>
             )}
             <Field label="Labels">
-              <input className="field-input" value={labels} placeholder="None" aria-label="Labels (comma separated)"
+              <input className="field-input" value={labels} placeholder="None" aria-label="Labels (separated by spaces)"
                 onChange={e => setLabels(e.target.value)}
-                onBlur={() => set({ labels: [...new Set(labels.split(',').map(l => l.trim()).filter(Boolean))] })} />
+                onBlur={() => set({ labels: splitLabels(labels) })} />
             </Field>
             <Field label="Story points">
               <input className="field-input" type="number" min={0} value={issue.estimate ?? ''} placeholder="None" aria-label="Story points"

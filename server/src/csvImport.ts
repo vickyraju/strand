@@ -1,5 +1,6 @@
 // CSV import, as Jira's importer works: map columns to fields, check every row first (a dry run, the default), then
 // import in the background. Rows with problems are reported, not guessed at: a row without a title is left out; a value
+import { splitLabels } from './shared/labels.ts'
 // that matches nothing (an unknown status, person, component…) is left empty with a warning. Each row's work item has an
 // id made from the import and the row number, so running the same import again (a retry, a restart) adds nothing twice.
 import { createHash } from 'node:crypto'
@@ -75,7 +76,8 @@ export async function checkImport(d: Db, projectId: string, csv: string, mapping
     if (who) { if (await canJoinWork(d, projectId, (who as any).id)) item.assigneeId = (who as any).id; else warnings.push(`${get('assignee')} isn’t in this project: left unassigned`) }
     const pr = get('priority')
     item.priority = PRIORITY[pr.toLowerCase()] ?? (warnings.push(`Priority “${pr}” isn’t known: none`), 'none')
-    const labels = get('labels'); if (labels) item.labels = [...new Set(labels.split(/[,;]|\s+/).map(l => l.trim()).filter(Boolean))].slice(0, 50)
+    const labels = get('labels'); if (labels) item.labels = splitLabels(labels).slice(0, 50)
+    for (const l of (item.labels ?? []) as string[]) if (l.length > 255) errors.push(`Label “${l.slice(0, 40)}…” is longer than 255 characters`)
     const est = get('estimate')
     if (est) { if (Number.isFinite(Number(est)) && Number(est) >= 0) item.estimate = Number(est); else warnings.push(`Story points “${est}” isn’t a number: left empty`) }
     for (const f of ['dueDate', 'startDate'] as const) {

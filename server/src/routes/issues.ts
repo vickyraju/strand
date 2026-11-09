@@ -10,6 +10,7 @@ import { runRules, moveAllowed } from '../rules.ts'
 import { available, ruleContext, transitionById, transitionTo, type TransitionRow } from '../transitions.ts'
 import { statusesFor } from '../workflows.ts'
 import { actionChanges, problems, type RuleCtx } from '../shared/transitionRules.ts'
+import { labels } from '../shared/labels.ts'
 import { adjustRemaining, remainingWhenEstimated, type Adjust } from '../shared/estimates.ts'
 import { projectByKey } from './projects.ts'
 
@@ -41,7 +42,7 @@ export const TEST_TYPES = ['test', 'precondition', 'test_set', 'test_plan', 'tes
 
 const patchBody = z.object({
   title: z.string().min(1).max(500), description: z.string(), type, priority, statusId: uuid,
-  assigneeId: uuid.nullable(), reporterId: uuid.describe('Modify reporter: project admins (spec 0203)'), labels: z.array(z.string().max(50)).max(50), estimate: z.number().nonnegative().nullable(),
+  assigneeId: uuid.nullable(), reporterId: uuid.describe('Modify reporter: project admins (spec 0203)'), labels, estimate: z.number().nonnegative().nullable(),
   timeEstimate: z.number().int().nonnegative().nullable(), timeRemaining: z.number().int().nonnegative().nullable().describe('Remaining estimate, minutes (starts at the original estimate)'),
   dueDate: date.nullable(), startDate: date.nullable(),
   sprintId: uuid.nullable(), fixReleaseIds: z.array(uuid).max(50).describe('Fix versions: releases of the project that fix it'), parentId: uuid.nullable(),
@@ -507,7 +508,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
   })
 
   const createBody = patchBody.omit({ reporterId: true }).required({ title: true }).extend({   // the creator is the reporter
-    labels: z.array(z.string()).default([]),
+    labels: labels.default([]),
     id: uuid.optional().describe('Client-chosen id: lets the app keep its local id, and makes a retried create a conflict instead of a duplicate'),
   })
   app.post('/projects/:key/issues', { schema: { tags: TAG, summary: 'Create an issue (key and rank are assigned by the server)', params: projKeyP, body: createBody } }, async req => {

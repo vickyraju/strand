@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Columns2, ListChecks, Check } from 'lucide-react'
-import { useStore, uid, suggestKey, isValidKey, PROJECT_COLORS, type Template } from '../data/store'
+import { useStore, uid, suggestKey, PROJECT_COLORS, type Template } from '../data/store'
+import { describeKeyRule, keyFits } from '../../server/src/shared/projectKeys.ts'
+import { usePublicSettings } from '../api/settings-public'
 import { Modal } from './ui'
 import { api, apiEnabled } from '../api/client'
 import { mapProject } from '../api/map'
@@ -30,13 +32,14 @@ export default function CreateProjectModal({ onClose, onCreated }: {
 
   // the projects loaded here are only some of them: the server has the final word (and says so when the key is taken)
   const keyTaken = state.projects.some(p => p.key === key)
+  const keyRule = usePublicSettings().projectKeys          // System settings › Project keys (spec 0308)
   const keyError = !key ? null
-    : !isValidKey(key) ? 'Use 2–10 letters, A–Z only.'
+    : !keyFits(key, keyRule) ? `Use ${describeKeyRule(keyRule).replace(/^./, c => c.toLowerCase())}.`
     : keyTaken ? `${key} is already used by another project.`
     : null
   const [busy, setBusy]   = useState(false)
   const [error, setError] = useState('')
-  const canCreate = name.trim().length > 0 && isValidKey(key) && !keyTaken && !busy
+  const canCreate = name.trim().length > 0 && keyFits(key, keyRule) && !keyTaken && !busy
 
   const submit = async () => {
     if (!canCreate) return

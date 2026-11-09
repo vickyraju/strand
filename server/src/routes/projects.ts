@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { label, labels } from '../shared/labels.ts'
 import type { FastifyRequest } from 'fastify'
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
@@ -15,6 +16,7 @@ import { dryRun } from '../rules.ts'
 import { TEST_TYPES } from './issues.ts'
 import { checkImport } from '../csvImport.ts'
 import { getSetting } from '../settings.ts'
+import { describeKeyRule, keyFits } from '../shared/projectKeys.ts'
 
 const uuid = z.string().uuid()
 const color = z.string().regex(/^#[0-9a-fA-F]{6}$/)
@@ -80,12 +82,13 @@ const childPatch = {
     position: z.number().int() }).partial(),
   templates: z.object({
     name: z.string().min(1), type: z.string().min(1).max(40), title: z.string(), description: z.string(),
-    priority: z.enum(['urgent', 'high', 'medium', 'low', 'none']), labels: z.array(z.string()), estimate: z.number().nullable(),
+    priority: z.enum(['urgent', 'high', 'medium', 'low', 'none']), labels, estimate: z.number().nullable(),
   }).partial(),
   rules: z.object({
     name: z.string().min(1), enabled: z.boolean(),
     trigger: z.object({ kind: z.enum(['created', 'status', 'assigned']), to: uuid.optional() }),
-    actions: z.array(z.object({ kind: z.enum(['assign', 'priority', 'label', 'status', 'comment']) }).passthrough()),
+    actions: z.array(z.object({ kind: z.enum(['assign', 'priority', 'label', 'status', 'comment']) }).passthrough()
+      .refine(a => a.kind !== 'label' || label.safeParse(a.value).success, 'A label is one word: no spaces')),
   }).partial(),
   releases: z.object({ name: z.string().min(1), description: z.string(), startDate: z.string().nullable(), releaseDate: z.string().nullable(),
     archived: z.boolean().describe('Hidden from pickers and the Releases view; items keep it (spec 0304)'), released: z.literal(false).describe('Unrelease it (release it with POST …/release)') }).partial(),
@@ -257,11 +260,15 @@ const plugin: FastifyPluginAsyncZod = async app => {
   })
 
   const createProject = projectBody.required({ name: true }).extend({
-    key: z.string().regex(/^[A-Z][A-Z0-9]{1,9}$/), template: z.enum(['kanban', 'scrum']),
+    key: z.string().trim().min(1).max(255).transform(k => k.toUpperCase()).describe('Checked against System settings › Project keys (Jira’s default: two or more capital letters, at most 10)'), template: z.enum(['kanban', 'scrum']),
     workflowSchemeId: uuid.optional().describe('Its workflow scheme (Administration › Workflows); by default the one named after the template'),
   })
   app.post('/projects', { schema: { tags: T.projects, summary: 'Create a project, with the workflows of a workflow scheme', body: createProject } }, async req => {
     const b = req.body
+    // the key follows System settings › Project keys (Jira's project key pattern and maximum size, spec 0308 R2)
+    const rule = await getSetting(req.me.workspaceId, 'projectKeys')
+    if (!keyFits(b.key, rule))
+      throw new HttpError(400, `A project key must match ${rule.pattern} and be at most ${rule.maxLength} characters`, { key: describeKeyRule(rule) })
     return tx(async d => {
       const [sc] = await d.query<{ id: string }>(`select id from workflow_schemes where workspace_id = $1 and ${b.workflowSchemeId ? 'id = $2' : 'lower(name) = $2'}`,
         [req.me.workspaceId, b.workflowSchemeId ?? b.template])

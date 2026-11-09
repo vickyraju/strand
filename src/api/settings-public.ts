@@ -2,6 +2,7 @@
 // upload starts, offer the right token lifetimes, and so on). Loaded once and shared; without a server, the built-in values.
 import { useEffect, useState } from 'react'
 import { api, apiEnabled } from './client'
+import { DEFAULT_KEY_RULE, type KeyRule } from '../../server/src/shared/projectKeys.ts'
 import { DEFAULT_TIME, parseDuration, formatDuration, type TimeSettings } from '../data/time'
 
 export interface PublicSettings {
@@ -12,6 +13,7 @@ export interface PublicSettings {
   groups: { whoCanCreate: 'everyone' | 'admins' }
   dueReminders: { enabled: boolean; daysAhead: number; daysLate: number; dueSoonDays: number }
   timeTracking: TimeSettings
+  projectKeys: KeyRule
 }
 
 /** The same values as the server's defaults; used without a server and until the real ones arrive. */
@@ -23,6 +25,7 @@ export const DEFAULT_SETTINGS: PublicSettings = {
   groups: { whoCanCreate: 'everyone' },
   dueReminders: { enabled: true, daysAhead: 1, daysLate: 3, dueSoonDays: 3 },
   timeTracking: DEFAULT_TIME,
+  projectKeys: DEFAULT_KEY_RULE,
 }
 
 let loading: Promise<PublicSettings> | undefined

@@ -6,8 +6,10 @@
 // once below. Reads go through a short cache, so every API pod sees a change within CACHE_MS without a restart.
 import { z } from 'zod'
 import { db, type Db } from './db.ts'
+import { keyPatternOk } from './shared/projectKeys.ts'
 
 const days = (max: number) => z.number().int().min(1).max(max)
+
 
 /** Every setting an admin can change. `public`: shown to every signed-in person (the web app needs it to behave the same
  *  as the server, e.g. the attachment size limit); otherwise only admins can read it. */
@@ -126,6 +128,17 @@ export const SETTINGS = {
     public: false,
     schema: z.object({ retentionDays: z.number().int().min(1).max(365).describe('Days a deleted work item is kept') }),
     default: { retentionDays: 30 },
+  },
+  projectKeys: {
+    label: 'Project keys',
+    description: 'What a new project’s key may look like (Jira’s project key pattern and maximum key size). Existing keys are kept; a new pattern must still fit them.',
+    public: true,
+    schema: z.object({
+      pattern: z.string().trim().min(1).max(200).refine(keyPatternOk, 'Use a pattern that compiles, starts keys with a capital letter and allows only A–Z, 0–9 and _')
+        .describe('A regular expression a whole key must match, such as [A-Z][A-Z]+ (Jira’s default)'),
+      maxLength: z.number().int().min(2).max(255).describe('Longest key, in characters'),
+    }),
+    default: { pattern: '[A-Z][A-Z]+', maxLength: 10 },
   },
   timeTracking: {
     label: 'Time tracking',

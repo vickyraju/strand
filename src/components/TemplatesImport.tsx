@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { splitLabels } from '../../server/src/shared/labels.ts'
 import { Plus, Trash2, FileText, Upload, AlertTriangle } from 'lucide-react'
 import { useStore, uid, type ItemTemplate, type Project, type IssueType, type Priority } from '../data/store'
 import { parseCsv, guessMapping, mapRows, IMPORT_FIELDS, type ImportField } from '../data/csv'
@@ -58,7 +59,7 @@ export function TemplateDialog({ template, project, onClose, onSave }: { templat
     <Modal title={template.name ? `Edit ${template.name}` : 'Template'} onClose={onClose} width={560}
       footer={<>
         <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
-        <button className="btn btn-primary" disabled={!t.name.trim()} onClick={() => onSave({ ...t, name: t.name.trim(), labels: labels.split(',').map(l => l.trim()).filter(Boolean) })}>Save template</button>
+        <button className="btn btn-primary" disabled={!t.name.trim()} onClick={() => onSave({ ...t, name: t.name.trim(), labels: splitLabels(labels) })}>Save template</button>
       </>}>
       <label className="label" htmlFor="tp-name">Template name</label>
       <input id="tp-name" className="input" value={t.name} onChange={e => setT({ ...t, name: e.target.value })} placeholder="e.g. Customer bug report" autoFocus />

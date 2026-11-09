@@ -271,7 +271,7 @@ test('[0103.R7] shared workflows: a system admin copies one, adds a status, make
 })
 
 test('a workflow used by many projects: a count opens them, searchable a page at a time; publishing summarises the change and shows it applying to the end', { skip, timeout: 180_000 }, async () => {
-  const keys = Array.from({ length: 60 }, (_, n) => `BIG${String(n).padStart(2, '0')}`)
+  const keys = Array.from({ length: 60 }, (_, n) => `BIG${String.fromCharCode(65 + Math.floor(n / 10), 65 + (n % 10))}`)   // letters only: Jira's default key pattern (spec 0308)
   for (const key of keys) await owner('POST', '/projects', { name: `Big ${key}`, key, template: 'kanban' })
   const first = (await owner('GET', `/projects/${keys[0]}`)).body
   const wf = await flow(first, first.statuses.map(s => ({ name: s.name, toId: s.id })))
@@ -289,7 +289,7 @@ test('a workflow used by many projects: a count opens them, searchable a page at
   await panel.locator('text=Showing 50 of 60').waitFor()
   await panel.locator('button:has-text("Load more")').click()
   await panel.locator('text=Showing 60 of 60').waitFor()
-  await panel.locator('input').fill('BIG5')
+  await panel.locator('input').fill('BIGF')
   await panel.locator('text=/^10 matching/').waitFor()
   await o.keyboard.press('Escape')
   // take In progress out (no work is in it): the dialog summarises (no line per project) and the change applies in the background

@@ -1315,8 +1315,10 @@
                     "additionalProperties": {}
                   },
                   "key": {
+                    "description": "Checked against System settings › Project keys (Jira’s default: two or more capital letters, at most 10)",
                     "type": "string",
-                    "pattern": "^[A-Z][A-Z0-9]{1,9}$"
+                    "minLength": 1,
+                    "maxLength": 255
                   },
                   "template": {
                     "type": "string",
@@ -7424,9 +7426,13 @@
                     ]
                   },
                   "labels": {
+                    "maxItems": 50,
                     "type": "array",
                     "items": {
-                      "type": "string"
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 255,
+                      "pattern": "^\\S+$"
                     }
                   },
                   "estimate": {
@@ -7642,9 +7648,13 @@
                     ]
                   },
                   "labels": {
+                    "maxItems": 50,
                     "type": "array",
                     "items": {
-                      "type": "string"
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 255,
+                      "pattern": "^\\S+$"
                     }
                   },
                   "estimate": {
@@ -16661,9 +16671,13 @@
                   },
                   "labels": {
                     "default": [],
+                    "maxItems": 50,
                     "type": "array",
                     "items": {
-                      "type": "string"
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 255,
+                      "pattern": "^\\S+$"
                     }
                   },
                   "estimate": {
@@ -18470,7 +18484,9 @@
                     "type": "array",
                     "items": {
                       "type": "string",
-                      "maxLength": 50
+                      "minLength": 1,
+                      "maxLength": 255,
+                      "pattern": "^\\S+$"
                     }
                   },
                   "estimate": {
@@ -20015,7 +20031,9 @@
                         "type": "array",
                         "items": {
                           "type": "string",
-                          "maxLength": 50
+                          "minLength": 1,
+                          "maxLength": 255,
+                          "pattern": "^\\S+$"
                         }
                       },
                       "estimate": {
@@ -20659,7 +20677,9 @@
                         "type": "array",
                         "items": {
                           "type": "string",
-                          "maxLength": 50
+                          "minLength": 1,
+                          "maxLength": 255,
+                          "pattern": "^\\S+$"
                         }
                       },
                       "estimate": {
@@ -30248,7 +30268,7 @@
             "in": "path",
             "name": "key",
             "required": true,
-            "description": "One of: rateLimiting, attachments, accessTokens, searchAndBulk, licenseCleanup, groups, testing, dueReminders, email, deletedItems, timeTracking"
+            "description": "One of: rateLimiting, attachments, accessTokens, searchAndBulk, licenseCleanup, groups, testing, dueReminders, email, deletedItems, projectKeys, timeTracking"
           }
         ],
         "responses": {

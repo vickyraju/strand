@@ -1,4 +1,5 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
+import { keyFits } from '../shared/projectKeys.ts'
 import { z } from 'zod'
 import { GetObjectCommand } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
@@ -204,6 +205,13 @@ const plugin: FastifyPluginAsyncZod = async app => {
       const ids = (parsed.data as { groupIds: string[] }).groupIds
       const dir = ids.length ? await db.query<{ displayName: string }>(`select display_name from groups where id = any($1::uuid[]) and source = 'directory'`, [ids]) : []
       if (dir.length) throw new HttpError(400, `${dir.map(g => g.displayName).join(', ')} ${dir.length === 1 ? 'comes' : 'come'} from the directory (Entra): only it changes who is in ${dir.length === 1 ? 'it' : 'them'}`, { groupIds: 'A directory group' })
+    }
+    // Jira: a new key pattern must still fit every existing key (spec 0308 R3)
+    if (key === 'projectKeys') {
+      const { pattern, maxLength } = parsed.data as { pattern: string; maxLength: number }
+      const misfits = (await db.query<{ key: string }>('select key from projects where workspace_id = $1 order by key', [req.me.workspaceId])).map(p => p.key)
+        .filter(k => !keyFits(k, { pattern, maxLength }))
+      if (misfits.length) throw new HttpError(400, `Existing projects would not fit: ${misfits.slice(0, 10).join(', ')}${misfits.length > 10 ? ` and ${misfits.length - 10} more` : ''}`, { pattern: 'Existing keys don’t fit' })
     }
     await tx(async d => {
       const before = await getSetting(req.me.workspaceId, key, d)
