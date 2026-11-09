@@ -425,7 +425,7 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
               </Field>
             )}
             <Field label="Type">
-              <Picker value={issue.type} options={typeOptions(project, !issue.parentId && children.every(c => c.type !== 'epic'))} onChange={type => set({ type })} className="field-btn" title="Type"
+              <Picker value={issue.type} options={issue.type === 'epic' && children.length ? typeOptions(project).filter(t => t.value === 'epic') : typeOptions(project, !issue.parentId && children.length === 0)} onChange={type => set({ type })} className="field-btn" title="Type"
                 trigger={<><TypeIcon type={issue.type} size={14} project={project} />{typeMeta(issue.type, project).label}</>} />
             </Field>
             {issue.type !== 'epic' && (
@@ -433,7 +433,9 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
                 <Picker value={issue.parentId} search className="field-btn" title="Parent"
                   options={[
                     { value: undefined, label: 'None' },
-                    ...state.issues.filter(i => i.projectId === project.id && i.id !== issue.id && (i.type === 'epic' || (!i.parentId && children.length === 0)))
+                    // Jira's levels (spec 0303): an epic, or (for an item without sub-items) an item of this project that isn't a sub-item
+                    ...state.issues.filter(i => i.projectId === project.id && i.id !== issue.id && (i.type === 'epic'
+                      || (children.length === 0 && (!i.parentId || state.issues.find(x => x.id === i.parentId)?.type === 'epic'))))
                       .map(i => ({ value: i.id as string | undefined, label: `${i.key} ${i.title}`, icon: <TypeIcon type={i.type} size={12} /> })),
                   ]}
                   onChange={parentId => set({ parentId })}

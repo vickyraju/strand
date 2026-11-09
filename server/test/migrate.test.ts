@@ -103,3 +103,26 @@ test('[0302.R5] ranks are renumbered once per workspace, in their order, ties br
     await c.end()
   }
 })
+
+test('[0303.R5] rows that break the hierarchy are detached from their parent, with history; nothing is deleted', { skip }, async () => {
+  const { readFileSync } = await import('node:fs')
+  const sql = readFileSync(new URL('../migrations/20261127090000_hierarchy.sql', import.meta.url), 'utf8')
+  const c = new pg.Client({ connectionString: url })
+  await c.connect()
+  const schema = `hi_${process.pid}`
+  try {
+    await c.query(`create schema ${schema}; set search_path = ${schema}, public`)
+    await c.query(`create table issues (id text primary key, type text, project_id text, parent_id text, version int default 1, updated_at timestamptz);
+                   create table activity (issue_id text, actor_id uuid, field text, text text)`)
+    await c.query(`insert into issues (id, type, project_id, parent_id) values
+      ('E', 'epic', 'p', null), ('E2', 'epic', 'p', 'E'), ('I', 'task', 'p', 'E'), ('S', 'task', 'p', 'I'), ('SS', 'task', 'p', 'S'),
+      ('X', 'task', 'q', 'I'), ('Q', 'task', 'q', 'E')`)
+    await c.query(sql)
+    const { rows } = await c.query(`select id, parent_id from issues order by id`)
+    assert.deepEqual(Object.fromEntries(rows.map((r: any) => [r.id, r.parent_id])), { E: null, E2: null, I: 'E', S: 'I', SS: null, X: null, Q: 'E' })
+    assert.deepEqual((await c.query(`select issue_id from activity order by issue_id`)).rows.map((r: any) => r.issue_id), ['E2', 'SS', 'X'])
+  } finally {
+    await c.query(`drop schema ${schema} cascade`)
+    await c.end()
+  }
+})
