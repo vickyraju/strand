@@ -1,6 +1,6 @@
 # 0301 Several fix versions on a work item
 
-Status: Approved (PO, 9 Nov 2026: "i approve everything" for the next two hours of work)
+Status: Ported (aws-jira `888e0c3`, strand `ffa9ad0`), approved by the PO on 9 Nov 2026; awaiting verification
 Parity rows: ISS-01
 
 ## Context and Jira reference
