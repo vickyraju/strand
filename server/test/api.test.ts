@@ -383,7 +383,7 @@ test('every documented response body is produced by the real handler and matches
   const sp = await ok('POST', '/projects/SCH/sprints', { name: 'S', goal: 'g' })
   await ok('PATCH', `/projects/SCH/sprints/${sp.id}`, { goal: 'new' })
   await ok('POST', `/projects/SCH/sprints/${sp.id}/start`, { endsAt: new Date(Date.now() + 864e5).toISOString() })
-  const i = await ok('POST', '/projects/SCH/issues', { title: 'One', assigneeId: me.id, sprintId: sp.id, releaseId: rel.id, dueDate: '2026-11-01', estimate: 2, labels: ['a'] })
+  const i = await ok('POST', '/projects/SCH/issues', { title: 'One', assigneeId: me.id, sprintId: sp.id, fixReleaseIds: [rel.id], dueDate: '2026-11-01', estimate: 2, labels: ['a'] })
   await ok('POST', '/projects/SCH/issues', { title: 'Two', parentId: i.id })
   await ok('GET', '/projects/SCH/issues'); await ok('GET', '/projects/SCH/summary')
   const c = await ok('POST', '/issues/SCH-1/comments', { body: 'hello' })
@@ -2293,7 +2293,7 @@ test('testing: an execution runs tests; step results set the run status; finishi
   assert.equal((await call('DELETE', `/api/v1/admin/test-statuses/run/${flaky.key}`)).status, 204)
 })
 
-test('coverage: a story is UNCOVERED, then NOK for version 1.0 after a failing run, OK after a pass; plans, environments and sub-requirements count', { skip }, async () => {
+test('[0301.R9] coverage: a story is UNCOVERED, then NOK for version 1.0 after a failing run, OK after a pass; plans, environments and sub-requirements count', { skip }, async () => {
   const p = (await call('POST', '/api/v1/projects', { name: 'Covered', key: 'COV', template: 'kanban' })).body
   await call('PUT', '/api/v1/projects/COV/testing', { enabled: true })
   const v1 = (await call('POST', '/api/v1/projects/COV/releases', { name: '1.0' })).body.id
@@ -2324,14 +2324,14 @@ test('coverage: a story is UNCOVERED, then NOK for version 1.0 after a failing r
   assert.deepEqual([c.status, c.own, c.subRequirements.map((s: any) => s.status)], ['NOK', 'NOK', ['OK']])
   assert.equal((await cov(`?version=${v2}`)).status, 'NOTRUN')         // nothing run for 2.0
   // a passing rerun for 1.0 → OK (the latest finished result counts)
-  const e2 = (await call('POST', '/api/v1/projects/COV/issues', { title: 'Rerun', type: 'test_execution', releaseId: v1, testEnvironments: ['chrome'] })).body
+  const e2 = (await call('POST', '/api/v1/projects/COV/issues', { title: 'Rerun', type: 'test_execution', fixReleaseIds: [v1], testEnvironments: ['chrome'] })).body
   await call('POST', `/api/v1/issues/${e2.key}/runs`, { keys: [t1.key] })
   await run(e2, t1, 'PASS')
   assert.equal((await cov(`?version=${v1}`)).status, 'OK')
   // the plan only counts its own executions (the rerun isn't in it): still NOK there
   assert.equal((await cov(`?plan=${plan.key}`)).status, 'NOK')
   // a failure in another environment fails it across environments, but not in chrome alone
-  const e3 = (await call('POST', '/api/v1/projects/COV/issues', { title: 'Firefox', type: 'test_execution', releaseId: v1, testEnvironments: ['firefox'] })).body
+  const e3 = (await call('POST', '/api/v1/projects/COV/issues', { title: 'Firefox', type: 'test_execution', fixReleaseIds: [v1], testEnvironments: ['firefox'] })).body
   await call('POST', `/api/v1/issues/${e3.key}/runs`, { keys: [t2.key] })
   await run(e3, t2, 'FAIL')
   assert.equal((await cov(`?version=${v1}`)).status, 'NOK')
@@ -3764,4 +3764,63 @@ test('system settings: admins change policies at runtime (validated, audited); e
   clearSettingsCache()
   assert.equal((await call('GET', '/api/v1/settings/public')).body.attachments.maxSizeMb, 3)
   await put('attachments', { enabled: true, maxSizeMb: 25 })
+})
+
+test('[0301.R1][0301.R3][0301.R5][0301.R6][0301.R8] several fix versions: set, searched, moved on release, removed with the version, exported and imported', { skip }, async () => {
+  await call('POST', '/api/v1/projects', { name: 'Fix versions', key: 'FXV', template: 'kanban' })
+  await call('POST', '/api/v1/projects', { name: 'Elsewhere', key: 'FXO', template: 'kanban' })
+  const rel = async (key: string, name: string) => (await call('POST', `/api/v1/projects/${key}/releases`, { name })).body.id as string
+  const [a, b, c, other] = [await rel('FXV', '2.3'), await rel('FXV', '2.4'), await rel('FXV', '2.5'), await rel('FXO', '9.0')]
+  // R1: a list of the project's versions; another project's is refused; the change is in the history
+  const both = (await call('POST', '/api/v1/projects/FXV/issues', { title: 'Back-ported', fixReleaseIds: [a, b] })).body
+  assert.deepEqual(both.fixReleaseIds, [a, b])
+  assert.equal((await call('POST', '/api/v1/projects/FXV/issues', { title: 'x', fixReleaseIds: [other] })).status, 400)
+  const one = (await call('POST', '/api/v1/projects/FXV/issues', { title: 'Only 2.3' })).body
+  assert.deepEqual((await call('PATCH', `/api/v1/issues/${one.key}`, { fixReleaseIds: [a] })).body.fixReleaseIds, [a])
+  assert.ok((await call('GET', `/api/v1/issues/${one.key}?expand=activity`)).body.activity.some((x: any) => x.field === 'fixReleaseIds'))
+  const none = (await call('POST', '/api/v1/projects/FXV/issues', { title: 'Unplanned' })).body
+  assert.deepEqual(none.fixReleaseIds, [])
+  // R3: JQL matches any of an item's fix versions
+  const jql = async (q: string) => (await call('GET', `/api/v1/search?jql=${encodeURIComponent(`project = FXV AND ${q} ORDER BY key`)}&limit=50`)).body.items.map((i: any) => i.key)
+  assert.deepEqual(await jql('fixVersion = "2.4"'), [both.key])
+  assert.deepEqual(await jql('fixVersion in ("2.3", "2.4")'), [both.key, one.key])
+  assert.deepEqual(await jql('fixVersion is EMPTY'), [none.key])
+  assert.deepEqual(await jql('fixVersion != "2.4"'), [one.key])
+  assert.deepEqual(await jql('fixVersion not in ("2.4")'), [one.key])                    // as in Jira, an item with none matches neither
+  assert.deepEqual(await jql('affectedVersion != "2.4"'), [])
+  // R8: the export lists them all
+  const csv = (await app.inject({ method: 'GET', url: '/api/v1/search/export.csv?q=Back-ported&resolution=all', headers: await bearer('owner@x.com') })).body
+  assert.match(csv, /Fix versions/); assert.match(csv, /2\.3, 2\.4/)
+  // R5: releasing 2.3 moves its unresolved work to 2.5 (2.3 replaced, other versions kept); finished work keeps 2.3
+  const done = (await call('GET', '/api/v1/projects/FXV')).body.statuses.find((s: any) => s.category === 'done').id
+  const finished = (await call('POST', '/api/v1/projects/FXV/issues', { title: 'Shipped', fixReleaseIds: [a] })).body
+  await pool.query('update issues set status_id = $2 where id = $1', [finished.id, done])
+  assert.equal((await call('POST', `/api/v1/projects/FXV/releases/${a}/release`, { moveTo: other })).status, 400)
+  assert.equal((await call('POST', `/api/v1/projects/FXV/releases/${a}/release`, { moveTo: c })).status, 200)
+  const fix = async (key: string) => (await call('GET', `/api/v1/issues/${key}`)).body.fixReleaseIds
+  assert.deepEqual(await fix(both.key), [c, b])
+  assert.deepEqual(await fix(one.key), [c])
+  assert.deepEqual(await fix(finished.key), [a])
+  // …and with no version to move to, unresolved work keeps the released one (Jira's "ignore")
+  await call('POST', `/api/v1/projects/FXV/releases/${b}/release`, { moveTo: null })
+  assert.deepEqual(await fix(both.key), [c, b])
+  // R6: deleting a version takes it off every item's fix and affects versions
+  await call('PATCH', `/api/v1/issues/${both.key}`, { affectsReleaseIds: [b] })
+  assert.equal((await call('DELETE', `/api/v1/projects/FXV/releases/${b}`)).status, 204)
+  const after = (await call('GET', `/api/v1/issues/${both.key}`)).body
+  assert.deepEqual([after.fixReleaseIds, after.affectsReleaseIds], [[c], []])
+  // R8: the JSON import takes a list, and the single value of files from before
+  const r = await call('POST', '/api/v1/import', {
+    version: 4, starred: [], views: [], comments: [], activity: [], sprints: [],
+    projects: [{ id: 'fp', key: 'FXI', name: 'Imported versions', template: 'kanban', color: '#112233', nextNumber: 3, createdAt: 1,
+      statuses: [{ id: 's1', name: 'To do', color: '#000000', category: 'todo' }], transitions: [], fields: [], templates: [], rules: [],
+      releases: [{ id: 'r1', name: '1.0' }, { id: 'r2', name: '1.1' }] }],
+    issues: [
+      { id: 'n1', key: 'FXI-1', projectId: 'fp', type: 'task', title: 'Old file', status: 's1', priority: 'none', labels: [], rank: 1, createdAt: 1, updatedAt: 1, custom: {}, releaseId: 'r1' },
+      { id: 'n2', key: 'FXI-2', projectId: 'fp', type: 'task', title: 'New file', status: 's1', priority: 'none', labels: [], rank: 2, createdAt: 1, updatedAt: 1, custom: {}, fixReleaseIds: ['r1', 'r2'] },
+    ],
+  })
+  assert.equal(r.status, 200)
+  assert.equal((await fix('FXI-1')).length, 1)
+  assert.equal((await fix('FXI-2')).length, 2)
 })

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Plus, Rocket, ArrowLeft, MoreHorizontal, Pencil, Trash2, CalendarDays } from 'lucide-react'
-import { useStore, uid, isDone, type Project, type Release } from '../data/store'
+import { useStore, uid, isDone, itemsInRelease, type Project, type Release } from '../data/store'
 import { useApp } from '../appContext'
 import IssueTable, { type TableGroup } from './IssueTable'
 import { Empty, Menu, Modal, plural, formatDate } from './ui'
@@ -25,7 +25,7 @@ export default function ReleasesView({ project, releaseId }: { project: Project;
   const [groupBy, setGroupBy] = useState<TableGroup>('status')
   const releases = project.releases
   const setReleases = (next: Release[]) => dispatch({ type: 'updateProject', id: project.id, patch: { releases: next } })
-  const itemsOf = (r: Release) => state.issues.filter(i => i.projectId === project.id && i.releaseId === r.id)
+  const itemsOf = (r: Release) => itemsInRelease(state.issues.filter(i => i.projectId === project.id), r.id)
   const current = releases.find(r => r.id === releaseId)
 
   const actions = (r: Release) => (
@@ -56,8 +56,9 @@ export default function ReleasesView({ project, releaseId }: { project: Project;
         footer={<>
           <button className="btn btn-secondary" onClick={() => setDeleting(null)}>Cancel</button>
           <button className="btn btn-danger" onClick={() => {
-            const ids = itemsOf(deleting).map(i => i.id)
-            if (ids.length) dispatch({ type: 'updateIssues', ids, patch: { releaseId: undefined } })
+            // the server takes it off the items' fix and affects versions; so does this copy
+            for (const i of state.issues.filter(i => i.projectId === project.id && (i.fixReleaseIds?.includes(deleting.id) || i.affectsReleaseIds?.includes(deleting.id))))
+              dispatch({ type: 'updateIssues', ids: [i.id], patch: { fixReleaseIds: (i.fixReleaseIds ?? []).filter(r => r !== deleting.id), affectsReleaseIds: (i.affectsReleaseIds ?? []).filter(r => r !== deleting.id) } })
             setReleases(releases.filter(r => r.id !== deleting.id)); setDeleting(null)
             if (current) openProject(project.id, 'releases')
           }}>Delete release</button>
@@ -93,7 +94,7 @@ export default function ReleasesView({ project, releaseId }: { project: Project;
           <ReleaseBar {...p} />
         </div>
         <IssueTable id={`release:${current.id}`} issues={p.items} project={project} groupBy={groupBy} onGroupBy={setGroupBy}
-          emptyText="No work items in this release yet. Set the Release field on work items to add them." />
+          emptyText="No work items in this release yet. Set the Fix versions field on work items to add them." />
         {modals}
       </div>
     )
@@ -103,7 +104,7 @@ export default function ReleasesView({ project, releaseId }: { project: Project;
   if (releases.length === 0) {
     return <>
       <Empty icon={<Rocket size={22} strokeWidth={1.5} />} title="Plan what ships when"
-        body="Releases group work items into versions you ship, with progress and dates. Add work to a release from its Release field."
+        body="Releases group work items into versions you ship, with progress and dates. Add work to a release from its Fix versions field."
         action={<button className="btn btn-primary" onClick={() => setEditing({ id: uid(), name: '', description: '', released: false })}><Plus size={15} />Create release</button>} />
       {modals}
     </>
@@ -188,7 +189,7 @@ function ReleaseDialog({ release, isNew, onClose, onSave }: { release: Release; 
 function ReleaseDialogConfirm({ project, release, onClose }: { project: Project; release: Release; onClose: () => void }) {
   const { state, dispatch } = useStore()
   const { toast } = useApp()
-  const open = state.issues.filter(i => i.projectId === project.id && i.releaseId === release.id && !isDone(project, i))
+  const open = state.issues.filter(i => i.projectId === project.id && !!i.fixReleaseIds?.includes(release.id) && !isDone(project, i))
   const others = project.releases.filter(r => r.id !== release.id && !r.released)
   const [moveTo, setMoveTo] = useState<string>(others[0]?.id ?? '')
   return (

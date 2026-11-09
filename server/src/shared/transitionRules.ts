@@ -37,12 +37,14 @@ export const LIMITS = { groups: 10, rulesPerGroup: 50, validators: 50, actions: 
 /** Fields rules can name, with the words people see. Custom fields are `custom.<field id>`. */
 export const RULE_FIELDS: Record<string, string> = {
   assigneeId: 'Assignee', priority: 'Priority', labels: 'Labels', dueDate: 'Due date', startDate: 'Start date',
-  estimate: 'Estimate', timeEstimate: 'Time estimate', description: 'Description', releaseId: 'Release',
+  estimate: 'Estimate', timeEstimate: 'Time estimate', description: 'Description', fixReleaseIds: 'Fix versions',
   sprintId: 'Sprint', resolution: 'Resolution', type: 'Type',
 }
 export const DATE_FIELDS = ['dueDate', 'startDate']
 /** Fields an action may set (Assignee has its own action; Type changes the item's nature, so it is left to people). */
-export const SETTABLE = ['priority', 'labels', 'dueDate', 'startDate', 'estimate', 'timeEstimate', 'releaseId', 'sprintId', 'resolution']
+export const SETTABLE = ['priority', 'labels', 'dueDate', 'startDate', 'estimate', 'timeEstimate', 'fixReleaseIds', 'sprintId', 'resolution']
+/** Fields holding a list: a set action's single value becomes a one-element list. */
+const LISTS = ['labels', 'fixReleaseIds']
 
 export const isRuleField = (f: string) => f in RULE_FIELDS || /^custom\.[0-9a-f-]{36}$/i.test(f)
 
@@ -133,7 +135,7 @@ export function actionChanges(r: TransitionRules | undefined, ctx: RuleCtx, afte
   const comments: string[] = []
   let custom: Record<string, string | number> | undefined
   const put = (field: string, value: unknown) => {
-    if (!field.startsWith('custom.')) { patch[field] = value; return }
+    if (!field.startsWith('custom.')) { patch[field] = LISTS.includes(field) && !Array.isArray(value) ? (value == null || value === '' ? [] : [value]) : value; return }
     custom ??= { ...(after.custom ?? {}) }
     if (value == null || value === '') delete custom[field.slice(7)]
     else custom[field.slice(7)] = value as string | number

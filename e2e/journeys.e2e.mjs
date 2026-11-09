@@ -582,7 +582,7 @@ test('coverage: a story gains a test, shows NOK for version 1.0 after a failure,
   await o.waitForSelector('section[aria-label="Test coverage"] h2 .test-lozenge:has-text("Not run")', { timeout: 15_000 })
   // a failing run for 1.0, then a passing one
   const runOnce = async (status) => {
-    const e = (await owner('POST', '/projects/CVG/issues', { title: `Run ${status}`, type: 'test_execution', releaseId: v1.id })).body
+    const e = (await owner('POST', '/projects/CVG/issues', { title: `Run ${status}`, type: 'test_execution', fixReleaseIds: [v1.id] })).body
     await owner('POST', `/issues/${e.key}/runs`, { keys: [t.key] })
     const [r] = (await owner('GET', `/issues/${e.key}/runs`)).body
     await owner('PATCH', `/test-runs/${r.id}`, { status })
@@ -1195,4 +1195,25 @@ test('[0203.R9] Jira’s default permissions on screen: a member can’t touch o
   for (let i = 0; i < 40 && (await owner('GET', `/issues/${item.key}`)).body.reporterId !== mayaId; i++) await new Promise(r => setTimeout(r, 250))
   assert.equal((await owner('GET', `/issues/${item.key}`)).body.reporterId, mayaId)
   assert.deepEqual([...m.problems, ...o.problems], [])
+})
+
+test('[0301.R1][0301.R3] several fix versions: set two on an item, then find it by either with JQL', { skip, timeout: 90_000 }, async () => {
+  await owner('POST', '/projects', { name: 'Versions', key: 'VER', template: 'kanban' })
+  for (const name of ['2.3', '2.4']) await owner('POST', '/projects/VER/releases', { name })
+  const item = (await owner('POST', '/projects/VER/issues', { title: 'Back-ported fix' })).body
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url(`/i/${item.key}`))
+  await o.selectOption('[aria-label="Add to fix versions"]', { label: '2.3' })
+  await o.selectOption('[aria-label="Add to fix versions"]', { label: '2.4' })
+  const fix = async () => (await owner('GET', `/issues/${item.key}`)).body.fixReleaseIds.length
+  for (let i = 0; i < 40 && (await fix()) < 2; i++) await new Promise(r => setTimeout(r, 250))
+  assert.equal(await fix(), 2)
+  await o.goto(url('/search?q='))
+  await o.click('button:has-text("Switch to JQL")')
+  await o.fill('textarea[aria-label="JQL query"]', 'project = VER AND fixVersion = "2.3"')
+  await o.press('textarea[aria-label="JQL query"]', 'Enter')
+  await o.waitForSelector(`text=${item.key}`)
+  await o.fill('textarea[aria-label="JQL query"]', 'project = VER AND fixVersion = "2.4"')
+  await o.press('textarea[aria-label="JQL query"]', 'Enter')
+  await o.waitForSelector('text=1 result')
 })

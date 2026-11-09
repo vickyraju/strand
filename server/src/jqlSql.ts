@@ -9,7 +9,7 @@ const DATES: Record<string, string> = { created: 'i.created_at', updated: 'i.upd
 const NUMBERS: Record<string, string> = { estimate: 'i.estimate', timeEstimate: 'i.time_estimate', timeRemaining: 'i.time_remaining' }
 const EMPTY: Record<string, string> = {
   assignee: 'i.assignee_id is null', reporter: 'i.reporter_id is null', labels: 'cardinality(i.labels) = 0', component: 'cardinality(i.component_ids) = 0',
-  fixVersion: 'i.release_id is null', affectedVersion: 'cardinality(i.affects_release_ids) = 0', sprint: 'i.sprint_id is null', parent: 'i.parent_id is null',
+  fixVersion: 'cardinality(i.fix_release_ids) = 0', affectedVersion: 'cardinality(i.affects_release_ids) = 0', sprint: 'i.sprint_id is null', parent: 'i.parent_id is null',
   resolution: 'i.resolution is null', description: `coalesce(i.description, '') = ''`,
   due: 'i.due_date is null', start: 'i.start_date is null', resolved: 'i.resolved_at is null',
   estimate: 'i.estimate is null', timeEstimate: 'i.time_estimate is null', timeRemaining: 'i.time_remaining is null',
@@ -164,7 +164,7 @@ export async function jqlToSql(d: Db, me: Me, q: Query, args: unknown[]): Promis
       case 'reporter': return person('i.reporter_id', v)
       case 'labels': return `${put(text(v, 'labels'))} = any(i.labels)`
       case 'component': return `exists (select 1 from components c where c.id = any(i.component_ids) and lower(c.name) = lower(${put(text(v, 'component'))}))`
-      case 'fixVersion': return `i.release_id in (select r.id from releases r where r.project_id = i.project_id and lower(r.name) = lower(${put(text(v, 'fixVersion'))}))`
+      case 'fixVersion': return `exists (select 1 from releases r where r.id = any(i.fix_release_ids) and lower(r.name) = lower(${put(text(v, 'fixVersion'))}))`   // any of its fix versions (spec 0301)
       case 'affectedVersion': return `exists (select 1 from releases r where r.id = any(i.affects_release_ids) and lower(r.name) = lower(${put(text(v, 'affectedVersion'))}))`
       case 'sprint':
         if (v.kind === 'fn' && (v.name === 'opensprints' || v.name === 'closedsprints')) return `i.sprint_id in (select id from sprints where state = '${v.name === 'opensprints' ? 'active' : 'closed'}')`
@@ -223,7 +223,9 @@ export async function jqlToSql(d: Db, me: Me, q: Query, args: unknown[]): Promis
     }
     const any = c.values.map(v => eq(c, v))
     const cond = any.length === 1 ? any[0]! : `(${any.join(' or ')})`
-    return c.op === '=' || c.op === 'in' ? cond : `not ${cond.startsWith('(') ? cond : `(${cond})`}`   // as in Jira, an empty field matches neither = nor !=
+    if (c.op === '=' || c.op === 'in') return cond
+    // as in Jira, an empty field matches neither = nor != (a list field, such as fix versions, is empty when it has none)
+    return `(not ${cond.startsWith('(') ? cond : `(${cond})`}${EMPTY[c.field] ? ` and not (${EMPTY[c.field]})` : ''})`
   }
   /** Xray's test functions (issue in testPlanTests("PAY-9", "FAIL")…), each worked out here into the items it means. */
   const testFn = (v: Extract<Value, { kind: 'fn' }>): string => {

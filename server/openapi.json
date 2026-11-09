@@ -11089,7 +11089,7 @@
     },
     "/api/v1/projects/{key}/releases/{id}/release": {
       "post": {
-        "summary": "Mark a release shipped; unfinished work moves to another release",
+        "summary": "Mark a release shipped; unfinished work may move to another release",
         "tags": [
           "Project settings"
         ],
@@ -11105,7 +11105,7 @@
                 "properties": {
                   "moveTo": {
                     "default": null,
-                    "description": "Release that receives unfinished work",
+                    "description": "Release that receives unfinished work (null: it keeps this one)",
                     "nullable": true,
                     "type": "string",
                     "format": "uuid",
@@ -14040,10 +14040,12 @@
                             "type": "string",
                             "description": "uuid"
                           },
-                          "releaseId": {
-                            "nullable": true,
-                            "type": "string",
-                            "description": "uuid"
+                          "fixReleaseIds": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "description": "uuid"
+                            }
                           },
                           "parentId": {
                             "nullable": true,
@@ -14120,7 +14122,7 @@
                           "dueDate",
                           "startDate",
                           "sprintId",
-                          "releaseId",
+                          "fixReleaseIds",
                           "parentId",
                           "custom",
                           "rank",
@@ -14499,10 +14501,12 @@
                             "type": "string",
                             "description": "uuid"
                           },
-                          "releaseId": {
-                            "nullable": true,
-                            "type": "string",
-                            "description": "uuid"
+                          "fixReleaseIds": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "description": "uuid"
+                            }
                           },
                           "parentId": {
                             "nullable": true,
@@ -14579,7 +14583,7 @@
                           "dueDate",
                           "startDate",
                           "sprintId",
-                          "releaseId",
+                          "fixReleaseIds",
                           "parentId",
                           "custom",
                           "rank",
@@ -14779,12 +14783,15 @@
                     "format": "uuid",
                     "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                   },
-                  "releaseId": {
-                    "nullable": true,
-                    "description": "Fix version",
-                    "type": "string",
-                    "format": "uuid",
-                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  "fixReleaseIds": {
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                    },
+                    "description": "Fix versions: releases of the project that fix it"
                   },
                   "parentId": {
                     "nullable": true,
@@ -15111,10 +15118,12 @@
                       "type": "string",
                       "description": "uuid"
                     },
-                    "releaseId": {
-                      "nullable": true,
-                      "type": "string",
-                      "description": "uuid"
+                    "fixReleaseIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "description": "uuid"
+                      }
                     },
                     "parentId": {
                       "nullable": true,
@@ -15191,7 +15200,7 @@
                     "dueDate",
                     "startDate",
                     "sprintId",
-                    "releaseId",
+                    "fixReleaseIds",
                     "parentId",
                     "custom",
                     "rank",
@@ -15479,10 +15488,12 @@
                       "type": "string",
                       "description": "uuid"
                     },
-                    "releaseId": {
-                      "nullable": true,
-                      "type": "string",
-                      "description": "uuid"
+                    "fixReleaseIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "description": "uuid"
+                      }
                     },
                     "parentId": {
                       "nullable": true,
@@ -15559,7 +15570,7 @@
                     "dueDate",
                     "startDate",
                     "sprintId",
-                    "releaseId",
+                    "fixReleaseIds",
                     "parentId",
                     "custom",
                     "rank",
@@ -15809,10 +15820,12 @@
                       "type": "string",
                       "description": "uuid"
                     },
-                    "releaseId": {
-                      "nullable": true,
-                      "type": "string",
-                      "description": "uuid"
+                    "fixReleaseIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "description": "uuid"
+                      }
                     },
                     "parentId": {
                       "nullable": true,
@@ -16231,10 +16244,12 @@
                             "type": "string",
                             "description": "uuid"
                           },
-                          "releaseId": {
-                            "nullable": true,
-                            "type": "string",
-                            "description": "uuid"
+                          "fixReleaseIds": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "description": "uuid"
+                            }
                           },
                           "parentId": {
                             "nullable": true,
@@ -16311,7 +16326,7 @@
                           "dueDate",
                           "startDate",
                           "sprintId",
-                          "releaseId",
+                          "fixReleaseIds",
                           "parentId",
                           "custom",
                           "rank",
@@ -16350,7 +16365,7 @@
                     "dueDate",
                     "startDate",
                     "sprintId",
-                    "releaseId",
+                    "fixReleaseIds",
                     "parentId",
                     "custom",
                     "rank",
@@ -16544,12 +16559,15 @@
                     "format": "uuid",
                     "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                   },
-                  "releaseId": {
-                    "nullable": true,
-                    "description": "Fix version",
-                    "type": "string",
-                    "format": "uuid",
-                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  "fixReleaseIds": {
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                    },
+                    "description": "Fix versions: releases of the project that fix it"
                   },
                   "parentId": {
                     "nullable": true,
@@ -16885,10 +16903,12 @@
                       "type": "string",
                       "description": "uuid"
                     },
-                    "releaseId": {
-                      "nullable": true,
-                      "type": "string",
-                      "description": "uuid"
+                    "fixReleaseIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "description": "uuid"
+                      }
                     },
                     "parentId": {
                       "nullable": true,
@@ -16965,7 +16985,7 @@
                     "dueDate",
                     "startDate",
                     "sprintId",
-                    "releaseId",
+                    "fixReleaseIds",
                     "parentId",
                     "custom",
                     "rank",
@@ -18071,12 +18091,15 @@
                         "format": "uuid",
                         "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                       },
-                      "releaseId": {
-                        "nullable": true,
-                        "description": "Fix version",
-                        "type": "string",
-                        "format": "uuid",
-                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                      "fixReleaseIds": {
+                        "maxItems": 50,
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                        },
+                        "description": "Fix versions: releases of the project that fix it"
                       },
                       "parentId": {
                         "nullable": true,
@@ -18409,10 +18432,12 @@
                       "type": "string",
                       "description": "uuid"
                     },
-                    "releaseId": {
-                      "nullable": true,
-                      "type": "string",
-                      "description": "uuid"
+                    "fixReleaseIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "description": "uuid"
+                      }
                     },
                     "parentId": {
                       "nullable": true,
@@ -18489,7 +18514,7 @@
                     "dueDate",
                     "startDate",
                     "sprintId",
-                    "releaseId",
+                    "fixReleaseIds",
                     "parentId",
                     "custom",
                     "rank",
@@ -18697,12 +18722,15 @@
                         "format": "uuid",
                         "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                       },
-                      "releaseId": {
-                        "nullable": true,
-                        "description": "Fix version",
-                        "type": "string",
-                        "format": "uuid",
-                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                      "fixReleaseIds": {
+                        "maxItems": 50,
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                        },
+                        "description": "Fix versions: releases of the project that fix it"
                       },
                       "parentId": {
                         "nullable": true,
@@ -19023,10 +19051,12 @@
                             "type": "string",
                             "description": "uuid"
                           },
-                          "releaseId": {
-                            "nullable": true,
-                            "type": "string",
-                            "description": "uuid"
+                          "fixReleaseIds": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "description": "uuid"
+                            }
                           },
                           "parentId": {
                             "nullable": true,
@@ -19103,7 +19133,7 @@
                           "dueDate",
                           "startDate",
                           "sprintId",
-                          "releaseId",
+                          "fixReleaseIds",
                           "parentId",
                           "custom",
                           "rank",
@@ -20052,10 +20082,12 @@
                       "type": "string",
                       "description": "uuid"
                     },
-                    "releaseId": {
-                      "nullable": true,
-                      "type": "string",
-                      "description": "uuid"
+                    "fixReleaseIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "description": "uuid"
+                      }
                     },
                     "parentId": {
                       "nullable": true,
@@ -20132,7 +20164,7 @@
                     "dueDate",
                     "startDate",
                     "sprintId",
-                    "releaseId",
+                    "fixReleaseIds",
                     "parentId",
                     "custom",
                     "rank",
@@ -30178,10 +30210,12 @@
                         "type": "string",
                         "description": "uuid"
                       },
-                      "releaseId": {
-                        "nullable": true,
-                        "type": "string",
-                        "description": "uuid"
+                      "fixReleaseIds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "description": "uuid"
+                        }
                       },
                       "parentId": {
                         "nullable": true,
@@ -30265,7 +30299,7 @@
                       "dueDate",
                       "startDate",
                       "sprintId",
-                      "releaseId",
+                      "fixReleaseIds",
                       "parentId",
                       "custom",
                       "rank",
@@ -30546,10 +30580,12 @@
                             "type": "string",
                             "description": "uuid"
                           },
-                          "releaseId": {
-                            "nullable": true,
-                            "type": "string",
-                            "description": "uuid"
+                          "fixReleaseIds": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "description": "uuid"
+                            }
                           },
                           "parentId": {
                             "nullable": true,
@@ -30633,7 +30669,7 @@
                           "dueDate",
                           "startDate",
                           "sprintId",
-                          "releaseId",
+                          "fixReleaseIds",
                           "parentId",
                           "custom",
                           "rank",
@@ -30913,10 +30949,12 @@
                         "type": "string",
                         "description": "uuid"
                       },
-                      "releaseId": {
-                        "nullable": true,
-                        "type": "string",
-                        "description": "uuid"
+                      "fixReleaseIds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "description": "uuid"
+                        }
                       },
                       "parentId": {
                         "nullable": true,
@@ -31000,7 +31038,7 @@
                       "dueDate",
                       "startDate",
                       "sprintId",
-                      "releaseId",
+                      "fixReleaseIds",
                       "parentId",
                       "custom",
                       "rank",
@@ -32665,10 +32703,12 @@
                         "type": "string",
                         "description": "uuid"
                       },
-                      "releaseId": {
-                        "nullable": true,
-                        "type": "string",
-                        "description": "uuid"
+                      "fixReleaseIds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "description": "uuid"
+                        }
                       },
                       "parentId": {
                         "nullable": true,
@@ -32752,7 +32792,7 @@
                       "dueDate",
                       "startDate",
                       "sprintId",
-                      "releaseId",
+                      "fixReleaseIds",
                       "parentId",
                       "custom",
                       "rank",
@@ -32885,6 +32925,7 @@
                     }
                   },
                   "releaseId": {
+                    "description": "Its fix version",
                     "nullable": true,
                     "type": "string",
                     "format": "uuid",
@@ -33039,10 +33080,12 @@
                       "type": "string",
                       "description": "uuid"
                     },
-                    "releaseId": {
-                      "nullable": true,
-                      "type": "string",
-                      "description": "uuid"
+                    "fixReleaseIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "description": "uuid"
+                      }
                     },
                     "parentId": {
                       "nullable": true,
@@ -33119,7 +33162,7 @@
                     "dueDate",
                     "startDate",
                     "sprintId",
-                    "releaseId",
+                    "fixReleaseIds",
                     "parentId",
                     "custom",
                     "rank",
@@ -34398,10 +34441,12 @@
                           "type": "string",
                           "description": "uuid"
                         },
-                        "releaseId": {
-                          "nullable": true,
-                          "type": "string",
-                          "description": "uuid"
+                        "fixReleaseIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "description": "uuid"
+                          }
                         },
                         "parentId": {
                           "nullable": true,
@@ -34478,7 +34523,7 @@
                         "dueDate",
                         "startDate",
                         "sprintId",
-                        "releaseId",
+                        "fixReleaseIds",
                         "parentId",
                         "custom",
                         "rank",
@@ -44603,10 +44648,12 @@
                             "type": "string",
                             "description": "uuid"
                           },
-                          "releaseId": {
-                            "nullable": true,
-                            "type": "string",
-                            "description": "uuid"
+                          "fixReleaseIds": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "description": "uuid"
+                            }
                           },
                           "parentId": {
                             "nullable": true,
@@ -44690,7 +44737,7 @@
                           "dueDate",
                           "startDate",
                           "sprintId",
-                          "releaseId",
+                          "fixReleaseIds",
                           "parentId",
                           "custom",
                           "rank",

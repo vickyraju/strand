@@ -1,6 +1,6 @@
 # 0301 Several fix versions on a work item
 
-Status: In review
+Status: Approved (PO, 9 Nov 2026: "i approve everything" for the next two hours of work)
 Parity rows: ISS-01
 
 ## Context and Jira reference
@@ -108,3 +108,8 @@ Same rules. The issue row and the migrations differ as usual.
 None. Jira's behaviour is followed throughout.
 
 ## Changelog
+
+- 9 Nov 2026, while building (within the approved rules):
+  - **R5:** releasing without choosing a version to move to now leaves unresolved work in the released version (Jira's "ignore"). Before, Strand cleared it.
+  - **R3:** `!=` and `not in` no longer match an item with no value in a list field (fix versions, affects versions), as in Jira.
+  - **Screens:** bulk edit has no Fix versions field today; adding it is left for later, so "Replace all with" isn't built.

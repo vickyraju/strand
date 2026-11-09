@@ -348,11 +348,13 @@ export function sampleWorkspace(owner: User, now = Date.now()): Partial<State> {
   const forProject = (p: Project) => issues.filter(i => i.projectId === p.id && i.type !== 'epic')
   for (const i of forProject(payP)) {
     const sp = sprints.find(x => x.id === i.sprintId)
-    i.releaseId = sp?.state === 'closed' ? payP.releases[0].id : sp?.state === 'active' ? payP.releases[1].id : i.labels.includes('webhooks') ? payP.releases[2].id : undefined
+    const r = sp?.state === 'closed' ? payP.releases[0].id : sp?.state === 'active' ? payP.releases[1].id : i.labels.includes('webhooks') ? payP.releases[2].id : undefined
+    if (r) i.fixReleaseIds = [r]
   }
   for (const i of forProject(mobP)) {
-    i.releaseId = mobP.statuses.find(st => st.id === i.status)?.category === 'done' ? mobP.releases[0].id
+    const r = mobP.statuses.find(st => st.id === i.status)?.category === 'done' ? mobP.releases[0].id
       : i.labels.some(l => ['ios', 'android'].includes(l)) || i.parentId ? mobP.releases[1].id : undefined
+    if (r) i.fixReleaseIds = [r]
   }
 
   mobP.fields = [
@@ -367,7 +369,7 @@ export function sampleWorkspace(owner: User, now = Date.now()): Partial<State> {
   const customers = ['Acme Coffee', 'Northwind Bikes', 'Bluebird Florists', 'Harbor Dental', 'Kite & Co', 'Lumen Studio', 'Oakline Books', 'Pinecrest Gym', 'Quarry Bakery', 'Riverbend Vets']
   forProject(mobP).forEach(i => {
     i.custom[mobP.fields[0].id] = i.labels.includes('ios') && i.labels.includes('android') ? 'Both' : i.labels.includes('android') ? 'Android' : i.labels.includes('ios') ? 'iOS' : 'Both'
-    if (i.releaseId === mobP.releases[0].id) i.custom[mobP.fields[1].id] = '5.0.0'
+    if (i.fixReleaseIds?.includes(mobP.releases[0].id)) i.custom[mobP.fields[1].id] = '5.0.0'
   })
   forProject(supP).forEach((i, k) => {
     i.custom[supP.fields[0].id] = customers[k % customers.length]

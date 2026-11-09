@@ -114,7 +114,7 @@ const validators = (statuses: Status[]): [string, Validator][] => [
 const ACTIONS: [string, Action][] = [
   ['Assign', { kind: 'assign', to: 'mover' }],
   ['Set or clear a field', { kind: 'set', field: 'priority', value: 'high' }],
-  ['Copy a field from the parent', { kind: 'copyFromParent', field: 'releaseId' }],
+  ['Copy a field from the parent', { kind: 'copyFromParent', field: 'fixReleaseIds' }],
   ['Add a comment', { kind: 'comment', body: '' }],
 ]
 const CONDITIONS: [string, Condition][] = [

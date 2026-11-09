@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { reducer, migrate, EMPTY, isDone, moveContext, transitionsFrom, loopsFrom, type Action, type State, type Issue } from './reducer.ts'
+import { reducer, migrate, EMPTY, isDone, moveContext, transitionsFrom, loopsFrom, itemsInRelease, type Action, type State, type Issue } from './reducer.ts'
 import { withSample } from './testdata.ts'
 
 /** Do the next actions as someone else (the reducer attributes actions to the signed-in person) */
@@ -187,7 +187,7 @@ test('time logs add up; on a server project only the author or a project admin c
   assert.ok(s.activity.some(a => a.text === 'logged 1h 30m'))
 })
 
-test('releasing a version moves unfinished work to the next one', () => {
+test('[0301.R5] releasing a version moves unfinished work to the next one, keeping their other fix versions', () => {
   let { s } = workspace()
   s = run([
     { type: 'createIssue', id: 'i2', issue: { projectId: 'p1', title: 'Done one' } },
@@ -195,13 +195,20 @@ test('releasing a version moves unfinished work to the next one', () => {
       { id: 'r1', name: '1.0', description: '', released: false },
       { id: 'r2', name: '1.1', description: '', released: false },
     ] } },
-    { type: 'updateIssues', ids: ['i1', 'i2'], patch: { releaseId: 'r1' } },
+    { type: 'updateIssues', ids: ['i1', 'i2'], patch: { fixReleaseIds: ['r1'] } },
+    { type: 'updateIssues', ids: ['i1'], patch: { fixReleaseIds: ['r0', 'r1'] } },
     { type: 'updateIssues', ids: ['i2'], patch: { status: 'done' } },
     { type: 'releaseVersion', projectId: 'p1', releaseId: 'r1', moveTo: 'r2' },
   ], s)
   assert.ok(s.projects[0].releases[0].released)
-  assert.equal(s.issues.find(i => i.id === 'i1')!.releaseId, 'r2')
-  assert.equal(s.issues.find(i => i.id === 'i2')!.releaseId, 'r1')
+  assert.deepEqual(s.issues.find(i => i.id === 'i1')!.fixReleaseIds, ['r0', 'r2'])
+  assert.deepEqual(s.issues.find(i => i.id === 'i2')!.fixReleaseIds, ['r1'])
+})
+
+test('[0301.R4] a release’s work items: an item in two versions counts in both', () => {
+  const two = { id: 'a', fixReleaseIds: ['r1', 'r2'] } as Issue, one = { id: 'b', fixReleaseIds: ['r2'] } as Issue, none = { id: 'c' } as Issue
+  assert.deepEqual(itemsInRelease([two, one, none], 'r1').map(i => i.id), ['a'])
+  assert.deepEqual(itemsInRelease([two, one, none], 'r2').map(i => i.id), ['a', 'b'])
 })
 
 test('deleting a project clears it from saved views', () => {
