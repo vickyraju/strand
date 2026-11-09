@@ -1,6 +1,6 @@
 # 0304 Versions and components: move work when deleting, merge versions, archive versions
 
-Status: Approved (PO, 9 Nov 2026: "i approve everything" for the next two hours of work)
+Status: Ported (aws-jira `2e79cde`, strand `9d0dd36`), approved by the PO on 9 Nov 2026; awaiting verification
 Parity rows: ISS-15, ISS-16
 
 ## Context and Jira reference
