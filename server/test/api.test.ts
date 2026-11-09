@@ -3890,6 +3890,11 @@ test('[0303.R1][0303.R2][0303.R3][0303.R4] the hierarchy is kept by the server: 
   const gone = (await mk('LVL', 'Gone')).body
   await call('DELETE', `/api/v1/issues/${gone.key}`)
   assert.deepEqual(err(await mk('LVL', 'x', { parentId: gone.id })), [400, 'No such parent'])
+  // strand: a parent hidden by a security level is no parent either
+  const lvl = (await call('POST', '/api/v1/projects/LVL/security-levels', { name: 'Admins', members: [{ kind: 'role', role: 'admin' }] })).body
+  const secret = (await mk('LVL', 'Secret item', { securityLevelId: lvl.id })).body
+  assert.deepEqual(err(await mk('LVL', 'x', { parentId: secret.id }, 'lvl.mem@x.com')), [400, 'No such parent'])
+  assert.equal((await mk('LVL', 'Under the secret', { parentId: secret.id })).status, 201)
   // R4: type changes keep the levels
   assert.equal((await call('PATCH', `/api/v1/issues/${epic.key}`, { type: 'task' })).status, 400)            // it has items
   assert.equal((await call('PATCH', `/api/v1/issues/${item.key}`, { type: 'epic' })).status, 400)            // it has a parent (and sub-items)
