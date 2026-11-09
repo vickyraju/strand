@@ -52,7 +52,7 @@ The roadmap, in order. Bugs come first, then the permission model, then the data
 | [0202](0202-deleting-items.md) | Deleting items: project admins only, sub-items go too, epics' items stay; Undo kept for a set time | 2 | Ported |
 | [0203](0203-default-permissions.md) | The rest of Jira's default permissions: sprints, attachments, comments, sharing, reporter, watchers, assignees (0203–0207 merged) | 2 | Ported |
 | [0301](0301-fix-versions.md) | Several fix versions | 3 | Ported |
-| 0302 | One rank across projects | 3 | Planned |
+| [0302](0302-global-rank.md) | One rank across projects | 3 | Ported |
 | 0303 | Hierarchy enforced on the server | 3 | Planned |
 | 0304 | Versions and components: move on delete, merge, archive, release moves unresolved | 3 | Planned |
 | 0305 | Priorities and resolutions as admin lists; resolution set by the transition | 3 | Planned |
