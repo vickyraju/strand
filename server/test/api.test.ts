@@ -4280,3 +4280,22 @@ test('[0408.R1][0408.R3][0408.R4] flagging a work item: members flag and unflag 
   await (await import('../src/jobs.ts')).runJobs()
   assert.deepEqual((await jql('flagged = Impediment')).items.map((i: any) => i.title), ['Imported stuck'])
 })
+
+test('[0409.R1][0409.R2] card colours: by queries, the first match wins and is sent with the board’s items; switching keeps the other method’s colours', { skip }, async () => {
+  await call('POST', '/api/v1/projects', { name: 'Colours', key: 'CLR', template: 'kanban' })
+  await join('CLR', 'clr.member@x.com')
+  const board = (await call('GET', '/api/v1/projects/CLR/boards')).body[0]
+  const a = (await call('POST', '/api/v1/projects/CLR/issues', { title: 'Hot', priority: 'high', labels: ['ui'] })).body
+  const b = (await call('POST', '/api/v1/projects/CLR/issues', { title: 'UI only', priority: 'low', labels: ['ui'] })).body
+  const c = (await call('POST', '/api/v1/projects/CLR/issues', { title: 'Plain', priority: 'low' })).body
+  const set = (cardColors: object, who?: string) => call('PATCH', `/api/v1/boards/${board.id}`, { cardColors }, who)
+  assert.equal((await set({ by: 'priorities' }, 'clr.member@x.com')).status, 403)
+  const bad = await set({ by: 'queries', queries: [{ jql: 'priority = ', color: '#DC2626' }] })
+  assert.equal(bad.status, 400); assert.match(bad.body.error, /cardColors/)
+  assert.equal((await set({ by: 'priorities', priorities: { high: '#FF0000' } })).status, 200)
+  const saved = (await set({ by: 'queries', queries: [{ jql: 'priority = High', color: '#DC2626' }, { jql: 'labels = ui', color: '#2563EB' }] })).body.cardColors
+  assert.deepEqual([saved.by, saved.priorities, saved.queries.length], ['queries', { high: '#FF0000' }, 2])   // the priorities' colours stay
+  const items = (await call('GET', `/api/v1/boards/${board.id}/issues`)).body.items
+  const colorOf = (key: string) => items.find((i: any) => i.key === key).color
+  assert.deepEqual([colorOf(a.key), colorOf(b.key), colorOf(c.key)], [saved.queries[0].id, saved.queries[1].id, ''])
+})

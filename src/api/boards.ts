@@ -37,35 +37,35 @@ export function useBoard(id: string | undefined) {
   return { board: board?.id === id ? board : null, error, reload: () => setN(x => x + 1), replace: setBoard }
 }
 
-interface Found { ids: string[]; lanes: Map<string, string>; total: number; status: 'loading' | 'ready' | 'error'; error: string }
+interface Found { ids: string[]; lanes: Map<string, string>; colors: Map<string, string>; total: number; status: 'loading' | 'ready' | 'error'; error: string }
 
 /** The items a board shows (ids in rank order, and each one's swimlane query) for these quick filters and scope,
  *  loaded into the store. Reloads when the board's filters, the quick filters, the scope or `version` change. */
 export function useBoardItems(board: Board | null, o: { quick: string[]; scope?: 'board' | 'backlog'; version?: string | number }) {
   const { dispatch } = useStore()
-  const [found, setFound] = useState<Found>({ ids: [], lanes: new Map(), total: 0, status: 'loading', error: '' })
+  const [found, setFound] = useState<Found>({ ids: [], lanes: new Map(), colors: new Map(), total: 0, status: 'loading', error: '' })
   const [attempt, setAttempt] = useState(0)
   const seq = useRef(0)
-  const key = board ? JSON.stringify([board.id, board.jql, board.quickFilters, board.swimlanes, board.doneDays, o.quick, o.scope ?? 'board', o.version ?? 0, attempt]) : ''
+  const key = board ? JSON.stringify([board.id, board.jql, board.quickFilters, board.swimlanes, board.cardColors?.queries, board.doneDays, o.quick, o.scope ?? 'board', o.version ?? 0, attempt]) : ''
   useEffect(() => {
     if (!board) return
     const mine = ++seq.current
     setFound(f => ({ ...f, status: 'loading', error: '' }))
     ;(async () => {
-      const ids: string[] = [], lanes = new Map<string, string>()
+      const ids: string[] = [], lanes = new Map<string, string>(), colors = new Map<string, string>()
       let cursor: string | null = null, total = 0
       do {
         const q = new URLSearchParams({ limit: '500', scope: o.scope ?? 'board', ...(o.quick.length ? { quick: o.quick.join(',') } : {}), ...(cursor ? { cursor } : {}) })
         const page: { items: Row[]; total: number; next: string | null } = await api('GET', `/api/boards/${encodeURIComponent(board.id)}/issues?${q}`)
         if (mine !== seq.current) return
         total = page.total
-        for (const r of page.items) { ids.push(r.id); lanes.set(r.id, r.lane ?? '') }
+        for (const r of page.items) { ids.push(r.id); lanes.set(r.id, r.lane ?? ''); colors.set(r.id, r.color ?? '') }
         // the sync layer learns them first, so they aren't taken for local changes and sent back
         issueSync.merge(page.items.map(r => ({ ...mapIssue(r), version: r.version })))
         dispatch({ type: 'mergeIssues', issues: page.items.map(mapIssue) })
         cursor = page.next
       } while (cursor && ids.length < BOARD_CAP)
-      if (mine === seq.current) setFound({ ids, lanes, total, status: 'ready', error: '' })
+      if (mine === seq.current) setFound({ ids, lanes, colors, total, status: 'ready', error: '' })
     })().catch(e => { if (mine === seq.current) setFound(f => ({ ...f, status: 'error', error: errorMessage(e) })) })
   }, [key])   // eslint-disable-line react-hooks/exhaustive-deps
   return { ...found, retry: () => setAttempt(a => a + 1) }

@@ -1,4 +1,7 @@
 import { useEffect, useState } from 'react'
+import { cardColor } from '../data/reducer'
+import { priorityOf } from '../data/lists'
+import { typeMeta } from './ui'
 import { useDurations } from '../api/settings-public'
 import { DndContext, DragOverlay, useDraggable, useDroppable, type DragEndEvent, type DragOverEvent, type DragStartEvent } from '@dnd-kit/core'
 import { ChevronDown, ChevronRight, Kanban, ListChecks, Plus, MoreHorizontal, ArrowRightLeft, Pencil, Trash2, Play, ArrowUpToLine, ArrowDownToLine } from 'lucide-react'
@@ -166,7 +169,8 @@ function Backlog({ project, board, switcher }: { project: Project; board?: Board
   }
 
   const row = (i: Issue, list: Issue[], listId: string) => (
-    <RowSlot key={i.id} issue={i} project={projectOf(i)} selected={selected.has(i.id)} onSelect={(on, shift) => select(i.id, on, shift)}
+    <RowSlot key={i.id} issue={i} project={projectOf(i)} stripe={board && cardColor(board.cardColors, i, { typeColor: typeMeta(i.type, projectOf(i)).color, priorityColor: priorityOf(i.priority).color, match: found.colors.get(i.id) })}
+      selected={selected.has(i.id)} onSelect={(on, shift) => select(i.id, on, shift)}
       dragging={carried.has(i.id)} showLineBefore={overId === rowTarget(i.id) && !carried.has(i.id)}
       endOf={list.at(-1)?.id === i.id ? listId : undefined} showLineAtEnd={overId === endTarget(listId)}
       onKeyDown={e => {
@@ -290,8 +294,8 @@ function BacklogBox({ highlight, children }: { highlight: boolean; children: Rea
 
 /** One row of a list: draggable, and a drop target (dropping on it puts the item before it). The last row of a list also
  *  carries a thin drop zone just below it, for dropping at the end of the list. */
-function RowSlot({ issue, project, selected, onSelect, dragging, showLineBefore, endOf, showLineAtEnd, onKeyDown, trailing }: {
-  issue: Issue; project: Project; selected: boolean; onSelect: (on: boolean, shift: boolean) => void
+function RowSlot({ stripe, issue, project, selected, onSelect, dragging, showLineBefore, endOf, showLineAtEnd, onKeyDown, trailing }: {
+  stripe?: string; issue: Issue; project: Project; selected: boolean; onSelect: (on: boolean, shift: boolean) => void
   dragging: boolean; showLineBefore: boolean; endOf?: string; showLineAtEnd: boolean
   onKeyDown: (e: React.KeyboardEvent) => void; trailing: React.ReactNode
 }) {
@@ -299,7 +303,7 @@ function RowSlot({ issue, project, selected, onSelect, dragging, showLineBefore,
   const drop = useDroppable({ id: rowTarget(issue.id) })
   return (
     <div ref={drop.setNodeRef} className={`rank-slot${showLineBefore ? ' drop-before' : ''}`} onKeyDown={onKeyDown}>
-      <IssueRow issue={issue} project={project} selected={selected} onSelect={onSelect} drag={drag} dragging={dragging} trailing={trailing} />
+      <IssueRow stripe={stripe} issue={issue} project={project} selected={selected} onSelect={onSelect} drag={drag} dragging={dragging} trailing={trailing} />
       {endOf && <EndZone list={endOf} showLine={showLineAtEnd} />}
     </div>
   )

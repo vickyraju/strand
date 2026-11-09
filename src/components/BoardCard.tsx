@@ -21,6 +21,8 @@ interface CardProps {
   fields:    Record<CardField, boolean>
   /** This is the card being dragged (its place on the board shows it faded). */
   dragging?: boolean
+  /** The board's card colour for it, shown on its left edge (spec 0409). */
+  stripe?: string
 }
 
 /** A card on the board: click or press Enter to open it; drag it, or press Space and use the arrow keys, to move it. */
@@ -34,7 +36,7 @@ export function CardGhost(props: Omit<CardProps, 'dragging'>) {
   return <CardView {...props} ghost />
 }
 
-function CardView({ issue, project, fields, dragging, ghost, drag }: CardProps & { ghost?: boolean; drag?: ReturnType<typeof useDraggable> }) {
+function CardView({ issue, project, fields, dragging, ghost, drag, stripe }: CardProps & { ghost?: boolean; drag?: ReturnType<typeof useDraggable> }) {
   const { state, dispatch } = useStore()
   const { openIssue, toast, moveIssue, runTransition } = useApp()
   const [deleting, setDeleting] = useState(false)
@@ -68,7 +70,8 @@ function CardView({ issue, project, fields, dragging, ghost, drag }: CardProps &
   return (
     <div
       ref={drag?.setNodeRef} {...drag?.attributes} {...drag?.listeners}
-      className={`card${dragging ? ' dragging' : ''}${ghost ? ' ghost' : ''}${blocked && !done ? ' blocked' : ''}${issue.flagged ? ' flagged' : ''}`}
+      className={`card${dragging ? ' dragging' : ''}${ghost ? ' ghost' : ''}${blocked && !done ? ' blocked' : ''}${issue.flagged ? ' flagged' : ''}${stripe ? ' striped' : ''}`}
+      style={stripe ? { '--stripe': stripe } as React.CSSProperties : undefined}
       data-card={ghost ? undefined : issue.id}
       onClick={ghost ? undefined : () => openIssue(issue.id)}
       onKeyDown={ghost ? undefined : e => {

@@ -1404,3 +1404,20 @@ test('[0408.R1][0408.R2] a member flags a card from its menu: it turns yellow an
   assert.match((await comments())[0], /Flag removed[\s\S]*Legal signed it off/)
   assert.deepEqual(o.problems, [])
 })
+
+test('[0409.R3] a board’s card colours by priority: the admin chooses Priorities and the cards get a stripe in each priority’s colour', { skip, timeout: 90_000 }, async () => {
+  await owner('POST', '/projects', { name: 'Colourful', key: 'CLF', template: 'kanban' })
+  const board = (await owner('GET', '/projects/CLF/boards')).body[0]
+  await owner('POST', '/projects/CLF/issues', { title: 'Urgent thing', priority: 'urgent' })
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url(`/project/CLF/boards/${board.id}`))
+  await o.selectOption('#bc-color-by', 'priorities')
+  await o.click('#card-colors button:has-text("Save")')
+  const by = async () => (await owner('GET', `/boards/${board.id}`)).body.cardColors.by
+  for (let i = 0; i < 40 && (await by()) !== 'priorities'; i++) await new Promise(r => setTimeout(r, 250))
+  await o.goto(url('/project/CLF/board'))
+  const card = o.locator('.card.striped:has-text("Urgent thing")')
+  await card.waitFor()
+  assert.equal(await card.evaluate(el => getComputedStyle(el).getPropertyValue('--stripe').trim().toUpperCase()), '#DC2626')
+  assert.deepEqual(o.problems, [])
+})

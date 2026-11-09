@@ -1,4 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
+import { cardColor } from '../data/reducer'
+import { priorityOf } from '../data/lists'
+import { typeMeta } from './ui'
 import { DndContext, DragOverlay, useDroppable, type DragEndEvent, type DragStartEvent } from '@dnd-kit/core'
 import {
   Plus, Columns2, ListChecks, ChevronDown, ChevronRight, ChevronsLeftRight, Settings2, Check, GitBranch, Timer, Kanban,
@@ -144,6 +147,8 @@ function BoardScreen({ project, board, switcher, quick: asked, onChanged }: {
   const [loadedAt] = useState(() => Date.now())
   const { byId } = indexOf(state)
   const onBoard = new Set(found.ids)
+  // the board's card colour for each card (spec 0409)
+  const stripeOf = (i: Issue) => cardColor(board.cardColors, i, { typeColor: typeMeta(i.type, projectOf(i)).color, priorityColor: priorityOf(i.priority).color, match: found.colors.get(i.id) })
   const boardItems = (local
     ? state.issues.filter(i => i.projectId === project.id && (!sprint || i.sprintId === sprint.id))
     : [
@@ -465,6 +470,7 @@ function BoardScreen({ project, board, switcher, quick: asked, onChanged }: {
                           project={projectOf(issue)!}
                           fields={cardFields}
                           dragging={dragging?.id === issue.id}
+                          stripe={stripeOf(issue)}
                         />
                       ))}
                       {!col.collapsed && cards.length > cardLimit(cellKey) && (

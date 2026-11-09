@@ -94,7 +94,8 @@ export const Board = z.object({
   id, projectId: id, projectKey: z.string(), name: z.string(), type: z.enum(['kanban', 'scrum']), jql: z.string().describe('The board filter'),
   columns: z.array(BoardColumn), swimlanes: z.object({ by: z.enum(['none', 'assignee', 'epic', 'priority', 'project', 'queries']), queries: z.array(NamedQuery).optional() }),
   quickFilters: z.array(NamedQuery), cardFields: z.record(z.string(), z.boolean()), doneDays: nullable(z.number()), estimation: z.enum(['points', 'time', 'count']).describe('Scrum: what estimates count (spec 0404)'),
-  workingDays: z.object({ weekdays: z.array(z.number()), nonWorking: z.array(z.string()) }).describe('Working weekdays (0 is Sunday) and non-working dates (spec 0405)'), position: z.number(),
+  workingDays: z.object({ weekdays: z.array(z.number()), nonWorking: z.array(z.string()) }).describe('Working weekdays (0 is Sunday) and non-working dates (spec 0405)'),
+  cardColors: z.object({ by: z.enum(['none', 'types', 'priorities', 'assignees', 'queries']) }).passthrough().describe('Card colours (spec 0409)'), position: z.number(),
   canManage: z.boolean().describe('I may change it'), canManageSprints: z.boolean().describe('I may create, start, complete and delete its sprints'), admins: z.array(z.object({ kind: z.enum(['user', 'group']), id, name: z.string() })),
 })
 export const ProjectDetail = z.object({
@@ -327,7 +328,7 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'GET /boards/:id': Board,
   'GET /boards/:id/statuses': z.array(z.object({ id, name: z.string(), category: z.enum(['todo', 'in-progress', 'done']), color: z.string() })),
   'PATCH /boards/:id': Board,
-  'GET /boards/:id/issues': z.object({ items: z.array(IssueRow.extend({ lane: z.string().describe('The swimlane query it falls in ("" for none)'), projectKey: z.string() })),
+  'GET /boards/:id/issues': z.object({ items: z.array(IssueRow.extend({ lane: z.string().describe('The swimlane query it falls in ("" for none)'), color: z.string().describe('The card colour query it matches first ("" for none)'), projectKey: z.string() })),
     total: z.number().describe('Everything the board finds, on every page'), next: nullable(z.string()) }),
   'POST /jql/check': z.object({ count: z.number().describe('Work items it finds among those I may see') }),
   'GET /projects/:key/workflow': z.object({ scheme: z.object({ id, name: z.string(), description: z.string() }), types: z.array(TypeWorkflow) }),

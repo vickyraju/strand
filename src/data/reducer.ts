@@ -140,6 +140,13 @@ export interface Project {
 /** A board in a project's list (Jira's boards): which one, its kind, and its filter. */
 export interface BoardRef { id: string; name: string; type: 'kanban' | 'scrum'; jql: string; position: number }
 /** A board in full: its columns (global statuses mapped to columns), swimlanes, quick filters and card fields. */
+/** A board's card colours (spec 0409). */
+export interface CardColors {
+  by: 'none' | 'types' | 'priorities' | 'assignees' | 'queries'
+  types?: Record<string, string>; priorities?: Record<string, string>; assignees?: Record<string, string>
+  queries?: { id: string; jql: string; color: string }[]
+}
+
 /** A Scrum board's estimation statistic (spec 0404): story points, original time estimate (minutes), or issue count. */
 export type Estimation = 'points' | 'time' | 'count'
 /** An item's value in a statistic. */
@@ -156,6 +163,8 @@ export interface Board extends BoardRef {
   estimation?: Estimation
   /** Working weekdays (0 is Sunday) and non-working dates: the burndown's guideline falls only on working days (spec 0405) */
   workingDays?: { weekdays: number[]; nonWorking: string[] }
+  /** Card colours (Jira's "Colors based on", spec 0409); each method keeps its own colours */
+  cardColors?: CardColors
   canManage: boolean
   /** I may create, start, complete and delete its sprints (spec 0101; unset in a local workspace) */
   canManageSprints?: boolean
@@ -1337,4 +1346,16 @@ export function timeAgo(ts: number, now = Date.now()) {
   if (d === 1) return 'yesterday'
   if (d < 30)  return `${d}d ago`
   return new Date(ts).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
+}
+
+/** The colour a board gives an item's card (spec 0409), or undefined for none. Work types and priorities default to their
+ *  own colours; assignees only have the colours set on the board; queries take the first match (`match`: its id), else grey. */
+export function cardColor(c: CardColors | undefined, i: Pick<Issue, 'type' | 'priority' | 'assigneeId'>, o: { typeColor?: string; priorityColor?: string; match?: string }): string | undefined {
+  switch (c?.by) {
+    case 'types': return c.types?.[i.type] ?? o.typeColor
+    case 'priorities': return c.priorities?.[i.priority] ?? o.priorityColor
+    case 'assignees': return i.assigneeId ? c.assignees?.[i.assigneeId] : undefined
+    case 'queries': return c.queries?.find(q => q.id === o.match)?.color ?? '#A8A29E'
+    default: return undefined
+  }
 }

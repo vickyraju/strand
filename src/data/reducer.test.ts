@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { reducer, migrate, EMPTY, isDone, moveContext, transitionsFrom, loopsFrom, itemsInRelease, doneColumn, type Action, type State, type Issue } from './reducer.ts'
+import { reducer, migrate, EMPTY, isDone, moveContext, transitionsFrom, loopsFrom, itemsInRelease, doneColumn, cardColor, type Action, type State, type Issue } from './reducer.ts'
 import { withSample } from './testdata.ts'
 
 /** Do the next actions as someone else (the reducer attributes actions to the signed-in person) */
@@ -475,4 +475,19 @@ test('[0202.R3][0202.R4] deleting an item takes its sub-items at every depth; de
   const noEpic = reducer(t, { type: 'deleteIssues', ids: ['e1'] })
   assert.deepEqual(ids(noEpic), ['i1', 's1', 's2', 's3'])
   assert.equal(noEpic.issues.find(i => i.id === 's1')!.parentId, 'e1')     // the link stays; the epic is just not there
+})
+
+test('[0409.R2][0409.R3] a card’s colour by each method', () => {
+  const i = { type: 'bug', priority: 'high', assigneeId: 'u1' }
+  const o = { typeColor: '#DC2626', priorityColor: '#EA580C', match: 'q2' }
+  assert.equal(cardColor(undefined, i, o), undefined)
+  assert.equal(cardColor({ by: 'none' }, i, o), undefined)
+  assert.equal(cardColor({ by: 'types' }, i, o), '#DC2626')
+  assert.equal(cardColor({ by: 'types', types: { bug: '#000000' } }, i, o), '#000000')
+  assert.equal(cardColor({ by: 'priorities' }, i, o), '#EA580C')
+  assert.equal(cardColor({ by: 'assignees', assignees: { u1: '#16A34A' } }, i, o), '#16A34A')
+  assert.equal(cardColor({ by: 'assignees', assignees: {} }, i, o), undefined)
+  const queries = [{ id: 'q1', jql: 'a', color: '#111111' }, { id: 'q2', jql: 'b', color: '#222222' }]
+  assert.equal(cardColor({ by: 'queries', queries }, i, o), '#222222')
+  assert.equal(cardColor({ by: 'queries', queries }, i, { match: '' }), '#A8A29E')          // matches none: grey
 })
