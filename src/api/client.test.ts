@@ -3,14 +3,19 @@ import assert from 'node:assert/strict'
 import { buildRequest, withPrefix } from './client.ts'
 
 test('requests carry the dev login and a JSON body', () => {
-  const [url, init] = buildRequest('https://api.test', { email: 'a@x.com', secret: 's3cret' }, 'POST', '/api/projects', { name: 'P' })
+  const [url, init] = buildRequest('https://api.test', { token: null, login: { email: 'a@x.com', secret: 's3cret' } }, 'POST', '/api/projects', { name: 'P' })
   assert.equal(url, 'https://api.test/api/projects')
   assert.deepEqual(init.headers, { 'x-dev-user': 'a@x.com', 'x-dev-secret': 's3cret', 'content-type': 'application/json' })
   assert.equal(init.body, '{"name":"P"}')
 })
 
+test('[0711.R13] a bearer token (Entra, or the login form) is sent instead of the dev login', () => {
+  const [, init] = buildRequest('https://api.test', { token: 'jbs_x', login: { email: 'a@x.com', secret: 's' } }, 'GET', '/api/me')
+  assert.deepEqual(init.headers, { authorization: 'Bearer jbs_x' })
+})
+
 test('no login and no body sends no auth or content-type headers', () => {
-  const [, init] = buildRequest('https://api.test', null, 'GET', '/api/me')
+  const [, init] = buildRequest('https://api.test', { token: null, login: null }, 'GET', '/api/me')
   assert.deepEqual(init.headers, {})
   assert.equal(init.body, undefined)
 })

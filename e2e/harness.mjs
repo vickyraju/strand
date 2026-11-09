@@ -12,6 +12,8 @@ const root = new URL('..', import.meta.url).pathname
 export const dbUrl = process.env.E2E_DATABASE_URL
 export const skip = !dbUrl && 'E2E_DATABASE_URL not set (it is wiped, so it must be a scratch database)'
 const SECRET = 'e2e-dev-secret'
+/** recovery_admin's password (spec 0711 recovery mode is on for every run). */
+export const RECOVERY_PASSWORD = 'e2e-recovery-password-0711'
 
 const children = []
 let apiUrl, webUrl, browser
@@ -62,6 +64,7 @@ export async function start() {
   }
   run(['src/index.ts'], `${root}server`, {
     DATABASE_URL: dbUrl, PORT: String(apiPort), NODE_ENV: 'test', AUTH_DEV: '1', DEV_AUTH_SECRET: SECRET, ENTRA_TENANT_ID: '', ENTRA_CLIENT_ID: '',
+    STRAND_RECOVERY_PASSWORD: RECOVERY_PASSWORD,
     CORS_ORIGINS: webUrl, JOBS_POLL_MS: '500', DUE_SCAN_INTERVAL_MS: '0', FILE_SWEEP_MS: '0', S3_BUCKET: '',
   })
   run(['node_modules/vite/bin/vite.js', '--port', String(webPort), '--strictPort', '--host', 'localhost'], root, {
@@ -86,14 +89,20 @@ export async function stop() {
 
 /** A browser tab signed in as `email`, showing the app. Collects page errors in `page.problems`. */
 export async function signIn(email, roles = []) {
+  const page = await signedOut('/', { email, secret: SECRET })
+  await page.waitForSelector('nav')
+  return page
+}
+
+/** A browser tab at `path` that nobody has signed in to (or, given a dev login, that starts with it, as signIn does). */
+export async function signedOut(path, login) {
   const ctx = await browser.newContext({ viewport: { width: 1400, height: 900 }, acceptDownloads: true })
-  await ctx.addInitScript(([login]) => { sessionStorage.setItem('strand:dev-login', JSON.stringify(login)) }, [{ email, secret: SECRET }])
+  if (login) await ctx.addInitScript(([l]) => { sessionStorage.setItem('strand:dev-login', JSON.stringify(l)) }, [login])
   const page = await ctx.newPage()
   page.problems = []
   page.on('pageerror', e => page.problems.push(e.message))
-  page.on('console', m => { if (m.type() === 'error' && !/status of 40[34]/.test(m.text())) page.problems.push(m.text().slice(0, 200)) })
-  await page.goto(webUrl)
-  await page.waitForSelector('nav')
+  page.on('console', m => { if (m.type() === 'error' && !/status of 40[1349]/.test(m.text())) page.problems.push(m.text().slice(0, 200)) })
+  await page.goto(webUrl + path)
   return page
 }
 

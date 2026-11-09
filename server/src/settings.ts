@@ -1,6 +1,7 @@
 // System settings: the policies a workspace administrator controls at runtime (like Jira's Administration › System),
-// instead of numbers fixed in code or environment variables. Infrastructure and secrets (database, storage, sign-in,
-// CORS) stay in the environment; everything an admin might reasonably decide lives here.
+// instead of numbers fixed in code or environment variables. Infrastructure and secrets (database, storage, CORS) stay
+// in the environment, and sign-in methods in auth_config (authConfig.ts, spec 0711); everything else an admin might
+// reasonably decide lives here.
 //
 // Each setting is one row in `system_settings` (workspace, key, jsonb). Its shape, default and description are declared
 // once below. Reads go through a short cache, so every API pod sees a change within CACHE_MS without a restart.
@@ -63,6 +64,18 @@ export const SETTINGS = {
       importMaxRows: z.number().int().min(10).max(100_000).describe('Most rows in one CSV import'),
     }),
     default: { exportMaxRows: 20_000, bulkMaxItems: 200, importMaxRows: 10_000 },
+  },
+  signIn: {
+    label: 'Sign-in',
+    description: 'Sign-ins through the login form: how long one lasts, and how many wrong passwords lock a username for a while (Administration › Authentication methods).',
+    public: false,
+    schema: z.object({
+      maxFailures: z.number().int().min(1).max(20).describe('Wrong passwords before the username is locked'),
+      lockMinutes: z.number().int().min(1).max(1440).describe('How long the username stays locked'),
+      sessionIdleMinutes: z.number().int().min(5).max(10_080).describe('A sign-in ends after this long unused'),
+      rememberDays: z.number().int().min(1).max(365).describe('“Remember my login on this computer” keeps it this many days'),
+    }),
+    default: { maxFailures: 3, lockMinutes: 5, sessionIdleMinutes: 300, rememberDays: 14 },
   },
   groups: {
     label: 'Groups',

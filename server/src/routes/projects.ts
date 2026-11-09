@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { recoveryPassword } from '../authConfig.ts'
 import { checkPriority } from '../lists.ts'
 import { label, labels } from '../shared/labels.ts'
 import type { FastifyRequest } from 'fastify'
@@ -158,6 +159,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
   })
   app.get('/me', { schema: { tags: T.me, summary: 'Current user and role' } }, async req => ({
     ...req.me, groupIds: (await db.query<{ groupId: string }>('select group_id from group_members where user_id = $1', [req.me.id])).map(g => g.groupId),
+    recovery: req.me.admin && !!recoveryPassword(),          // admins see a banner while recovery mode is on (spec 0711 R10)
   }))
 
   const searchQ = z.object({

@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { Users, ScrollText, Archive, SlidersHorizontal, Link2, Bookmark, UsersRound, GitBranch, FlaskConical, ArchiveRestore, Signal, CircleCheck } from 'lucide-react'
+import { Users, ScrollText, Archive, SlidersHorizontal, Link2, Bookmark, UsersRound, GitBranch, FlaskConical, ArchiveRestore, Signal, CircleCheck, KeyRound } from 'lucide-react'
 import { href, navigate, type AdminSection } from '../../router'
 
 // Administration's frame, as Jira lays it out: a grouped menu on the left, and each page with its title, what it is
@@ -11,6 +11,7 @@ export const MENU: { title: string; items: MenuItem[] }[] = [
   { title: 'People & access', items: [
     { id: 'people', label: 'People', Icon: Users, intro: 'Everyone who has signed in. Accounts come from your organisation’s sign-in (Microsoft Entra): see who is active, filter, and change many people at once. Admin rights come from the system-administrators group.' },
     { id: 'groups', label: 'Groups', Icon: UsersRound, intro: 'A group gives a whole team a role in a project at once. Its owners decide who is in it; project admins decide what it may do in their project.' },
+    { id: 'auth-methods', label: 'Authentication methods', Icon: KeyRound, intro: 'How people sign in: Microsoft Entra single sign-on, the username and password login form, or both. At least one stays on; every change is recorded in the Audit log.' },
   ] },
   { title: 'Work items', items: [
     { id: 'workflows', label: 'Workflows', Icon: GitBranch, intro: 'Workflows are shared: a workflow scheme says which workflow each work type uses, and each project uses one scheme. Changing a workflow or a scheme changes every project using it.' },

@@ -9,7 +9,12 @@ const day = z.string().describe('YYYY-MM-DD')
 const nullable = <T extends z.ZodType>(t: T) => t.nullable()
 
 export const User = z.object({ id, name: z.string(), initials: z.string(), color: z.string(), title: nullable(z.string()), email: z.string(), role: z.string() })
-export const Me = z.object({ id, email: z.string(), name: z.string(), workspaceId: id, role: z.enum(['owner', 'admin', 'member']), admin: z.boolean(), groupIds: z.array(id).describe('Groups I am in (transition rules can name groups)') })
+export const Me = z.object({ id, email: z.string(), name: z.string(), workspaceId: id, role: z.enum(['owner', 'admin', 'member']), admin: z.boolean(), groupIds: z.array(id).describe('Groups I am in (transition rules can name groups)'),
+  via: z.enum(['entra', 'password', 'recovery', 'pat']).describe('How this request signed in'),
+  recovery: z.boolean().describe('System admins: Strand is running in recovery mode (spec 0711)') })
+
+const EntraConfig = z.object({ enabled: z.boolean(), name: z.string(), tenantId: z.string(), apiClientId: z.string(), webClientId: z.string(), authority: z.string() })
+export const AuthMethods = z.object({ loginForm: z.boolean(), fallback: z.boolean(), entra: nullable(EntraConfig), recovery: z.boolean().describe('Recovery mode is on (STRAND_RECOVERY_PASSWORD)') })
 
 export const AccessToken = z.object({ id, name: z.string(), hint: z.string().describe('Last 4 characters of the token'), createdAt: ts, expiresAt: ts, lastUsedAt: nullable(ts), expired: z.boolean() })
 export const AccessTokenCreated = AccessToken.extend({ token: z.string().describe('The secret. Shown only in this response') })
@@ -219,6 +224,12 @@ export const CREATED = new Set([
 
 export const RESPONSES: Record<string, z.ZodType> = {
   'GET /me': Me,
+  'GET /auth/config': z.object({ loginForm: z.boolean(), fallback: z.boolean(), dev: z.boolean().describe('Strand’s developer login is on (AUTH_DEV)'),
+    entra: nullable(z.object({ name: z.string(), tenantId: z.string(), clientId: z.string(), authority: z.string(), scope: z.string() })).describe('Null when Microsoft sign-in is off') }),
+  'POST /auth/login': z.object({ token: z.string().describe('Send as Authorization: Bearer'), expiresAt: ts }),
+  'GET /admin/authentication': AuthMethods,
+  'PUT /admin/authentication': AuthMethods,
+  'PUT /admin/authentication/entra': AuthMethods,
   'GET /me/tokens': z.array(AccessToken),
   'POST /me/tokens': AccessTokenCreated,
   'GET /users': z.array(User),

@@ -1545,6 +1545,7 @@ h2.empty-title, h2.section-title, h2.side-title { margin: 0 }
 .progress-bar > div { height: 100%; background: var(--brand); transition: width .3s var(--ease) }
 .apply-banner { display: flex; align-items: center; gap: 16px; padding: 10px 14px; margin-bottom: 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--sunken) }
 .apply-banner > :first-child { flex: 1 }
+.recovery-banner { margin: 8px 16px 0 }
 .apply-banner.warn { background: #FFFBEB; border-color: #FDE68A }
 .group-picker { position: relative; display: inline-block; min-width: 220px }
 .group-picker-menu { position: absolute; z-index: 30; left: 0; right: 0; top: calc(100% + 4px); list-style: none; margin: 0; padding: 4px; max-height: 280px; overflow-y: auto }

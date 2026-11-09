@@ -29,6 +29,8 @@ import groupsRoutes from './routes/groups.ts'
 import workflowRoutes from './routes/workflows.ts'
 import boardRoutes from './routes/boards.ts'
 import listRoutes from './routes/lists.ts'
+import authentication, { publicAuth } from './routes/authentication.ts'
+import { startAuth } from './authConfig.ts'
 import { githubWebhook } from './routes/github.ts'
 
 export async function build() {
@@ -103,6 +105,9 @@ export async function build() {
 
   app.get('/health', async () => ({ ok: true }))
   await app.register(scim, { prefix: '/scim/v2' })          // own bearer-token auth
+  // signing in itself (spec 0711): the login page's configuration, the login form, signing out; no sign-in needed
+  await app.register(publicAuth, { prefix: '/api/v1' })
+  await app.register(publicAuth, { prefix: '/api' })   // the hidden alias, as for the rest of the API
   await app.register(githubWebhook, { prefix: '/integrations/github/webhook' })   // GitHub signs each call; no user login
 
   const resources: FastifyPluginAsync = async api => {
@@ -134,6 +139,7 @@ export async function build() {
       await v1.register(workflowRoutes)
       await v1.register(boardRoutes)
       await v1.register(listRoutes)
+      await v1.register(authentication)
     }
     await api.register(routes, { prefix: '/api/v1' })
     // ponytail: the unversioned /api is kept as a hidden alias so clients built before /api/v1 keep working;
@@ -146,6 +152,8 @@ export async function build() {
 
   await startListener()
   const stopJobs = startJobWorker(app.log)
+  // Entra from ENTRA_* the first time (an upgrade signs in as before); recovery_admin only while recovery mode is on
+  if (process.env.DATABASE_URL) await startAuth(app.log)
   // every workspace removes its long-deleted work items daily (spec 0202)
   if (process.env.DATABASE_URL)
     for (const w of (await pool.query<{ id: string }>('select id from workspaces')).rows) await schedulePurge(db, w.id).catch(e => app.log.error(e))

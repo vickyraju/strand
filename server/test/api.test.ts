@@ -4,11 +4,15 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import pg from 'pg'
 import { createHash, createHmac } from 'node:crypto'
+import { exportJWK, generateKeyPair, SignJWT } from 'jose'
 
 // Needs a throwaway Postgres: DATABASE_URL=postgres://… npm test  (skipped otherwise)
 const url = process.env.DATABASE_URL
 const skip = !url && 'DATABASE_URL not set'
 Object.assign(process.env, { AUTH_DEV: '1', SCIM_TOKEN: 'scim-secret', NODE_ENV: 'test', DUE_SCAN_INTERVAL_MS: '0', GITHUB_WEBHOOK_SECRET: 'whsec-test', CORS_ORIGINS: 'https://strand-one.vercel.app/, http://localhost:5173' })
+// the stand-in Entra for spec 0711 (Entra is configured at runtime; the other tests sign in with the dev login)
+const TENANT = '11111111-1111-4111-8111-111111111111', CLIENT = '22222222-2222-4222-8222-222222222222', WEB = '33333333-3333-4333-8333-333333333333'
+let signingKey: CryptoKey, jwksServer: ReturnType<typeof createServer>, authority = ''
 
 let app: Awaited<ReturnType<typeof import('../src/app.ts').build>>
 
@@ -70,6 +74,17 @@ const join = async (key: string, email: string, role: 'admin' | 'member' | 'view
 
 before(async () => {
   if (skip) return
+  const pair = await generateKeyPair('RS256')
+  signingKey = pair.privateKey
+  const jwk = { ...(await exportJWK(pair.publicKey)), kid: 'test', alg: 'RS256', use: 'sig' }
+  // the stand-in Entra: its discovery document (for the configuration check, spec 0711) and its signing keys
+  jwksServer = createServer((req, res) => {
+    res.setHeader('content-type', 'application/json')
+    res.end(JSON.stringify(req.url?.endsWith('/.well-known/openid-configuration')
+      ? { issuer: `${authority}/${TENANT}/v2.0`, jwks_uri: `${authority}/${TENANT}/discovery/v2.0/keys` } : { keys: [jwk] }))
+  })
+  await new Promise<void>(r => jwksServer.listen(0, '127.0.0.1', r))
+  authority = `http://127.0.0.1:${(jwksServer.address() as { port: number }).port}`
   await new Promise<void>(r => s3Server.listen(0, '127.0.0.1', r))
   Object.assign(process.env, {
     S3_BUCKET: 'files', S3_ENDPOINT: `http://127.0.0.1:${(s3Server.address() as { port: number }).port}`, AWS_REGION: 'us-east-1',
@@ -81,7 +96,7 @@ before(async () => {
   for (const f of readdirSync(dir).sort()) await pool.query(readFileSync(new URL(f, dir), 'utf8'))
   app = await (await import('../src/app.ts')).build()
 })
-after(async () => { if (skip) return; await app.close(); await pool.end(); s3Server.close() })
+after(async () => { if (skip) return; await app.close(); await pool.end(); s3Server.close(); jwksServer.close() })
 
 test('project → issue lifecycle with workflow, versions and undo', { skip }, async () => {
   const p = await call('POST', '/api/v1/projects', { name: 'Payments', key: 'PAY', template: 'kanban' })
@@ -3360,6 +3375,7 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     values ($1, gen_random_uuid(), 'OLD', 'Old', 'files', 'x/project.json', 0, 0, 0, 'x') returning id`, [p.workspaceId])).rows[0].id
 
   // Who must be refused:
+  //   public - no sign-in needed (signing in itself, spec 0711)
   //   any    - anyone signed in (results are limited to what they may see); only a missing sign-in is refused
   //   read   - project viewers; outsiders get 404 (the project does not exist for them)
   //   viewer - viewers may do it too (comment, watch, star…); outsiders 404
@@ -3367,7 +3383,7 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
   //   padmin - project admins; members and viewers 403; outsiders 404
   //   gadmin - workspace admins; everyone else 403
   //   own    - only the person it belongs to; others 403 or 404
-  type Rule = 'any' | 'read' | 'viewer' | 'write' | 'padmin' | 'gadmin' | 'own'
+  type Rule = 'public' | 'any' | 'read' | 'viewer' | 'write' | 'padmin' | 'gadmin' | 'own'
   const K = 'MTX', I = 'MTX-1'
   const M: Record<string, [Rule, string, object?]> = {
     'GET /me': ['any', '/me'], 'GET /users': ['any', '/users'], 'GET /users/search': ['any', '/users/search'],
@@ -3375,6 +3391,11 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     'GET /projects/search': ['any', '/projects/search'],
     'POST /projects/{key}/archive': ['gadmin', `/projects/${K}/archive`], 'POST /projects/{key}/restore': ['gadmin', `/projects/${K}/restore`],   // 0102.R1
     'GET /admin/archived-projects': ['gadmin', '/admin/archived-projects'],   // 0102.R7
+    'GET /auth/config': ['public', '/auth/config'], 'POST /auth/logout': ['public', '/auth/logout'],   // 0711.R1
+    'POST /auth/login': ['public', '/auth/login', { username: 'matrix.nobody', password: 'x' }],
+    'GET /admin/authentication': ['gadmin', '/admin/authentication'],   // 0711.R11
+    'PUT /admin/authentication': ['gadmin', '/admin/authentication', { loginForm: true, fallback: false }],
+    'PUT /admin/authentication/entra': ['gadmin', '/admin/authentication/entra', { enabled: false, tenantId: '11111111-1111-4111-8111-111111111111', apiClientId: '22222222-2222-4222-8222-222222222222', webClientId: '33333333-3333-4333-8333-333333333333' }],
     'GET /priorities': ['any', '/priorities'], 'GET /resolutions': ['any', '/resolutions'],   // 0305.R1
     'POST /admin/priorities': ['gadmin', '/admin/priorities', { name: 'Matrix priority', color: '#123456', icon: 'flame' }],   // 0305.R1
     'PATCH /admin/priorities/{key}': ['gadmin', '/admin/priorities/low', { description: 'x' }],
@@ -3578,6 +3599,7 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
   const expect = (op: string, as: string, got: number, ok: number[]) => { if (!ok.includes(got)) wrong.push(`${op} as ${as}: ${got}, expected ${ok.join(' or ')}`) }
   for (const op of Object.keys(M)) {
     const rule = M[op]![0]
+    if (rule === 'public') { expect(op, 'nobody', await send(op, null), [200, 204, 400, 401, 403]); continue }
     expect(op, 'nobody', await send(op, null), [401])
     if (rule === 'read' || rule === 'viewer') expect(op, 'outsider', await send(op, who.outsider), [404])
     if (rule === 'write') { expect(op, 'outsider', await send(op, who.outsider), [404]); expect(op, 'viewer', await send(op, who.viewer), [403]) }
@@ -3661,7 +3683,7 @@ test('system settings: admins change policies at runtime (validated, audited); e
   const { clearSettingsCache } = await import('../src/settings.ts')
   const put = (key: string, value: object, who = 'owner@x.com') => call('PUT', `/api/v1/admin/settings/${key}`, value, who)
   const all = (await call('GET', '/api/v1/admin/settings')).body
-  assert.deepEqual(all.map((s: any) => s.key), ['rateLimiting', 'attachments', 'accessTokens', 'searchAndBulk', 'groups', 'testing', 'dueReminders', 'email', 'deletedItems', 'projectKeys', 'timeTracking'])
+  assert.deepEqual(all.map((s: any) => s.key), ['rateLimiting', 'attachments', 'accessTokens', 'searchAndBulk', 'signIn', 'groups', 'testing', 'dueReminders', 'email', 'deletedItems', 'projectKeys', 'timeTracking'])
   assert.equal(all.find((s: any) => s.key === 'rateLimiting').value.enabled, false)                  // no limit unless an admin sets one
   assert.equal((await call('GET', '/api/v1/admin/settings', undefined, 'set.member@x.com')).status, 403)
   assert.equal((await put('attachments', { enabled: true, maxSizeMb: 5 }, 'set.member@x.com')).status, 403)
@@ -4245,4 +4267,111 @@ test('[0409.R1][0409.R2] card colours: by queries, the first match wins and is s
   const items = (await call('GET', `/api/v1/boards/${board.id}/issues`)).body.items
   const colorOf = (key: string) => items.find((i: any) => i.key === key).color
   assert.deepEqual([colorOf(a.key), colorOf(b.key), colorOf(c.key)], [saved.queries[0].id, saved.queries[1].id, ''])
+})
+
+test('[0711.R1][0711.R2][0711.R3][0711.R4][0711.R5][0711.R11] authentication methods: the public configuration, Entra seeded from the environment once, checked when turned on, and at least one way in', { skip }, async () => {
+  const { startAuth, clearAuthConfigCache } = await import('../src/authConfig.ts')
+  const pub = async () => JSON.parse((await app.inject({ method: 'GET', url: '/api/v1/auth/config' })).body)
+  // R2: seeded once from ENTRA_*; after that the stored configuration wins
+  assert.equal((await pub()).entra, null)
+  Object.assign(process.env, { ENTRA_TENANT_ID: TENANT, ENTRA_CLIENT_ID: CLIENT, ENTRA_WEB_CLIENT_ID: WEB, ENTRA_AUTHORITY: authority })
+  await startAuth(app.log); clearAuthConfigCache()
+  // R1: no sign-in needed, and nothing private
+  const c = await pub()
+  assert.deepEqual([c.loginForm, c.fallback, c.dev, c.entra.tenantId, c.entra.clientId, c.entra.name], [true, false, true, TENANT, WEB, 'Microsoft'])
+  assert.equal('recovery' in c, false); assert.equal('apiClientId' in c.entra, false)
+  assert.ok((await pool.query(`select 1 from audit_log where action = 'auth.entra.seeded'`)).rows.length)
+  process.env.ENTRA_TENANT_ID = '99999999-9999-4999-8999-999999999999'
+  await startAuth(app.log); clearAuthConfigCache()
+  assert.equal((await pub()).entra.tenantId, TENANT)
+  for (const k of ['ENTRA_TENANT_ID', 'ENTRA_CLIENT_ID', 'ENTRA_WEB_CLIENT_ID', 'ENTRA_AUTHORITY']) delete process.env[k]
+  const entra = (await call('GET', '/api/v1/admin/authentication')).body.entra
+  const put = (body: object, who?: string) => call('PUT', '/api/v1/admin/authentication/entra', { ...entra, ...body }, who)
+  // R3: turning it on checks that Entra answers for this tenant
+  const wrongTenant = await put({ tenantId: '44444444-4444-4444-8444-444444444444' })
+  assert.equal(wrongTenant.status, 400); assert.ok(wrongTenant.body.errors.tenantId)
+  assert.equal((await put({ name: 'Contoso' })).body.entra.name, 'Contoso')
+  // R4: Entra's tokens work while it is on, are refused at once when it is off, and work again when back on
+  const token = await new SignJWT({ oid: '55555555-5555-4555-8555-555555555555', preferred_username: 'entra.person@x.com', name: 'Entra Person' })
+    .setProtectedHeader({ alg: 'RS256', kid: 'test' }).setIssuer(`${authority}/${TENANT}/v2.0`).setAudience(CLIENT).setIssuedAt().setExpirationTime('1h').sign(signingKey)
+  const viaEntra = async () => (await app.inject({ method: 'GET', url: '/api/v1/me', headers: { authorization: `Bearer ${token}` } })).statusCode
+  assert.equal(await viaEntra(), 200)
+  assert.equal((await put({ enabled: false })).status, 200)
+  assert.equal(await viaEntra(), 401)
+  await pool.query(`update auth_config set entra = jsonb_set(entra, '{enabled}', 'true')`); clearAuthConfigCache()
+  assert.equal(await viaEntra(), 200)
+  // R5: at least one way in stays
+  assert.equal((await call('PUT', '/api/v1/admin/authentication', { loginForm: false, fallback: false })).status, 200)
+  const lastOne = await put({ enabled: false })
+  assert.deepEqual([lastOne.status, lastOne.body.error], [409, 'At least one authentication method must be shown on the login page'])
+  assert.equal((await call('PUT', '/api/v1/admin/authentication', { loginForm: true, fallback: false })).status, 200)
+  assert.equal((await put({ enabled: false })).status, 200)
+  const hideForm = await call('PUT', '/api/v1/admin/authentication', { loginForm: false, fallback: false })
+  assert.deepEqual([hideForm.status, hideForm.body.error], [409, 'At least one authentication method must be shown on the login page'])
+  await pool.query(`update auth_config set entra = jsonb_set(entra, '{enabled}', 'true')`); clearAuthConfigCache()
+  // R11: an access token can't change how people sign in; everything is audited
+  const pat = (await call('POST', '/api/v1/me/tokens', { name: 'auth test' })).body.token
+  const viaPat = await app.inject({ method: 'PUT', url: '/api/v1/admin/authentication', payload: { loginForm: true, fallback: true }, headers: { authorization: `Bearer ${pat}` } })
+  assert.equal(viaPat.statusCode, 403)
+  const actions = (await pool.query(`select action from audit_log where action like 'auth.%'`)).rows.map(r => r.action)
+  assert.ok(actions.includes('auth.entra.updated') && actions.includes('auth.methods.updated'))
+})
+
+test('[0711.R6][0711.R8][0711.R9][0711.R10][0711.R12] the login form: recovery mode, sessions, the fallback gate and the lock after wrong passwords', { skip }, async () => {
+  const { startAuth, clearAuthConfigCache } = await import('../src/authConfig.ts')
+  const login = (body: object) => app.inject({ method: 'POST', url: '/api/v1/auth/login', payload: body })
+  const as = (token: string, method = 'GET', url = '/api/v1/me', payload?: object) => app.inject({ method: method as any, url, payload, headers: { authorization: `Bearer ${token}` } })
+  const secret = 'recovery-password-for-tests'
+  // without recovery mode, recovery_admin can't sign in
+  assert.equal((await login({ username: 'recovery_admin', password: secret })).statusCode, 401)
+  await pool.query('delete from login_failures')
+  process.env.STRAND_RECOVERY_PASSWORD = secret
+  await startAuth(app.log)
+  // R9: the same message for every failure; after three, the username is locked (429 with Retry-After)
+  for (const password of ['wrong', '', 'wrong again']) {
+    const r = await login({ username: 'recovery_admin', password })
+    assert.deepEqual([r.statusCode, JSON.parse(r.body).error], [401, 'Sorry, your username and password are incorrect - please try again.'])
+  }
+  const locked = await login({ username: 'recovery_admin', password: secret })
+  assert.equal(locked.statusCode, 429); assert.ok(Number(locked.headers['retry-after']) > 0)
+  await pool.query('delete from login_failures')
+  // R10: recovery_admin signs in, is a system admin, sees recovery mode; can't make access tokens (R12)
+  const ok = await login({ username: 'Recovery_Admin', password: secret })
+  assert.equal(ok.statusCode, 200)
+  const { token } = JSON.parse(ok.body)
+  assert.match(token, /^jbs_[A-Za-z0-9_-]{43}$/)
+  const me = JSON.parse((await as(token)).body)
+  assert.deepEqual([me.via, me.admin, me.recovery], ['recovery', true, true])
+  assert.ok((await pool.query(`select 1 from audit_log where action = 'auth.recovery_sign_in'`)).rows.length)
+  assert.equal((await as(token, 'POST', '/api/v1/me/tokens', { name: 'x' })).statusCode, 403)
+  // …but it can change the authentication methods: that is what it is for (R10, R11)
+  assert.equal((await as(token, 'PUT', '/api/v1/admin/authentication', { loginForm: true, fallback: true })).statusCode, 200)
+  assert.equal((await as(token, 'PUT', '/api/v1/admin/authentication', { loginForm: true, fallback: false })).statusCode, 200)
+  // R8: signing out ends it everywhere; an idle session ends; "remember" lasts days
+  assert.equal((await app.inject({ method: 'POST', url: '/api/v1/auth/logout', headers: { authorization: `Bearer ${token}` } })).statusCode, 204)
+  assert.equal((await as(token)).statusCode, 401)
+  const idle = JSON.parse((await login({ username: 'recovery_admin', password: secret })).body).token
+  await pool.query(`update user_sessions set idle_until = now() - interval '1 minute' where via = 'recovery'`)
+  assert.equal((await as(idle)).statusCode, 401)
+  const kept = JSON.parse((await login({ username: 'recovery_admin', password: secret, remember: true })).body)
+  assert.ok(new Date(kept.expiresAt).getTime() > Date.now() + 13 * 864e5)
+  // a deactivated person's session is refused
+  await pool.query(`update users set active = false where username = 'recovery_admin'`)
+  assert.equal((await as(kept.token)).statusCode, 403)
+  await pool.query(`update users set active = true where username = 'recovery_admin'`)
+  // R6: with the form hidden, form sign-ins are refused unless the fallback is on (recovery_admin always gets in)
+  await call('PUT', '/api/v1/admin/authentication', { loginForm: false, fallback: false })
+  assert.equal((await login({ username: 'someone', password: 'x', fallback: true })).statusCode, 403)
+  assert.equal((await login({ username: 'recovery_admin', password: secret })).statusCode, 200)
+  await call('PUT', '/api/v1/admin/authentication', { loginForm: false, fallback: true })
+  assert.equal((await login({ username: 'someone', password: 'x' })).statusCode, 403)
+  assert.equal((await login({ username: 'someone', password: 'x', fallback: true })).statusCode, 401)   // reaches the password check
+  await call('PUT', '/api/v1/admin/authentication', { loginForm: true, fallback: false })
+  // R10: out of recovery mode, its sessions stop and it loses admin
+  delete process.env.STRAND_RECOVERY_PASSWORD
+  assert.equal((await as(kept.token)).statusCode, 401)
+  await startAuth(app.log); clearAuthConfigCache()
+  const [r] = (await pool.query(`select active, is_system_admin(id) as admin from users where username = 'recovery_admin'`)).rows
+  assert.deepEqual([r.active, r.admin], [false, false])
+  await pool.query('delete from login_failures')
 })

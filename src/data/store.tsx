@@ -3,6 +3,7 @@ import { migrate, EMPTY, AUTOMATION, type Action, type State, type User } from '
 import { undoableReducer, canUndo, type StoreAction, type Undoable } from './history'
 import { pruneFiles } from './files'
 import { apiEnabled, setLogin } from '../api/client'
+import { signOut as endSession } from '../api/auth'
 import { loadWorkspace } from '../api/load'
 
 export * from './reducer'
@@ -104,7 +105,8 @@ export function useStore() {
 }
 
 /** Forget the dev login and return to the sign-in screen. */
-export function signOut() { setLogin(null); location.reload() }
+/** Sign out: the dev login is forgotten; a real sign-in ends on the server (and at Microsoft). */
+export function signOut() { setLogin(null); void endSession() }
 
 export const projectOf = (state: State, id: string | undefined) => state.projects.find(p => p.id === id)
 /** The pseudo-user shown for changes made by automation rules. */
