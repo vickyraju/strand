@@ -1459,7 +1459,7 @@ test('[0714.R2][0714.R5][0714.R8] an admin creates a local user in People; they 
   assert.deepEqual([...o.problems, ...p.problems], [])
 })
 
-test('[0406.R1][0406.R2][0406.R4] a Kanban backlog: To do goes into it; the item leaves the board, waits in the Backlog tab, and is dragged to the next column', { skip, timeout: 120_000 }, async () => {
+test('[0406.R1][0406.R2][0406.R4][0406.R5][0406.R7] a Kanban backlog: To do goes into it; the item leaves the board, waits in the Backlog tab, and is dragged to the next column', { skip, timeout: 120_000 }, async () => {
   await owner('POST', '/projects', { name: 'Kanban planned', key: 'KBP', template: 'kanban' })
   const item = (await owner('POST', '/projects/KBP/issues', { title: 'Plan me first' })).body
   const [board] = (await owner('GET', '/projects/KBP/boards')).body
@@ -1478,6 +1478,21 @@ test('[0406.R1][0406.R2][0406.R4] a Kanban backlog: To do goes into it; the item
   assert.equal(await o.locator('text=Plan me first').count(), 0)
   await o.click('button:has-text("Go to backlog")')
   await o.waitForSelector('[aria-label="Backlog"] >> text=Plan me first')
+  // R7: Create in the Backlog section starts new work in the Kanban backlog's status
+  await o.click('[aria-label="Backlog"] button.cell-create')
+  await o.fill('[aria-label="Title"]', 'Made in the backlog')
+  await o.click('[aria-label="Create work item"] button[type="submit"]')
+  await o.waitForSelector('[aria-label="Backlog"] >> text=Made in the backlog')
+  // R5: Top of backlog ranks it first
+  let made
+  for (let n = 0; n < 50 && !made; n++) {                                     // saved in the background
+    made = (await owner('GET', '/projects/KBP/issues')).body.items.find(i => i.title === 'Made in the backlog')
+    if (!made) await new Promise(r => setTimeout(r, 200))
+  }
+  assert.equal(made.statusId, (await owner('GET', '/projects/KBP')).body.statuses.find(x => x.name === 'To do').id)
+  await o.click(`[aria-label="Move ${made.key}"]`)
+  await o.click('[role="menu"] button:has-text("Top of backlog")')
+  await o.waitForFunction(() => document.querySelector('[aria-label="Backlog"] .rank-slot')?.textContent?.includes('Made in the backlog'))
   // R4: moved to the next column (In progress), it is on the board
   await o.click(`[aria-label="Move ${item.key}"]`)
   await o.click('[role="menu"] button:has-text("Move to In progress")')
