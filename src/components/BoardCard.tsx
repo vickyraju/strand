@@ -2,11 +2,12 @@ import { useState } from 'react'
 import { useDraggable } from '@dnd-kit/core'
 import { can } from '../data/access'
 import DeleteItemsDialog from './DeleteItemsDialog'
-import { MoreHorizontal, CalendarDays, Ban, UserCheck, Link2, Trash2, ArrowRight, Eye, RefreshCw } from 'lucide-react'
+import { MoreHorizontal, CalendarDays, Flag, Ban, UserCheck, Link2, Trash2, ArrowRight, Eye, RefreshCw } from 'lucide-react'
 import { useStore, userOf, blockersOf, indexOf, transitionsFrom, loopsFrom, moveContext, type Issue, type Project, type CardField } from '../data/store'
 import { useApp } from '../appContext'
 import { href } from '../router'
 import { TypeIcon, PriorityIcon, Avatar, Menu, formatDate, isOverdue, type MenuItem } from './ui'
+import { useFlagActions } from './FlagActions'
 
 /** "Move to Done", or "Approve → Done" when the transition has its own name. */
 export function transitionLabel(project: Project, t: { name: string; to: string }) {
@@ -47,6 +48,7 @@ function CardView({ issue, project, fields, dragging, ghost, drag }: CardProps &
   const blocked  = blockersOf(state, issue).length > 0
   const assignee = userOf(state, issue.assigneeId)
 
+  const flag = useFlagActions(issue, !ghost && can(project, 'editIssues'))       // Jira's Add flag / Remove flag (spec 0408)
   const menu: MenuItem[] = [
     { label: 'Open', icon: <Eye size={14} />, onClick: () => openIssue(issue.id) },
     ...transitionsFrom(project, issue.status, moveContext(state, issue)).map((t, i) => ({
@@ -59,13 +61,14 @@ function CardView({ issue, project, fields, dragging, ghost, drag }: CardProps &
       onClick: () => dispatch({ type: 'updateIssues', ids: [issue.id], patch: { assigneeId: state.me?.id } }) }] : []),
     { label: 'Copy link', icon: <Link2 size={14} />, divider: issue.assigneeId === state.me?.id,
       onClick: () => { navigator.clipboard?.writeText(location.origin + href({ name: 'issue', key: issue.key })); toast('Link copied') } },
+    ...flag.items,
     ...(can(project, 'deleteIssues') ? [{ label: 'Delete', icon: <Trash2 size={14} />, danger: true, divider: true, onClick: () => setDeleting(true) }] : []),
   ]
 
   return (
     <div
       ref={drag?.setNodeRef} {...drag?.attributes} {...drag?.listeners}
-      className={`card${dragging ? ' dragging' : ''}${ghost ? ' ghost' : ''}${blocked && !done ? ' blocked' : ''}`}
+      className={`card${dragging ? ' dragging' : ''}${ghost ? ' ghost' : ''}${blocked && !done ? ' blocked' : ''}${issue.flagged ? ' flagged' : ''}`}
       data-card={ghost ? undefined : issue.id}
       onClick={ghost ? undefined : () => openIssue(issue.id)}
       onKeyDown={ghost ? undefined : e => {
@@ -102,11 +105,13 @@ function CardView({ issue, project, fields, dragging, ghost, drag }: CardProps &
         )}
         <div style={{ flex: 1 }} />
         {fields.estimate && issue.estimate != null && <span className="points" title="Story points">{issue.estimate}</span>}
-        {fields.priority && issue.priority !== 'none' && <PriorityIcon priority={issue.priority} />}
+        {issue.flagged ? <Flag size={14} className="flag-icon" aria-label="Flagged" role="img" />                 /* Jira: the flag replaces the priority (spec 0408) */
+          : fields.priority && issue.priority !== 'none' && <PriorityIcon priority={issue.priority} />}
         {!ghost && <span className="card-menu"><Menu title={`Actions for ${issue.key}`} className="icon-btn sm" trigger={<MoreHorizontal size={15} />} items={menu} /></span>}
         {fields.assignee && <Avatar user={assignee} size={24} />}
       </div>
       {deleting && <span onClick={e => e.stopPropagation()} onPointerDown={e => e.stopPropagation()}><DeleteItemsDialog ids={[issue.id]} onClose={() => setDeleting(false)} /></span>}
+      {flag.dialog && <span onClick={e => e.stopPropagation()} onPointerDown={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}>{flag.dialog}</span>}
     </div>
   )
 }

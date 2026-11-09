@@ -15025,6 +15025,10 @@
                             "type": "string",
                             "description": "A priority key (GET /priorities)"
                           },
+                          "flagged": {
+                            "type": "boolean",
+                            "description": "Flagged as an impediment (spec 0408)"
+                          },
                           "assigneeId": {
                             "nullable": true,
                             "type": "string",
@@ -15163,6 +15167,7 @@
                           "description",
                           "statusId",
                           "priority",
+                          "flagged",
                           "assigneeId",
                           "reporterId",
                           "labels",
@@ -15474,6 +15479,10 @@
                             "type": "string",
                             "description": "A priority key (GET /priorities)"
                           },
+                          "flagged": {
+                            "type": "boolean",
+                            "description": "Flagged as an impediment (spec 0408)"
+                          },
                           "assigneeId": {
                             "nullable": true,
                             "type": "string",
@@ -15612,6 +15621,7 @@
                           "description",
                           "statusId",
                           "priority",
+                          "flagged",
                           "assigneeId",
                           "reporterId",
                           "labels",
@@ -15775,6 +15785,10 @@
                     "type": "string",
                     "format": "uuid",
                     "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  "flagged": {
+                    "type": "boolean",
+                    "description": "Jira’s flag (Flagged = Impediment): blocked or needs attention (spec 0408)"
                   },
                   "assigneeId": {
                     "nullable": true,
@@ -16075,6 +16089,10 @@
                       "type": "string",
                       "description": "A priority key (GET /priorities)"
                     },
+                    "flagged": {
+                      "type": "boolean",
+                      "description": "Flagged as an impediment (spec 0408)"
+                    },
                     "assigneeId": {
                       "nullable": true,
                       "type": "string",
@@ -16213,6 +16231,7 @@
                     "description",
                     "statusId",
                     "priority",
+                    "flagged",
                     "assigneeId",
                     "reporterId",
                     "labels",
@@ -16433,6 +16452,10 @@
                       "type": "string",
                       "description": "A priority key (GET /priorities)"
                     },
+                    "flagged": {
+                      "type": "boolean",
+                      "description": "Flagged as an impediment (spec 0408)"
+                    },
                     "assigneeId": {
                       "nullable": true,
                       "type": "string",
@@ -16571,6 +16594,7 @@
                     "description",
                     "statusId",
                     "priority",
+                    "flagged",
                     "assigneeId",
                     "reporterId",
                     "labels",
@@ -16752,6 +16776,10 @@
                     "priority": {
                       "type": "string",
                       "description": "A priority key (GET /priorities)"
+                    },
+                    "flagged": {
+                      "type": "boolean",
+                      "description": "Flagged as an impediment (spec 0408)"
                     },
                     "assigneeId": {
                       "nullable": true,
@@ -17165,6 +17193,10 @@
                             "type": "string",
                             "description": "A priority key (GET /priorities)"
                           },
+                          "flagged": {
+                            "type": "boolean",
+                            "description": "Flagged as an impediment (spec 0408)"
+                          },
                           "assigneeId": {
                             "nullable": true,
                             "type": "string",
@@ -17303,6 +17335,7 @@
                           "description",
                           "statusId",
                           "priority",
+                          "flagged",
                           "assigneeId",
                           "reporterId",
                           "labels",
@@ -17342,6 +17375,7 @@
                     "description",
                     "statusId",
                     "priority",
+                    "flagged",
                     "assigneeId",
                     "reporterId",
                     "labels",
@@ -17492,6 +17526,10 @@
                     "type": "string",
                     "format": "uuid",
                     "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  "flagged": {
+                    "type": "boolean",
+                    "description": "Jira’s flag (Flagged = Impediment): blocked or needs attention (spec 0408)"
                   },
                   "assigneeId": {
                     "nullable": true,
@@ -17806,6 +17844,10 @@
                       "type": "string",
                       "description": "A priority key (GET /priorities)"
                     },
+                    "flagged": {
+                      "type": "boolean",
+                      "description": "Flagged as an impediment (spec 0408)"
+                    },
                     "assigneeId": {
                       "nullable": true,
                       "type": "string",
@@ -17944,6 +17986,7 @@
                     "description",
                     "statusId",
                     "priority",
+                    "flagged",
                     "assigneeId",
                     "reporterId",
                     "labels",
@@ -19007,6 +19050,10 @@
                         "maxLength": 40,
                         "description": "A priority key from GET /priorities (urgent, high, medium, low, none, or one an admin added)"
                       },
+                      "flagged": {
+                        "type": "boolean",
+                        "description": "Jira’s flag (Flagged = Impediment): blocked or needs attention (spec 0408)"
+                      },
                       "assigneeId": {
                         "nullable": true,
                         "type": "string",
@@ -19317,6 +19364,10 @@
                       "type": "string",
                       "description": "A priority key (GET /priorities)"
                     },
+                    "flagged": {
+                      "type": "boolean",
+                      "description": "Flagged as an impediment (spec 0408)"
+                    },
                     "assigneeId": {
                       "nullable": true,
                       "type": "string",
@@ -19455,6 +19506,7 @@
                     "description",
                     "statusId",
                     "priority",
+                    "flagged",
                     "assigneeId",
                     "reporterId",
                     "labels",
@@ -19619,6 +19671,10 @@
                         "type": "string",
                         "format": "uuid",
                         "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                      },
+                      "flagged": {
+                        "type": "boolean",
+                        "description": "Jira’s flag (Flagged = Impediment): blocked or needs attention (spec 0408)"
                       },
                       "assigneeId": {
                         "nullable": true,
@@ -19918,6 +19974,10 @@
                             "type": "string",
                             "description": "A priority key (GET /priorities)"
                           },
+                          "flagged": {
+                            "type": "boolean",
+                            "description": "Flagged as an impediment (spec 0408)"
+                          },
                           "assigneeId": {
                             "nullable": true,
                             "type": "string",
@@ -20056,6 +20116,7 @@
                           "description",
                           "statusId",
                           "priority",
+                          "flagged",
                           "assigneeId",
                           "reporterId",
                           "labels",
@@ -20937,6 +20998,10 @@
                       "type": "string",
                       "description": "A priority key (GET /priorities)"
                     },
+                    "flagged": {
+                      "type": "boolean",
+                      "description": "Flagged as an impediment (spec 0408)"
+                    },
                     "assigneeId": {
                       "nullable": true,
                       "type": "string",
@@ -21075,6 +21140,7 @@
                     "description",
                     "statusId",
                     "priority",
+                    "flagged",
                     "assigneeId",
                     "reporterId",
                     "labels",
@@ -31064,6 +31130,10 @@
                         "type": "string",
                         "description": "A priority key (GET /priorities)"
                       },
+                      "flagged": {
+                        "type": "boolean",
+                        "description": "Flagged as an impediment (spec 0408)"
+                      },
                       "assigneeId": {
                         "nullable": true,
                         "type": "string",
@@ -31209,6 +31279,7 @@
                       "description",
                       "statusId",
                       "priority",
+                      "flagged",
                       "assigneeId",
                       "reporterId",
                       "labels",
@@ -31422,6 +31493,10 @@
                             "type": "string",
                             "description": "A priority key (GET /priorities)"
                           },
+                          "flagged": {
+                            "type": "boolean",
+                            "description": "Flagged as an impediment (spec 0408)"
+                          },
                           "assigneeId": {
                             "nullable": true,
                             "type": "string",
@@ -31567,6 +31642,7 @@
                           "description",
                           "statusId",
                           "priority",
+                          "flagged",
                           "assigneeId",
                           "reporterId",
                           "labels",
@@ -31779,6 +31855,10 @@
                         "type": "string",
                         "description": "A priority key (GET /priorities)"
                       },
+                      "flagged": {
+                        "type": "boolean",
+                        "description": "Flagged as an impediment (spec 0408)"
+                      },
                       "assigneeId": {
                         "nullable": true,
                         "type": "string",
@@ -31924,6 +32004,7 @@
                       "description",
                       "statusId",
                       "priority",
+                      "flagged",
                       "assigneeId",
                       "reporterId",
                       "labels",
@@ -33521,6 +33602,10 @@
                         "type": "string",
                         "description": "A priority key (GET /priorities)"
                       },
+                      "flagged": {
+                        "type": "boolean",
+                        "description": "Flagged as an impediment (spec 0408)"
+                      },
                       "assigneeId": {
                         "nullable": true,
                         "type": "string",
@@ -33666,6 +33751,7 @@
                       "description",
                       "statusId",
                       "priority",
+                      "flagged",
                       "assigneeId",
                       "reporterId",
                       "labels",
@@ -33886,6 +33972,10 @@
                       "type": "string",
                       "description": "A priority key (GET /priorities)"
                     },
+                    "flagged": {
+                      "type": "boolean",
+                      "description": "Flagged as an impediment (spec 0408)"
+                    },
                     "assigneeId": {
                       "nullable": true,
                       "type": "string",
@@ -34024,6 +34114,7 @@
                     "description",
                     "statusId",
                     "priority",
+                    "flagged",
                     "assigneeId",
                     "reporterId",
                     "labels",
@@ -35235,6 +35326,10 @@
                           "type": "string",
                           "description": "A priority key (GET /priorities)"
                         },
+                        "flagged": {
+                          "type": "boolean",
+                          "description": "Flagged as an impediment (spec 0408)"
+                        },
                         "assigneeId": {
                           "nullable": true,
                           "type": "string",
@@ -35373,6 +35468,7 @@
                         "description",
                         "statusId",
                         "priority",
+                        "flagged",
                         "assigneeId",
                         "reporterId",
                         "labels",
@@ -45634,6 +45730,10 @@
                             "type": "string",
                             "description": "A priority key (GET /priorities)"
                           },
+                          "flagged": {
+                            "type": "boolean",
+                            "description": "Flagged as an impediment (spec 0408)"
+                          },
                           "assigneeId": {
                             "nullable": true,
                             "type": "string",
@@ -45779,6 +45879,7 @@
                           "description",
                           "statusId",
                           "priority",
+                          "flagged",
                           "assigneeId",
                           "reporterId",
                           "labels",

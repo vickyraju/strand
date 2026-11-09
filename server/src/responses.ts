@@ -105,7 +105,7 @@ export const ProjectDetail = z.object({
 
 const issueFields = {
   id, key: z.string().describe('e.g. PAY-12'), projectId: id, number: z.number(), type: z.string().describe('Work type key'),
-  title: z.string(), description: z.string(), statusId: id, priority: z.string().describe('A priority key (GET /priorities)'),
+  title: z.string(), description: z.string(), statusId: id, priority: z.string().describe('A priority key (GET /priorities)'), flagged: z.boolean().describe('Flagged as an impediment (spec 0408)'),
   assigneeId: nullable(id), reporterId: nullable(id), labels: z.array(z.string()), estimate: nullable(z.number()), timeEstimate: nullable(z.number()), timeRemaining: nullable(z.number()), componentIds: z.array(id), affectsReleaseIds: z.array(id),
   testSpec: nullable(z.unknown()).describe('Test steps, Gherkin or definition (Tests and Pre-Conditions)'), testFolderId: nullable(id).describe('Test repository folder'),
   testEnvironments: z.array(z.string()).describe('Test Executions: what it ran against'), revision: z.string().describe('Test Executions: build or revision'),

@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
+import { useFlagActions } from './FlagActions'
 import { usePresence } from '../api/presence'
 import { recordView } from '../api/work'
 import {
   Maximize2, Minimize2, X, Link2, Trash2, Plus, Eye, EyeOff, ChevronUp, ChevronDown, MoreHorizontal, RefreshCw, CopyPlus, Lock,
-  Ban, Unlink, Pencil, UserCheck, Copy, Paperclip, FileText, Archive,
-} from 'lucide-react'
+  Ban, Unlink, Pencil, UserCheck, Copy, Paperclip, FileText, Archive, Flag } from 'lucide-react'
 import {
   useStore, userOf, projectOf, timeAgo, transitionsFrom, loopsFrom, moveContext, linkWords, DEFAULT_LINK_TYPES,
   type Issue, type IssuePatch,
@@ -55,7 +55,8 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
   const issue = state.issues.find(i => i.id === issueId)
   const project = projectOf(state, issue?.projectId)
   const readOnly = !canEdit(project)
-  const archived = !!project?.archivedAt   // spec 0102: nothing changes, not even a comment or watching
+  const archived = !!project?.archivedAt
+  const flag = useFlagActions(issue, !readOnly && !archived)          // Jira's Add flag / Remove flag (spec 0408)   // spec 0102: nothing changes, not even a comment or watching
   const mentionable = useProjectPeople(issue?.projectId, state.users)   // only people who can see the item can be mentioned
 
   const [title, setTitle]         = useState(issue?.title ?? '')
@@ -181,6 +182,7 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
           ...(readOnly ? [] : [{ label: 'Link work item', icon: <Link2 size={14} />, onClick: () => setLinking(true) }]),
           ...(readOnly ? [] : [{ label: 'Save as template', icon: <FileText size={14} />, onClick: () => setTemplating(true) }]),
           ...(!readOnly && issue.type !== 'epic' && !issue.parentId ? [{ label: 'Add sub-item', icon: <Plus size={14} />, onClick: () => createIssue({ projectId: project.id, parentId: issue.id, sprintId: issue.sprintId }) }] : []),
+          ...flag.items,
           ...(can(project, 'deleteIssues') && !project?.archivedAt ? [{ label: 'Delete', icon: <Trash2 size={14} />, danger: true, divider: true, onClick: () => setConfirmDel(true) }] : []),
         ]} />
         <button className="icon-btn" onClick={() => mode === 'peek' ? openIssue(issue.id, { full: true }) : navigate(href({ name: 'project', key: project.key }, issue.key))}
@@ -400,6 +402,7 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
               trigger={<>{status?.name}<ChevronDown size={14} /></>}
             />
             {moves.length === 0 && <span className="muted sm">No moves allowed from this status</span>}
+            {issue.flagged && <span className="lozenge lozenge-overdue" title="Flagged as an impediment"><Flag size={12} className="flag-icon" /> Flagged</span>}
           </div>
 
           <div className="side-card">
@@ -509,6 +512,7 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
           onSave={t => { dispatch({ type: 'updateProject', id: project.id, patch: { templates: [...project.templates, t] } }); toast(`Saved template ${t.name}`); setTemplating(false) }} />
       )}
       {confirmDel && <DeleteItemsDialog ids={[issue.id]} onClose={() => setConfirmDel(false)} onDeleted={closeIssue} />}
+      {flag.dialog}
     </div>
   )
 }

@@ -9,7 +9,7 @@ const PRIORITY_RANK = `(select -pr.position from priorities pr where pr.workspac
 const DATES: Record<string, string> = { created: 'i.created_at', updated: 'i.updated_at', resolved: 'i.resolved_at', due: 'i.due_date', start: 'i.start_date' }
 const NUMBERS: Record<string, string> = { estimate: 'i.estimate', timeEstimate: 'i.time_estimate', timeRemaining: 'i.time_remaining' }
 const EMPTY: Record<string, string> = {
-  assignee: 'i.assignee_id is null', reporter: 'i.reporter_id is null', labels: 'cardinality(i.labels) = 0', component: 'cardinality(i.component_ids) = 0',
+  flagged: 'not i.flagged', assignee: 'i.assignee_id is null', reporter: 'i.reporter_id is null', labels: 'cardinality(i.labels) = 0', component: 'cardinality(i.component_ids) = 0',
   fixVersion: 'cardinality(i.fix_release_ids) = 0', affectedVersion: 'cardinality(i.affects_release_ids) = 0', sprint: 'i.sprint_id is null', parent: 'i.parent_id is null',
   resolution: 'i.resolution is null', description: `coalesce(i.description, '') = ''`,
   due: 'i.due_date is null', start: 'i.start_date is null', resolved: 'i.resolved_at is null',
@@ -164,6 +164,10 @@ export async function jqlToSql(d: Db, me: Me, q: Query, args: unknown[]): Promis
       case 'assignee': return person('i.assignee_id', v)
       case 'reporter': return person('i.reporter_id', v)
       case 'labels': return `${put(text(v, 'labels'))} = any(i.labels)`
+      case 'flagged': {                                                // Jira's Flagged field has one value: Impediment (spec 0408)
+        if (text(v, 'flagged').toLowerCase() !== 'impediment') throw new HttpError(400, 'JQL: flagged is Impediment, as in Jira (flagged = Impediment)', { jql: 'flagged = Impediment' })
+        return 'i.flagged'
+      }
       case 'component': return `exists (select 1 from components c where c.id = any(i.component_ids) and lower(c.name) = lower(${put(text(v, 'component'))}))`
       case 'fixVersion': return `exists (select 1 from releases r where r.id = any(i.fix_release_ids) and lower(r.name) = lower(${put(text(v, 'fixVersion'))}))`   // any of its fix versions (spec 0301)
       case 'affectedVersion': return `exists (select 1 from releases r where r.id = any(i.affects_release_ids) and lower(r.name) = lower(${put(text(v, 'affectedVersion'))}))`

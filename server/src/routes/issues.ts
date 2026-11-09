@@ -22,7 +22,7 @@ const priority = z.string().min(1).max(40).describe('A priority key from GET /pr
 
 export const ISSUE_ROW = `
   select i.id, p.key || '-' || i.number as key, i.project_id, i.number, i.type, i.title, i.description,
-         i.status_id, i.priority, i.assignee_id, i.reporter_id, i.labels, i.estimate, i.time_estimate, i.time_remaining, i.component_ids, i.affects_release_ids, i.test_spec, i.test_folder_id, i.test_environments, i.revision,
+         i.status_id, i.priority, i.flagged, i.assignee_id, i.reporter_id, i.labels, i.estimate, i.time_estimate, i.time_remaining, i.component_ids, i.affects_release_ids, i.test_spec, i.test_folder_id, i.test_environments, i.revision,
          i.due_date, i.start_date, i.sprint_id, i.fix_release_ids, live_par.id as parent_id, i.custom, i.rank, i.version,
          i.resolution, i.resolved_at, i.created_at, i.updated_at
     from issues i join projects p on p.id = i.project_id
@@ -42,6 +42,7 @@ export const TEST_TYPES = ['test', 'precondition', 'test_set', 'test_plan', 'tes
 
 const patchBody = z.object({
   title: z.string().min(1).max(500), description: z.string(), type, priority, statusId: uuid,
+  flagged: z.boolean().describe('Jira’s flag (Flagged = Impediment): blocked or needs attention (spec 0408)'),
   assigneeId: uuid.nullable(), reporterId: uuid.describe('Modify reporter: project admins (spec 0203)'), labels, estimate: z.number().nonnegative().nullable(),
   timeEstimate: z.number().int().nonnegative().nullable(), timeRemaining: z.number().int().nonnegative().nullable().describe('Remaining estimate, minutes (starts at the original estimate)'),
   dueDate: date.nullable(), startDate: date.nullable(),
