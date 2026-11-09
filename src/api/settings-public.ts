@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { api, apiEnabled } from './client'
 import { DEFAULT_PRIORITIES, DEFAULT_RESOLUTIONS, setLists, type PriorityDef, type ResolutionDef } from '../data/lists'
 import { DEFAULT_KEY_RULE, type KeyRule } from '../../server/src/shared/projectKeys.ts'
-import { DEFAULT_TIME, parseDuration, formatDuration, type TimeSettings } from '../data/time'
+import { DEFAULT_TIME, parseDuration, formatDuration, statLabel, type TimeSettings } from '../data/time'
 
 export interface PublicSettings {
   attachments: { enabled: boolean; maxSizeMb: number }
@@ -59,5 +59,7 @@ export function usePublicSettings(): PublicSettings {
 /** Reading and showing durations with this workspace's time tracking settings (spec 0306). */
 export function useDurations() {
   const t = usePublicSettings().timeTracking
-  return { parse: (text: string) => parseDuration(text, t), format: (minutes: number) => formatDuration(minutes, t) }
+  return { parse: (text: string) => parseDuration(text, t), format: (minutes: number) => formatDuration(minutes, t),
+    /** A total in an estimation statistic, with its unit (spec 0404). */
+    stat: (total: number, e?: 'points' | 'time' | 'count') => statLabel(total, e, t) }
 }

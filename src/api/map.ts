@@ -42,7 +42,7 @@ export const mapSprint = (s: Row): Sprint => ({
   ...(s.boardId ? { boardId: s.boardId } : {}),
   startedAt: ms(s.startedAt), endsAt: ms(s.endsAt), completedAt: ms(s.completedAt),
   ...(s.committed != null ? { committed: s.committed } : {}), ...(s.completed != null ? { completed: s.completed } : {}),
-  ...(s.issueIds ? { issueIds: s.issueIds } : {}),
+  ...(s.issueIds ? { issueIds: s.issueIds } : {}), ...(s.estimation ? { estimation: s.estimation } : {}),
 })
 
 /** `GET /api/projects/:key` → Project. Server-side `{}` board prefs fall back to the app defaults. */

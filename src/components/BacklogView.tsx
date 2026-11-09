@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
+import { useDurations } from '../api/settings-public'
 import { DndContext, DragOverlay, useDraggable, useDroppable, type DragEndEvent, type DragOverEvent, type DragStartEvent } from '@dnd-kit/core'
 import { ChevronDown, ChevronRight, Kanban, ListChecks, Plus, MoreHorizontal, ArrowRightLeft, Pencil, Trash2, Play, ArrowUpToLine, ArrowDownToLine } from 'lucide-react'
-import { useStore, doneColumn, doneOnBoard, userOf, indexOf, uid, type Board, type Project, type Sprint, type Issue } from '../data/store'
+import { useStore, statOf, doneColumn, doneOnBoard, userOf, indexOf, uid, type Board, type Project, type Sprint, type Issue } from '../data/store'
 import { apiEnabled } from '../api/client'
 import { lastBoard, useBoard, useBoardItems, useBoards } from '../api/boards'
 import { useEnsureProjects } from '../api/useEnsureProjects'
@@ -46,6 +47,7 @@ export default function BacklogView({ project, sub }: { project: Project; sub?: 
 
 function Backlog({ project, board, switcher }: { project: Project; board?: Board; switcher?: React.ReactNode }) {
   const { state, dispatch } = useStore()
+  const { format } = useDurations()
   const { createIssue } = useApp()
   const [dragging, setDragging] = useState<string | null>(null)   // id of the row being carried
   const [overId, setOverId]     = useState<string | null>(null)   // the drop target it is over
@@ -189,16 +191,19 @@ function Backlog({ project, board, switcher }: { project: Project; board?: Board
   /** Why this person can't manage this board's sprints (spec 0101), or '' when they can */
   const cantManage = board?.canManageSprints === false ? NO_SPRINTS : ''
 
+  // totals in the board's estimation statistic (story points, original time estimate, or issue count; spec 0404)
+  const est = board?.estimation ?? 'points'
   const summary = (list: Issue[]) => {
-    const pts = list.reduce((n, i) => n + (i.estimate ?? 0), 0)
-    const byCat = (c: string) => list.filter(i => projectOf(i).statuses.find(s => s.id === i.status)?.category === c).reduce((n, i) => n + (i.estimate ?? 0), 0)
+    const pts = list.reduce((n, i) => n + statOf(i, est), 0)
+    const byCat = (c: string) => list.filter(i => projectOf(i).statuses.find(s => s.id === i.status)?.category === c).reduce((n, i) => n + statOf(i, est), 0)
+    const show = (n: number) => (est === 'time' ? format(n) : n)
     return (
-      <span className="pts-summary" title="Story points: to do · in progress · done">
+      <span className="pts-summary" title={`${est === 'time' ? 'Original time estimate' : est === 'count' ? 'Issues' : 'Story points'}: to do · in progress · done`}>
         <span className="muted">{plural(list.length, 'item')}</span>
-        {pts > 0 && <>
-          <span className="pt pt-todo">{byCat('todo')}</span>
-          <span className="pt pt-progress">{byCat('in-progress')}</span>
-          <span className="pt pt-done">{byCat('done')}</span>
+        {pts > 0 && est !== 'count' && <>
+          <span className="pt pt-todo">{show(byCat('todo'))}</span>
+          <span className="pt pt-progress">{show(byCat('in-progress'))}</span>
+          <span className="pt pt-done">{show(byCat('done'))}</span>
         </>}
       </span>
     )
@@ -376,9 +381,10 @@ function SprintDialog({ sprint, mode, onClose }: { sprint: Sprint; mode: 'start'
 }
 
 export function CompleteSprintModal({ sprint, project, board, boardId, others, onClose }: {
-  sprint: Sprint; project: Project; board?: Pick<Board, 'columns'>; boardId?: string; others: Sprint[]; onClose: () => void
+  sprint: Sprint; project: Project; board?: Pick<Board, 'columns'> & Partial<Pick<Board, 'estimation'>>; boardId?: string; others: Sprint[]; onClose: () => void
 }) {
   const doneStatusIds = doneColumn(board)                           // completed means the board's rightmost column (spec 0401)
+  const { stat } = useDurations()
   const { state, dispatch } = useStore()
   const { toast } = useApp()
   const items = state.issues.filter(i => i.sprintId === sprint.id)
@@ -386,7 +392,8 @@ export function CompleteSprintModal({ sprint, project, board, boardId, others, o
   const open = items.filter(i => !done(i))
   const future = others.filter(s => s.state === 'planned')
   const [target, setTarget] = useState<string>(future[0]?.id ?? BACKLOG)
-  const donePts = items.filter(done).reduce((n, i) => n + (i.estimate ?? 0), 0)
+  const est = board?.estimation ?? sprint.estimation ?? 'points'
+  const donePts = items.filter(done).reduce((n, i) => n + statOf(i, est), 0)
   // Jira: a Done item whose sub-items in the sprint aren't Done blocks completing it (spec 0101 R10)
   const blocked = items.filter(p => done(p) && items.some(c => c.parentId === p.id && !done(c)))
 
@@ -411,7 +418,7 @@ export function CompleteSprintModal({ sprint, project, board, boardId, others, o
       <div className="stat-pair">
         <div><b>{items.length - open.length}</b><span>completed items</span></div>
         <div><b>{open.length}</b><span>open items</span></div>
-        <div><b>{donePts}</b><span>points done</span></div>
+        <div><b>{stat(donePts, est)}</b><span>done</span></div>
       </div>
       {blocked.length > 0 && (
         <p role="alert" className="text-danger" style={{ marginTop: 14 }}>

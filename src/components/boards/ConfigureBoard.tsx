@@ -4,7 +4,7 @@
 // saves on its own; the server checks every query and says which one is wrong.
 import { useEffect, useState } from 'react'
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Kanban, MoveHorizontal, Plus, Trash2, X } from 'lucide-react'
-import { DEFAULT_FIELDS, useStore, type Board, type Project } from '../../data/store'
+import { DEFAULT_FIELDS, useStore, type Board, type Estimation, type Project } from '../../data/store'
 import { canAdmin } from '../../data/access'
 import { api, ApiError, errorMessage } from '../../api/client'
 import { lastBoard, reloadBoards, useBoard, useBoards, useJqlCount } from '../../api/boards'
@@ -122,7 +122,7 @@ export default function ConfigureBoard({ project, boardId }: { project: Project;
 // ── General ────────────────────────────────────────────────
 
 function General({ board, project, can, save }: { board: Board; project: Project; can: boolean; save: Save }) {
-  const initial = () => ({ name: board.name, jql: board.jql, doneDays: board.doneDays, admins: board.admins })
+  const initial = () => ({ name: board.name, jql: board.jql, doneDays: board.doneDays, estimation: board.estimation ?? 'points', admins: board.admins })
   const [f, setF] = useState(initial)
   useEffect(() => setF(initial()), [board])   // eslint-disable-line react-hooks/exhaustive-deps
   const { checked, run } = useJqlCount(f.jql, can)
@@ -175,8 +175,18 @@ function General({ board, project, can, save }: { board: Board; project: Project
           <span>days</span>
         </label>
       )}
+      {board.type === 'scrum' && <>
+        <label className="label" htmlFor="bc-estimation" style={{ marginTop: 14 }}>Estimation</label>
+        <p className="hint" style={{ marginTop: 0 }}>What the backlog totals, sprint commitment, velocity and burndown count. A sprint keeps the one it started with.</p>
+        <select id="bc-estimation" className="input" style={{ width: 'auto' }} disabled={!can} value={f.estimation}
+          onChange={e => setF({ ...f, estimation: e.target.value as Estimation })}>
+          <option value="points">Story points</option>
+          <option value="time">Original time estimate</option>
+          <option value="count">Issue count</option>
+        </select>
+      </>}
       {can && <SaveRow dirty={dirty} busy={s.busy} message={fieldError(s.error, 'jql') ? 'Not saved: fix the filter' : s.message} onReset={() => setF(initial())}
-        onSave={() => s.run({ name: f.name.trim(), jql: f.jql.trim(), doneDays: f.doneDays,
+        onSave={() => s.run({ name: f.name.trim(), jql: f.jql.trim(), doneDays: f.doneDays, ...(board.type === 'scrum' ? { estimation: f.estimation } : {}),
           admins: { userIds: f.admins.filter(a => a.kind === 'user').map(a => a.id), groupIds: f.admins.filter(a => a.kind === 'group').map(a => a.id) } })} />}
     </section>
   )

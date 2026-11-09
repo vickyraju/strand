@@ -53,6 +53,7 @@ export const Sprint = z.object({
   id, workspaceId: id, projectId: id, boardId: id.describe('The board it belongs to'), name: z.string(), goal: z.string(), state: z.enum(['planned', 'active', 'closed']),
   startedAt: nullable(ts), endsAt: nullable(ts), completedAt: nullable(ts), committed: nullable(z.number()), completed: nullable(z.number()),
   issueIds: nullable(z.array(id)), createdAt: ts,
+  estimation: nullable(z.enum(['points', 'time', 'count'])).describe('What its totals count, from its board when it started (spec 0404)'),
 })
 
 export const ProjectListItem = z.object({
@@ -92,7 +93,7 @@ const NamedQuery = z.object({ id: z.string(), name: z.string(), jql: z.string() 
 export const Board = z.object({
   id, projectId: id, projectKey: z.string(), name: z.string(), type: z.enum(['kanban', 'scrum']), jql: z.string().describe('The board filter'),
   columns: z.array(BoardColumn), swimlanes: z.object({ by: z.enum(['none', 'assignee', 'epic', 'priority', 'project', 'queries']), queries: z.array(NamedQuery).optional() }),
-  quickFilters: z.array(NamedQuery), cardFields: z.record(z.string(), z.boolean()), doneDays: nullable(z.number()), position: z.number(),
+  quickFilters: z.array(NamedQuery), cardFields: z.record(z.string(), z.boolean()), doneDays: nullable(z.number()), estimation: z.enum(['points', 'time', 'count']).describe('Scrum: what estimates count (spec 0404)'), position: z.number(),
   canManage: z.boolean().describe('I may change it'), canManageSprints: z.boolean().describe('I may create, start, complete and delete its sprints'), admins: z.array(z.object({ kind: z.enum(['user', 'group']), id, name: z.string() })),
 })
 export const ProjectDetail = z.object({

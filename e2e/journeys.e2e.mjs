@@ -1360,3 +1360,20 @@ test('[0403.R4] a project admin reopens a completed sprint from the Sprint Repor
   assert.equal((await owner('GET', `/issues/${item.key}`)).body.sprintId, s1.id)
   assert.deepEqual(o.problems, [])
 })
+
+test('[0404.R1][0404.R3] a board admin sets the board to Original time estimate; the backlog totals turn into times', { skip, timeout: 90_000 }, async () => {
+  await owner('POST', '/projects', { name: 'Timing', key: 'TMG', template: 'scrum' })
+  const s1 = (await owner('POST', '/projects/TMG/sprints', { name: 'Timed sprint' })).body
+  await owner('POST', '/projects/TMG/issues', { title: 'Two hours', sprintId: s1.id, estimate: 5, timeEstimate: 120 })
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url(`/project/TMG/boards/${s1.boardId}`))
+  await o.selectOption('#bc-estimation', 'time')
+  await o.click('#general button:has-text("Save")')
+  const est = async () => (await owner('GET', `/boards/${s1.boardId}`)).body.estimation
+  for (let i = 0; i < 40 && (await est()) !== 'time'; i++) await new Promise(r => setTimeout(r, 250))
+  assert.equal(await est(), 'time')
+  await o.goto(url(`/project/TMG/backlog/${s1.boardId}`))
+  await o.waitForSelector('.pts-summary .pt-todo')
+  assert.equal((await o.locator('.pts-summary .pt-todo').first().innerText()).trim(), '2h')
+  assert.deepEqual(o.problems, [])
+})

@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { parseDuration, formatDuration, DEFAULT_TIME } from './time.ts'
+import { parseDuration, formatDuration, statLabel, DEFAULT_TIME } from './time.ts'
+import { statOf } from './reducer.ts'
 
 test('durations parse the way people type them', () => {
   assert.equal(parseDuration('1h 30m'), 90)
@@ -31,4 +32,14 @@ test('[0306.R3][0306.R4] minutes show in the chosen format', () => {
   assert.equal(formatDuration(720, { ...DEFAULT_TIME, format: 'days' }), '1.5d')
   assert.equal(formatDuration(750, { ...DEFAULT_TIME, format: 'hours' }), '12.5h')
   assert.equal(formatDuration(720, { ...DEFAULT_TIME, hoursPerDay: 6 }), '2d')
+})
+
+test('[0404.R3] totals in a board’s estimation statistic carry its unit', () => {
+  assert.equal(statLabel(8), '8 points')
+  assert.equal(statLabel(1), '1 point')
+  assert.equal(statLabel(3, 'count'), '3 issues')
+  assert.equal(statLabel(600, 'time'), '1d 2h')
+  assert.equal(statOf({ estimate: 5, timeEstimate: 90 }, 'time'), 90)
+  assert.equal(statOf({ estimate: undefined, timeEstimate: undefined }, 'count'), 1)
+  assert.equal(statOf({ estimate: 5, timeEstimate: 90 }), 5)
 })

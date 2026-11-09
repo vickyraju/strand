@@ -140,6 +140,11 @@ export interface Project {
 /** A board in a project's list (Jira's boards): which one, its kind, and its filter. */
 export interface BoardRef { id: string; name: string; type: 'kanban' | 'scrum'; jql: string; position: number }
 /** A board in full: its columns (global statuses mapped to columns), swimlanes, quick filters and card fields. */
+/** A Scrum board's estimation statistic (spec 0404): story points, original time estimate (minutes), or issue count. */
+export type Estimation = 'points' | 'time' | 'count'
+/** An item's value in a statistic. */
+export const statOf = (i: Pick<Issue, 'estimate' | 'timeEstimate'>, e: Estimation = 'points') => (e === 'time' ? i.timeEstimate ?? 0 : e === 'count' ? 1 : i.estimate ?? 0)
+
 export interface Board extends BoardRef {
   projectId: string; projectKey: string
   columns: { id: string; name: string; statusIds: string[]; min?: number; max?: number }[]
@@ -147,6 +152,8 @@ export interface Board extends BoardRef {
   quickFilters: { id: string; name: string; jql: string }[]
   cardFields: Partial<Record<CardField, boolean>>
   doneDays: number | null
+  /** Scrum: what estimates count (Jira's estimation statistic, spec 0404) */
+  estimation?: Estimation
   canManage: boolean
   /** I may create, start, complete and delete its sprints (spec 0101; unset in a local workspace) */
   canManageSprints?: boolean
@@ -355,6 +362,8 @@ export interface Sprint {
   /** Snapshot taken at completion. */
   completed?:   number
   issueIds?:    string[]
+  /** What its totals count: its board's estimation statistic when it started (spec 0404) */
+  estimation?:  Estimation
 }
 
 /** Who can read a comment (Jira's comment visibility): a project role or a group. Unset: everyone who sees the item. */

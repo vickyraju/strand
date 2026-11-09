@@ -4215,3 +4215,32 @@ test('[0403.R1][0403.R2][0403.R3] reopening and deleting a completed sprint, as 
   assert.equal((await call('DELETE', `/api/v1/projects/ROP/sprints/${s4.id}`)).status, 204)
   assert.equal(await sprintOf(e.key), null)
 })
+
+test('[0404.R1][0404.R2][0404.R4] each Scrum board’s estimation statistic: points, original time estimate or issue count, recorded per sprint', { skip }, async () => {
+  const p = (await call('POST', '/api/v1/projects', { name: 'Estimating', key: 'EST', template: 'scrum' })).body
+  await join('EST', 'est.member@x.com')
+  const done = p.statuses.find((s: any) => s.category === 'done').id
+  const s1 = (await call('POST', '/api/v1/projects/EST/sprints', { name: 'Timed' })).body
+  // R1: the board's admins set it; a member can't; Kanban boards have none
+  assert.equal((await call('PATCH', `/api/v1/boards/${s1.boardId}`, { estimation: 'time' }, 'est.member@x.com')).status, 403)
+  assert.equal((await call('PATCH', `/api/v1/boards/${s1.boardId}`, { estimation: 'time' })).body.estimation, 'time')
+  await call('POST', '/api/v1/projects', { name: 'Flowing', key: 'ESK', template: 'kanban' })
+  const kb = (await call('GET', '/api/v1/projects/ESK/boards')).body[0]
+  assert.equal((await call('PATCH', `/api/v1/boards/${kb.id}`, { estimation: 'count' })).status, 400)
+  // R2: a sprint on a time board commits and completes minutes of original estimate
+  const mk = (title: string, extra: object) => call('POST', '/api/v1/projects/EST/issues', { title, ...extra }).then(r => r.body)
+  const a = await mk('A', { sprintId: s1.id, estimate: 5, timeEstimate: 120 }), b = await mk('B', { sprintId: s1.id, estimate: 3, timeEstimate: 60 })
+  const started = (await call('POST', `/api/v1/projects/EST/sprints/${s1.id}/start`, { endsAt: new Date(Date.now() + 864e5).toISOString() })).body
+  assert.deepEqual([started.estimation, started.committed], ['time', 180])
+  await call('PATCH', `/api/v1/issues/${a.key}`, { statusId: done })
+  const closed = (await call('POST', `/api/v1/projects/EST/sprints/${s1.id}/complete`, { moveTo: null })).body
+  assert.equal(closed.completed, 120)
+  assert.equal((await call('GET', `/api/v1/projects/EST/sprints/${s1.id}/report`)).body.completed[0].points, 120)
+  // changing the board leaves the past sprint as it was; R4: a count board counts items
+  await call('PATCH', `/api/v1/boards/${s1.boardId}`, { estimation: 'count' })
+  assert.equal((await call('GET', `/api/v1/projects/EST/sprints/${s1.id}/report`)).body.completed[0].points, 120)
+  const s2 = (await call('POST', '/api/v1/projects/EST/sprints', { name: 'Counted' })).body
+  await call('PATCH', `/api/v1/issues/${b.key}`, { sprintId: s2.id }); await mk('C', { sprintId: s2.id })
+  const counted = (await call('POST', `/api/v1/projects/EST/sprints/${s2.id}/start`, { endsAt: new Date(Date.now() + 864e5).toISOString() })).body
+  assert.deepEqual([counted.estimation, counted.committed], ['count', 2])
+})
