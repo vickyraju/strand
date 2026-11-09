@@ -176,19 +176,27 @@ async function checkCustom(d: Db, projectId: string, next: Record<string, string
   if (Object.keys(errors).length) throw new HttpError(400, 'Some custom field values are not valid', Object.fromEntries(Object.entries(errors).map(([k, m]) => [`custom.${k}`, m])))
 }
 
-/** Ranks are fractions: a move takes the midpoint of its neighbours, so a busy spot halves its gap on every move.
- *  Long before the numbers run out of precision (about 40 halvings), the project's ranks are spread out again:
- *  same order, 1024 apart. Renumbering does not change versions, so nobody's edit conflicts because of it.
- *  Returns whether it renumbered, so clients holding the old numbers can be told to reload them. */
-async function keepRanksApart(d: Db, projectId: string, issueId: string, rank: number) {
+/** Ranks are fractions in one order for the whole workspace (spec 0302): a move takes the midpoint of its neighbours, so
+ *  a busy spot halves its gap on every move. Long before the numbers run out of precision (about 40 halvings), the items
+ *  around the move are spread out again between the nearest ranks still far enough apart: 50 on each side, more if those
+ *  are crowded too. Nothing else moves, so the order across projects stays. Renumbering does not change versions, so
+ *  nobody's edit conflicts because of it. Returns the projects whose items were respread (their open boards reload). */
+async function keepRanksApart(d: Db, workspaceId: string, issueId: string, rank: number): Promise<string[]> {
   const [{ n }] = await d.query<{ n: number }>(
-    'select count(*)::int as n from issues where project_id = $1 and id <> $2 and abs(rank - $3) < 1e-6', [projectId, issueId, rank]) as any
-  if (!n) return false
-  await d.query(
-    `update issues i set rank = r.n * 1024
-       from (select id, row_number() over (order by rank, id) as n from issues where project_id = $1) r
-      where i.id = r.id`, [projectId])
-  return true
+    'select count(*)::int as n from issues where workspace_id = $1 and id <> $2 and abs(rank - $3) < 1e-6', [workspaceId, issueId, rank]) as any
+  if (!n) return []
+  for (let side = 50; ; side *= 10) {
+    const [lo] = await d.query<{ rank: number }>(`select rank from issues where workspace_id = $1 and rank < $2 order by rank desc offset $3 limit 1`, [workspaceId, rank, side])
+    const [hi] = await d.query<{ rank: number }>(`select rank from issues where workspace_id = $1 and rank > $2 order by rank offset $3 limit 1`, [workspaceId, rank, side])
+    const from = lo?.rank ?? rank - side * 1024, to = hi?.rank ?? rank + side * 1024
+    const [{ count }] = await d.query<{ count: number }>('select count(*)::int as count from issues where workspace_id = $1 and rank > $2 and rank < $3', [workspaceId, from, to]) as any
+    if ((to - from) / (count + 1) < 1e-3 && (lo || hi)) continue                      // still crowded: take in more neighbours
+    const moved = await d.query<{ projectId: string }>(
+      `update issues i set rank = $2::float8 + r.n * ($3::float8 - $2::float8) / ($4::int + 1)
+         from (select id, row_number() over (order by rank, id) as n from issues where workspace_id = $1 and rank > $2 and rank < $3) r
+        where i.id = r.id returning i.project_id`, [workspaceId, from, to, count])
+    return [...new Set(moved.map(m => m.projectId))]
+  }
 }
 
 /** One issue edit: version check, workflow check, history, notifications, automation, live event. Shared by the single and bulk edits. */
@@ -284,7 +292,7 @@ async function applyPatch(d: Db, me: Me, cur: any, patch: z.infer<typeof patchBo
     for (const u of await watchersOf(d, cur)) await note(d, u, me, cur.id, 'status', 'changed the status')
     await runRules(d, rctx, { kind: 'status', to: patch.statusId! })
   }
-  if (patch.rank !== undefined && await keepRanksApart(d, cur.projectId, cur.id, patch.rank)) await publish(d, cur.projectId, { type: 'issues.reranked' })
+  if (patch.rank !== undefined) for (const p of await keepRanksApart(d, me.workspaceId, cur.id, patch.rank)) await publish(d, p, { type: 'issues.reranked' })
   await publish(d, cur.projectId, { type: 'issue.updated', id: cur.id, key: cur.key, editors: await editorsOf(d, cur.id) })
   return (await d.query<any>(`${ISSUE_ROW} where i.id = $1`, [cur.id]))[0]
 }
@@ -406,10 +414,11 @@ export async function insertIssue(d: Db, me: Me, projectId: string, b: Record<st
   const statusId = b.statusId ?? allowed[0]
   if (!allowed.includes(statusId)) throw new HttpError(400, 'That status isn’t in the workflow for this work type', { statusId: 'Not in this type’s workflow' })
   const [{ number }] = await d.query<{ number: number }>('select next_issue_number($1) as number', [projectId]) as any
+  // a new item goes last, after every item in the workspace (spec 0302 R2): a rank sent with it is not used
   const [{ rank }] = await d.query<{ rank: number }>(
-    'select coalesce(max(rank), 0) + 1000 as rank from issues where project_id = $1', [projectId]) as any
+    'select coalesce(max(rank), 0) + 1024 as rank from issues where workspace_id = $1', [me.workspaceId]) as any
   const timeRemaining = b.timeRemaining !== undefined ? b.timeRemaining : remainingWhenEstimated(null, b.timeEstimate)
-  const w = pick({ ...b, statusId, rank: b.rank ?? rank, ...(timeRemaining !== null ? { timeRemaining } : {}) }, FIELDS, ['custom', 'testSpec'])
+  const w = pick({ ...b, statusId, rank, ...(timeRemaining !== null ? { timeRemaining } : {}) }, FIELDS, ['custom', 'testSpec'])
   const cols = ['workspace_id', 'project_id', 'number', 'reporter_id', ...(b.id ? ['id'] : []), ...w.cols]
   const vals = [me.workspaceId, projectId, number, me.id, ...(b.id ? [b.id] : []), ...w.vals]
   const [row] = await d.query<{ id: string }>(
