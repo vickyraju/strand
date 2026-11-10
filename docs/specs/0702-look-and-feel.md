@@ -1,6 +1,6 @@
 # 0702 Look and feel
 
-Status: Approved (PO, 10 Nov 2026: "move ahead with phase 7 … don't wait for my approval")
+Status: Ported (aws-jira `85ec845`, strand `7badb25`), approved by the PO on 10 Nov 2026; awaiting verification
 Parity rows: AD-03
 
 ## Context and Jira reference
