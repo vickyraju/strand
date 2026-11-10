@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import AnnouncementBanner from './AnnouncementBanner'
 import { Plus, Trash2 } from 'lucide-react'
 import { api, ApiError, errorMessage } from '../api/client'
 import { reloadPublicSettings } from '../api/settings-public'
@@ -14,6 +15,7 @@ import { Avatar, LoadError, Loading, Toggle } from './ui'
 
 /** System settings' pages, in menu order (the first is shown at /admin/settings). */
 export const SETTINGS_PAGES = [
+  { id: 'announcement', label: 'Announcement banner' },
   { id: 'rate-limiting', label: 'Rate limiting' }, { id: 'attachments', label: 'Attachments' }, { id: 'access-tokens', label: 'Personal access tokens' },
   { id: 'search-and-bulk', label: 'Search, export and bulk' }, { id: 'email', label: 'Email notifications' }, { id: 'groups', label: 'Group creation' },
   { id: 'testing', label: 'Testing' }, { id: 'due-dates', label: 'Due dates' }, { id: 'deleted-items', label: 'Deleted work items' },
@@ -58,6 +60,7 @@ export default function SystemSettings({ page = SETTINGS_PAGES[0].id }: { page?:
   const of = <V,>(key: string) => settings.find(s => s.key === key) as Setting<V>
   return (
     <section>
+      {page === 'announcement' && <AnnouncementSection setting={of('announcement')} save={v => save('announcement', v)} />}
       {page === 'rate-limiting' && <RateLimitingSection setting={of<RateLimiting>('rateLimiting')} save={v => save('rateLimiting', v)} />}
       {page === 'attachments' && <SimpleSection setting={of('attachments')} save={v => save('attachments', v)} fields={[
         { key: 'enabled', label: 'Allow attachments', type: 'toggle' },
@@ -327,6 +330,35 @@ function RateLimitingSection({ setting, save }: { setting: Setting<RateLimiting>
               ))}</tbody>
             </table>
           </div>}
+    </section>
+  )
+}
+
+/** The announcement banner (spec 0701): its text, who sees it, and a preview as it will look. */
+function AnnouncementSection({ setting, save }: { setting: Setting<{ text: string; visibility: 'public' | 'private' }>; save: (v: object) => Promise<Record<string, string> | null> }) {
+  const [draft, setDraft] = useState(setting.value)
+  const [errors, setErrors] = useState<Record<string, string>>({})
+  useEffect(() => { setDraft(setting.value) }, [setting.value])
+  const dirty = JSON.stringify(draft) !== JSON.stringify(setting.value)
+  return (
+    <section className="panel" aria-label={setting.label}>
+      <h2 className="panel-title">{setting.label}</h2>
+      <p className="muted">{setting.description}</p>
+      <label className="label" htmlFor="announcement-text" style={{ marginTop: 12 }}>Announcement</label>
+      <textarea id="announcement-text" className="input" rows={4} maxLength={2000} value={draft.text} onChange={e => setDraft({ ...draft, text: e.target.value })} aria-invalid={!!errors.text} />
+      {errors.text && <p className="hint error">{errors.text}</p>}
+      <label className="label" htmlFor="announcement-visibility" style={{ marginTop: 12 }}>Visibility</label>
+      <select id="announcement-visibility" className="input" style={{ width: 'auto' }} value={draft.visibility} onChange={e => setDraft({ ...draft, visibility: e.target.value as 'public' | 'private' })}>
+        <option value="private">Private: people signed in</option><option value="public">Public: also on the login page</option>
+      </select>
+      {draft.text.trim() && <>
+        <p className="label" style={{ marginTop: 14 }}>Preview</p>
+        <div className="announcement-preview"><AnnouncementBanner text={draft.text} preview /></div>
+      </>}
+      <div className="btn-row" style={{ marginTop: 12 }}>
+        <button className="btn btn-primary" disabled={!dirty} onClick={async () => setErrors((await save(draft)) ?? {})}>Save</button>
+        {dirty && <button className="btn btn-ghost" onClick={() => { setDraft(setting.value); setErrors({}) }}>Discard changes</button>}
+      </div>
     </section>
   )
 }

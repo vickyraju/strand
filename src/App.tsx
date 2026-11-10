@@ -31,6 +31,7 @@ import { AppContext, type AppActions } from './appContext'
 import { useLocation, navigate, href, type Route } from './router'
 import { Empty } from './components/ui'
 import ErrorBoundary from './components/ErrorBoundary'
+import AnnouncementBanner from './components/AnnouncementBanner'
 import { usePublicSettings } from './api/settings-public'
 
 
@@ -58,7 +59,7 @@ export default function App() {
 
 function Shell() {
   const { state, dispatch, undoType } = useStore()
-  usePublicSettings()                       // the screens re-render when the priority and resolution lists arrive or change (spec 0305)
+  const publicSettings = usePublicSettings()   // the screens re-render when the priority and resolution lists arrive or change (spec 0305); the announcement (0701)
   const { route, peek } = useLocation()
   const [railCollapsed, setRailCollapsed]   = useState(() => window.innerWidth < 1024)
   // Phones: the sidebar is a drawer opened from the top bar
@@ -263,6 +264,7 @@ function Shell() {
         />
 
         <main className="main">
+          {apiEnabled && <AnnouncementBanner text={publicSettings.announcement.text} />}
           <TopBar crumbs={crumbs} onCreateProject={() => setCreateProjectOpen(true)} onShortcuts={() => setShortcutsOpen(true)} onMenu={phone ? () => setDrawerOpen(true) : undefined} />
           {state.recovery && state.isAdmin && <div className="apply-banner warn recovery-banner" role="status"><span>Strand is running in recovery mode. Sign in normally once access is restored, and ask whoever runs the server to remove STRAND_RECOVERY_PASSWORD.</span></div>}
 

@@ -3,6 +3,7 @@ import { api, apiEnabled, errorMessage } from '../api/client'
 import { completeSignIn, hasSession, passwordSignedIn, showsLoginForm, signIn, type AuthConfig } from '../api/auth'
 import { Logomark } from './NavRail'
 import { Modal } from './ui'
+import AnnouncementBanner from './AnnouncementBanner'
 
 type Phase = 'checking' | 'signed-out' | 'ready'
 
@@ -51,7 +52,7 @@ export default function ApiGate({ children }: { children: ReactNode }) {
 
   const form = showsLoginForm(config, location.search)
   return (
-    <Card title="Sign in" text={form ? 'Use your company username and password.' : 'Use your company Microsoft account.'}>
+    <Card announcement={config.announcement ?? ''} title="Sign in" text={form ? 'Use your company username and password.' : 'Use your company Microsoft account.'}>
       {error && <p role="alert" className="text-danger">{error}</p>}
       {form && <LoginForm onSignedIn={() => { setError(''); void check().then(setPhase) }} />}
       {config.entra && (
@@ -144,9 +145,10 @@ function ResetForm({ token, onDone }: { token: string; onDone: () => void }) {
   )
 }
 
-function Card({ title, text, children }: { title: string; text: string; children?: ReactNode }) {
+function Card({ title, text, children, announcement = '' }: { title: string; text: string; children?: ReactNode; announcement?: string }) {
   return (
     <div className="welcome">
+      <AnnouncementBanner text={announcement} />
       <div className="welcome-card">
         <Logomark size={40} />
         <h1 className="welcome-title">{title}</h1>

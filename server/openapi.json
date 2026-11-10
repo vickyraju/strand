@@ -604,6 +604,11 @@
                 "schema": {
                   "type": "object",
                   "properties": {
+                    "announcement": {
+                      "nullable": true,
+                      "description": "A Public announcement banner (spec 0701)",
+                      "type": "string"
+                    },
                     "loginForm": {
                       "type": "boolean"
                     },
@@ -642,6 +647,7 @@
                     }
                   },
                   "required": [
+                    "announcement",
                     "loginForm",
                     "fallback",
                     "entra"
@@ -29811,7 +29817,7 @@
             "in": "path",
             "name": "key",
             "required": true,
-            "description": "One of: rateLimiting, attachments, accessTokens, searchAndBulk, signIn, groups, testing, dueReminders, email, deletedItems, projectKeys, timeTracking"
+            "description": "One of: rateLimiting, announcement, attachments, accessTokens, searchAndBulk, signIn, groups, testing, dueReminders, email, deletedItems, projectKeys, timeTracking"
           }
         ],
         "responses": {

@@ -8,10 +8,35 @@ Parity rows: AD-02
 - **Jira DC:** Administration › System › User interface › **Announcement banner**.
   - An **Announcement** text, with a preview.
   - **Visibility Level:** **Public** shows it to everyone, including on the login page before signing in; **Private** shows it only to people signed in.
-  - The banner shows at the top of every page. People can close it; it comes back when the announcement changes.
-  - Jira allows HTML in the announcement.
+  - The banner shows at the top of every page, and **can't be closed** (see JRASERVER-78384 below).
+  - Jira allows HTML in the announcement; a mistake in it can break every page, the login form included.
+  - Changes are audited since 2024 (JRASERVER-69328).
 - **Source:** Atlassian's "Configuring an announcement banner" page (not reachable when checked, 10 Nov 2026); the behaviour above is Jira DC's as administrators know it.
 - **Strand today:** none.
+
+## Community and Atlassian backlog
+
+Checked 10 Nov 2026 on [jira.atlassian.com](https://jira.atlassian.com/issues/?jql=project%20%3D%20JRASERVER%20AND%20summary%20~%20%22banner%22%20ORDER%20BY%20votes%20DESC). The Atlassian Community's search couldn't be read by the tools that day; its threads on the banner repeat the tracker's themes.
+
+| Atlassian issue | Votes | Status | Strand |
+|---|---|---|---|
+| [JRASERVER-67199](https://jira.atlassian.com/browse/JRASERVER-67199) REST API to update the banner | 61 | Gathering interest | **Built:** `PUT /admin/settings/announcement`, documented, usable from scripts |
+| [JRASERVER-70283](https://jira.atlassian.com/browse/JRASERVER-70283) Broken HTML in the banner breaks Jira and hides the login form; check it or preview it | 47 | Gathering interest | **Built:** plain text can't break a page (R3), and a preview (R5) |
+| [JRASERVER-22969](https://jira.atlassian.com/browse/JRASERVER-22969) Preview option missing | | Suggestion | **Built:** R5 |
+| [JRASERVER-69328](https://jira.atlassian.com/browse/JRASERVER-69328) Audit banner changes | 17 | Fixed, Jan 2024 | **Built:** audited with before and after (R1) |
+| [JRASERVER-78384](https://jira.atlassian.com/browse/JRASERVER-78384) Hide the banner after reading it | 2 | Gathering interest | **Built:** closable until it changes (R4) |
+| [JRASERVER-47400](https://jira.atlassian.com/browse/JRASERVER-47400) Isolate the banner's code from Jira's | | Suggestion | **Built:** no HTML or scripts (R3) |
+| [JRASERVER-44244](https://jira.atlassian.com/browse/JRASERVER-44244), [JRASERVER-31147](https://jira.atlassian.com/browse/JRASERVER-31147) Save a banner and show or hide it with a switch | | Suggestion | **Proposal P1** |
+| [JRASERVER-69880](https://jira.atlassian.com/browse/JRASERVER-69880) Schedule the banner (a maintenance window) | 3 | Closed, low engagement | **Proposal P2** |
+| [JRASERVER-34144](https://jira.atlassian.com/browse/JRASERVER-34144) Show it to chosen groups only; [JRASERVER-24570](https://jira.atlassian.com/browse/JRASERVER-24570) admins only | 5 | Won't do | **Proposal P3** |
+| [JRASERVER-66260](https://jira.atlassian.com/browse/JRASERVER-66260) Banner at the bottom of the page | | Suggestion | Not proposed |
+
+**Proposals for the product owner** (not built until chosen):
+
+- **P1: Show or hide** with a switch, keeping the text for next time.
+- **P2: Schedule:** a start and an end time, so a maintenance notice appears and disappears by itself.
+- **P3: Audience:** everyone, or chosen groups (for example only admins, or one department).
+- **P4: Severity:** Information, Warning or Critical, each with its own colour and icon. Critical can't be closed.
 
 ## Rules
 
@@ -65,10 +90,13 @@ Same rules.
 
 ## Out of scope and deliberate divergences
 
-- **HTML in the announcement** (Jira allows it): plain text with links instead, so a script can't be planted in everyone's browser.
+- **HTML in the announcement** (Jira allows it): plain text with links instead, so a script can't be planted in everyone's browser and a typo can't break every page (JRASERVER-70283).
+- **Closing the banner** (R4) is a Strand addition (JRASERVER-78384): Jira's can't be closed.
 
 ## Open questions
 
 None.
 
 ## Changelog
+
+- 10 Nov 2026: Community and Atlassian backlog added (PO's rule for every spec); the Jira reference corrected: Jira's banner can't be closed.

@@ -9,6 +9,7 @@ Set by the product owner on 5 November 2026; every spec follows them.
 - **Core work behaves as in Jira.** People moving from Jira Data Center should find the same rules and the same flow for their everyday work. Where Strand does something Jira doesn't, Jira's behaviour wins.
 - **Extras only add.** A Strand-only feature is welcome when it improves the experience on top of Jira's behaviour (Undo, a live count, a dry run). It must never replace or change how Jira works.
 - **Jira data must move in without loss.** Every data model and rule is designed so that data from Jira DC can be migrated into Strand directly, without reshaping it or dropping anything (multi-valued fields, keys, ranks, resolutions, history).
+- **Better than Jira, not only the same** (product owner, 10 November 2026). Before a spec is written, look at what Jira's own users say about the feature and what Atlassian has left open: discussions and complaints on the [Atlassian Community](https://community.atlassian.com), and suggestions and bugs on [Atlassian's tracker](https://jira.atlassian.com) (most voted, still open, and what was fixed in which version). Each spec lists them, with what Strand could do better, in its **Community and Atlassian backlog** section. These improvements are proposals: the product owner chooses which to build, every time.
 
 ## How a spec moves
 
