@@ -95,7 +95,7 @@ The roadmap, in order. Bugs come first, then the permission model, then the data
 | [0704](0704-user-anonymisation.md) | User anonymisation | 7 | Ported |
 | [0705](0705-outgoing-webhooks.md) | Outgoing webhooks | 7 | Ported |
 | [0706](0706-rate-limiting-for-everyone.md) | Rate limiting for everyone | 7 | Ported |
-| [0707](0707-development-panel.md) | Development panel | 7 | Approved |
+| [0707](0707-development-panel.md) | Development panel | 7 | Ported |
 | [0708](0708-languages.md) | Languages (decision) | 7 | Proposed: decision needed |
 | 0709 | Automation: conditions, schedules, global rules | 7 | Planned |
 | [0710](0710-remove-license-cleanup.md) | Remove License cleanup | 7 | Ported |

@@ -1,6 +1,6 @@
 # 0707 Development panel
 
-Status: Approved (PO, 10 Nov 2026: "move ahead with phase 7 … don't wait for my approval")
+Status: Ported (aws-jira `b665f40`, strand `abe4f45`), approved by the PO on 10 Nov 2026; awaiting verification
 Parity rows: IN-02
 
 ## Context and Jira reference
