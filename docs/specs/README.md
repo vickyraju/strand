@@ -96,7 +96,7 @@ The roadmap, in order. Bugs come first, then the permission model, then the data
 | [0705](0705-outgoing-webhooks.md) | Outgoing webhooks | 7 | Ported |
 | [0706](0706-rate-limiting-for-everyone.md) | Rate limiting for everyone | 7 | Ported |
 | [0707](0707-development-panel.md) | Development panel | 7 | Ported |
-| [0708](0708-languages.md) | Languages (decision) | 7 | Proposed: decision needed |
+| [0708](0708-languages.md) | Languages (decision) | 7 | Decided: English only |
 | [0709](0709-automation-conditions-schedules-global.md) | Automation: conditions, schedules, global rules | 7 | Ported |
 | [0710](0710-remove-license-cleanup.md) | Remove License cleanup | 7 | Ported |
 | [0711](0711-authentication-methods.md) | Authentication methods: Entra SSO configured in Administration, login form, fallback, recovery | 7 | Ported |

@@ -1,6 +1,6 @@
 # 0708 Languages (decision)
 
-Status: Proposed: a decision for the product owner; nothing is built until it is made
+Status: Decided (PO, 10 Nov 2026: "Only English fine"): option A, English only; nothing to build
 Parity rows: AD-05
 
 ## Context and Jira reference
@@ -43,7 +43,8 @@ Checked 10 Nov 2026 on [jira.atlassian.com](https://jira.atlassian.com/issues/?j
 
 ## Open questions
 
-- **Which option?**
-- **For B or C:** which languages?
+None. Answered 10 Nov 2026 by the PO: **A, English only**, as that is all the tool needs. B or C can follow later without changing anything built.
 
 ## Changelog
+
+- 10 Nov 2026: the PO chose A, English only.
