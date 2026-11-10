@@ -1,6 +1,6 @@
 # 0704 User anonymisation
 
-Status: Approved (PO, 10 Nov 2026: "move ahead with phase 7 … don't wait for my approval")
+Status: Ported (aws-jira `c5f5088`, strand `58cec56`), approved by the PO on 10 Nov 2026; awaiting verification
 Parity rows: PRM-14
 
 ## Context and Jira reference

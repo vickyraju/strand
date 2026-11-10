@@ -92,7 +92,7 @@ The roadmap, in order. Bugs come first, then the permission model, then the data
 | [0701](0701-announcement-banner.md) | Announcement banner | 7 | Ported |
 | [0702](0702-look-and-feel.md) | Look and feel | 7 | Ported |
 | [0703](0703-project-key-categories-avatars.md) | Project key change, categories, avatars | 7 | Ported |
-| [0704](0704-user-anonymisation.md) | User anonymisation | 7 | Approved |
+| [0704](0704-user-anonymisation.md) | User anonymisation | 7 | Ported |
 | [0705](0705-outgoing-webhooks.md) | Outgoing webhooks | 7 | Approved |
 | 0706 | Rate limiting for everyone | 7 | Planned |
 | 0707 | Development panel | 7 | Planned |
