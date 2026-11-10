@@ -36,6 +36,9 @@ Parity rows: AG-12
 
   The **forecast** is the remaining work divided by the average completed in the last three sprints, rounded up, shown as "about N more sprints". With no completed work there's no forecast.
 - **R5: Estimates.** Every report counts in the board's statistic (story points, original time estimate or issue count, spec 0404). An item counts as done when its status is in the Done category.
+  - Estimates count **as they stood at each moment**, as Jira's reports count them: the scope and total lines move when an estimate changes; completed work counts at its estimate when it was done; remaining work at its estimate at the sprint's end.
+  - In the epic and release burndowns, an estimate raised during a sprint on work already there is **added** work (Jira's scope change), besides work that joined.
+  - The Unestimated list is what has no estimate now.
 - **R6: When an item joined** an epic or a version: the last time it was put there (its history), else when it was created.
 
 ## Permissions
@@ -78,7 +81,6 @@ Same rules.
 
 ## Out of scope and deliberate divergences
 
-- **Estimates changed mid-way** count at their current value; their history isn't replayed.
 - **Several boards:** the reports use the project's sprints and the first Scrum board's statistic.
 
 ## Open questions
@@ -86,3 +88,5 @@ Same rules.
 None.
 
 ## Changelog
+
+- 10 Nov 2026: estimates count as they stood at each moment, replaying their history, as Jira DC's reports do (PO: "handled as how Jira DC handles them currently"); R5 says how.

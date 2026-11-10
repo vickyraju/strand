@@ -81,10 +81,12 @@ Same rules.
 - **Zooming** by selecting part of the chart: not built; the timeframe narrows it.
 - **Swimlanes** in Refine report: not built; quick filters narrow the items.
 - **Working days:** cycle time is calendar time, as Jira's control chart counts it.
-- **The old Cycle time report** stays for projects (any board) until this one has been verified; then it goes.
+- **The old Cycle time report** is removed (PO, 10 Nov 2026: as Jira DC, whose only cycle-time report is the control chart).
 
 ## Open questions
 
 None.
 
 ## Changelog
+
+- 10 Nov 2026: the old Cycle time report is removed, as Jira DC has none besides the control chart (PO: "handled as how Jira DC handles them currently").

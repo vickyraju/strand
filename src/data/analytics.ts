@@ -36,11 +36,6 @@ export function resolvedAt(project: Project, issue: Issue, history: Activity[] |
   return entered.at(-1)?.createdAt ?? issue.updatedAt
 }
 
-/** When work first started (first move into an in-progress status). */
-export function startedAt(project: Project, history: Activity[] | undefined) {
-  return history?.find(a => a.to && categoryOf(project, a.to) === 'in-progress')?.createdAt
-}
-
 function days(from: number, to: number) {
   const out: number[] = []
   for (let t = startOfDay(from); t <= to; t += DAY) out.push(t)
@@ -139,23 +134,6 @@ export function createdVsResolved(state: State, project: Project, span: number, 
     if (r && r >= start && r <= now) resolved[idx(r)]++
   }
   return { labels: buckets.map(dayLabel), created, resolved, bucket }
-}
-
-export function cycleTimes(state: State, project: Project) {
-  const history = statusHistory(state)
-  const points = state.issues
-    .filter(i => i.projectId === project.id && i.type !== 'epic')
-    .map(i => {
-      const h = history.get(i.id)
-      const done = resolvedAt(project, i, h)
-      const start = startedAt(project, h)
-      return done && start && done > start ? { issue: i, done, days: (done - start) / DAY } : null
-    })
-    .filter((x): x is { issue: Issue; done: number; days: number } => !!x)
-  const sorted = points.map(p => p.days).sort((a, b) => a - b)
-  const median = sorted.length ? sorted[Math.floor(sorted.length / 2)] : 0
-  const p85 = sorted.length ? sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.85))] : 0
-  return { points, median, p85 }
 }
 
 // ── Summary ────────────────────────────────────────────────

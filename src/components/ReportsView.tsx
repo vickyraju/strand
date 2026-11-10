@@ -1,21 +1,21 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { useBoard } from '../api/boards'
 import { useDurations } from '../api/settings-public'
-import { TrendingDown, ClipboardCheck, BarChart3, Layers, ArrowLeftRight, Timer, Users, ShieldCheck, GitMerge, ListChecks, Activity, TrendingUp, Zap, Rocket } from 'lucide-react'
+import { TrendingDown, ClipboardCheck, BarChart3, Layers, ArrowLeftRight, Users, ShieldCheck, GitMerge, ListChecks, Activity, TrendingUp, Zap, Rocket } from 'lucide-react'
 import { Burnup, EpicReport, ScopeBurndown, VersionReport } from './AgileReports'
 import ControlChart from './ControlChart'
 import { useStore, userOf, isDone, statOf, CATEGORY_COLOR, type Project } from '../data/store'
-import { burndown, velocity, cumulativeFlow, createdVsResolved, cycleTimes, dayLabel } from '../data/analytics'
+import { burndown, velocity, cumulativeFlow, createdVsResolved, dayLabel } from '../data/analytics'
 import { useApp } from '../appContext'
 import { useReportState } from '../api/reports'
 import { api, apiEnabled, errorMessage } from '../api/client'
 import { CoverageReport, TraceabilityReport, TestRunsReport } from './testing/TestReports'
 import type { State } from '../data/reducer'
-import { LineChart, ColumnChart, Legend, Scatter, HBars } from './charts'
-import { Avatar, ConfirmDialog, Empty, Picker, typeMeta, typeList, plural, priorityLabel } from './ui'
+import { LineChart, ColumnChart, Legend, HBars } from './charts'
+import { Avatar, ConfirmDialog, Empty, Picker, typeMeta, plural, priorityLabel } from './ui'
 import { can } from '../data/access'
 
-type ReportId = 'sprint' | 'burndown' | 'burnup' | 'velocity' | 'epic' | 'version' | 'epic-burndown' | 'release-burndown' | 'cfd' | 'created' | 'control' | 'cycle' | 'workload' | 'test-coverage' | 'traceability' | 'test-runs'
+type ReportId = 'sprint' | 'burndown' | 'burnup' | 'velocity' | 'epic' | 'version' | 'epic-burndown' | 'release-burndown' | 'cfd' | 'created' | 'control' | 'workload' | 'test-coverage' | 'traceability' | 'test-runs'
 
 const REPORTS: { id: ReportId; name: string; desc: string; Icon: typeof Layers; scrum?: boolean; testing?: boolean; server?: boolean }[] = [
   { id: 'sprint',   name: 'Sprint report',   desc: 'What a sprint completed, what it didn’t, and what changed while it ran.', Icon: ClipboardCheck, scrum: true },
@@ -29,7 +29,6 @@ const REPORTS: { id: ReportId; name: string; desc: string; Icon: typeof Layers; 
   { id: 'cfd',      name: 'Cumulative flow', desc: 'Work in each stage over time. Widening bands mean bottlenecks.', Icon: Layers },
   { id: 'created',  name: 'Created vs resolved', desc: 'Is the backlog growing or shrinking?',          Icon: ArrowLeftRight },
   { id: 'control',  name: 'Control chart',   desc: 'How long each item spent in the columns you choose, with the average and the rolling average.', Icon: Activity, server: true },
-  { id: 'cycle',    name: 'Cycle time',      desc: 'How long items take from start to done.',           Icon: Timer },
   { id: 'workload', name: 'Workload',        desc: 'Open items and points per person.',                 Icon: Users },
   { id: 'test-coverage', name: 'Requirement coverage', desc: 'Which requirements are tested, and how they are doing.', Icon: ShieldCheck, testing: true },
   { id: 'traceability', name: 'Traceability', desc: 'Each requirement, its tests, their results and the defects found.', Icon: GitMerge, testing: true },
@@ -80,7 +79,6 @@ export default function ReportsView({ project, report }: { project: Project; rep
         {current.id === 'release-burndown' && <ScopeBurndown key="version" project={project} state={data.state} kind="version" />}
         {current.id === 'cfd'      && <Flow project={project} />}
         {current.id === 'created'  && <CreatedResolved project={project} />}
-        {current.id === 'cycle'    && <Cycle project={project} />}
         {current.id === 'workload' && <Workload project={project} />}
           </ReportState.Provider>}
       </section>
@@ -268,25 +266,6 @@ function CreatedResolved({ project }: { project: Project }) {
       <ColumnChart ariaLabel="Created vs resolved" labels={d.labels} height={300}
         series={[{ label: 'Created', color: '#DC2626', values: d.created }, { label: 'Resolved', color: '#16A34A', values: d.resolved }]} />
       <Legend items={[{ label: 'Created', color: '#DC2626' }, { label: 'Resolved', color: '#16A34A' }]} />
-    </>
-  )
-}
-
-function Cycle({ project }: { project: Project }) {
-  const { state } = useReport()
-  const { points, median, p85 } = cycleTimes(state, project)
-  if (points.length < 2) return <NoData text="Cycle time appears once items have moved from in progress to done." />
-  return (
-    <>
-      <div className="kpis">
-        <div><b>{Math.round(median * 10) / 10} d</b><span>median cycle time</span></div>
-        <div><b>{Math.round(p85 * 10) / 10} d</b><span>85% of items finish within</span></div>
-        <div><b>{points.length}</b><span>items measured</span></div>
-      </div>
-      <Scatter ariaLabel="Cycle time per item" height={300} xLabel={dayLabel}
-        reference={{ v: median, label: `Median ${Math.round(median * 10) / 10}d` }}
-        points={points.map(p => ({ t: p.done, v: p.days, label: `${p.issue.key} ${p.issue.title}`, color: typeMeta(p.issue.type, project).color }))} />
-      <Legend items={typeList(project).filter(t => t.key !== 'epic').map(t => ({ label: t.name, color: t.color }))} />
     </>
   )
 }
