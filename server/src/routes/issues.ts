@@ -489,7 +489,12 @@ const plugin: FastifyPluginAsyncZod = async app => {
                  where i.project_id = $1 and i.deleted_at is null and ${levelOk(req.me, 2)} and a.field = 'statusId' and a.to_value is not null
                  order by a.created_at, a.id`, [p.id, req.me.id]),
     ])
-    return { issues, statusChanges }
+    // when items were put into an epic or a version (spec 0411 R6)
+    const joins = await db.query(`select a.issue_id, a.field, a.to_value as value, a.created_at as at
+        from activity a join issues i on i.id = a.issue_id
+       where i.project_id = $1 and i.deleted_at is null and a.field in ('parentId', 'fixReleaseIds') and a.to_value is not null
+       order by a.created_at, a.id`, [p.id])
+    return { issues, statusChanges, joins }
   })
 
   app.get('/projects/:key/issues', { schema: { tags: TAG, summary: 'List a project\'s issues in backlog order (keyset-paginated)', params: projKeyP, querystring: listQuery } }, async req => {

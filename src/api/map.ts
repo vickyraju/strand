@@ -184,7 +184,7 @@ export interface StatusChange { issueId: string; fromId: string | null; toId: st
  *  the creation itself (imported history has one), so its "to" is the starting status. No changes: it never moved. */
 const initialStatus = (first: StatusChange | undefined, now: string) => (first ? first.fromId ?? first.toId : now)
 
-export function toReportData(rows: Row[], changes: StatusChange[]): { issues: Issue[]; activity: Activity[] } {
+export function toReportData(rows: Row[], changes: StatusChange[], joins: { issueId: string; field: string; value: string; at: string }[] = []): { issues: Issue[]; activity: Activity[] } {
   const issues = rows.map(mapIssue)
   const first = new Map<string, StatusChange>()
   for (const c of changes) if (!first.has(c.issueId)) first.set(c.issueId, c)
@@ -196,5 +196,6 @@ export function toReportData(rows: Row[], changes: StatusChange[]): { issues: Is
     id: `${c.issueId}-${c.at}`, issueId: c.issueId, actorId: '', text: 'changed status', field: 'status',
     ...(c.fromId ? { from: c.fromId } : {}), to: c.toId, createdAt: Date.parse(c.at),
   })
+  for (const j of joins) activity.push({ id: `${j.issueId}-${j.field}-${j.at}`, issueId: j.issueId, actorId: '', text: `changed ${j.field}`, field: j.field, to: j.value, createdAt: Date.parse(j.at) })
   return { issues, activity }
 }

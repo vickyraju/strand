@@ -17,8 +17,8 @@ export function useReportState(project: Project): { state: State | null; error: 
     if (!apiEnabled) return
     let live = true
     setError('')
-    api<{ issues: Row[]; statusChanges: StatusChange[] }>('GET', `/api/projects/${encodeURIComponent(project.key)}/report-data`)
-      .then(d => { if (live) setData({ key: project.key, ...toReportData(d.issues, d.statusChanges) }) },
+    api<{ issues: Row[]; statusChanges: StatusChange[]; joins?: { issueId: string; field: string; value: string; at: string }[] }>('GET', `/api/projects/${encodeURIComponent(project.key)}/report-data`)
+      .then(d => { if (live) setData({ key: project.key, ...toReportData(d.issues, d.statusChanges, d.joins) }) },
             () => { if (live) setError('Could not load the report data. Try again in a moment.') })
     return () => { live = false }
   }, [project.key])
