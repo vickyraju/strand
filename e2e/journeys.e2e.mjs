@@ -1535,7 +1535,7 @@ test('[0406.R1][0406.R2][0406.R4][0406.R5][0406.R7] a Kanban backlog: To do goes
   assert.deepEqual(o.problems, [])
 })
 
-test('[0407.R1][0407.R3][0407.R4][0407.R8][0407.R9] the backlog’s Epics and Versions panels: an item joins an epic and a version, and each panel filters the backlog', { skip, timeout: 120_000 }, async () => {
+test('[0407.R1][0407.R3][0407.R4][0407.R5][0407.R8][0407.R9][0407.R10][0407.R12] the backlog’s Epics and Versions panels: an item joins an epic and a version, and each panel filters the backlog', { skip, timeout: 120_000 }, async () => {
   await owner('POST', '/projects', { name: 'Panelled', key: 'PAN', template: 'scrum' })
   const epic = (await owner('POST', '/projects/PAN/issues', { title: 'Checkout epic', type: 'epic' })).body
   const story = (await owner('POST', '/projects/PAN/issues', { title: 'Pay by card' })).body
@@ -1574,6 +1574,32 @@ test('[0407.R1][0407.R3][0407.R4][0407.R8][0407.R9] the backlog’s Epics and Ve
     await new Promise(r => setTimeout(r, 200))
   }
   assert.deepEqual([saved.parentId, saved.fixReleaseIds.length], [epic.id, 1])
-  assert.deepEqual(o.problems, [])
+  // R10: Create version from the panel
+  await o.click('[aria-label="Versions"] button:has-text("Create version")')
+  await o.fill('#rel-name', '2.1')
+  await o.click('.modal button:has-text("Save")')
+  await o.waitForSelector('[aria-label="Versions"] >> text=2.1')
+  // R5: Create epic from the panel, and an epic's colour
+  await o.click('[role="tab"]:has-text("Epics")')
+  await o.click('[aria-label="Epics"] button:has-text("Create epic")')
+  await o.fill('[aria-label="Title"]', 'Second epic')
+  await o.click('[aria-label="Create work item"] button[type="submit"]')
+  await o.click('[aria-label="Actions for Checkout epic"]')
+  await o.click('[role="menu"] button:has-text("Colour 4")')
+  let colored
+  for (let n = 0; n < 50 && colored !== 'ghx-label-4'; n++) { colored = (await owner('GET', `/issues/${epic.key}`)).body.epicColor; if (colored !== 'ghx-label-4') await new Promise(r => setTimeout(r, 200)) }
+  assert.equal(colored, 'ghx-label-4')
+  let second
+  for (let n = 0; n < 50 && !second; n++) { second = (await owner('GET', '/projects/PAN/issues')).body.items.find(i => i.title === 'Second epic'); if (!second) await new Promise(r => setTimeout(r, 200)) }
+  assert.equal(second.type, 'epic')
+  // R12: a viewer can filter but not create
+  await owner('POST', '/projects/PAN/members', { userIds: [await idOf('vic@e2e.test')], role: 'viewer' })
+  const v = await signIn('vic@e2e.test')
+  await v.goto(url('/project/PAN/backlog'))
+  await v.waitForSelector('text=Pay by card')
+  await v.click('[role="tab"]:has-text("Epics")')                           // a new browser: every panel starts closed
+  await v.waitForSelector('[aria-label="Epics"] >> text=Checkout epic')
+  assert.equal(await v.locator('[aria-label="Epics"] button:has-text("Create epic")').count(), 0)
+  assert.deepEqual([...o.problems, ...v.problems], [])
 })
 
