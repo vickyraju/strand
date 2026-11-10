@@ -193,6 +193,26 @@ const plugin: FastifyPluginAsyncZod = async app => {
     return { items, total, next: more && last ? Buffer.from(`${last.rank}|${last.id}`).toString('base64url') : null }
   })
 
+  // The backlog's Epics and Versions panels (spec 0407): the board's epics that aren't Done, and for each epic and each
+  // version of the board's project how much of the board's work is in it (all of it, not just what the backlog shows)
+  app.get('/boards/:id/panels', { schema: { tags: T, summary: 'The backlog’s Epics and Versions panels: open epics, and per epic and version the board’s items, completed, unestimated and estimate (in the board’s statistic)', params: idP } }, async req => {
+    const { board: b } = await boardFor(db, req.me, req.params.id)
+    const { where, args } = await boardWhere(db, req.me, b, { scope: 'all' })
+    const stat = b.estimation === 'time' ? 'i.time_estimate' : b.estimation === 'count' ? '1' : 'i.estimate'
+    const stats = (key: string) => `select ${key} as key, count(*)::int as issues, count(*) filter (where st.category = 'done')::int as completed,
+        count(*) filter (where ${stat} is null)::int as unestimated, coalesce(sum(${stat}), 0)::float as estimate,
+        coalesce(sum(${stat}) filter (where st.category = 'todo'), 0)::float as todo, coalesce(sum(${stat}) filter (where st.category = 'in-progress'), 0)::float as in_progress,
+        coalesce(sum(${stat}) filter (where st.category = 'done'), 0)::float as done
+      from issues i join projects p on p.id = i.project_id join statuses st on st.id = i.status_id left join issues par on par.id = i.parent_id and par.deleted_at is null`
+    const base = `${where.join(' and ')} and i.type <> 'epic'`
+    const byEpic = await db.query<any>(`${stats(`case when par.type = 'epic' then par.id::text else '' end`)} where ${base} and (par.id is null or par.type = 'epic') group by 1`, args)
+    const byVersion = await db.query<any>(`${stats(`coalesce(v.id::text, '')`)} left join lateral unnest(i.fix_release_ids) v(id) on true where ${base} group by 1`, args)
+    const epics = await db.query<any>(`${ISSUE_ROW.replace('from issues i', ', p.key as project_key from issues i')} join statuses st on st.id = i.status_id
+      where ${where.join(' and ')} and i.type = 'epic' and st.category <> 'done' order by i.rank, i.id limit 500`, args)
+    const keyed = (rows: any[]) => Object.fromEntries(rows.map(({ key, ...r }) => [key || 'none', r]))
+    return { epics, epicStats: keyed(byEpic), versionStats: keyed(byVersion) }
+  })
+
   // The statuses a board can show, for its Columns settings: those of its own project, of the projects its filter names
   // or finds work in (among those I may see), and any a column already names
   app.get('/boards/:id/statuses', { schema: { tags: T, summary: 'The statuses a board can map to columns: its project’s, those of the projects its filter names or finds work in, and any a column names', params: idP } }, async req => {

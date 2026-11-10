@@ -7,6 +7,7 @@ import { DndContext, DragOverlay, useDraggable, useDroppable, type DragEndEvent,
 import { ChevronDown, ChevronRight, Kanban, ListChecks, Plus, MoreHorizontal, ArrowRightLeft, Pencil, Trash2, Play, ArrowUpToLine, ArrowDownToLine } from 'lucide-react'
 import { useStore, statOf, doneColumn, doneOnBoard, userOf, indexOf, uid, plansInBacklog, type Board, type Project, type Sprint, type Issue } from '../data/store'
 import KanbanBacklog from './KanbanBacklog'
+import BacklogPanels, { usePanels } from './BacklogPanels'
 import { apiEnabled } from '../api/client'
 import { lastBoard, useBoard, useBoardItems, useBoards } from '../api/boards'
 import { useEnsureProjects } from '../api/useEnsureProjects'
@@ -81,7 +82,8 @@ function Backlog({ project, board, switcher }: { project: Project; board?: Board
     .filter(s => ofBoard(s) && s.state !== 'closed')
     .sort((a, b) => (a.state === 'active' ? -1 : b.state === 'active' ? 1 : 0))
   const hasActive = sprints.some(s => s.state === 'active')
-  const issues = filters.apply(items).sort((a, b) => a.rank - b.rank)
+  const panels = usePanels()
+  const issues = panels.apply(filters.apply(items)).sort((a, b) => a.rank - b.rank)
   const inSprint = (s: Sprint) => issues.filter(i => i.sprintId === s.id)
   // Items still in a closed sprint were completed there; they live in the sprint report, not the backlog
   const closedIds = new Set(state.sprints.filter(s => s.state === 'closed').map(s => s.id))
@@ -135,6 +137,7 @@ function Backlog({ project, board, switcher }: { project: Project; board?: Board
     const ids = idsFor(dragging)
     setDragging(null); setOverId(null)
     if (!over) return
+    if (panels.drop(ids, String(over.id))) return                                          // onto an epic or a version (spec 0407)
     const moves = planBacklogDrop({ dragged: ids, overId: String(over.id), containerOf: id => containerOfRow.get(id) ?? null })
     for (const m of moves) dispatch({ type: 'moveIssue', id: m.id, container: m.container, beforeId: m.beforeId })
     if (moves.length) refocus(String(active.id))
@@ -229,6 +232,9 @@ function Backlog({ project, board, switcher }: { project: Project; board?: Board
       <DndContext sensors={sensors} collisionDetection={backlogCollision} onDragStart={onDragStart} onDragOver={onDragOver} onDragEnd={onDragEnd}
         onDragCancel={() => { setDragging(null); setOverId(null) }}
         accessibility={{ announcements, screenReaderInstructions: { draggable: BACKLOG_INSTRUCTIONS } }}>
+      <div className="backlog-with-panels">
+      {board && <BacklogPanels board={board} project={project} open={panels.open} setOpen={panels.setOpen} epic={panels.epic} setEpic={panels.setEpic}
+        version={panels.version} setVersion={panels.setVersion} refresh={panels.refresh} format={format} />}
       <div className="backlog-scroll">
         {sprints.map(sprint => {
           const list = inSprint(sprint)
@@ -268,6 +274,7 @@ function Backlog({ project, board, switcher }: { project: Project; board?: Board
             : rows(backlogItems)}
           <button className="cell-create" onClick={() => createIssue({ projectId: project.id })}><Plus size={14} />Create</button>
         </BacklogBox>
+      </div>
       </div>
       <DragOverlay dropAnimation={null}>
         {dragging && (() => { const i = items.find(x => x.id === dragging); return i && <IssueRow issue={i} project={projectOf(i)} ghost ghostCount={carried.size} /> })()}

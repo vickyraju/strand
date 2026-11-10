@@ -162,7 +162,7 @@ function ReleaseBar({ items, done, inProgress, todo }: { items: unknown[]; done:
   )
 }
 
-function ReleaseDialog({ release, isNew, onClose, onSave }: { release: Release; isNew: boolean; onClose: () => void; onSave: (r: Release) => void }) {
+export function ReleaseDialog({ release, isNew, onClose, onSave }: { release: Release; isNew: boolean; onClose: () => void; onSave: (r: Release) => void }) {
   const [r, setR] = useState(release)
   const invalidDates = !!(r.startDate && r.releaseDate && r.startDate > r.releaseDate)
   return (

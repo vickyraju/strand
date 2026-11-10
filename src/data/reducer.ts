@@ -325,6 +325,8 @@ export interface Issue {
   custom:      Record<string, string | number>
   /** Jira's flag (Flagged = Impediment): blocked or needs attention (spec 0408). */
   flagged?:    boolean
+  /** Epics: Jira's Epic Colour, ghx-label-1 … 14 (spec 0407) */
+  epicColor?:  string
   /** Fix versions: releases that fix it (Jira's Fix Version/s, several, spec 0301). */
   fixReleaseIds?: string[]
   /** How a finished item ended, and when it last reached Done (kept in step with the status). */

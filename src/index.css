@@ -1566,3 +1566,22 @@ h2.empty-title, h2.section-title, h2.side-title { margin: 0 }
 .audit-detail dt { color: var(--text-3); font-size: 12px }
 .audit-detail dd { margin: 0 }
 .audit-detail pre { margin: 0; font-size: 12px; white-space: pre-wrap; word-break: break-word }
+
+/* The backlog's Epics and Versions panels (spec 0407) */
+.backlog-with-panels { display: flex; gap: 12px; align-items: flex-start; min-height: 0; flex: 1 }
+.backlog-with-panels > .backlog-scroll { flex: 1; min-width: 0 }
+.backlog-panel-wrap { display: flex; gap: 8px; flex-shrink: 0 }
+.panel-toggles { display: flex; flex-direction: column; gap: 6px }
+.panel-toggle { writing-mode: vertical-rl; transform: rotate(180deg); padding: 10px 4px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-2); cursor: pointer }
+.panel-toggle.on { background: var(--brand-soft); border-color: var(--brand-border); color: var(--brand-press) }
+.backlog-panel { width: 260px; max-height: calc(100vh - 220px); overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); padding: 8px }
+.backlog-panel-hdr { display: flex; align-items: center; justify-content: space-between; padding: 2px 4px 8px; font-size: 13px }
+.panel-entry { border: 1px solid transparent; border-left: 3px solid transparent; border-radius: var(--radius); padding: 4px; margin-bottom: 4px }
+.panel-entry.active { background: var(--brand-soft) }
+.panel-entry.drop-over { border-color: var(--brand) }
+.panel-entry-row { display: flex; align-items: center; gap: 4px }
+.panel-entry-name { flex: 1; min-width: 0; text-align: left; border: 0; background: none; font-size: 13px; font-weight: 500; padding: 4px 2px; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.panel-bar { width: calc(100% - 26px); margin: 4px 0 2px 26px }
+.panel-stats { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; margin: 6px 4px 2px 26px; font-size: 12px }
+.panel-stats dt { color: var(--text-2) }
+.swatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px }

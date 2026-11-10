@@ -143,7 +143,9 @@ export async function boardWhere(d: Db, me: Me, b: Board, o: { quick?: string[];
   // a Kanban backlog (spec 0406): its items stay off the board; its Backlog tab has them and the board's first column's
   else if (kanbanBacklog && o.scope !== 'all') {
     args.push(o.scope === 'board' ? b.kanbanBacklog : [...b.kanbanBacklog, ...(b.columns[0]?.statusIds ?? [])])
-    where.push(`${o.scope === 'board' ? 'not ' : ''}(st.global_status_id::text = any($${args.length}::text[]))`, `${boardArg}::uuid is not null`)
+    // epics are in the backlog's Epics panel, not on the board (spec 0407 R11)
+    if (o.scope === 'board') where.push(`not (st.global_status_id::text = any($${args.length}::text[]))`, `i.type <> 'epic'`, `${boardArg}::uuid is not null`)
+    else where.push(`(st.global_status_id::text = any($${args.length}::text[]) or (i.type = 'epic' and st.category <> 'done'))`, `${boardArg}::uuid is not null`)
   }
   // the backlog: the board's open sprints (done work included, as it counts there) and unfinished work in no sprint
   else if (o.scope === 'backlog') where.push(`(i.sprint_id in (select id from sprints where board_id = ${boardArg} and state <> 'closed') or (i.sprint_id is null and st.category <> 'done'))`)

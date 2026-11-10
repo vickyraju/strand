@@ -15632,6 +15632,11 @@
                             "type": "boolean",
                             "description": "Flagged as an impediment (spec 0408)"
                           },
+                          "epicColor": {
+                            "nullable": true,
+                            "description": "Epics: Jira’s Epic Colour, ghx-label-1 … 14 (spec 0407)",
+                            "type": "string"
+                          },
                           "assigneeId": {
                             "nullable": true,
                             "type": "string",
@@ -15771,6 +15776,7 @@
                           "statusId",
                           "priority",
                           "flagged",
+                          "epicColor",
                           "assigneeId",
                           "reporterId",
                           "labels",
@@ -16086,6 +16092,11 @@
                             "type": "boolean",
                             "description": "Flagged as an impediment (spec 0408)"
                           },
+                          "epicColor": {
+                            "nullable": true,
+                            "description": "Epics: Jira’s Epic Colour, ghx-label-1 … 14 (spec 0407)",
+                            "type": "string"
+                          },
                           "assigneeId": {
                             "nullable": true,
                             "type": "string",
@@ -16225,6 +16236,7 @@
                           "statusId",
                           "priority",
                           "flagged",
+                          "epicColor",
                           "assigneeId",
                           "reporterId",
                           "labels",
@@ -16392,6 +16404,12 @@
                   "flagged": {
                     "type": "boolean",
                     "description": "Jira’s flag (Flagged = Impediment): blocked or needs attention (spec 0408)"
+                  },
+                  "epicColor": {
+                    "nullable": true,
+                    "description": "Epics: Jira’s Epic Colour (spec 0407)",
+                    "type": "string",
+                    "pattern": "^ghx-label-([1-9]|1[0-4])$"
                   },
                   "assigneeId": {
                     "nullable": true,
@@ -16696,6 +16714,11 @@
                       "type": "boolean",
                       "description": "Flagged as an impediment (spec 0408)"
                     },
+                    "epicColor": {
+                      "nullable": true,
+                      "description": "Epics: Jira’s Epic Colour, ghx-label-1 … 14 (spec 0407)",
+                      "type": "string"
+                    },
                     "assigneeId": {
                       "nullable": true,
                       "type": "string",
@@ -16835,6 +16858,7 @@
                     "statusId",
                     "priority",
                     "flagged",
+                    "epicColor",
                     "assigneeId",
                     "reporterId",
                     "labels",
@@ -17059,6 +17083,11 @@
                       "type": "boolean",
                       "description": "Flagged as an impediment (spec 0408)"
                     },
+                    "epicColor": {
+                      "nullable": true,
+                      "description": "Epics: Jira’s Epic Colour, ghx-label-1 … 14 (spec 0407)",
+                      "type": "string"
+                    },
                     "assigneeId": {
                       "nullable": true,
                       "type": "string",
@@ -17198,6 +17227,7 @@
                     "statusId",
                     "priority",
                     "flagged",
+                    "epicColor",
                     "assigneeId",
                     "reporterId",
                     "labels",
@@ -17383,6 +17413,11 @@
                     "flagged": {
                       "type": "boolean",
                       "description": "Flagged as an impediment (spec 0408)"
+                    },
+                    "epicColor": {
+                      "nullable": true,
+                      "description": "Epics: Jira’s Epic Colour, ghx-label-1 … 14 (spec 0407)",
+                      "type": "string"
                     },
                     "assigneeId": {
                       "nullable": true,
@@ -17800,6 +17835,11 @@
                             "type": "boolean",
                             "description": "Flagged as an impediment (spec 0408)"
                           },
+                          "epicColor": {
+                            "nullable": true,
+                            "description": "Epics: Jira’s Epic Colour, ghx-label-1 … 14 (spec 0407)",
+                            "type": "string"
+                          },
                           "assigneeId": {
                             "nullable": true,
                             "type": "string",
@@ -17939,6 +17979,7 @@
                           "statusId",
                           "priority",
                           "flagged",
+                          "epicColor",
                           "assigneeId",
                           "reporterId",
                           "labels",
@@ -17979,6 +18020,7 @@
                     "statusId",
                     "priority",
                     "flagged",
+                    "epicColor",
                     "assigneeId",
                     "reporterId",
                     "labels",
@@ -18133,6 +18175,12 @@
                   "flagged": {
                     "type": "boolean",
                     "description": "Jira’s flag (Flagged = Impediment): blocked or needs attention (spec 0408)"
+                  },
+                  "epicColor": {
+                    "nullable": true,
+                    "description": "Epics: Jira’s Epic Colour (spec 0407)",
+                    "type": "string",
+                    "pattern": "^ghx-label-([1-9]|1[0-4])$"
                   },
                   "assigneeId": {
                     "nullable": true,
@@ -18451,6 +18499,11 @@
                       "type": "boolean",
                       "description": "Flagged as an impediment (spec 0408)"
                     },
+                    "epicColor": {
+                      "nullable": true,
+                      "description": "Epics: Jira’s Epic Colour, ghx-label-1 … 14 (spec 0407)",
+                      "type": "string"
+                    },
                     "assigneeId": {
                       "nullable": true,
                       "type": "string",
@@ -18590,6 +18643,7 @@
                     "statusId",
                     "priority",
                     "flagged",
+                    "epicColor",
                     "assigneeId",
                     "reporterId",
                     "labels",
@@ -19657,6 +19711,12 @@
                         "type": "boolean",
                         "description": "Jira’s flag (Flagged = Impediment): blocked or needs attention (spec 0408)"
                       },
+                      "epicColor": {
+                        "nullable": true,
+                        "description": "Epics: Jira’s Epic Colour (spec 0407)",
+                        "type": "string",
+                        "pattern": "^ghx-label-([1-9]|1[0-4])$"
+                      },
                       "assigneeId": {
                         "nullable": true,
                         "type": "string",
@@ -19971,6 +20031,11 @@
                       "type": "boolean",
                       "description": "Flagged as an impediment (spec 0408)"
                     },
+                    "epicColor": {
+                      "nullable": true,
+                      "description": "Epics: Jira’s Epic Colour, ghx-label-1 … 14 (spec 0407)",
+                      "type": "string"
+                    },
                     "assigneeId": {
                       "nullable": true,
                       "type": "string",
@@ -20110,6 +20175,7 @@
                     "statusId",
                     "priority",
                     "flagged",
+                    "epicColor",
                     "assigneeId",
                     "reporterId",
                     "labels",
@@ -20278,6 +20344,12 @@
                       "flagged": {
                         "type": "boolean",
                         "description": "Jira’s flag (Flagged = Impediment): blocked or needs attention (spec 0408)"
+                      },
+                      "epicColor": {
+                        "nullable": true,
+                        "description": "Epics: Jira’s Epic Colour (spec 0407)",
+                        "type": "string",
+                        "pattern": "^ghx-label-([1-9]|1[0-4])$"
                       },
                       "assigneeId": {
                         "nullable": true,
@@ -20581,6 +20653,11 @@
                             "type": "boolean",
                             "description": "Flagged as an impediment (spec 0408)"
                           },
+                          "epicColor": {
+                            "nullable": true,
+                            "description": "Epics: Jira’s Epic Colour, ghx-label-1 … 14 (spec 0407)",
+                            "type": "string"
+                          },
                           "assigneeId": {
                             "nullable": true,
                             "type": "string",
@@ -20720,6 +20797,7 @@
                           "statusId",
                           "priority",
                           "flagged",
+                          "epicColor",
                           "assigneeId",
                           "reporterId",
                           "labels",
@@ -21605,6 +21683,11 @@
                       "type": "boolean",
                       "description": "Flagged as an impediment (spec 0408)"
                     },
+                    "epicColor": {
+                      "nullable": true,
+                      "description": "Epics: Jira’s Epic Colour, ghx-label-1 … 14 (spec 0407)",
+                      "type": "string"
+                    },
                     "assigneeId": {
                       "nullable": true,
                       "type": "string",
@@ -21744,6 +21827,7 @@
                     "statusId",
                     "priority",
                     "flagged",
+                    "epicColor",
                     "assigneeId",
                     "reporterId",
                     "labels",
@@ -31578,6 +31662,11 @@
                         "type": "boolean",
                         "description": "Flagged as an impediment (spec 0408)"
                       },
+                      "epicColor": {
+                        "nullable": true,
+                        "description": "Epics: Jira’s Epic Colour, ghx-label-1 … 14 (spec 0407)",
+                        "type": "string"
+                      },
                       "assigneeId": {
                         "nullable": true,
                         "type": "string",
@@ -31724,6 +31813,7 @@
                       "statusId",
                       "priority",
                       "flagged",
+                      "epicColor",
                       "assigneeId",
                       "reporterId",
                       "labels",
@@ -31941,6 +32031,11 @@
                             "type": "boolean",
                             "description": "Flagged as an impediment (spec 0408)"
                           },
+                          "epicColor": {
+                            "nullable": true,
+                            "description": "Epics: Jira’s Epic Colour, ghx-label-1 … 14 (spec 0407)",
+                            "type": "string"
+                          },
                           "assigneeId": {
                             "nullable": true,
                             "type": "string",
@@ -32087,6 +32182,7 @@
                           "statusId",
                           "priority",
                           "flagged",
+                          "epicColor",
                           "assigneeId",
                           "reporterId",
                           "labels",
@@ -32303,6 +32399,11 @@
                         "type": "boolean",
                         "description": "Flagged as an impediment (spec 0408)"
                       },
+                      "epicColor": {
+                        "nullable": true,
+                        "description": "Epics: Jira’s Epic Colour, ghx-label-1 … 14 (spec 0407)",
+                        "type": "string"
+                      },
                       "assigneeId": {
                         "nullable": true,
                         "type": "string",
@@ -32449,6 +32550,7 @@
                       "statusId",
                       "priority",
                       "flagged",
+                      "epicColor",
                       "assigneeId",
                       "reporterId",
                       "labels",
@@ -34050,6 +34152,11 @@
                         "type": "boolean",
                         "description": "Flagged as an impediment (spec 0408)"
                       },
+                      "epicColor": {
+                        "nullable": true,
+                        "description": "Epics: Jira’s Epic Colour, ghx-label-1 … 14 (spec 0407)",
+                        "type": "string"
+                      },
                       "assigneeId": {
                         "nullable": true,
                         "type": "string",
@@ -34196,6 +34303,7 @@
                       "statusId",
                       "priority",
                       "flagged",
+                      "epicColor",
                       "assigneeId",
                       "reporterId",
                       "labels",
@@ -34420,6 +34528,11 @@
                       "type": "boolean",
                       "description": "Flagged as an impediment (spec 0408)"
                     },
+                    "epicColor": {
+                      "nullable": true,
+                      "description": "Epics: Jira’s Epic Colour, ghx-label-1 … 14 (spec 0407)",
+                      "type": "string"
+                    },
                     "assigneeId": {
                       "nullable": true,
                       "type": "string",
@@ -34559,6 +34672,7 @@
                     "statusId",
                     "priority",
                     "flagged",
+                    "epicColor",
                     "assigneeId",
                     "reporterId",
                     "labels",
@@ -35774,6 +35888,11 @@
                           "type": "boolean",
                           "description": "Flagged as an impediment (spec 0408)"
                         },
+                        "epicColor": {
+                          "nullable": true,
+                          "description": "Epics: Jira’s Epic Colour, ghx-label-1 … 14 (spec 0407)",
+                          "type": "string"
+                        },
                         "assigneeId": {
                           "nullable": true,
                           "type": "string",
@@ -35913,6 +36032,7 @@
                         "statusId",
                         "priority",
                         "flagged",
+                        "epicColor",
                         "assigneeId",
                         "reporterId",
                         "labels",
@@ -46427,6 +46547,11 @@
                             "type": "boolean",
                             "description": "Flagged as an impediment (spec 0408)"
                           },
+                          "epicColor": {
+                            "nullable": true,
+                            "description": "Epics: Jira’s Epic Colour, ghx-label-1 … 14 (spec 0407)",
+                            "type": "string"
+                          },
                           "assigneeId": {
                             "nullable": true,
                             "type": "string",
@@ -46577,6 +46702,7 @@
                           "statusId",
                           "priority",
                           "flagged",
+                          "epicColor",
                           "assigneeId",
                           "reporterId",
                           "labels",
@@ -46621,6 +46747,213 @@
                     "items",
                     "total",
                     "next"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/boards/{id}/panels": {
+      "get": {
+        "summary": "The backlog’s Epics and Versions panels: open epics, and per epic and version the board’s items, completed, unestimated and estimate (in the board’s statistic)",
+        "tags": [
+          "Boards"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "epics": {
+                      "type": "array",
+                      "items": {},
+                      "description": "The board’s epics that aren’t Done, in rank order (work item rows)"
+                    },
+                    "epicStats": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "object",
+                        "properties": {
+                          "issues": {
+                            "type": "number"
+                          },
+                          "completed": {
+                            "type": "number"
+                          },
+                          "unestimated": {
+                            "type": "number"
+                          },
+                          "estimate": {
+                            "type": "number"
+                          },
+                          "todo": {
+                            "type": "number"
+                          },
+                          "inProgress": {
+                            "type": "number"
+                          },
+                          "done": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "issues",
+                          "completed",
+                          "unestimated",
+                          "estimate",
+                          "todo",
+                          "inProgress",
+                          "done"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "description": "Per epic id, and \"none\" for items without an epic"
+                    },
+                    "versionStats": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "object",
+                        "properties": {
+                          "issues": {
+                            "type": "number"
+                          },
+                          "completed": {
+                            "type": "number"
+                          },
+                          "unestimated": {
+                            "type": "number"
+                          },
+                          "estimate": {
+                            "type": "number"
+                          },
+                          "todo": {
+                            "type": "number"
+                          },
+                          "inProgress": {
+                            "type": "number"
+                          },
+                          "done": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "issues",
+                          "completed",
+                          "unestimated",
+                          "estimate",
+                          "todo",
+                          "inProgress",
+                          "done"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "description": "Per version id, and \"none\" for items without a fix version"
+                    }
+                  },
+                  "required": [
+                    "epics",
+                    "epicStats",
+                    "versionStats"
                   ],
                   "additionalProperties": false
                 }
