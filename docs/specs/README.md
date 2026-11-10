@@ -66,10 +66,10 @@ The roadmap, in order. Bugs come first, then the permission model, then the data
 | [0404](0404-board-estimation.md) | Per-board estimation statistic | 4 | Ported |
 | [0405](0405-working-days.md) | Working days on a board | 4 | Ported |
 | [0406](0406-kanban-backlog.md) | Kanban backlog | 4 | Ported |
-| [0407](0407-epics-and-versions-panels.md) | Epics and versions panels | 4 | Approved |
+| [0407](0407-epics-and-versions-panels.md) | Epics and versions panels | 4 | Ported |
 | [0408](0408-flagging.md) | Flagging a work item | 4 | Ported |
 | [0409](0409-card-colours.md) | Card colours | 4 | Ported |
-| 0410 | Control chart | 4 | Planned |
+| [0410](0410-control-chart.md) | Control chart | 4 | Approved |
 | 0411 | Version, epic, epic burndown, release burndown and burnup reports | 4 | Planned |
 | 0501 | Move items between projects; old keys redirect | 5 | Planned |
 | 0502 | More custom field types | 5 | Planned |

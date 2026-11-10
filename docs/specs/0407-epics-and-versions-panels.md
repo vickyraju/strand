@@ -1,6 +1,6 @@
 # 0407 Epics and versions panels
 
-Status: Approved (PO, 10 Nov 2026: "proceed with phase 4")
+Status: Ported (aws-jira `e578fe7`, strand `125d3c1`), approved by the PO on 10 Nov 2026; awaiting verification
 Parity rows: AG-10
 
 ## Context and Jira reference
