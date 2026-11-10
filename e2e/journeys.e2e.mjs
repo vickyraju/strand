@@ -1535,3 +1535,45 @@ test('[0406.R1][0406.R2][0406.R4][0406.R5][0406.R7] a Kanban backlog: To do goes
   assert.deepEqual(o.problems, [])
 })
 
+test('[0407.R1][0407.R3][0407.R4][0407.R8][0407.R9] the backlog’s Epics and Versions panels: an item joins an epic and a version, and each panel filters the backlog', { skip, timeout: 120_000 }, async () => {
+  await owner('POST', '/projects', { name: 'Panelled', key: 'PAN', template: 'scrum' })
+  const epic = (await owner('POST', '/projects/PAN/issues', { title: 'Checkout epic', type: 'epic' })).body
+  const story = (await owner('POST', '/projects/PAN/issues', { title: 'Pay by card' })).body
+  await owner('POST', '/projects/PAN/issues', { title: 'Unrelated chore' })
+  await owner('POST', '/projects/PAN/releases', { name: '2.0' })
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url('/project/PAN/backlog'))
+  await o.waitForSelector('text=Pay by card')
+  // R1: the Epics panel opens from its toggle
+  await o.click('[role="tab"]:has-text("Epics")')
+  await o.waitForSelector('[aria-label="Epics"] >> text=Checkout epic')
+  // R4: the selected item goes into the epic (the selection bar does what dragging onto the epic does)
+  await o.click(`[aria-label="Select ${story.key}"]`)
+  await o.click('[title="Change epic"]')
+  await o.click('.picker-menu .picker-item:has-text("Checkout epic")')
+  await o.waitForSelector('text=Updated epic on 1 item')
+  // R3: clicking the epic shows only its items
+  await o.click('[aria-label="Epics"] button.panel-entry-name:has-text("Checkout epic")')
+  await o.waitForSelector('.backlog-scroll >> text=Pay by card')
+  assert.equal(await o.locator('.backlog-scroll >> text=Unrelated chore').count(), 0)
+  await o.click('[aria-label="Epics"] button.panel-entry-name:has-text("All issues")')
+  await o.waitForSelector('.backlog-scroll >> text=Unrelated chore')
+  // R9, R8: into version 2.0, then the Versions panel filters by it
+  await o.click('[title="Add fix version"]')
+  await o.click('.picker-menu .picker-item:has-text("2.0")')
+  await o.waitForSelector('text=Updated fix versions on 1 item')
+  await o.click('[role="tab"]:has-text("Versions")')
+  await o.click('[aria-label="Versions"] button.panel-entry-name:has-text("2.0")')
+  await o.waitForSelector('.backlog-scroll >> text=Pay by card')
+  assert.equal(await o.locator('.backlog-scroll >> text=Unrelated chore').count(), 0)
+  // saved on the server
+  let saved
+  for (let n = 0; n < 50; n++) {
+    saved = (await owner('GET', `/issues/${story.key}`)).body
+    if (saved.parentId === epic.id && saved.fixReleaseIds?.length === 1) break
+    await new Promise(r => setTimeout(r, 200))
+  }
+  assert.deepEqual([saved.parentId, saved.fixReleaseIds.length], [epic.id, 1])
+  assert.deepEqual(o.problems, [])
+})
+

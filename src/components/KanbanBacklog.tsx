@@ -17,6 +17,8 @@ import { planMove } from './TransitionDialog'
 import { planDrop, statusesIn, useBoardSensors } from './boardDnd'
 import { KB_BACKLOG, KB_SELECTED, backlogAnnouncements, backlogCollision, backlogKeyboard, boxTarget, endTarget, planBacklogDrop, planSectionMove, rowTarget } from './backlogDnd'
 import { Menu, plural, typeMeta } from './ui'
+import { useDurations } from '../api/settings-public'
+import BacklogPanels, { usePanels } from './BacklogPanels'
 
 export default function KanbanBacklog({ project, board, switcher }: { project: Project; board: Board; switcher?: React.ReactNode }) {
   const { state, dispatch } = useStore()
@@ -37,7 +39,9 @@ export default function KanbanBacklog({ project, board, switcher }: { project: P
 
   const sections: Record<string, { name: string; statusIds: string[] }> = { [KB_BACKLOG]: { name: 'Backlog', statusIds: board.kanbanBacklog ?? [] }, [KB_SELECTED]: board.columns[0]! }
   const inSection = (key: string, i: Issue) => statusesIn(projectOf(i), sections[key]!).includes(i.status)
-  const sorted = filters.apply(items).sort((a, b) => a.rank - b.rank)
+  const panels = usePanels()
+  const { format } = useDurations()
+  const sorted = panels.apply(filters.apply(items)).sort((a, b) => a.rank - b.rank)
   const lists: Record<string, Issue[]> = { [KB_BACKLOG]: sorted.filter(i => inSection(KB_BACKLOG, i)), [KB_SELECTED]: sorted.filter(i => inSection(KB_SELECTED, i)) }
   const ordered = [...lists[KB_BACKLOG]!, ...lists[KB_SELECTED]!]
   useNavList(ordered.map(i => i.id))
@@ -87,6 +91,7 @@ export default function KanbanBacklog({ project, board, switcher }: { project: P
     const ids = idsFor(dragging)
     setDragging(null); setOverId(null)
     if (!over) return
+    if (panels.drop(ids, String(over.id))) return                                          // onto an epic or a version (spec 0407)
     const moves = planBacklogDrop({ dragged: ids, overId: String(over.id), containerOf: sectionOf })
     if (moves.length) moveInto(moves.map(m => m.id), targetList(String(over.id)), moves[0]!.beforeId)
   }
@@ -119,7 +124,11 @@ export default function KanbanBacklog({ project, board, switcher }: { project: P
       <div className="toolbar">{switcher}{filters.toolbar}<div style={{ flex: 1 }} /><span className="muted sm">{plural(ordered.length, 'item')}</span></div>
       <DndContext sensors={sensors} collisionDetection={backlogCollision} onDragStart={onDragStart} onDragOver={onDragOver} onDragEnd={onDragEnd}
         onDragCancel={() => { setDragging(null); setOverId(null) }} accessibility={{ announcements }}>
-        <div className="backlog-scroll">{section(KB_SELECTED)}{section(KB_BACKLOG)}</div>
+        <div className="backlog-with-panels">
+          <BacklogPanels board={board} project={project} open={panels.open} setOpen={panels.setOpen} epic={panels.epic} setEpic={panels.setEpic}
+            version={panels.version} setVersion={panels.setVersion} refresh={panels.refresh} format={format} />
+          <div className="backlog-scroll">{section(KB_SELECTED)}{section(KB_BACKLOG)}</div>
+        </div>
         <DragOverlay dropAnimation={null}>
           {dragging && (() => { const i = items.find(x => x.id === dragging); return i && <IssueRow issue={i} project={projectOf(i)} ghost ghostCount={carried.size} /> })()}
         </DragOverlay>

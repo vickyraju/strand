@@ -3416,6 +3416,7 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     'POST /admin/users': ['gadmin', '/admin/users', { username: 'matrix.local', name: 'Matrix Local', email: 'matrix.local@x.com', password: 'matrix-password' }],   // 0714.R9
     'PATCH /admin/users/{id}': ['gadmin', `/admin/users/${none}`, { name: 'x' }], 'PUT /admin/users/{id}/password': ['gadmin', `/admin/users/${none}/password`, { password: 'matrix-password' }],
     'GET /admin/directories/internal': ['gadmin', '/admin/directories/internal'],
+    'GET /boards/{id}/panels': ['read', `/boards/${board}/panels`],   // 0407.R2
     'GET /admin/directories': ['gadmin', '/admin/directories'], 'GET /admin/directories/presets': ['gadmin', '/admin/directories/presets'],   // 0712.R13
     'GET /admin/directories/{id}': ['gadmin', `/admin/directories/${none}`],
     'POST /admin/directories': ['gadmin', '/admin/directories', { name: 'Matrix directory', type: 'ad', enabled: false, config: { ...PRESET_AD, ...corpConfig() }, password: 'x' }],
@@ -4746,5 +4747,43 @@ test('[0406.R1][0406.R2][0406.R3][0406.R8] a Kanban backlog: its statuses leave 
   const { followStatuses } = await import('../src/boards.ts'), { db } = await import('../src/db.ts')
   await followStatuses(db, { id: p.id, key: 'KBL' }, [], [], [todo])
   assert.deepEqual((await call('GET', `/api/v1/boards/${b.id}`)).body.kanbanBacklog, [])
+})
+
+test('[0407.R2][0407.R6][0407.R7][0407.R11] the backlog’s panels: open epics with their counts, versions’ counts; an epic’s colour; a Kanban backlog keeps epics off the board', { skip }, async () => {
+  assert.equal((await call('POST', '/api/v1/projects', { name: 'Panels', key: 'PNL', template: 'scrum' })).status, 201)
+  const [board] = (await call('GET', '/api/v1/projects/PNL/boards')).body
+  const make = async (b: object) => (await call('POST', '/api/v1/projects/PNL/issues', b)).body
+  const epic = await make({ title: 'Checkout', type: 'epic' })
+  const v = (await call('POST', '/api/v1/projects/PNL/releases', { name: '1.0' })).body
+  const a = await make({ title: 'Pay by card', parentId: epic.id, estimate: 3, fixReleaseIds: [v.id] })
+  await make({ title: 'Pay by link', parentId: epic.id })
+  await make({ title: 'Loose end', estimate: 2 })
+  const done = (await call('GET', '/api/v1/projects/PNL')).body.statuses.find((s: any) => s.category === 'done').id
+  assert.equal((await call('PATCH', `/api/v1/issues/${a.key}`, { statusId: done })).status, 200)
+  // R2, R7: counts over all the board's work, done included
+  const p = (await call('GET', `/api/v1/boards/${board.id}/panels`)).body
+  assert.deepEqual(p.epics.map((e: any) => e.key), [epic.key])
+  assert.deepEqual([p.epicStats[epic.id].issues, p.epicStats[epic.id].completed, p.epicStats[epic.id].unestimated, p.epicStats[epic.id].estimate, p.epicStats[epic.id].done], [2, 1, 1, 3, 3])
+  assert.deepEqual([p.epicStats.none.issues, p.epicStats.none.estimate], [1, 2])
+  assert.deepEqual([p.versionStats[v.id].issues, p.versionStats[v.id].completed, p.versionStats.none.issues], [1, 1, 2])
+  // R6: Jira's fourteen colours only
+  assert.equal((await call('PATCH', `/api/v1/issues/${epic.key}`, { epicColor: 'ghx-label-7' })).body.epicColor, 'ghx-label-7')
+  assert.equal((await call('PATCH', `/api/v1/issues/${epic.key}`, { epicColor: 'red' })).status, 400)
+  // a Done epic leaves the panel
+  assert.equal((await call('PATCH', `/api/v1/issues/${epic.key}`, { statusId: done })).status, 200)
+  assert.deepEqual((await call('GET', `/api/v1/boards/${board.id}/panels`)).body.epics, [])
+  // R11: a Kanban board with a backlog leaves open epics off the board, and its backlog has them
+  assert.equal((await call('POST', '/api/v1/projects', { name: 'Panels K', key: 'PNK', template: 'kanban' })).status, 201)
+  const kp = (await call('GET', '/api/v1/projects/PNK')).body
+  const [kb] = (await call('GET', '/api/v1/projects/PNK/boards')).body
+  const k = (await call('GET', `/api/v1/boards/${kb.id}`)).body
+  const todo = kp.statuses.find((s: any) => s.name === 'To do').globalStatusId
+  const kepic = (await call('POST', '/api/v1/projects/PNK/issues', { title: 'Big theme', type: 'epic' })).body
+  const columns = k.columns.map((c: any) => ({ ...c, statusIds: c.statusIds.filter((x: string) => x !== todo) })).filter((c: any) => c.statusIds.length)
+  assert.equal((await call('PATCH', `/api/v1/boards/${kb.id}`, { columns, kanbanBacklog: [todo] })).status, 200)
+  assert.equal((await call('PATCH', `/api/v1/issues/${kepic.key}`, { statusId: kp.statuses.find((s: any) => s.name === 'In progress').id })).status, 200)
+  const keys = async (scope: string) => (await call('GET', `/api/v1/boards/${kb.id}/issues?scope=${scope}`)).body.items.map((i: any) => i.key)
+  assert.ok(!(await keys('board')).includes(kepic.key))
+  assert.ok((await keys('backlog')).includes(kepic.key))
 })
 

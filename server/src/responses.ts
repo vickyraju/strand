@@ -16,6 +16,7 @@ export const Me = z.object({ id, email: z.string(), name: z.string(), workspaceI
   hasPassword: z.boolean().describe('Keeps a password in Strand (spec 0714)'), directory: nullable(z.string()).describe('The user directory they come from; null for the internal directory') })
 
 const EntraConfig = z.object({ enabled: z.boolean(), name: z.string(), tenantId: z.string(), apiClientId: z.string(), webClientId: z.string(), authority: z.string() })
+const PanelStat = z.object({ issues: z.number(), completed: z.number(), unestimated: z.number(), estimate: z.number(), todo: z.number(), inProgress: z.number(), done: z.number() })
 export const UserDirectory = z.object({
   id, name: z.string(), type: z.enum(['ad', 'ldap']), position: z.number(), enabled: z.boolean(), config: directoryConfig,
   hasPassword: z.boolean().describe('The service account’s password is stored (it is never returned)'),
@@ -125,7 +126,7 @@ export const ProjectDetail = z.object({
 
 const issueFields = {
   id, key: z.string().describe('e.g. PAY-12'), projectId: id, number: z.number(), type: z.string().describe('Work type key'),
-  title: z.string(), description: z.string(), statusId: id, priority: z.string().describe('A priority key (GET /priorities)'), flagged: z.boolean().describe('Flagged as an impediment (spec 0408)'),
+  title: z.string(), description: z.string(), statusId: id, priority: z.string().describe('A priority key (GET /priorities)'), flagged: z.boolean().describe('Flagged as an impediment (spec 0408)'), epicColor: nullable(z.string()).describe('Epics: Jira’s Epic Colour, ghx-label-1 … 14 (spec 0407)'),
   assigneeId: nullable(id), reporterId: nullable(id), labels: z.array(z.string()), estimate: nullable(z.number()), timeEstimate: nullable(z.number()), timeRemaining: nullable(z.number()), componentIds: z.array(id), affectsReleaseIds: z.array(id), securityLevelId: nullable(id),
   testSpec: nullable(z.unknown()).describe('Test steps, Gherkin or definition (Tests and Pre-Conditions)'), testFolderId: nullable(id).describe('Test repository folder'),
   testEnvironments: z.array(z.string()).describe('Test Executions: what it ran against'), revision: z.string().describe('Test Executions: build or revision'),
@@ -241,6 +242,11 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'PUT /admin/authentication': AuthMethods,
   'PUT /admin/authentication/entra': AuthMethods,
   'GET /admin/directories': z.array(UserDirectory),
+  'GET /boards/:id/panels': z.object({
+    epics: z.array(z.unknown()).describe('The board’s epics that aren’t Done, in rank order (work item rows)'),
+    epicStats: z.record(z.string(), PanelStat).describe('Per epic id, and "none" for items without an epic'),
+    versionStats: z.record(z.string(), PanelStat).describe('Per version id, and "none" for items without a fix version'),
+  }),
   'GET /admin/directories/internal': z.object({ name: z.string(), users: z.number() }),
   'POST /admin/users': z.object({ id, emailed: z.boolean().describe('The notification email was sent') }),
   'PATCH /admin/users/:id': z.object({ ok: z.boolean() }),

@@ -11,7 +11,7 @@ import { registerJob } from './jobs.ts'
 import { statusesFor } from './workflows.ts'
 import { canJoinWork } from './access.ts'
 
-export const IMPORT_FIELDS = ['title', 'description', 'type', 'status', 'priority', 'assignee', 'labels', 'estimate', 'dueDate', 'startDate', 'components', 'fixVersion', 'flagged'] as const
+export const IMPORT_FIELDS = ['title', 'description', 'type', 'status', 'priority', 'assignee', 'labels', 'estimate', 'dueDate', 'startDate', 'components', 'fixVersion', 'flagged', 'epicColor'] as const
 export type ImportField = typeof IMPORT_FIELDS[number] | `custom.${string}`
 export interface RowReport { row: number; title: string; ok: boolean; errors: string[]; warnings: string[] }
 
@@ -82,6 +82,7 @@ export async function checkImport(d: Db, projectId: string, csv: string, mapping
     else if (pr) warnings.push(`Priority “${pr}” isn’t known: the default`)
     const labels = get('labels'); if (labels) item.labels = splitLabels(labels).slice(0, 50)
     if (/^impediment$/i.test(get('flagged'))) item.flagged = true                   // Jira's Flagged column (spec 0408)
+    if (/^ghx-label-([1-9]|1[0-4])$/.test(get('epicColor'))) item.epicColor = get('epicColor')   // Jira's Epic Colour (spec 0407)
     for (const l of (item.labels ?? []) as string[]) if (l.length > 255) errors.push(`Label “${l.slice(0, 40)}…” is longer than 255 characters`)
     const est = get('estimate')
     if (est) { if (Number.isFinite(Number(est)) && Number(est) >= 0) item.estimate = Number(est); else warnings.push(`Story points “${est}” isn’t a number: left empty`) }

@@ -7,6 +7,7 @@ import { useStore, userOf, blockersOf, indexOf, transitionsFrom, loopsFrom, move
 import { useApp } from '../appContext'
 import { href } from '../router'
 import { TypeIcon, PriorityIcon, Avatar, Menu, formatDate, isOverdue, type MenuItem } from './ui'
+import { epicColor } from './panelRules'
 import { useFlagActions } from './FlagActions'
 
 /** "Move to Done", or "Approve → Done" when the transition has its own name. */
@@ -87,7 +88,7 @@ function CardView({ issue, project, fields, dragging, ghost, drag, stripe }: Car
       {(blocked && !done) || (fields.epic && epic) || (fields.labels && issue.labels.length > 0) ? (
         <div className="card-tags">
           {blocked && !done && <span className="tag tag-danger"><Ban size={11} />Blocked</span>}
-          {fields.epic && epic && <span className="tag tag-epic" title={`Epic: ${epic.title}`}>{epic.title}</span>}
+          {fields.epic && epic && <span className="tag tag-epic" style={{ color: epicColor(epic), background: `${epicColor(epic)}1f` }} title={`Epic: ${epic.title}`}>{epic.title}</span>}
           {fields.labels && issue.labels.slice(0, 3).map(l => <span key={l} className="tag">{l}</span>)}
         </div>
       ) : null}

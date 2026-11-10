@@ -7,6 +7,7 @@ import { Picker, statusOptions, priorityOptions, plural } from './ui'
 import { UserPicker } from './UserPicker'
 import { can } from '../data/access'
 import DeleteItemsDialog from './DeleteItemsDialog'
+import { planEpicDrop, planVersionDrop } from './panelRules'
 
 /** Floating "N selected" action bar (Linear style) for any list of work items. */
 export default function BulkBar({ ids, onClear }: { ids: string[]; onClear: () => void }) {
@@ -21,6 +22,22 @@ export default function BulkBar({ ids, onClear }: { ids: string[]; onClear: () =
   // Delete issues (spec 0202): only when I may delete in every project the selection is in
   const mayDelete = projectIds.every(id => can(state.projects.find(p => p.id === id), 'deleteIssues'))
   const sprints = project?.template === 'scrum' ? state.sprints.filter(s => s.projectId === project.id && s.state !== 'closed') : []
+
+  // Epic and fix version, as the backlog's panels set them (spec 0407 R4, R9): a keyboard way to do what dragging does
+  const isEpic = (id: string) => state.issues.find(i => i.id === id)?.type === 'epic'
+  const epics = project ? state.issues.filter(i => i.type === 'epic' && i.projectId === project.id && project.statuses.find(s => s.id === i.status)?.category !== 'done') : []
+  const versions = project?.releases.filter(r => !r.archived && !r.released) ?? []
+  const toEpic = (epicId: string | null) => {
+    const plan = planEpicDrop(items, epicId, { isEpic, isSubItem: i => !!i.parentId && !isEpic(i.parentId) })
+    if ('blocked' in plan) { toast(plan.blocked, { tone: 'warn' }); return }
+    for (const m of plan.moves) dispatch({ type: 'updateIssues', ids: [m.id], patch: { parentId: m.parentId ?? undefined } })
+    toast(`Updated epic on ${plural(plan.moves.length, 'item')}`)
+  }
+  const toVersion = (versionId: string | null) => {
+    const moves = planVersionDrop(items, versionId)
+    for (const m of moves) dispatch({ type: 'updateIssues', ids: [m.id], patch: { fixReleaseIds: m.fixReleaseIds } })
+    toast(`Updated fix versions on ${plural(moves.length, 'item')}`)
+  }
 
   const apply = (patch: IssuePatch, what: string) => {
     let target = ids
@@ -52,6 +69,14 @@ export default function BulkBar({ ids, onClear }: { ids: string[]; onClear: () =
           <Picker value={null as string | undefined | null}
             options={[{ value: undefined, label: 'Backlog' }, ...sprints.map(s => ({ value: s.id as string | undefined, label: s.name }))]}
             onChange={s => apply({ sprintId: s ?? undefined }, 'sprint')} className="btn btn-ghost btn-sm" title="Move to sprint" trigger="Sprint" />
+        )}
+        {epics.length > 0 && (
+          <Picker value={'' as string} options={[{ value: '-', label: 'No epic' }, ...epics.map(e => ({ value: e.id, label: e.title }))]}
+            onChange={e => toEpic(e === '-' ? null : e)} className="btn btn-ghost btn-sm" title="Change epic" trigger="Epic" />
+        )}
+        {versions.length > 0 && (
+          <Picker value={'' as string} options={[{ value: '-', label: 'No fix versions' }, ...versions.map(r => ({ value: r.id, label: r.name }))]}
+            onChange={v => toVersion(v === '-' ? null : v)} className="btn btn-ghost btn-sm" title="Add fix version" trigger="Version" />
         )}
         {mayDelete && <>
           <span className="bulk-sep" />

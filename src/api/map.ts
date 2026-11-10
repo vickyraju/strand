@@ -105,7 +105,7 @@ export const mapIssue = (i: Row): Issue => ({
   ...(i.revision ? { revision: i.revision } : {}),
   ...(i.affectsReleaseIds?.length ? { affectsReleaseIds: i.affectsReleaseIds } : {}),
   ...(i.dueDate ? { dueDate: i.dueDate } : {}), ...(i.startDate ? { startDate: i.startDate } : {}),
-  ...(i.sprintId ? { sprintId: i.sprintId } : {}), ...(i.fixReleaseIds?.length ? { fixReleaseIds: i.fixReleaseIds } : {}), ...(i.flagged != null ? { flagged: !!i.flagged } : {}),
+  ...(i.sprintId ? { sprintId: i.sprintId } : {}), ...(i.fixReleaseIds?.length ? { fixReleaseIds: i.fixReleaseIds } : {}), ...(i.flagged != null ? { flagged: !!i.flagged } : {}), ...(i.epicColor ? { epicColor: i.epicColor } : {}),
   ...(i.parentId ? { parentId: i.parentId } : {}),
   ...(i.resolution ? { resolution: i.resolution, resolvedAt: ms(i.resolvedAt) } : {}),
   watcherIds: [], links: [], attachments: [], worklogs: [],
