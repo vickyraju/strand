@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import AnnouncementBanner from './AnnouncementBanner'
+import LookAndFeel from './LookAndFeel'
 import { Plus, Trash2 } from 'lucide-react'
 import { api, ApiError, errorMessage } from '../api/client'
 import { reloadPublicSettings } from '../api/settings-public'
@@ -15,7 +16,7 @@ import { Avatar, LoadError, Loading, Toggle } from './ui'
 
 /** System settings' pages, in menu order (the first is shown at /admin/settings). */
 export const SETTINGS_PAGES = [
-  { id: 'announcement', label: 'Announcement banner' },
+  { id: 'announcement', label: 'Announcement banner' }, { id: 'look-and-feel', label: 'Look and feel' },
   { id: 'rate-limiting', label: 'Rate limiting' }, { id: 'attachments', label: 'Attachments' }, { id: 'access-tokens', label: 'Personal access tokens' },
   { id: 'search-and-bulk', label: 'Search, export and bulk' }, { id: 'email', label: 'Email notifications' }, { id: 'groups', label: 'Group creation' },
   { id: 'testing', label: 'Testing' }, { id: 'due-dates', label: 'Due dates' }, { id: 'deleted-items', label: 'Deleted work items' },
@@ -60,6 +61,7 @@ export default function SystemSettings({ page = SETTINGS_PAGES[0].id }: { page?:
   const of = <V,>(key: string) => settings.find(s => s.key === key) as Setting<V>
   return (
     <section>
+      {page === 'look-and-feel' && <LookAndFeel />}
       {page === 'announcement' && <AnnouncementSection setting={of('announcement')} save={v => save('announcement', v)} />}
       {page === 'rate-limiting' && <RateLimitingSection setting={of<RateLimiting>('rateLimiting')} save={v => save('rateLimiting', v)} />}
       {page === 'attachments' && <SimpleSection setting={of('attachments')} save={v => save('attachments', v)} fields={[

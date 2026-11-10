@@ -4,6 +4,7 @@ import { completeSignIn, hasSession, passwordSignedIn, showsLoginForm, signIn, t
 import { Logomark } from './NavRail'
 import { Modal } from './ui'
 import AnnouncementBanner from './AnnouncementBanner'
+import { imageUrl, loadLook, useLook } from '../api/look'
 
 type Phase = 'checking' | 'signed-out' | 'ready'
 
@@ -20,6 +21,7 @@ export default function ApiGate({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!apiEnabled) return
     let live = true
+    void loadLook()                                                                 // the site's look, before signing in (spec 0702)
     api<AuthConfig>('GET', '/api/auth/config').then(c => {
       if (!live) return
       setConfig(c)
@@ -177,12 +179,13 @@ function DevLoginForm({ onSignedIn }: { onSignedIn: () => void }) {
 }
 
 function Card({ title, text, children, announcement = '' }: { title: string; text: string; children?: ReactNode; announcement?: string }) {
+  const look = useLook()
   return (
     <div className="welcome">
       <AnnouncementBanner text={announcement} />
       <div className="welcome-card">
-        <Logomark size={40} />
-        <h1 className="welcome-title">{title}</h1>
+        {look.logo ? <img className="site-logo lg" src={imageUrl(look.logo)!} alt={look.siteTitle} /> : <Logomark size={40} />}
+        <h1 className="welcome-title">{title}{look.siteTitle !== 'Strand' && <span className="muted"> to {look.siteTitle}</span>}</h1>
         <p className="welcome-sub">{text}</p>
         {children}
       </div>

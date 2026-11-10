@@ -1660,3 +1660,23 @@ test('[0701.R2][0701.R4][0701.R5] an admin writes an announcement: the preview s
   assert.deepEqual([...o.problems, ...m.problems], [])
 })
 
+test('[0702.R1][0702.R2][0702.R4] an admin renames the site and changes its colour: the menu, the browser tab and the buttons follow; a too-light colour is refused', { skip, timeout: 90_000 }, async () => {
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url('/admin/settings/look-and-feel'))
+  await o.fill('section[aria-label="Look and feel"] input[maxlength="60"]', 'Acme Work')
+  await o.fill('[aria-label="Brand colour"]', '#FACC15')
+  await o.waitForSelector('text=Too light for white text')
+  await o.fill('[aria-label="Brand colour"]', '#1D4ED8')
+  await o.click('section[aria-label="Look and feel"] button:has-text("Save")')
+  await o.waitForSelector('text=Look and feel saved')
+  await o.waitForSelector('.nav-workspace:has-text("Acme Work")')
+  assert.match(await o.title(), /Acme Work$/)
+  const brand = await o.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--brand').trim())
+  assert.equal(brand.toUpperCase(), '#1D4ED8')
+  // everyone sees it, also before signing in
+  const p = await signedOut('/')
+  await p.waitForSelector('text=to Acme Work')
+  await owner('DELETE', '/admin/look-and-feel')
+  assert.deepEqual([...o.problems, ...p.problems], [])
+})
+
