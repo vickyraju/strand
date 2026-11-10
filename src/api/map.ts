@@ -104,7 +104,7 @@ export const mapIssue = (i: Row): Issue => ({
   ...(i.revision ? { revision: i.revision } : {}),
   ...(i.affectsReleaseIds?.length ? { affectsReleaseIds: i.affectsReleaseIds } : {}),
   ...(i.dueDate ? { dueDate: i.dueDate } : {}), ...(i.startDate ? { startDate: i.startDate } : {}),
-  ...(i.sprintId ? { sprintId: i.sprintId } : {}), ...(i.fixReleaseIds?.length ? { fixReleaseIds: i.fixReleaseIds } : {}), ...(i.flagged != null ? { flagged: !!i.flagged } : {}), ...(i.epicColor ? { epicColor: i.epicColor } : {}),
+  ...(i.sprintId ? { sprintId: i.sprintId } : {}), ...(i.fixReleaseIds?.length ? { fixReleaseIds: i.fixReleaseIds } : {}), ...(i.flagged != null ? { flagged: !!i.flagged } : {}), ...(i.epicColor ? { epicColor: i.epicColor } : {}), ...(i.epicStatus ? { epicStatus: i.epicStatus } : {}),
   ...(i.parentId ? { parentId: i.parentId } : {}),
   ...(i.resolution ? { resolution: i.resolution, resolvedAt: ms(i.resolvedAt) } : {}),
   watcherIds: [], links: [], attachments: [], worklogs: [],
@@ -183,7 +183,8 @@ export interface StatusChange { issueId: string; fromId: string | null; toId: st
  *  the creation itself (imported history has one), so its "to" is the starting status. No changes: it never moved. */
 const initialStatus = (first: StatusChange | undefined, now: string) => (first ? first.fromId ?? first.toId : now)
 
-export function toReportData(rows: Row[], changes: StatusChange[], joins: { issueId: string; field: string; value: string; at: string }[] = []): { issues: Issue[]; activity: Activity[] } {
+export function toReportData(rows: Row[], changes: StatusChange[], joins: { issueId: string; field: string; value: string; at: string }[] = [],
+  estimates: { issueId: string; field: string; from: string | null; to: string | null; at: string }[] = []): { issues: Issue[]; activity: Activity[] } {
   const issues = rows.map(mapIssue)
   const first = new Map<string, StatusChange>()
   for (const c of changes) if (!first.has(c.issueId)) first.set(c.issueId, c)
@@ -196,5 +197,7 @@ export function toReportData(rows: Row[], changes: StatusChange[], joins: { issu
     ...(c.fromId ? { from: c.fromId } : {}), to: c.toId, createdAt: Date.parse(c.at),
   })
   for (const j of joins) activity.push({ id: `${j.issueId}-${j.field}-${j.at}`, issueId: j.issueId, actorId: '', text: `changed ${j.field}`, field: j.field, to: j.value, createdAt: Date.parse(j.at) })
+  for (const e of estimates) activity.push({ id: `${e.issueId}-${e.field}-${e.at}`, issueId: e.issueId, actorId: '', text: `changed ${e.field}`, field: e.field,
+    ...(e.from != null ? { from: e.from } : {}), ...(e.to != null ? { to: e.to } : {}), createdAt: Date.parse(e.at) })
   return { issues, activity }
 }

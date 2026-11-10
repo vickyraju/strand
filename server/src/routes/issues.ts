@@ -23,7 +23,7 @@ const priority = z.string().min(1).max(40).describe('A priority key from GET /pr
 
 export const ISSUE_ROW = `
   select i.id, p.key || '-' || i.number as key, i.project_id, i.number, i.type, i.title, i.description,
-         i.status_id, i.priority, i.flagged, i.epic_color, i.assignee_id, i.reporter_id, i.labels, i.estimate, i.time_estimate, i.time_remaining, i.component_ids, i.affects_release_ids, i.test_spec, i.test_folder_id, i.test_environments, i.revision,
+         i.status_id, i.priority, i.flagged, i.epic_color, i.epic_status, i.assignee_id, i.reporter_id, i.labels, i.estimate, i.time_estimate, i.time_remaining, i.component_ids, i.affects_release_ids, i.test_spec, i.test_folder_id, i.test_environments, i.revision,
          i.due_date, i.start_date, i.sprint_id, i.fix_release_ids, live_par.id as parent_id, i.custom, i.rank, i.version,
          i.resolution, i.resolved_at, i.created_at, i.updated_at
     from issues i join projects p on p.id = i.project_id
@@ -45,6 +45,7 @@ const patchBody = z.object({
   title: z.string().min(1).max(500), description: z.string(), type, priority, statusId: uuid,
   flagged: z.boolean().describe('Jira’s flag (Flagged = Impediment): blocked or needs attention (spec 0408)'),
   epicColor: z.string().regex(/^ghx-label-([1-9]|1[0-4])$/, 'One of Jira’s epic colours, ghx-label-1 to ghx-label-14').nullable().describe('Epics: Jira’s Epic Colour (spec 0407)'),
+  epicStatus: z.enum(['To Do', 'In Progress', 'Done']).nullable().describe('Epics: Jira’s Epic Status, apart from the workflow (spec 0716)'),
   assigneeId: uuid.nullable(), reporterId: uuid.describe('Modify reporter: project admins (spec 0203)'), labels, estimate: z.number().nonnegative().nullable(),
   timeEstimate: z.number().int().nonnegative().nullable(), timeRemaining: z.number().int().nonnegative().nullable().describe('Remaining estimate, minutes (starts at the original estimate)'),
   dueDate: date.nullable(), startDate: date.nullable(),
@@ -226,6 +227,10 @@ async function applyPatch(d: Db, me: Me, cur: any, patch: z.infer<typeof patchBo
   const moving = patch.statusId !== undefined && patch.statusId !== cur.statusId
   const retyping = patch.type !== undefined && patch.type !== cur.type
   if (retyping) await checkType(d, cur.projectId, patch.type)
+  // Jira's Epic Status (spec 0716): epics only; an item made an epic starts at To Do, one that stops being an epic loses it
+  if (patch.epicStatus != null && (patch.type ?? cur.type) !== 'epic') throw new HttpError(400, 'Only epics have an Epic Status', { epicStatus: 'Epics only' })
+  if (patch.epicStatus === null && (patch.type ?? cur.type) === 'epic') { const { epicStatus: _, ...rest } = patch; patch = rest }   // an epic always has one
+  if (retyping) patch = { ...patch, epicStatus: (patch.type === 'epic' ? patch.epicStatus ?? 'To Do' : null) as any }
   let t = o.transition ?? null
   let ctx: RuleCtx | null = null
   // A type change whose workflow lacks the item's status is Jira's Move: the item lands on a status of the same kind in
@@ -453,7 +458,9 @@ export async function insertIssue(d: Db, me: Me, projectId: string, b: Record<st
   const [{ rank }] = await d.query<{ rank: number }>(
     'select coalesce(max(rank), 0) + 1024 as rank from issues where workspace_id = $1', [me.workspaceId]) as any
   const timeRemaining = b.timeRemaining !== undefined ? b.timeRemaining : remainingWhenEstimated(null, b.timeEstimate)
-  const w = pick({ ...b, statusId, rank, ...(timeRemaining !== null ? { timeRemaining } : {}) }, FIELDS, ['custom', 'testSpec'])
+  if (b.epicStatus != null && b.type !== 'epic') throw new HttpError(400, 'Only epics have an Epic Status', { epicStatus: 'Epics only' })
+  const epicStatus = b.type === 'epic' ? b.epicStatus ?? 'To Do' : undefined            // Jira's Epic Status (spec 0716)
+  const w = pick({ ...b, statusId, rank, ...(timeRemaining !== null ? { timeRemaining } : {}), ...(epicStatus ? { epicStatus } : {}) }, FIELDS, ['custom', 'testSpec'])
   const cols = ['workspace_id', 'project_id', 'number', 'reporter_id', ...(b.id ? ['id'] : []), ...w.cols]
   const vals = [me.workspaceId, projectId, number, me.id, ...(b.id ? [b.id] : []), ...w.vals]
   const [row] = await d.query<{ id: string }>(
@@ -484,7 +491,12 @@ const plugin: FastifyPluginAsyncZod = async app => {
         from activity a join issues i on i.id = a.issue_id
        where i.project_id = $1 and i.deleted_at is null and a.field in ('parentId', 'fixReleaseIds') and a.to_value is not null
        order by a.created_at, a.id`, [p.id])
-    return { issues, statusChanges, joins }
+    // estimate changes: reports count an item's estimate as it stood at each moment, as Jira's do (spec 0411 R5)
+    const estimateChanges = await db.query(`select a.issue_id, a.field, a.from_value as from, a.to_value as to, a.created_at as at
+        from activity a join issues i on i.id = a.issue_id
+       where i.project_id = $1 and i.deleted_at is null and a.field in ('estimate', 'timeEstimate')
+       order by a.created_at, a.id`, [p.id])
+    return { issues, statusChanges, joins, estimateChanges }
   })
 
   app.get('/projects/:key/issues', { schema: { tags: TAG, summary: 'List a project\'s issues in backlog order (keyset-paginated)', params: projKeyP, querystring: listQuery } }, async req => {

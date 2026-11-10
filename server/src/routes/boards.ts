@@ -232,7 +232,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     return { items: rows.slice(0, 5000), truncated: rows.length > 5000 }
   })
 
-  // The backlog's Epics and Versions panels (spec 0407): the board's epics that aren't Done, and for each epic and each
+  // The backlog's Epics and Versions panels (spec 0407): the board's epics whose Epic Status isn't Done (spec 0716), and for each epic and each
   // version of the board's project how much of the board's work is in it (all of it, not just what the backlog shows)
   app.get('/boards/:id/panels', { schema: { tags: T, summary: 'The backlog’s Epics and Versions panels: open epics, and per epic and version the board’s items, completed, unestimated and estimate (in the board’s statistic)', params: idP } }, async req => {
     const { board: b } = await boardFor(db, req.me, req.params.id)
@@ -247,7 +247,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     const byEpic = await db.query<any>(`${stats(`case when par.type = 'epic' then par.id::text else '' end`)} where ${base} and (par.id is null or par.type = 'epic') group by 1`, args)
     const byVersion = await db.query<any>(`${stats(`coalesce(v.id::text, '')`)} left join lateral unnest(i.fix_release_ids) v(id) on true where ${base} group by 1`, args)
     const epics = await db.query<any>(`${ISSUE_ROW.replace('from issues i', ', p.key as project_key from issues i')} join statuses st on st.id = i.status_id
-      where ${where.join(' and ')} and i.type = 'epic' and st.category <> 'done' order by i.rank, i.id limit 500`, args)
+      where ${where.join(' and ')} and i.type = 'epic' and i.epic_status is distinct from 'Done' order by i.rank, i.id limit 500`, args)
     const keyed = (rows: any[]) => Object.fromEntries(rows.map(({ key, ...r }) => [key || 'none', r]))
     return { epics, epicStats: keyed(byEpic), versionStats: keyed(byVersion) }
   })

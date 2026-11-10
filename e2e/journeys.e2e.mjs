@@ -1777,3 +1777,21 @@ test('[0709.R1][0709.R3] a system admin makes a global rule for a category with 
   assert.deepEqual(o.problems, [])
 })
 
+test('[0716.R3][0716.R5] Mark as Done: the epic leaves the Epics panel and keeps its workflow status; its details show the Epic Status', { skip, timeout: 120_000 }, async () => {
+  await owner('POST', '/projects', { name: 'Epic status', key: 'EPS', template: 'scrum' })
+  const epic = (await owner('POST', '/projects/EPS/issues', { title: 'Old theme', type: 'epic' })).body
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url(`/i/${epic.key}`))
+  await o.waitForSelector('.field:has-text("Epic Status") >> text=To Do')
+  await o.goto(url('/project/EPS/backlog'))
+  await o.click('[role="tab"]:has-text("Epics")')
+  await o.waitForSelector('[aria-label="Epics"] >> text=Old theme')
+  await o.click('[aria-label="Actions for Old theme"]')
+  await o.click('[role="menu"] button:has-text("Mark as Done")')
+  await o.waitForSelector('[aria-label="Epics"] >> text=No open epics.')
+  let now
+  for (let n = 0; n < 50 && now?.epicStatus !== 'Done'; n++) { now = (await owner('GET', `/issues/${epic.key}`)).body; if (now.epicStatus !== 'Done') await new Promise(r => setTimeout(r, 200)) }
+  assert.deepEqual([now.epicStatus, now.statusId], ['Done', epic.statusId])
+  assert.deepEqual(o.problems, [])
+})
+

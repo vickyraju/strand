@@ -17,7 +17,7 @@ type Call = <T = any>(method: string, path: string, body?: unknown, headers?: Re
 
 /** Issue fields the server owns a copy of. Watchers, links, work logs and attachments sync separately. */
 const SCALARS = [
-  'type', 'title', 'description', 'status', 'priority', 'flagged', 'epicColor', 'assigneeId', 'labels', 'estimate', 'timeEstimate', 'timeRemaining', 'componentIds', 'affectsReleaseIds', 'testSpec', 'testFolderId', 'testEnvironments', 'revision',
+  'type', 'title', 'description', 'status', 'priority', 'flagged', 'epicColor', 'epicStatus', 'assigneeId', 'labels', 'estimate', 'timeEstimate', 'timeRemaining', 'componentIds', 'affectsReleaseIds', 'testSpec', 'testFolderId', 'testEnvironments', 'revision',
   'dueDate', 'startDate', 'sprintId', 'fixReleaseIds', 'parentId', 'custom', 'rank', 'resolution', 'reporterId',
 ] as const
 type Scalar = typeof SCALARS[number]
