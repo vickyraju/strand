@@ -252,6 +252,12 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'PUT /admin/authentication': AuthMethods,
   'PUT /admin/authentication/entra': AuthMethods,
   'GET /admin/directories': z.array(UserDirectory),
+  'GET /admin/development': z.object({
+    receiverPath: z.string().describe('Where GitHub sends its webhooks, on the API’s address'), secretSet: z.boolean(),
+    accounts: z.array(z.object({ id, accountLogin: z.string(), installationId: z.number(), status: z.enum(['pending', 'active', 'suspended']), createdAt: ts,
+      repositories: z.array(z.object({ id, fullName: z.string(), projectKeys: z.array(z.string()) })) })),
+    deliveries: z.array(z.object({ id: z.string(), event: z.string(), status: z.enum(['received', 'processed', 'failed']), error: nullable(z.string()), receivedAt: ts })),
+  }),
   'GET /admin/webhooks': z.array(Webhook), 'GET /admin/webhooks/:id': Webhook, 'PUT /admin/webhooks/:id': Webhook,
   'POST /admin/webhooks': Webhook.extend({ secret: z.string().describe('The signing secret, shown this once') }),
   'POST /admin/webhooks/:id/secret': z.object({ secret: z.string() }),

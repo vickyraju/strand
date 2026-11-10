@@ -17,6 +17,7 @@ const SPEC: Record<string, [jira: string, strand: string | null, spec?: string]>
   editAllWorklogs: ['Administrators', 'admin'], deleteAllWorklogs: ['Administrators', 'admin'],
   manageSprints: ['Administrators', 'admin', '0203'], administer: ['Administrators', 'admin'], archiveIssues: ['none', null, '0508'],
   setIssueSecurity: ['none', 'member'],   // strand only
+  viewDevTools: ['any user with access', 'viewer', '0707'],
 }
 
 test('[0201.R1][0201.R5] one table of Jira’s project permissions: for each, Jira’s default and the lowest Strand role that holds it, as the spec says', () => {

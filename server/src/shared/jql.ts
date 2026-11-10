@@ -31,6 +31,13 @@ export const FIELDS: Record<string, string> = {
   created: 'created', createddate: 'created', updated: 'updated', updateddate: 'updated', resolved: 'resolved', resolutiondate: 'resolved',
   due: 'due', duedate: 'due', start: 'start', startdate: 'start',
   storypoints: 'estimate', 'story points': 'estimate', estimate: 'estimate', originalestimate: 'timeEstimate', remainingestimate: 'timeRemaining',
+  // Jira's development fields (spec 0707); builds, deployments and reviews come from tools Strand doesn't connect yet
+  'development[commits].all': 'devCommits', 'development[branches].all': 'devBranches', 'development[pullrequests].all': 'devPrs',
+  'development[pullrequests].open': 'devPrsOpen', 'development[pullrequests].merged': 'devPrsMerged', 'development[pullrequests].declined': 'devPrsDeclined',
+  'development[pullrequests].status': 'devPrStatus',
+  'development[builds].all': 'devNone', 'development[builds].failing': 'devNone', 'development[builds].passing': 'devNone', 'development[builds].status': 'devNoneText',
+  'development[deployments].all': 'devNone', 'development[deployments].deployed': 'devNone', 'development[deployments].environment': 'devNoneText',
+  'development[reviews].all': 'devNone', 'development[reviews].open': 'devNone',
 }
 /** Fields people sort by. */
 export const SORTS = ['created', 'updated', 'priority', 'due', 'key', 'rank', 'status', 'resolved', 'summary', 'estimate']

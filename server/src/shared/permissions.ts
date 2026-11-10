@@ -10,7 +10,7 @@ export type Permission =
   | 'addComments' | 'editOwnComments' | 'deleteOwnComments' | 'editAllComments' | 'deleteAllComments'
   | 'createAttachments' | 'deleteOwnAttachments' | 'deleteAllAttachments'
   | 'workOnIssues' | 'editOwnWorklogs' | 'deleteOwnWorklogs' | 'editAllWorklogs' | 'deleteAllWorklogs'
-  | 'manageSprints' | 'administer' | 'archiveIssues' | 'setIssueSecurity'
+  | 'manageSprints' | 'administer' | 'archiveIssues' | 'setIssueSecurity' | 'viewDevTools'
 
 interface Row {
   /** Jira's name for it */
@@ -53,6 +53,7 @@ export const PERMISSIONS: Record<Permission, Row> = {
   administer:           { name: 'Administer projects',       jira: 'Administrators',       role: 'admin' },
   archiveIssues:        { name: 'Archive issues',            jira: 'none',                 role: null, spec: '0508' },
   setIssueSecurity:     { name: 'Set issue security',        jira: 'none',                 role: 'member' },   // strand only: security levels
+  viewDevTools:         { name: 'View development tools',    jira: 'any user with access', role: 'viewer', spec: '0707' },
 }
 
 const RANK: Record<Role, number> = { viewer: 1, member: 2, admin: 3 }
