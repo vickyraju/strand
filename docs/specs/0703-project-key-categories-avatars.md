@@ -1,6 +1,6 @@
 # 0703 Project key change, categories and avatars
 
-Status: Approved (PO, 10 Nov 2026: "move ahead with phase 7 … don't wait for my approval")
+Status: Ported (aws-jira `2bf61b6`, strand `c3f72d7`), approved by the PO on 10 Nov 2026; awaiting verification
 Parity rows: PRJ-02, PRJ-04
 
 ## Context and Jira reference
