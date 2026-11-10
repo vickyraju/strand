@@ -136,7 +136,7 @@ export const ProjectDetail = z.object({
 
 const issueFields = {
   id, key: z.string().describe('e.g. PAY-12'), projectId: id, number: z.number(), type: z.string().describe('Work type key'),
-  title: z.string(), description: z.string(), statusId: id, priority: z.string().describe('A priority key (GET /priorities)'), flagged: z.boolean().describe('Flagged as an impediment (spec 0408)'), epicColor: nullable(z.string()).describe('Epics: Jira’s Epic Colour, ghx-label-1 … 14 (spec 0407)'),
+  title: z.string(), description: z.string(), statusId: id, priority: z.string().describe('A priority key (GET /priorities)'), flagged: z.boolean().describe('Flagged as an impediment (spec 0408)'), epicColor: nullable(z.string()).describe('Epics: Jira’s Epic Colour, ghx-label-1 … 14 (spec 0407)'), epicStatus: nullable(z.enum(['To Do', 'In Progress', 'Done'])).describe('Epics: Jira’s Epic Status (spec 0716)'),
   assigneeId: nullable(id), reporterId: nullable(id), labels: z.array(z.string()), estimate: nullable(z.number()), timeEstimate: nullable(z.number()), timeRemaining: nullable(z.number()), componentIds: z.array(id), affectsReleaseIds: z.array(id), securityLevelId: nullable(id),
   testSpec: nullable(z.unknown()).describe('Test steps, Gherkin or definition (Tests and Pre-Conditions)'), testFolderId: nullable(id).describe('Test repository folder'),
   testEnvironments: z.array(z.string()).describe('Test Executions: what it ran against'), revision: z.string().describe('Test Executions: build or revision'),
@@ -197,6 +197,8 @@ export const ReportData = z.object({
   issues: z.array(IssueRow),
   statusChanges: z.array(z.object({ issueId: id, fromId: nullable(id), toId: id, at: ts })).describe('Every status change, oldest first'),
   joins: z.array(z.object({ issueId: id, field: z.enum(['parentId', 'fixReleaseIds']), value: z.string().describe('The epic, or the fix versions comma-separated'), at: ts })).describe('When items were put into an epic or versions, oldest first (spec 0411)'),
+  estimateChanges: z.array(z.object({ issueId: id, field: z.enum(['estimate', 'timeEstimate']), from: nullable(z.string()), to: nullable(z.string()), at: ts }))
+    .describe('Every change of story points or original estimate (minutes), oldest first: reports count estimates as they stood (spec 0411 R5)'),
 })
 export const IssuePage = z.object({ items: z.array(IssueRow), next: nullable(z.string()).describe('Pass back as `cursor` for the next page; null on the last page') })
 

@@ -4958,9 +4958,24 @@ test('[0407.R2][0407.R6][0407.R7][0407.R11] the backlog’s panels: open epics w
   // R6: Jira's fourteen colours only
   assert.equal((await call('PATCH', `/api/v1/issues/${epic.key}`, { epicColor: 'ghx-label-7' })).body.epicColor, 'ghx-label-7')
   assert.equal((await call('PATCH', `/api/v1/issues/${epic.key}`, { epicColor: 'red' })).status, 400)
-  // a Done epic leaves the panel
-  assert.equal((await call('PATCH', `/api/v1/issues/${epic.key}`, { statusId: done })).status, 200)
+  // Jira's Epic Status (spec 0716): apart from the workflow; Mark as Done (Epic Status Done) leaves the panel
+  assert.equal(epic.epicStatus, 'To Do')
+  assert.equal(a.epicStatus, null)
+  assert.equal((await call('PATCH', `/api/v1/issues/${a.key}`, { epicStatus: 'Done' })).status, 400)            // epics only
+  const moved = (await call('PATCH', `/api/v1/issues/${epic.key}`, { statusId: done })).body
+  assert.equal(moved.epicStatus, 'To Do')                                                                        // the workflow leaves it
+  assert.deepEqual((await call('GET', `/api/v1/boards/${board.id}/panels`)).body.epics.map((e: any) => e.key), [epic.key])
+  const marked = (await call('PATCH', `/api/v1/issues/${epic.key}`, { epicStatus: 'Done' })).body
+  assert.deepEqual([marked.epicStatus, marked.statusId], ['Done', done])                                         // and it leaves the workflow
   assert.deepEqual((await call('GET', `/api/v1/boards/${board.id}/panels`)).body.epics, [])
+  const jql = async (q: string) => (await call('GET', `/api/v1/search?jql=${encodeURIComponent(`project = PNL AND ${q}`)}`)).body.items.map((i: any) => i.key)
+  assert.deepEqual(await jql('"Epic Status" = Done'), [epic.key])
+  assert.deepEqual(await jql('epicStatus in ("To Do", "In Progress")'), [])
+  assert.equal((await jql('"Epic Status" is empty')).length, 3)
+  // a type change: an item made an epic starts at To Do; one that stops being an epic loses it
+  const loose = (await call('GET', `/api/v1/search?jql=${encodeURIComponent('project = PNL AND summary ~ "Loose end"')}`)).body.items[0]
+  assert.equal((await call('PATCH', `/api/v1/issues/${loose.key}`, { type: 'epic' })).body.epicStatus, 'To Do')
+  assert.equal((await call('PATCH', `/api/v1/issues/${loose.key}`, { type: 'task' })).body.epicStatus, null)
   // R11: a Kanban board with a backlog leaves open epics off the board, and its backlog has them
   assert.equal((await call('POST', '/api/v1/projects', { name: 'Panels K', key: 'PNK', template: 'kanban' })).status, 201)
   const kp = (await call('GET', '/api/v1/projects/PNK')).body

@@ -345,6 +345,8 @@ export interface Issue {
   flagged?:    boolean
   /** Epics: Jira's Epic Colour, ghx-label-1 … 14 (spec 0407) */
   epicColor?:  string
+  /** Epics: Jira's Epic Status, apart from the workflow; Done leaves the backlog's Epics panel (spec 0716) */
+  epicStatus?: 'To Do' | 'In Progress' | 'Done'
   /** Fix versions: releases that fix it (Jira's Fix Version/s, several, spec 0301). */
   fixReleaseIds?: string[]
   /** How a finished item ended, and when it last reached Done (kept in step with the status). */
@@ -465,7 +467,7 @@ export type ProjectPatch = Partial<Pick<Project,
   'name' | 'description' | 'color' | 'leadId' | 'statuses' | 'transitions' | 'layout' | 'boardPrefs' | 'rules' | 'fields' | 'releases' | 'templates' | 'types' | 'components' | 'securityLevels' | 'testing' | 'requirementTypes'>>
 export type IssuePatch = Partial<Omit<Issue, 'id' | 'key' | 'projectId' | 'createdAt' | 'watcherIds' | 'links' | 'attachments' | 'rank' | 'worklogs'>>   // reporterId: project admins (spec 0203)
 export type NewIssue = Pick<Issue, 'projectId' | 'title'> & Partial<Pick<Issue,
-  'type' | 'description' | 'status' | 'priority' | 'assigneeId' | 'labels' | 'estimate' | 'dueDate' | 'startDate' | 'sprintId' | 'parentId' | 'custom' | 'fixReleaseIds' | 'timeEstimate' | 'componentIds' | 'affectsReleaseIds' | 'testFolderId'>>
+  'type' | 'description' | 'status' | 'priority' | 'assigneeId' | 'labels' | 'estimate' | 'dueDate' | 'startDate' | 'sprintId' | 'parentId' | 'custom' | 'fixReleaseIds' | 'timeEstimate' | 'componentIds' | 'affectsReleaseIds' | 'testFolderId' | 'epicStatus'>>
 
 export type Action =
   | { type: 'setOwner'; name: string; workspaceName?: string }
@@ -765,6 +767,7 @@ export function reducer(state: State, action: Action, now = Date.now()): State {
       const issue: Issue = {
         type: 'task', description: '', priority: defaultPriority(), labels: [],
         ...action.issue, status,
+        ...(action.issue.type === 'epic' ? { epicStatus: action.issue.epicStatus ?? 'To Do' } : {}),
         ...(!('assigneeId' in action.issue) && componentAssignee(project, action.issue.componentIds) ? { assigneeId: componentAssignee(project, action.issue.componentIds) } : {}),
         id: action.id, key: `${project.key}-${project.nextNumber}`, reporterId: actor,
         watcherIds: [...new Set([actor, action.issue.assigneeId].filter((x): x is string => !!x))],
@@ -1198,6 +1201,7 @@ function updateOne(
       const kind = project.statuses.find(s => s.id === want)?.category
       patch = { ...patch, status: (allowed.find(s => s.category === kind) ?? allowed[0]!).id }
     }
+    patch = { ...patch, epicStatus: patch.type === 'epic' ? patch.epicStatus ?? 'To Do' : undefined }   // Jira's Epic Status (spec 0716)
   }
   if ((patch.status && patch.status !== prev.status && !retyping) || t) {
     const ctx = moveContext(state, prev)
@@ -1239,6 +1243,9 @@ function updateOne(
       activity.push(log(id, sp ? `moved to ${sp.name}` : 'moved to the backlog', 'sprintId', prev.sprintId, patch.sprintId))
     } else if (k === 'priority') {
       activity.push(log(id, `set priority to ${patch.priority}`, 'priority', prev.priority, patch.priority))
+    } else if (k === 'estimate' || k === 'timeEstimate') {      // with the values: reports replay estimates (spec 0411 R5)
+      const str = (v: unknown) => (v == null ? undefined : String(v))
+      activity.push(log(id, `updated the ${FIELD_LABEL[k]}`, k, str(prev[k]), str(patch[k])))
     } else {
       activity.push(log(id, `updated the ${FIELD_LABEL[k]}`, k))
     }

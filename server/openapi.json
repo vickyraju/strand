@@ -17377,6 +17377,16 @@
                             "description": "Epics: Jira’s Epic Colour, ghx-label-1 … 14 (spec 0407)",
                             "type": "string"
                           },
+                          "epicStatus": {
+                            "nullable": true,
+                            "description": "Epics: Jira’s Epic Status (spec 0716)",
+                            "type": "string",
+                            "enum": [
+                              "To Do",
+                              "In Progress",
+                              "Done"
+                            ]
+                          },
                           "assigneeId": {
                             "nullable": true,
                             "type": "string",
@@ -17522,6 +17532,7 @@
                           "priority",
                           "flagged",
                           "epicColor",
+                          "epicStatus",
                           "assigneeId",
                           "reporterId",
                           "labels",
@@ -17618,12 +17629,53 @@
                         "additionalProperties": false
                       },
                       "description": "When items were put into an epic or versions, oldest first (spec 0411)"
+                    },
+                    "estimateChanges": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "issueId": {
+                            "type": "string",
+                            "description": "uuid"
+                          },
+                          "field": {
+                            "type": "string",
+                            "enum": [
+                              "estimate",
+                              "timeEstimate"
+                            ]
+                          },
+                          "from": {
+                            "nullable": true,
+                            "type": "string"
+                          },
+                          "to": {
+                            "nullable": true,
+                            "type": "string"
+                          },
+                          "at": {
+                            "type": "string",
+                            "description": "ISO 8601 timestamp"
+                          }
+                        },
+                        "required": [
+                          "issueId",
+                          "field",
+                          "from",
+                          "to",
+                          "at"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "description": "Every change of story points or original estimate (minutes), oldest first: reports count estimates as they stood (spec 0411 R5)"
                     }
                   },
                   "required": [
                     "issues",
                     "statusChanges",
-                    "joins"
+                    "joins",
+                    "estimateChanges"
                   ],
                   "additionalProperties": false
                 }
@@ -17879,6 +17931,16 @@
                             "description": "Epics: Jira’s Epic Colour, ghx-label-1 … 14 (spec 0407)",
                             "type": "string"
                           },
+                          "epicStatus": {
+                            "nullable": true,
+                            "description": "Epics: Jira’s Epic Status (spec 0716)",
+                            "type": "string",
+                            "enum": [
+                              "To Do",
+                              "In Progress",
+                              "Done"
+                            ]
+                          },
                           "assigneeId": {
                             "nullable": true,
                             "type": "string",
@@ -18024,6 +18086,7 @@
                           "priority",
                           "flagged",
                           "epicColor",
+                          "epicStatus",
                           "assigneeId",
                           "reporterId",
                           "labels",
@@ -18198,6 +18261,16 @@
                     "description": "Epics: Jira’s Epic Colour (spec 0407)",
                     "type": "string",
                     "pattern": "^ghx-label-([1-9]|1[0-4])$"
+                  },
+                  "epicStatus": {
+                    "nullable": true,
+                    "description": "Epics: Jira’s Epic Status, apart from the workflow (spec 0716)",
+                    "type": "string",
+                    "enum": [
+                      "To Do",
+                      "In Progress",
+                      "Done"
+                    ]
                   },
                   "assigneeId": {
                     "nullable": true,
@@ -18514,6 +18587,16 @@
                       "description": "Epics: Jira’s Epic Colour, ghx-label-1 … 14 (spec 0407)",
                       "type": "string"
                     },
+                    "epicStatus": {
+                      "nullable": true,
+                      "description": "Epics: Jira’s Epic Status (spec 0716)",
+                      "type": "string",
+                      "enum": [
+                        "To Do",
+                        "In Progress",
+                        "Done"
+                      ]
+                    },
                     "assigneeId": {
                       "nullable": true,
                       "type": "string",
@@ -18659,6 +18742,7 @@
                     "priority",
                     "flagged",
                     "epicColor",
+                    "epicStatus",
                     "assigneeId",
                     "reporterId",
                     "labels",
@@ -18889,6 +18973,16 @@
                       "description": "Epics: Jira’s Epic Colour, ghx-label-1 … 14 (spec 0407)",
                       "type": "string"
                     },
+                    "epicStatus": {
+                      "nullable": true,
+                      "description": "Epics: Jira’s Epic Status (spec 0716)",
+                      "type": "string",
+                      "enum": [
+                        "To Do",
+                        "In Progress",
+                        "Done"
+                      ]
+                    },
                     "assigneeId": {
                       "nullable": true,
                       "type": "string",
@@ -19034,6 +19128,7 @@
                     "priority",
                     "flagged",
                     "epicColor",
+                    "epicStatus",
                     "assigneeId",
                     "reporterId",
                     "labels",
@@ -19225,6 +19320,16 @@
                       "nullable": true,
                       "description": "Epics: Jira’s Epic Colour, ghx-label-1 … 14 (spec 0407)",
                       "type": "string"
+                    },
+                    "epicStatus": {
+                      "nullable": true,
+                      "description": "Epics: Jira’s Epic Status (spec 0716)",
+                      "type": "string",
+                      "enum": [
+                        "To Do",
+                        "In Progress",
+                        "Done"
+                      ]
                     },
                     "assigneeId": {
                       "nullable": true,
@@ -19652,6 +19757,16 @@
                             "description": "Epics: Jira’s Epic Colour, ghx-label-1 … 14 (spec 0407)",
                             "type": "string"
                           },
+                          "epicStatus": {
+                            "nullable": true,
+                            "description": "Epics: Jira’s Epic Status (spec 0716)",
+                            "type": "string",
+                            "enum": [
+                              "To Do",
+                              "In Progress",
+                              "Done"
+                            ]
+                          },
                           "assigneeId": {
                             "nullable": true,
                             "type": "string",
@@ -19797,6 +19912,7 @@
                           "priority",
                           "flagged",
                           "epicColor",
+                          "epicStatus",
                           "assigneeId",
                           "reporterId",
                           "labels",
@@ -19839,6 +19955,7 @@
                     "priority",
                     "flagged",
                     "epicColor",
+                    "epicStatus",
                     "assigneeId",
                     "reporterId",
                     "labels",
@@ -20000,6 +20117,16 @@
                     "description": "Epics: Jira’s Epic Colour (spec 0407)",
                     "type": "string",
                     "pattern": "^ghx-label-([1-9]|1[0-4])$"
+                  },
+                  "epicStatus": {
+                    "nullable": true,
+                    "description": "Epics: Jira’s Epic Status, apart from the workflow (spec 0716)",
+                    "type": "string",
+                    "enum": [
+                      "To Do",
+                      "In Progress",
+                      "Done"
+                    ]
                   },
                   "assigneeId": {
                     "nullable": true,
@@ -20330,6 +20457,16 @@
                       "description": "Epics: Jira’s Epic Colour, ghx-label-1 … 14 (spec 0407)",
                       "type": "string"
                     },
+                    "epicStatus": {
+                      "nullable": true,
+                      "description": "Epics: Jira’s Epic Status (spec 0716)",
+                      "type": "string",
+                      "enum": [
+                        "To Do",
+                        "In Progress",
+                        "Done"
+                      ]
+                    },
                     "assigneeId": {
                       "nullable": true,
                       "type": "string",
@@ -20475,6 +20612,7 @@
                     "priority",
                     "flagged",
                     "epicColor",
+                    "epicStatus",
                     "assigneeId",
                     "reporterId",
                     "labels",
@@ -21549,6 +21687,16 @@
                         "type": "string",
                         "pattern": "^ghx-label-([1-9]|1[0-4])$"
                       },
+                      "epicStatus": {
+                        "nullable": true,
+                        "description": "Epics: Jira’s Epic Status, apart from the workflow (spec 0716)",
+                        "type": "string",
+                        "enum": [
+                          "To Do",
+                          "In Progress",
+                          "Done"
+                        ]
+                      },
                       "assigneeId": {
                         "nullable": true,
                         "type": "string",
@@ -21875,6 +22023,16 @@
                       "description": "Epics: Jira’s Epic Colour, ghx-label-1 … 14 (spec 0407)",
                       "type": "string"
                     },
+                    "epicStatus": {
+                      "nullable": true,
+                      "description": "Epics: Jira’s Epic Status (spec 0716)",
+                      "type": "string",
+                      "enum": [
+                        "To Do",
+                        "In Progress",
+                        "Done"
+                      ]
+                    },
                     "assigneeId": {
                       "nullable": true,
                       "type": "string",
@@ -22020,6 +22178,7 @@
                     "priority",
                     "flagged",
                     "epicColor",
+                    "epicStatus",
                     "assigneeId",
                     "reporterId",
                     "labels",
@@ -22195,6 +22354,16 @@
                         "description": "Epics: Jira’s Epic Colour (spec 0407)",
                         "type": "string",
                         "pattern": "^ghx-label-([1-9]|1[0-4])$"
+                      },
+                      "epicStatus": {
+                        "nullable": true,
+                        "description": "Epics: Jira’s Epic Status, apart from the workflow (spec 0716)",
+                        "type": "string",
+                        "enum": [
+                          "To Do",
+                          "In Progress",
+                          "Done"
+                        ]
                       },
                       "assigneeId": {
                         "nullable": true,
@@ -22510,6 +22679,16 @@
                             "description": "Epics: Jira’s Epic Colour, ghx-label-1 … 14 (spec 0407)",
                             "type": "string"
                           },
+                          "epicStatus": {
+                            "nullable": true,
+                            "description": "Epics: Jira’s Epic Status (spec 0716)",
+                            "type": "string",
+                            "enum": [
+                              "To Do",
+                              "In Progress",
+                              "Done"
+                            ]
+                          },
                           "assigneeId": {
                             "nullable": true,
                             "type": "string",
@@ -22655,6 +22834,7 @@
                           "priority",
                           "flagged",
                           "epicColor",
+                          "epicStatus",
                           "assigneeId",
                           "reporterId",
                           "labels",
@@ -23546,6 +23726,16 @@
                       "description": "Epics: Jira’s Epic Colour, ghx-label-1 … 14 (spec 0407)",
                       "type": "string"
                     },
+                    "epicStatus": {
+                      "nullable": true,
+                      "description": "Epics: Jira’s Epic Status (spec 0716)",
+                      "type": "string",
+                      "enum": [
+                        "To Do",
+                        "In Progress",
+                        "Done"
+                      ]
+                    },
                     "assigneeId": {
                       "nullable": true,
                       "type": "string",
@@ -23691,6 +23881,7 @@
                     "priority",
                     "flagged",
                     "epicColor",
+                    "epicStatus",
                     "assigneeId",
                     "reporterId",
                     "labels",
@@ -34453,6 +34644,16 @@
                         "description": "Epics: Jira’s Epic Colour, ghx-label-1 … 14 (spec 0407)",
                         "type": "string"
                       },
+                      "epicStatus": {
+                        "nullable": true,
+                        "description": "Epics: Jira’s Epic Status (spec 0716)",
+                        "type": "string",
+                        "enum": [
+                          "To Do",
+                          "In Progress",
+                          "Done"
+                        ]
+                      },
                       "assigneeId": {
                         "nullable": true,
                         "type": "string",
@@ -34605,6 +34806,7 @@
                       "priority",
                       "flagged",
                       "epicColor",
+                      "epicStatus",
                       "assigneeId",
                       "reporterId",
                       "labels",
@@ -34828,6 +35030,16 @@
                             "description": "Epics: Jira’s Epic Colour, ghx-label-1 … 14 (spec 0407)",
                             "type": "string"
                           },
+                          "epicStatus": {
+                            "nullable": true,
+                            "description": "Epics: Jira’s Epic Status (spec 0716)",
+                            "type": "string",
+                            "enum": [
+                              "To Do",
+                              "In Progress",
+                              "Done"
+                            ]
+                          },
                           "assigneeId": {
                             "nullable": true,
                             "type": "string",
@@ -34980,6 +35192,7 @@
                           "priority",
                           "flagged",
                           "epicColor",
+                          "epicStatus",
                           "assigneeId",
                           "reporterId",
                           "labels",
@@ -35202,6 +35415,16 @@
                         "description": "Epics: Jira’s Epic Colour, ghx-label-1 … 14 (spec 0407)",
                         "type": "string"
                       },
+                      "epicStatus": {
+                        "nullable": true,
+                        "description": "Epics: Jira’s Epic Status (spec 0716)",
+                        "type": "string",
+                        "enum": [
+                          "To Do",
+                          "In Progress",
+                          "Done"
+                        ]
+                      },
                       "assigneeId": {
                         "nullable": true,
                         "type": "string",
@@ -35354,6 +35577,7 @@
                       "priority",
                       "flagged",
                       "epicColor",
+                      "epicStatus",
                       "assigneeId",
                       "reporterId",
                       "labels",
@@ -36961,6 +37185,16 @@
                         "description": "Epics: Jira’s Epic Colour, ghx-label-1 … 14 (spec 0407)",
                         "type": "string"
                       },
+                      "epicStatus": {
+                        "nullable": true,
+                        "description": "Epics: Jira’s Epic Status (spec 0716)",
+                        "type": "string",
+                        "enum": [
+                          "To Do",
+                          "In Progress",
+                          "Done"
+                        ]
+                      },
                       "assigneeId": {
                         "nullable": true,
                         "type": "string",
@@ -37113,6 +37347,7 @@
                       "priority",
                       "flagged",
                       "epicColor",
+                      "epicStatus",
                       "assigneeId",
                       "reporterId",
                       "labels",
@@ -37343,6 +37578,16 @@
                       "description": "Epics: Jira’s Epic Colour, ghx-label-1 … 14 (spec 0407)",
                       "type": "string"
                     },
+                    "epicStatus": {
+                      "nullable": true,
+                      "description": "Epics: Jira’s Epic Status (spec 0716)",
+                      "type": "string",
+                      "enum": [
+                        "To Do",
+                        "In Progress",
+                        "Done"
+                      ]
+                    },
                     "assigneeId": {
                       "nullable": true,
                       "type": "string",
@@ -37488,6 +37733,7 @@
                     "priority",
                     "flagged",
                     "epicColor",
+                    "epicStatus",
                     "assigneeId",
                     "reporterId",
                     "labels",
@@ -38709,6 +38955,16 @@
                           "description": "Epics: Jira’s Epic Colour, ghx-label-1 … 14 (spec 0407)",
                           "type": "string"
                         },
+                        "epicStatus": {
+                          "nullable": true,
+                          "description": "Epics: Jira’s Epic Status (spec 0716)",
+                          "type": "string",
+                          "enum": [
+                            "To Do",
+                            "In Progress",
+                            "Done"
+                          ]
+                        },
                         "assigneeId": {
                           "nullable": true,
                           "type": "string",
@@ -38854,6 +39110,7 @@
                         "priority",
                         "flagged",
                         "epicColor",
+                        "epicStatus",
                         "assigneeId",
                         "reporterId",
                         "labels",
@@ -49374,6 +49631,16 @@
                             "description": "Epics: Jira’s Epic Colour, ghx-label-1 … 14 (spec 0407)",
                             "type": "string"
                           },
+                          "epicStatus": {
+                            "nullable": true,
+                            "description": "Epics: Jira’s Epic Status (spec 0716)",
+                            "type": "string",
+                            "enum": [
+                              "To Do",
+                              "In Progress",
+                              "Done"
+                            ]
+                          },
                           "assigneeId": {
                             "nullable": true,
                             "type": "string",
@@ -49530,6 +49797,7 @@
                           "priority",
                           "flagged",
                           "epicColor",
+                          "epicStatus",
                           "assigneeId",
                           "reporterId",
                           "labels",

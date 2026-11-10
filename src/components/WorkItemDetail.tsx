@@ -434,14 +434,21 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
               <Picker value={issue.type} options={issue.type === 'epic' && children.length ? typeOptions(project).filter(t => t.value === 'epic') : typeOptions(project, !issue.parentId && children.length === 0)} onChange={type => set({ type })} className="field-btn" title="Type"
                 trigger={<><TypeIcon type={issue.type} size={14} project={project} />{typeMeta(issue.type, project).label}</>} />
             </Field>
+            {issue.type === 'epic' && (
+              <Field label="Epic Status">
+                <Picker value={issue.epicStatus ?? 'To Do'} options={(['To Do', 'In Progress', 'Done'] as const).map(s => ({ value: s, label: s }))}
+                  onChange={epicStatus => set({ epicStatus })} className="field-btn" title="Epic Status" trigger={<>{issue.epicStatus ?? 'To Do'}</>} />
+              </Field>
+            )}
             {issue.type !== 'epic' && (
               <Field label="Parent">
                 <Picker value={issue.parentId} search className="field-btn" title="Parent"
                   options={[
                     { value: undefined, label: 'None' },
                     // Jira's levels (spec 0303): an epic, or (for an item without sub-items) an item of this project that isn't a sub-item
-                    ...state.issues.filter(i => i.projectId === project.id && i.id !== issue.id && (i.type === 'epic'
-                      || (children.length === 0 && (!i.parentId || state.issues.find(x => x.id === i.parentId)?.type === 'epic'))))
+                    // an epic marked Done (its Epic Status, spec 0716) isn't offered, unless it is already the parent
+                    ...state.issues.filter(i => i.projectId === project.id && i.id !== issue.id && (i.type === 'epic' ? i.epicStatus !== 'Done' || i.id === issue.parentId
+                      : (children.length === 0 && (!i.parentId || state.issues.find(x => x.id === i.parentId)?.type === 'epic'))))
                       .map(i => ({ value: i.id as string | undefined, label: `${i.key} ${i.title}`, icon: <TypeIcon type={i.type} size={12} /> })),
                   ]}
                   onChange={parentId => set({ parentId })}

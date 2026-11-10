@@ -17,7 +17,7 @@ const NUMBERS: Record<string, string> = {
   devPrsDeclined: dev(`de.kind = 'pull_request' and de.state = 'closed'`), devNone: '0',
 }
 const EMPTY: Record<string, string> = {
-  flagged: 'not i.flagged', assignee: 'i.assignee_id is null', reporter: 'i.reporter_id is null', labels: 'cardinality(i.labels) = 0', component: 'cardinality(i.component_ids) = 0',
+  flagged: 'not i.flagged', epicStatus: 'i.epic_status is null', assignee: 'i.assignee_id is null', reporter: 'i.reporter_id is null', labels: 'cardinality(i.labels) = 0', component: 'cardinality(i.component_ids) = 0',
   fixVersion: 'cardinality(i.fix_release_ids) = 0', affectedVersion: 'cardinality(i.affects_release_ids) = 0', sprint: 'i.sprint_id is null', parent: 'i.parent_id is null',
   resolution: 'i.resolution is null', category: 'p.category_id is null', description: `coalesce(i.description, '') = ''`,
   due: 'i.due_date is null', start: 'i.start_date is null', resolved: 'i.resolved_at is null',
@@ -190,6 +190,7 @@ export async function jqlToSql(d: Db, me: Me, q: Query, args: unknown[]): Promis
         return `${dev(`de.kind = 'pull_request' and de.state = ${put(s)}`)} > 0`
       }
       case 'devNoneText': return 'false'
+      case 'epicStatus': return `lower(i.epic_status) = lower(${put(text(v, 'Epic Status'))})`
       case 'parent': return `i.parent_id in (select pi.id from issues pi join projects pp on pp.id = pi.project_id where pp.key || '-' || pi.number = upper(${put(text(v, 'parent'))}))`
       case 'resolution': {
         const t = text(v, 'resolution')

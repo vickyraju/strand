@@ -82,6 +82,12 @@ export default function BacklogPanels({ board, project, open, setOpen, epic, set
     if (name && name !== now) dispatch({ type: 'updateIssues', ids: [id], patch: { title: name } })
   }
   const color = (id: string, c: string) => { dispatch({ type: 'updateIssues', ids: [id], patch: { epicColor: c } }); setData(d => d && { ...d, epics: d.epics.map(e => (e.id === id ? { ...e, epicColor: c } : e)) }) }
+  const markDone = (id: string, title: string) => {
+    dispatch({ type: 'updateIssues', ids: [id], patch: { epicStatus: 'Done' } })
+    setData(d => d && { ...d, epics: d.epics.filter(e => e.id !== id) })
+    if (epic.kind === 'one' && epic.id === id) setEpic({ kind: 'all' })
+    toast(`${title} marked as Done`)
+  }
   const renameVersion = (r: Release) => {
     const name = prompt('Version name', r.name)?.trim()
     if (name && name !== r.name) dispatch({ type: 'updateProject', id: project.id, patch: { releases: project.releases.map(x => (x.id === r.id ? { ...x, name } : x)) } })
@@ -107,6 +113,8 @@ export default function BacklogPanels({ board, project, open, setOpen, epic, set
                 { label: 'Edit name', onClick: () => rename(e.id, e.title) },
                 { label: 'View epic details', onClick: () => openIssue(e.id) },
                 { label: 'Create issue in epic', onClick: () => createIssue({ projectId: project.id, parentId: e.id }) },
+                // Jira's Mark as Done: the Epic Status, not the workflow (spec 0716); the epic leaves the panel
+                ...(canEdit(project) ? [{ label: 'Mark as Done', onClick: () => markDone(e.id, e.title) }] : []),
                 ...Object.entries(EPIC_COLORS).map(([k, hex], n) => ({ label: `Colour ${n + 1}`, icon: <span className="epic-swatch" style={{ background: hex }} />, divider: n === 0, onClick: () => color(e.id, k) })),
               ]} />} />
           ))}
