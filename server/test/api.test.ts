@@ -5062,10 +5062,12 @@ test('[0705.R1][0705.R2][0705.R3][0705.R4][0705.R5][0705.R6][0705.R7][0705.R8] o
 
 test('[0705.R2] a webhook never reaches private addresses, whatever its name resolves to', { skip }, async () => {
   const { privateAddress, urlProblem, fillUrl } = await import('../src/webhooks.ts')
-  for (const a of ['127.0.0.1', '10.1.2.3', '172.20.0.1', '192.168.1.1', '169.254.169.254', '100.64.0.1', '0.0.0.0', '::1', 'fd00::1', 'fe80::1', '::ffff:127.0.0.1'])
+  for (const a of ['127.0.0.1', '10.1.2.3', '172.20.0.1', '192.168.1.1', '169.254.169.254', '100.64.0.1', '0.0.0.0', '::1', 'fd00::1', 'fe80::1', '::ffff:127.0.0.1',
+    '::ffff:7f00:1', '0:0:0:0:0:ffff:7f00:0001', '::ffff:a9fe:a9fe', '::127.0.0.1', '64:ff9b::7f00:1', '64:ff9b::169.254.169.254', '2002:7f00:1::', '[::1]', 'not-an-ip::zz'])
     assert.equal(privateAddress(a), true, a)
   for (const a of ['8.8.8.8', '1.1.1.1', '2606:4700::1111']) assert.equal(privateAddress(a), false, a)
   assert.equal(urlProblem('https://hooks.example.com/{issue.key}'), null)
+  for (const u of ['https://[::ffff:7f00:1]/x', 'https://[::ffff:a9fe:a9fe]/latest', 'https://[64:ff9b::7f00:1]/x']) assert.ok(urlProblem(u), u)
   assert.equal(fillUrl('https://h.example/{issue.key}/${project.key}', { issue: { key: 'A B/1', fields: { project: { key: 'AB' } } } }), 'https://h.example/A%20B%2F1/AB')
 })
 
