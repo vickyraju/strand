@@ -8,6 +8,7 @@ import { HttpError, initials, joinSystemGroup, requireAdmin, type Me } from '../
 import { RECOVERY_USER } from '../authConfig.ts'
 import { checkLength, emailSetup, newLink, sendLink, setPassword } from '../localUsers.ts'
 import { requireNoToken } from './authentication.ts'
+import { preview, startAnonymising } from '../anonymise.ts'
 import { audit, changes } from '../audit.ts'
 import { priorities, resolutions } from '../lists.ts'
 import { enqueue, kickJobs, registerJob } from '../jobs.ts'
@@ -101,7 +102,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
   // ── People in the workspace (system administrators). Accounts and admin rights come from Entra (sign-in and SCIM), so
   // this is a view with bulk changes, not an editor. Tens of thousands of people: searched, filtered and paged here ──
   const PERSON = `u.id, u.name, u.email, u.initials, u.color, u.title, u.active, case when m.role = 'owner' then 'owner' when is_system_admin(u.id) then 'admin' else 'member' end as role, u.created_at,
-              u.last_active_at, u.last_sign_in_at, (select name from user_directories where id = u.directory_id) as directory, u.username, u.password_hash is not null as has_password,
+              u.last_active_at, u.last_sign_in_at, (select name from user_directories where id = u.directory_id) as directory, u.username, u.password_hash is not null as has_password, u.anonymised_at,
               coalesce((select jsonb_agg(jsonb_build_object('id', g.id, 'name', g.display_name) order by g.system_role is null, lower(g.display_name))
                           from group_members gm join groups g on g.id = gm.group_id where gm.user_id = u.id), '[]') as groups,
               (select count(*)::int from project_access pm join projects p on p.id = pm.project_id
@@ -236,6 +237,20 @@ const plugin: FastifyPluginAsyncZod = async app => {
       await audit(d, req, { action: 'user.password_set', type: 'user', id: u.id, name: u.email, after: { by: 'an administrator' } })
     })
     reply.code(204).send()
+  })
+
+  // ── Anonymising a person (spec 0704) ──
+  app.get('/admin/users/:id/anonymise', { schema: { tags: TAG, summary: 'What anonymising this deactivated person will do: transfers, changes, removals and actions required (system administrators)', params: idP } }, async req => {
+    requireNoToken(req)
+    return preview(req.me.workspaceId, req.params.id)
+  })
+  app.post('/admin/users/:id/anonymise', { schema: { tags: TAG, summary: 'Anonymise a deactivated person for good: a background job (202 with its id). What they lead or own passes to `transferTo` (system administrators)',
+    params: idP, body: z.object({ transferTo: z.string().uuid().nullable().default(null) }) } }, async (req, reply) => {
+    requireNoToken(req)
+    const jobId = await tx(d => startAnonymising(d, req.me, req.ip, req.params.id, req.body.transferTo))
+    kickJobs(app.log)
+    reply.code(202)
+    return { jobId }
   })
 
   app.get('/admin/users/refused-sign-ins', { schema: { tags: TAG, summary: 'Deactivated people who tried to sign in, newest first (system administrators)' } }, async req => {

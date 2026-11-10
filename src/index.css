@@ -1600,3 +1600,4 @@ h2.empty-title, h2.section-title, h2.side-title { margin: 0 }
 .favicon-preview { width: 24px; height: 24px; object-fit: contain }
 .brand-sample { color: #fff; padding: 4px 10px; border-radius: var(--radius); font-size: 13px; font-weight: 600 }
 .proj-avatar { object-fit: cover; flex-shrink: 0 }
+.anon-list { margin: 10px 0 0 18px; display: grid; gap: 4px; font-size: 13px }
