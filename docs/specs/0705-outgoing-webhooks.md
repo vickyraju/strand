@@ -1,6 +1,6 @@
 # 0705 Outgoing webhooks
 
-Status: Approved (PO, 10 Nov 2026: "move ahead with phase 7 … don't wait for my approval")
+Status: Ported (aws-jira `637e894`, `991bc00`, strand `4290d1c`, `4fe268e`), approved by the PO on 10 Nov 2026; awaiting verification
 Parity rows: IN-01
 
 ## Context and Jira reference

@@ -1,6 +1,6 @@
 # 0706 Rate limiting for everyone
 
-Status: Approved (PO, 10 Nov 2026: "move ahead with phase 7 … don't wait for my approval")
+Status: Ported (aws-jira `ccb750d`, strand `e7cda82`), approved by the PO on 10 Nov 2026; awaiting verification
 Parity rows: AD-04
 
 ## Context and Jira reference
