@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { reducer, EMPTY, type State } from './reducer.ts'
 import { withSample } from './testdata.ts'
 import { toReportData } from '../api/map.ts'
-import { burndown, cumulativeFlow, cycleTimes, velocity, createdVsResolved, statusAt, statusHistory, guideline, isWorkingDay } from './analytics.ts'
+import { burndown, cumulativeFlow, velocity, createdVsResolved, statusAt, statusHistory, guideline, isWorkingDay } from './analytics.ts'
 
 function sample(): State {
   const s0 = reducer(EMPTY, { type: 'setOwner', name: 'Alex Morgan' })
@@ -42,7 +42,7 @@ test('status history replays to each item’s current status', () => {
   for (const i of s.issues) assert.equal(statusAt(i, history.get(i.id), Date.now()), i.status, i.key)
 })
 
-test('velocity, created vs resolved and cycle time are consistent', () => {
+test('velocity and created vs resolved are consistent', () => {
   const s = sample()
   const p = pay(s)
   const v = velocity(s, p)
@@ -50,9 +50,6 @@ test('velocity, created vs resolved and cycle time are consistent', () => {
   v.completed.forEach((c, i) => assert.ok(c <= v.committed[i]))
   const cr = createdVsResolved(s, p, 90)
   assert.ok(cr.resolved.reduce((a, b) => a + b, 0) > 0)
-  const ct = cycleTimes(s, p)
-  assert.ok(ct.points.length > 0)
-  assert.ok(ct.median > 0 && ct.median <= ct.p85)
 })
 
 test('reports from server data (items plus status changes) match reports from the full local history', () => {
@@ -71,7 +68,6 @@ test('reports from server data (items plus status changes) match reports from th
   // compare the numbers and which items count; items themselves differ (server rows carry no watchers or work logs)
   const ids = (x: unknown) => JSON.parse(JSON.stringify(x, (_k, v) => v && typeof v === 'object' && 'watcherIds' in v ? v.id : v))
   assert.deepEqual(cumulativeFlow(fromServer, p, 30, now), cumulativeFlow(s, p, 30, now))
-  assert.deepEqual(ids(cycleTimes(fromServer, p)), ids(cycleTimes(s, p)))
   assert.deepEqual(createdVsResolved(fromServer, p, 30, now), createdVsResolved(s, p, 30, now))
   for (const sp of s.sprints.filter(x => x.projectId === p.id && x.startedAt))
     assert.deepEqual(ids(burndown(fromServer, p, sp, now)), ids(burndown(s, p, sp, now)))

@@ -1,11 +1,29 @@
 // Jira's agile reports for epics, versions and sprints (spec 0411): burnup, epic and version reports, epic and release
-// burndowns. Worked out from the project's items and history, in the board's estimation statistic.
+// burndowns. Worked out from the project's items and history, in the board's estimation statistic, with estimates as they
+// stood at each moment (as Jira's reports count them).
 import { categoryOf, statOf, type Activity, type Estimation, type Issue, type Project, type Sprint, type State } from './reducer.ts'
 import { DAY, dayLabel, guideline, resolvedAt, sprintMembers, statusHistory, type WorkingDays } from './analytics.ts'
 
 const endOfDay = (t: number) => { const d = new Date(t); d.setHours(23, 59, 59, 999); return d.getTime() }
 const startOfDay = (t: number) => { const d = new Date(t); d.setHours(0, 0, 0, 0); return d.getTime() }
 const daysFrom = (from: number, to: number) => { const out: number[] = []; for (let t = startOfDay(from); t <= to; t += DAY) out.push(t); return out }
+
+/** R5: an item's statistic as it stood at a moment, as Jira's reports count it: its estimate history replayed (the last
+ *  change by then, else the value before its first change, else what it is now). Count is always 1. */
+export function estimatesAt(state: State, estimation?: Estimation) {
+  const field = estimation === 'time' ? 'timeEstimate' : 'estimate'
+  const changes = new Map<string, Activity[]>()
+  for (const a of state.activity) if (a.field === field) (changes.get(a.issueId) ?? changes.set(a.issueId, []).get(a.issueId)!).push(a)
+  for (const list of changes.values()) list.sort((x, y) => x.createdAt - y.createdAt)
+  const num = (v?: string) => (v == null || v === '' ? 0 : Number(v) || 0)
+  return (i: Issue, t: number) => {
+    if (estimation === 'count') return 1
+    const list = changes.get(i.id)
+    if (!list?.length) return statOf(i, estimation)
+    const before = list.filter(a => a.createdAt <= t)
+    return before.length ? num(before[before.length - 1]!.to) : num(list[0]!.from)
+  }
+}
 
 /** When each item was done (undefined: not done), from its status history. */
 function doneTimes(state: State, project: Project, items: Issue[]) {
@@ -18,14 +36,16 @@ export function burnup(state: State, project: Project, sprint: Sprint, now = Dat
   if (!sprint.startedAt) return null
   const end = sprint.completedAt ?? sprint.endsAt ?? now
   const members = sprintMembers(state, sprint)
-  const stat = (i: Issue) => statOf(i, sprint.estimation)
+  const at = estimatesAt(state, sprint.estimation)
   const done = doneTimes(state, project, members)
-  const scope = members.reduce((n, i) => n + stat(i), 0)
   const timeline = daysFrom(sprint.startedAt, end)
   const last = Math.min(now, end)
-  const completed = timeline.map(d => d > last ? NaN : members.reduce((n, i) => { const t = done.get(i.id); return n + (t !== undefined && t <= Math.min(endOfDay(d), last) ? stat(i) : 0) }, 0))
-  const ideal = guideline(timeline, scope, working).map(v => scope - v)
-  return { labels: timeline.map(dayLabel), scope: timeline.map(d => (d > last ? NaN : scope)), completed, ideal }
+  // the scope moves when estimates change; work completed counts at its estimate when it was done
+  const scopeOn = (d: number) => members.reduce((n, i) => n + at(i, Math.min(endOfDay(d), last)), 0)
+  const startScope = members.reduce((n, i) => n + at(i, sprint.startedAt!), 0)
+  const completed = timeline.map(d => d > last ? NaN : members.reduce((n, i) => { const t = done.get(i.id); return n + (t !== undefined && t <= Math.min(endOfDay(d), last) ? at(i, t) : 0) }, 0))
+  const ideal = guideline(timeline, startScope, working).map(v => startScope - v)
+  return { labels: timeline.map(dayLabel), scope: timeline.map(d => (d > last ? NaN : scopeOn(d))), completed, ideal }
 }
 
 /** R6: when an item joined an epic (parentId) or a version (fixReleaseIds): the last time its history put it there, else its creation. */
@@ -42,15 +62,15 @@ export const itemsOf = (state: State, project: Project, of: { epic?: string; ver
 export function progressReport(state: State, project: Project, of: { epic?: string; version?: string }, o: { from?: number; to?: number; estimation?: Estimation; now?: number } = {}) {
   const now = o.now ?? Date.now()
   const items = itemsOf(state, project, of)
-  const stat = (i: Issue) => statOf(i, o.estimation)
+  const at = estimatesAt(state, o.estimation)
   const done = doneTimes(state, project, items)
   const field = of.epic ? 'parentId' as const : 'fixReleaseIds' as const
   const joined = new Map(items.map(i => [i.id, joinedAt(i, state.activity, field, (of.epic ?? of.version)!)]))
   const start = o.from ?? Math.min(now, ...items.map(i => joined.get(i.id)!))
   const end = Math.min(o.to ?? now, now)
   const timeline = daysFrom(start, Math.max(start, end))
-  const total = timeline.map(d => items.reduce((n, i) => n + (joined.get(i.id)! <= endOfDay(d) ? stat(i) : 0), 0))
-  const completed = timeline.map(d => items.reduce((n, i) => { const t = done.get(i.id); return n + (t !== undefined && t <= endOfDay(d) ? stat(i) : 0) }, 0))
+  const total = timeline.map(d => items.reduce((n, i) => n + (joined.get(i.id)! <= endOfDay(d) ? at(i, Math.min(endOfDay(d), now)) : 0), 0))
+  const completed = timeline.map(d => items.reduce((n, i) => { const t = done.get(i.id); return n + (t !== undefined && t <= endOfDay(d) ? at(i, t) : 0) }, 0))
   const isDone = (i: Issue) => categoryOf(project, i.status) === 'done'
   const unestimated = (i: Issue) => !isDone(i) && (o.estimation === 'time' ? i.timeEstimate == null : o.estimation === 'count' ? false : i.estimate == null)
   return {
@@ -72,24 +92,27 @@ export function predictRelease(o: { start: number; now: number; total: number; c
  *  and the forecast in sprints at the average of the last three sprints' completed work. */
 export function scopeBurndown(state: State, project: Project, of: { epic?: string; version?: string }, sprints: Sprint[], estimation?: Estimation, now = Date.now()) {
   const items = itemsOf(state, project, of)
-  const stat = (i: Issue) => statOf(i, estimation)
+  const at = estimatesAt(state, estimation)
   const done = doneTimes(state, project, items)
   const field = of.epic ? 'parentId' as const : 'fixReleaseIds' as const
   const joined = new Map(items.map(i => [i.id, joinedAt(i, state.activity, field, (of.epic ?? of.version)!)]))
   const runs = sprints.filter(s => s.startedAt && (s.state === 'closed' || s.state === 'active')).sort((a, b) => a.startedAt! - b.startedAt!)
   const rows = runs.map((s, k) => {
     const from = s.startedAt!, to = s.state === 'closed' ? (s.completedAt ?? now) : now
-    const sum = (f: (i: Issue) => boolean) => items.filter(f).reduce((n, i) => n + stat(i), 0)
     const isDoneBy = (i: Issue, t: number) => { const d = done.get(i.id); return d !== undefined && d <= t }
+    const sum = (f: (i: Issue) => boolean, v: (i: Issue) => number) => items.filter(f).reduce((n, i) => n + v(i), 0)
     return {
       name: s.name, active: s.state === 'active',
-      completed: sum(i => { const d = done.get(i.id); return d !== undefined && d > from && d <= to }),
-      remaining: sum(i => joined.get(i.id)! <= to && !isDoneBy(i, to)),
-      added: k === 0 ? 0 : sum(i => joined.get(i.id)! > from && joined.get(i.id)! <= to),
+      // completed at its estimate when done; remaining at its estimate at the sprint's end
+      completed: sum(i => { const d = done.get(i.id); return d !== undefined && d > from && d <= to }, i => at(i, done.get(i.id)!)),
+      remaining: sum(i => joined.get(i.id)! <= to && !isDoneBy(i, to), i => at(i, to)),
+      // Jira's scope change: work that joined during the sprint, and estimates raised during it on work already there
+      added: k === 0 ? 0 : sum(i => joined.get(i.id)! > from && joined.get(i.id)! <= to, i => at(i, to))
+        + sum(i => joined.get(i.id)! <= from && !isDoneBy(i, from), i => Math.max(0, at(i, Math.min(to, done.get(i.id) ?? to)) - at(i, from))),
     }
   })
   const closed = rows.filter(r => !r.active).slice(-3)
   const pace = closed.length ? closed.reduce((n, r) => n + r.completed, 0) / closed.length : 0
-  const remaining = items.filter(i => done.get(i.id) === undefined).reduce((n, i) => n + stat(i), 0)
+  const remaining = items.filter(i => done.get(i.id) === undefined).reduce((n, i) => n + at(i, now), 0)
   return { rows, remaining, forecast: remaining <= 0 ? 0 : pace > 0 ? Math.ceil(remaining / pace) : null }
 }
