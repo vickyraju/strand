@@ -35,6 +35,7 @@ import CoveragePanel, { isRequirement } from './testing/CoveragePanel'
 import { CustomFieldInput } from './CustomFields'
 import { TimeField } from './TimeTracking'
 import { TemplateDialog, blankTemplate } from './TemplatesImport'
+import DevelopmentPanel from './DevelopmentPanel'
 
 function AutoText(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
   const ref = useRef<HTMLTextAreaElement>(null)
@@ -500,6 +501,7 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
             <div>Updated {timeAgo(issue.updatedAt)}</div>
           </div>
           </fieldset>
+          {apiEnabled && <DevelopmentPanel issueKey={issue.key} title={issue.title} />}
         </section>
       </div>
 

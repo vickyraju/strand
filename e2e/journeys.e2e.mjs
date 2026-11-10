@@ -2,7 +2,7 @@
 import { test, before, after } from 'node:test'
 import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
-import { start, stop, skip, signIn, signedOut, as, url, PEOPLE, postRaw, RECOVERY_PASSWORD } from './harness.mjs'
+import { start, stop, skip, signIn, signedOut, as, url, PEOPLE, postRaw, RECOVERY_PASSWORD, github } from './harness.mjs'
 
 const owner = as('owner@e2e.test'), maya = as('maya@e2e.test'), vic = as('vic@e2e.test')
 const idOf = async email => (await as(email)('GET', '/me')).body.id
@@ -1718,3 +1718,35 @@ test('[0705.R1][0705.R5][0705.R7] an admin adds a webhook: the secret shows once
   } finally { receiver.close() }
 })
 
+test('[0707.R1][0707.R2][0707.R3][0707.R4] an admin connects GitHub; the item shows its branch, commit and pull request, and its branch name', { skip, timeout: 120_000 }, async () => {
+  const owner = as('owner@e2e.test')
+  await owner('POST', '/projects', { name: 'Dev journey', key: 'DVJ', template: 'kanban' })
+  const item = (await owner('POST', '/projects/DVJ/issues', { title: 'Fix login redirect' })).body
+  const repository = { id: 7070, full_name: 'e2e-org/web', default_branch: 'main', html_url: 'https://github.com/e2e-org/web' }
+  const installation = { id: 70707, account: { login: 'e2e-org' } }
+  const pr = { action: 'opened', number: 12, repository, installation, pull_request: { number: 12, html_url: 'https://github.com/e2e-org/web/pull/12', title: `${item.key} Fix the redirect`,
+    body: '', state: 'open', merged: false, updated_at: '2026-11-10T10:00:00Z', user: { login: 'dev' }, head: { ref: 'dvj-1-fix-login-redirect' }, base: { ref: 'main' } } }
+  assert.equal((await github('pull_request', pr)).body.ignored, 'waiting for an administrator to connect this installation')
+
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url('/admin/development'))
+  const acct = o.locator('[aria-label="GitHub account e2e-org"]')
+  await acct.locator('text=Waiting').waitFor()
+  await acct.locator('button:has-text("Connect")').click()
+  await acct.locator('text=Connected').waitFor()
+
+  await github('pull_request', pr)
+  await github('push', { ref: 'refs/heads/dvj-1-fix-login-redirect', repository, installation, head_commit: { timestamp: '2026-11-10T11:00:00Z' },
+    commits: [{ id: 'abcdef1234567', message: `${item.key} send people back where they were`, url: 'https://github.com/e2e-org/web/commit/abcdef1', timestamp: '2026-11-10T11:00:00Z', author: { name: 'Dev' } }] })
+
+  await o.goto(url(`/i/${item.key}`))
+  const panel = o.locator('[aria-label="Development"]')
+  await panel.locator('button:has-text("1 pull request")').waitFor()
+  assert.match(await panel.innerText(), /1 branch[\s\S]*1 commit[\s\S]*1 Open[\s\S]*dvj-1-fix-login-redirect/i)   // lozenges are upper case
+  await panel.locator('button:has-text("1 commit")').click()
+  assert.match(await o.locator('.modal').innerText(), /e2e-org\/web[\s\S]*abcdef1[\s\S]*send people back/)
+  await o.click('.modal [aria-label="Close"]')
+  await panel.locator('button:has-text("1 pull request")').click()
+  assert.match(await o.locator('.modal').innerText(), /#12 DVJ-1 Fix the redirect[\s\S]*Open/i)
+  assert.deepEqual(o.problems, [])
+})

@@ -46,7 +46,7 @@ Checked 10 Nov 2026 on [jira.atlassian.com](https://jira.atlassian.com/issues/?j
   - shows the last 50 deliveries with their event, status and error.
 
   Every change is audited.
-- **R2: The panel.** An item's right column shows **Development** to anyone who can see the item (Jira's View Development Tools), when anything is linked to it:
+- **R2: The panel.** An item's right column shows **Development** to anyone who can see the item (Jira's View Development Tools). It always offers the branch name (R4); when anything is linked to the item, it also shows:
   - "N branches", "N commits · latest 2 days ago", and "N pull requests" with a count per status (open, merged, declined);
   - each line opens its dialog.
 - **R3: The dialogs** list by repository, newest first, each with a link to GitHub:
@@ -75,7 +75,7 @@ Checked 10 Nov 2026 on [jira.atlassian.com](https://jira.atlassian.com/issues/?j
 - `GET /admin/development` (receiver address, secret set, accounts with repositories, last 50 deliveries).
 - `PUT /admin/development/accounts/:id` `{ status }` (`active` or `suspended`; connecting is `active`).
 - `DELETE /admin/development/accounts/:id`.
-- `PUT /admin/development/repositories/:id` `{ projectIds }`.
+- `PUT /admin/development/repositories/:id` `{ projectKeys }` (keys, not a picker: there can be thousands of projects).
 
 ## Screens
 
@@ -97,7 +97,7 @@ None. The secret is a server setting (`GITHUB_WEBHOOK_SECRET`).
 |---|---|
 | R1 | Server test: an unknown installation waits and its deliveries aren't kept; connect, pause, remove; project limits; audit; non-admins refused |
 | R2, R3, R6 | Server test: the development answer's counts and branches. Browser journey: an item with a pull request, a branch and a commit shows the panel and its dialogs |
-| R4 | Web test: the branch name |
+| R4 | Server test (`links.test.ts`): the branch name. Browser journey: the panel shows it |
 | R5 | Server test: each development field and operator; builds and deployments match nothing |
 
 ## Strand branch
@@ -114,3 +114,5 @@ Same rules.
 None.
 
 ## Changelog
+
+- 10 Nov 2026, while building: repositories are limited by project key (a picker over thousands of projects doesn't scale); the panel is always there, for the branch name.

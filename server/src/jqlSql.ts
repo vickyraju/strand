@@ -7,7 +7,15 @@ const CATEGORY: Record<string, string> = { 'to do': 'todo', todo: 'todo', 'in pr
 /** Higher for higher priorities: the list's order (Administration › Priorities, spec 0305 R4), first is highest. */
 const PRIORITY_RANK = `(select -pr.position from priorities pr where pr.workspace_id = i.workspace_id and pr.key = i.priority)`
 const DATES: Record<string, string> = { created: 'i.created_at', updated: 'i.updated_at', resolved: 'i.resolved_at', due: 'i.due_date', start: 'i.start_date' }
-const NUMBERS: Record<string, string> = { estimate: 'i.estimate', timeEstimate: 'i.time_estimate', timeRemaining: 'i.time_remaining' }
+/** How many of an item's linked development records match (spec 0707). */
+const dev = (where: string) => `(select count(*) from dev_links dl join dev_entities de on de.id = dl.entity_id where dl.issue_id = i.id and ${where})`
+const PR_STATES: Record<string, string> = { open: 'open', merged: 'merged', declined: 'closed' }   // GitHub's closed without merging is Jira's declined
+const NUMBERS: Record<string, string> = {
+  estimate: 'i.estimate', timeEstimate: 'i.time_estimate', timeRemaining: 'i.time_remaining',
+  devCommits: dev(`de.kind = 'commit'`), devBranches: dev(`de.kind = 'branch' and de.state is distinct from 'deleted'`), devPrs: dev(`de.kind = 'pull_request'`),
+  devPrsOpen: dev(`de.kind = 'pull_request' and de.state = 'open'`), devPrsMerged: dev(`de.kind = 'pull_request' and de.state = 'merged'`),
+  devPrsDeclined: dev(`de.kind = 'pull_request' and de.state = 'closed'`), devNone: '0',
+}
 const EMPTY: Record<string, string> = {
   flagged: 'not i.flagged', assignee: 'i.assignee_id is null', reporter: 'i.reporter_id is null', labels: 'cardinality(i.labels) = 0', component: 'cardinality(i.component_ids) = 0',
   fixVersion: 'cardinality(i.fix_release_ids) = 0', affectedVersion: 'cardinality(i.affects_release_ids) = 0', sprint: 'i.sprint_id is null', parent: 'i.parent_id is null',
@@ -176,6 +184,12 @@ export async function jqlToSql(d: Db, me: Me, q: Query, args: unknown[]): Promis
       case 'sprint':
         if (v.kind === 'fn' && (v.name === 'opensprints' || v.name === 'closedsprints')) return `i.sprint_id in (select id from sprints where state = '${v.name === 'opensprints' ? 'active' : 'closed'}')`
         return `i.sprint_id in (select s.id from sprints s where s.workspace_id = i.workspace_id and lower(s.name) = lower(${put(text(v, 'sprint'))}))`   // a sprint may hold other projects' work
+      case 'devPrStatus': {
+        const s = PR_STATES[text(v, 'development[pullrequests].status').toLowerCase()]
+        if (!s) throw new HttpError(400, 'JQL: development[pullrequests].status is open, merged or declined', { jql: 'open, merged or declined' })
+        return `${dev(`de.kind = 'pull_request' and de.state = ${put(s)}`)} > 0`
+      }
+      case 'devNoneText': return 'false'
       case 'parent': return `i.parent_id in (select pi.id from issues pi join projects pp on pp.id = pi.project_id where pp.key || '-' || pi.number = upper(${put(text(v, 'parent'))}))`
       case 'resolution': {
         const t = text(v, 'resolution')

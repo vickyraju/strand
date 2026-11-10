@@ -499,14 +499,89 @@ test('GitHub webhook: signature, dedupe, linking by key, closing words, edits, o
   assert.equal((await dev('GH-1')).pullRequests.length, 0)
   await pool.query(`update repositories set project_ids = '{}'`)
 
-  // unknown installations and failed deliveries
-  assert.equal((await hook('pull_request', { ...prPayload(), installation: { id: 1 } })).body.ignored, 'unknown installation')
+  // unknown installations wait for an admin (spec 0707 R1), and failed deliveries
+  assert.equal((await hook('pull_request', { ...prPayload(), installation: { id: 1 } })).body.ignored, 'waiting for an administrator to connect this installation')
   assert.equal((await pool.query(`select count(*)::int n from webhook_deliveries where status = 'processed'`)).rows[0].n > 5, true)
 
   // uninstall removes the integration and everything it collected
   await hook('installation', { action: 'deleted', installation: { id: 777 } })
   assert.equal((await pool.query('select count(*)::int n from dev_entities')).rows[0].n, 0)
   assert.equal((await dev('GH-2')).pullRequests.length, 0)
+})
+
+test('[0707.R1][0707.R2][0707.R5][0707.R6] Development tools: an unknown GitHub installation waits for an admin; connect, limit, pause, remove; development JQL', { skip }, async () => {
+  await call('POST', '/api/v1/projects', { name: 'Dev panel', key: 'DVP', template: 'kanban' })
+  await call('POST', '/api/v1/projects', { name: 'Dev other', key: 'DVO', template: 'kanban' })
+  for (const t of ['one', 'two', 'three']) await call('POST', '/api/v1/projects/DVP/issues', { title: t })
+  const repo = { id: 5151, full_name: 'stranger/app', default_branch: 'main', html_url: 'https://github.com/stranger/app' }
+  const inst = { id: 999, account: { login: 'stranger' } }
+  const pr = (n: number, title: string, over: object = {}) => ({ action: 'opened', number: n, repository: repo, installation: inst,
+    pull_request: { number: n, html_url: `https://github.com/stranger/app/pull/${n}`, title, body: '', state: 'open', merged: false, updated_at: `2026-11-10T10:0${n}:00Z`, user: { login: 'dev' }, head: { ref: `b${n}` }, base: { ref: 'main' }, ...over } })
+  const admin = async () => (await call('GET', '/api/v1/admin/development')).body
+  const acct = async () => (await admin()).accounts.find((a: any) => a.installationId === 999)
+  const dev = async (key: string) => (await call('GET', `/api/v1/issues/${key}/development`)).body
+  const keys = async (jql: string) => {
+    const r = await call('GET', `/api/v1/search?jql=${encodeURIComponent(`project = DVP AND ${jql}`)}&limit=50`)
+    assert.equal(r.status, 200, `${jql}: ${JSON.stringify(r.body)}`)
+    return r.body.items.map((i: any) => i.key).sort()
+  }
+
+  // R1: a delivery from an installation nobody connected adds it as waiting, and keeps nothing it sent
+  assert.equal((await hook('pull_request', pr(1, 'DVP-1 first'))).status, 200)
+  let a = await acct()
+  assert.deepEqual([a.accountLogin, a.status, a.repositories.length], ['stranger', 'pending', 0])
+  assert.equal((await dev('DVP-1')).pullRequests.length, 0)
+  assert.equal((await admin()).secretSet, true)
+  assert.equal((await call('GET', '/api/v1/admin/development', undefined, 'member@x.com')).status, 403)
+
+  // connect: from now on its work is kept and linked; audited
+  assert.equal((await call('PUT', `/api/v1/admin/development/accounts/${a.id}`, { status: 'active' })).status, 204)
+  assert.equal((await pool.query(`select count(*)::int n from audit_log where action = 'development.connected' and target_id = $1`, [a.id])).rows[0].n, 1)
+  await hook('pull_request', pr(1, 'DVP-1 first'))
+  await hook('pull_request', pr(2, 'Fixes DVP-1', { state: 'closed', merged: true }))
+  await hook('pull_request', pr(3, 'DVP-2 dropped', { state: 'closed', merged: false }))
+  await hook('push', { ref: 'refs/heads/dvp-2-work', repository: repo, installation: inst, head_commit: { timestamp: '2026-11-10T11:00:00Z' },
+    commits: [{ id: 'dvc1', message: 'DVP-2 a change', url: 'https://github.com/stranger/app/commit/dvc1', timestamp: '2026-11-10T11:00:00Z', author: { name: 'Dev' } }] })
+  // R6: the panel's answer, each commit with its branch
+  let d = await dev('DVP-1')
+  assert.deepEqual(d.pullRequests.map((p: any) => p.state).sort(), ['merged', 'open'])
+  d = await dev('DVP-2')
+  assert.deepEqual([d.branches.map((b: any) => b.title), d.commits.map((c: any) => [c.title, c.branchTo])], [['dvp-2-work'], [['DVP-2 a change', 'dvp-2-work']]])
+
+  // R5: Jira's development fields
+  assert.deepEqual(await keys('development[pullrequests].all > 0'), ['DVP-1', 'DVP-2'])
+  assert.deepEqual(await keys('development[pullrequests].open > 0'), ['DVP-1'])
+  assert.deepEqual(await keys('development[pullrequests].merged = 1'), ['DVP-1'])
+  assert.deepEqual(await keys('development[pullrequests].declined >= 1'), ['DVP-2'])
+  assert.deepEqual(await keys('development[pullrequests].status = declined'), ['DVP-2'])
+  assert.deepEqual(await keys('development[PullRequests].status in (open, merged)'), ['DVP-1'])
+  assert.deepEqual(await keys('development[commits].all > 0 AND development[branches].all = 1'), ['DVP-2'])
+  assert.deepEqual(await keys('development[pullrequests].all = 0'), ['DVP-3'])
+  assert.deepEqual(await keys('development[builds].failing > 0 OR development[deployments].environment = prod OR development[reviews].open > 0'), [])
+  assert.deepEqual(await keys('development[builds].all = 0'), ['DVP-1', 'DVP-2', 'DVP-3'])
+  assert.equal((await call('GET', `/api/v1/search?jql=${encodeURIComponent('development[pullrequests].status = shipped')}`)).status, 400)
+
+  // limited to other projects: a key from DVP no longer links
+  a = await acct()
+  const r = a.repositories[0]
+  assert.equal((await call('PUT', `/api/v1/admin/development/repositories/${r.id}`, { projectKeys: ['NOPE'] })).status, 400)
+  assert.equal((await call('PUT', `/api/v1/admin/development/repositories/${r.id}`, { projectKeys: ['dvo'] })).status, 204)
+  assert.deepEqual((await acct()).repositories[0].projectKeys, ['DVO'])
+  await hook('pull_request', pr(4, 'DVP-3 limited'))
+  assert.equal((await dev('DVP-3')).pullRequests.length, 0)
+  await call('PUT', `/api/v1/admin/development/repositories/${r.id}`, { projectKeys: [] })
+
+  // paused: deliveries are dropped, what it sent stays
+  await call('PUT', `/api/v1/admin/development/accounts/${a.id}`, { status: 'suspended' })
+  assert.equal((await hook('pull_request', pr(5, 'DVP-3 paused'))).body.ignored, 'installation paused')
+  assert.equal((await dev('DVP-3')).pullRequests.length, 0)
+  assert.equal((await dev('DVP-1')).pullRequests.length, 2)
+
+  // removed: everything it sent goes
+  assert.equal((await call('DELETE', `/api/v1/admin/development/accounts/${a.id}`)).status, 204)
+  assert.equal((await dev('DVP-1')).pullRequests.length, 0)
+  assert.equal(await acct(), undefined)
+  assert.equal((await pool.query(`select count(*)::int n from audit_log where action = 'development.removed'`)).rows[0].n, 1)
 })
 
 test('GitHub webhook is closed when no secret is configured', { skip }, async () => {
@@ -3410,6 +3485,8 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     'GET /admin/directories/internal': ['gadmin', '/admin/directories/internal'],
     'GET /look-and-feel': ['public', '/look-and-feel'],   // 0702.R2
     'GET /project-categories': ['any', '/project-categories'],   // 0703.R5
+    'GET /admin/development': ['gadmin', '/admin/development'], 'PUT /admin/development/accounts/{id}': ['gadmin', `/admin/development/accounts/${none}`, { status: 'active' }],   // 0707.R1
+    'DELETE /admin/development/accounts/{id}': ['gadmin', `/admin/development/accounts/${none}`], 'PUT /admin/development/repositories/{id}': ['gadmin', `/admin/development/repositories/${none}`, { projectKeys: [] }],
     'GET /admin/webhooks': ['gadmin', '/admin/webhooks'], 'POST /admin/webhooks': ['gadmin', '/admin/webhooks', { name: 'Matrix hook', url: 'https://hooks.example.com/x' }],   // 0705.R1
     'GET /admin/webhooks/{id}': ['gadmin', `/admin/webhooks/${none}`], 'PUT /admin/webhooks/{id}': ['gadmin', `/admin/webhooks/${none}`, { name: 'x', url: 'https://hooks.example.com/x' }],
     'DELETE /admin/webhooks/{id}': ['gadmin', `/admin/webhooks/${none}`], 'POST /admin/webhooks/{id}/secret': ['gadmin', `/admin/webhooks/${none}/secret`],

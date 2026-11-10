@@ -158,7 +158,7 @@ Checked against Atlassian's Data Center documentation on 5 November 2026 (Jira S
 |---|---|---|---|---|---|---|---|
 | AU-01 | Automation | A separately licensed app on DC | Rules per project, dry run, run log | better | diverge | 0709 | Keep: automation tests. 0709 adds conditions, schedules and global rules. |
 | IN-01 | Outgoing webhooks | Admin page plus post function | Administration › Webhooks: Jira's events, body and URL variables, JQL filter (comments and work logs too), Exclude body; signed, retried, calls listed, private networks refused | match | match | 0705 | Custom headers and the post function are proposals |
-| IN-02 | Development panel | Branches, commits, PRs on the issue | GitHub data received; no screen shows it | partial | match | 0707 | |
+| IN-02 | Development panel | Branches, commits, PRs on the issue | Development panel (counts per pull request status, each commit's branch, the branch name to copy), its dialogs, Jira's `development[…]` JQL, Administration › Development tools (an unknown GitHub installation waits for an admin) | match | match | 0707 | GitHub only. Reading the history, triggers and builds are proposals |
 | IN-03 | Importers | CSV, JSON, other trackers | CSV with a dry run, as a job | partial | match | 0802 | A Jira DC importer that the product owner runs themselves. |
 | IN-04 | Test management | An app (Xray) | Built in | better | diverge | — | Keep: testing tests. |
 | IN-05 | REST API | v2 plus the Agile API | `/api/v1`, OpenAPI | partial | diverge | — | Strand's own API. Xray import endpoints are kept. |

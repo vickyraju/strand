@@ -5,7 +5,7 @@
 // The browser is the installed Google Chrome (CHROME_PATH to use another Chromium); nothing is downloaded.
 import { spawn, execFileSync } from 'node:child_process'
 import { createServer } from 'node:http'
-import { createHash, generateKeyPairSync, sign } from 'node:crypto'
+import { createHash, createHmac, generateKeyPairSync, sign } from 'node:crypto'
 import { createRequire } from 'node:module'
 import { chromium } from 'playwright-core'
 
@@ -51,6 +51,16 @@ export const as = email => async (method, path, body) => {
   return { status: res.status, body: res.status === 204 ? null : await res.json().catch(() => null) }
 }
 
+/** A GitHub webhook delivery, signed with the secret the API was started with (spec 0707). */
+const GITHUB_SECRET = 'e2e-github-secret-0707'
+let deliveries = 0
+export const github = async (event, payload) => {
+  const raw = JSON.stringify(payload)
+  const res = await fetch(`${apiUrl}/integrations/github/webhook`, { method: 'POST', body: raw, headers: { 'content-type': 'application/json', 'x-github-event': event,
+    'x-github-delivery': `e2e-${++deliveries}`, 'x-hub-signature-256': 'sha256=' + createHmac('sha256', GITHUB_SECRET).update(raw).digest('hex') } })
+  return { status: res.status, body: await res.json().catch(() => null) }
+}
+
 /** POST a raw body to any address of the API (Xray's /rest/raven/1.0/… for CI results), with a bearer token. */
 export const postRaw = async (path, body, contentType, token) => {
   const res = await fetch(`${apiUrl}${path}`, { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': contentType }, body })
@@ -86,6 +96,7 @@ export async function start() {
     STRAND_RECOVERY_PASSWORD: RECOVERY_PASSWORD, STRAND_SECRET_KEY: 'e2e-secret-key-for-stored-passwords-0712',
     STRAND_LDAP_FAKE: `${root}e2e/fake-directory.json`,   // a company directory in memory (spec 0712)
     STRAND_WEBHOOK_HTTP_HOSTS: '127.0.0.1', STRAND_WEBHOOK_PRIVATE_HOSTS: '127.0.0.1',   // the journeys' webhook receiver (spec 0705)
+    GITHUB_WEBHOOK_SECRET: GITHUB_SECRET,   // the journeys' GitHub deliveries (spec 0707)
     CORS_ORIGINS: webUrl, JOBS_POLL_MS: '500', DUE_SCAN_INTERVAL_MS: '0', FILE_SWEEP_MS: '0', S3_BUCKET: '',
   })
   run(['node_modules/vite/bin/vite.js', '--port', String(webPort), '--strictPort', '--host', 'localhost'], root, {

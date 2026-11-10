@@ -91,9 +91,17 @@ export async function processDelivery(d: Db, event: string, payload: any): Promi
     return { ok: true, ignored: 'repositories updated' }
   }
 
+  // An installation Strand doesn't know waits for a system admin to connect it (spec 0707 R1); nothing it sends is kept until then
+  if (!integration && parsed.installationId != null && event !== 'installation') {
+    await d.query(
+      `insert into integrations (workspace_id, provider, installation_id, account_login, status)
+       select id, 'github', $1, $2, 'pending' from workspaces order by created_at limit 1 on conflict (provider, installation_id) do nothing`,
+      [parsed.installationId, String(payload?.installation?.account?.login ?? payload?.repository?.owner?.login ?? payload?.organization?.login ?? 'unknown')])
+    return { ok: true, ignored: 'waiting for an administrator to connect this installation' }
+  }
   if (!parsed.entities.length || !parsed.repo) return { ok: true, ignored: `nothing to record for ${event}` }
   if (!integration) return { ok: true, ignored: 'unknown installation' }
-  if (integration.status !== 'active') return { ok: true, ignored: 'installation suspended' }
+  if (integration.status !== 'active') return { ok: true, ignored: integration.status === 'pending' ? 'waiting for an administrator' : 'installation paused' }
 
   const repo = await ensureRepo(d, integration.id, parsed.repo)
   const projects = new Set<string>()
