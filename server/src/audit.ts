@@ -24,6 +24,9 @@ export async function audit(d: Db, who: Actor, e: AuditEntry) {
     [e.workspaceId === undefined ? who.me?.workspaceId ?? null : e.workspaceId, who.me?.id ?? null, who.me?.email ?? who.system ?? 'system',
      e.action, e.project?.id ?? null, e.project?.key ?? null, e.type, e.id ?? null, e.name ?? null,
      e.before === undefined ? null : JSON.stringify(e.before), e.after === undefined ? null : JSON.stringify(e.after), who.ip ?? null])
+  // configuration changes also reach outgoing webhooks (spec 0705), in Jira's event names
+  const { emitFromAudit } = await import('./webhooks.ts')
+  await emitFromAudit(d, e.workspaceId === undefined ? who.me?.workspaceId ?? null : e.workspaceId, who.me?.id ?? null, e)
 }
 
 /** Just the fields that changed, before and after. */

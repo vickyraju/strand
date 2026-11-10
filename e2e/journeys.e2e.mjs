@@ -1,6 +1,7 @@
 // The main journeys, end to end in a real browser. Each one checks what a person sees and what the server keeps.
 import { test, before, after } from 'node:test'
 import assert from 'node:assert/strict'
+import { createServer } from 'node:http'
 import { start, stop, skip, signIn, signedOut, as, url, PEOPLE, postRaw, RECOVERY_PASSWORD } from './harness.mjs'
 
 const owner = as('owner@e2e.test'), maya = as('maya@e2e.test'), vic = as('vic@e2e.test')
@@ -1692,5 +1693,28 @@ test('[0704.R1][0704.R4][0704.R6] an admin anonymises a deactivated person: the 
   const after = (await owner('GET', `/admin/users?query=${alias}`)).body.items[0]
   assert.deepEqual([after.name, after.username, !!after.anonymisedAt], [alias, null, true])
   assert.deepEqual(o.problems, [])
+})
+
+test('[0705.R1][0705.R5][0705.R7] an admin adds a webhook: the secret shows once, a test call is delivered and listed', { skip, timeout: 120_000 }, async () => {
+  const got = []
+  const receiver = createServer((req, res) => { let b = ''; req.on('data', c => { b += c }); req.on('end', () => { got.push({ headers: req.headers, body: b }); res.writeHead(200).end('ok') }) })
+  await new Promise(r => receiver.listen(0, '127.0.0.1', r))
+  try {
+    const o = await signIn('owner@e2e.test')
+    await o.goto(url('/admin/webhooks'))
+    await o.click('button:has-text("Create a webhook")')
+    await o.fill('#wh-name', 'Build server')
+    await o.fill('#wh-url', `http://127.0.0.1:${receiver.address().port}/strand`)
+    await o.click('.modal button:has-text("Create")')
+    const secret = await o.locator('[aria-label="Signing secret"]').innerText()
+    assert.match(secret, /^whsec_/)
+    await o.click('.modal button:has-text("Done")')
+    await o.click('td:has-text("Build server")')
+    await o.click('.modal button:has-text("Test")')
+    await o.waitForSelector('[aria-label="Recent calls"] >> text=delivered', { timeout: 30_000 })
+    assert.equal(JSON.parse(got[0].body).webhookEvent, 'ping')
+    assert.match(got[0].headers['x-strand-signature'], /^sha256=[0-9a-f]{64}$/)
+    assert.deepEqual(o.problems, [])
+  } finally { receiver.close() }
 })
 

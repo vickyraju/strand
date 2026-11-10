@@ -20,6 +20,7 @@ import ListsAdmin from './ListsAdmin'
 import AuthMethods from './AuthMethods'
 import UserDirectories from './UserDirectories'
 import ProjectCategories from './ProjectCategories'
+import WebhooksAdmin from './WebhooksAdmin'
 import SharedViewsAdmin from './SharedViewsAdmin'
 import ArchivedProjects from './admin/ArchivedProjects'
 
@@ -47,6 +48,7 @@ export default function AdminView({ section = 'people', item }: { section?: Admi
       {section === 'auth-methods' && <AuthMethods />}
       {section === 'directories' && <UserDirectories />}
       {section === 'project-categories' && <ProjectCategories />}
+      {section === 'webhooks' && <WebhooksAdmin />}
       {section === 'workflows' && <WorkflowsAdmin tab={item === 'statuses' || item === 'schemes' ? item : 'workflows'} />}
       {section === 'link-types' && <LinkTypesAdmin />}
       {(section === 'priorities' || section === 'resolutions') && <ListsAdmin kind={section} />}
