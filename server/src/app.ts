@@ -1,10 +1,10 @@
-import Fastify, { type FastifyPluginAsync } from 'fastify'
+import Fastify, { type FastifyPluginAsync, type FastifyReply, type FastifyRequest } from 'fastify'
 import cors from '@fastify/cors'
 import swagger from '@fastify/swagger'
 import swaggerUi from '@fastify/swagger-ui'
 import { jsonSchemaTransform, serializerCompiler, validatorCompiler } from 'fastify-type-provider-zod'
 import { authenticate } from './auth.ts'
-import { noteLimited, policyFor, rateLimiter, tooMany, type RateSettings } from './rateLimit.ts'
+import { ANONYMOUS, fromWebApp, noteLimited, policyFor, rateLimiter, tooMany, type RateSettings } from './rateLimit.ts'
 import { getSetting } from './settings.ts'
 import { pool, db } from './db.ts'
 import { startListener, stopListener } from './events.ts'
@@ -110,27 +110,38 @@ export async function build() {
 
   app.get('/health', async () => ({ ok: true }))
   await app.register(scim, { prefix: '/scim/v2' })          // own bearer-token auth
-  // signing in itself (spec 0711): the login page's configuration, the login form, signing out; no sign-in needed
-  await app.register(publicAuth, { prefix: '/api/v1' })
-  await app.register(publicAuth, { prefix: '/api' })   // the hidden alias, as for the rest of the API
-  await app.register(publicLook, { prefix: '/api/v1' })    // look and feel (spec 0702): the login page draws with it
-  await app.register(publicLook, { prefix: '/api' })
-  await app.register(publicAvatars, { prefix: '/api/v1' })  // project avatars (spec 0703): an <img> sends no sign-in
-  await app.register(publicAvatars, { prefix: '/api' })
+  // Rate limiting (System settings, spec 0706): every request but the web app's, per person; without a sign-in, as Anonymous
+  const limiter = rateLimiter()
+  app.addHook('onClose', async () => limiter.stop())
+  const limit = async (ws: string, who: string, req: FastifyRequest, reply: FastifyReply) => {
+    const p = policyFor(await getSetting(ws, 'rateLimiting') as RateSettings, who)
+    if (!p) return
+    const v = limiter.take(who, p)
+    reply.headers(v.headers)
+    if (!v.allowed) { await noteLimited(ws, who); throw tooMany(p) }
+  }
+  await app.register(async pub => {
+    pub.addHook('preHandler', async (req, reply) => {
+      if (fromWebApp(req.headers, origins)) return
+      const [w] = await db.query<{ id: string }>('select id from workspaces order by created_at limit 1')
+      if (w) await limit(w.id, ANONYMOUS, req, reply)
+    })
+    // signing in itself (spec 0711): the login page's configuration, the login form, signing out; no sign-in needed
+    await pub.register(publicAuth, { prefix: '/api/v1' })
+    await pub.register(publicAuth, { prefix: '/api' })   // the hidden alias, as for the rest of the API
+    await pub.register(publicLook, { prefix: '/api/v1' })    // look and feel (spec 0702): the login page draws with it
+    await pub.register(publicLook, { prefix: '/api' })
+    await pub.register(publicAvatars, { prefix: '/api/v1' })  // project avatars (spec 0703): an <img> sends no sign-in
+    await pub.register(publicAvatars, { prefix: '/api' })
+  })
   await app.register(githubWebhook, { prefix: '/integrations/github/webhook' })   // GitHub signs each call; no user login
 
   const resources: FastifyPluginAsync = async api => {
     api.addHook('preHandler', authenticate)
-    // Rate limiting (System settings): requests made with access tokens, per person, after sign-in so the count belongs to someone
-    const limiter = rateLimiter()
-    api.addHook('onClose', async () => limiter.stop())
+    // after sign-in, so the count belongs to someone: access tokens always, other sign-ins unless from the web app (spec 0706)
     api.addHook('preHandler', async (req, reply) => {
-      if (req.me.via !== 'pat') return
-      const p = policyFor(await getSetting(req.me.workspaceId, 'rateLimiting') as RateSettings, req.me.id)
-      if (!p) return
-      const v = limiter.take(req.me.id, p)
-      reply.headers(v.headers)
-      if (!v.allowed) { await noteLimited(req.me.workspaceId, req.me.id); throw tooMany(p) }
+      if (req.me.via !== 'pat' && fromWebApp(req.headers, origins)) return
+      await limit(req.me.workspaceId, req.me.id, req, reply)
     })
     const routes: FastifyPluginAsync = async v1 => {
       await v1.register(projects)

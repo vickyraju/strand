@@ -36,7 +36,8 @@ const s3Server = createServer((req, res) => {
 let pool: pg.Pool
 
 const call = async (method: string, path: string, body?: unknown, who = 'owner@x.com', headers: Record<string, string> = {}) => {
-  const r = await app.inject({ method: method as any, url: path, payload: body as any, headers: { 'x-dev-user': who, ...headers } })
+  // web app calls (its Origin): rate limiting leaves it alone (spec 0706)
+  const r = await app.inject({ method: method as any, url: path, payload: body as any, headers: { origin: 'http://localhost:5173', 'x-dev-user': who, ...headers } })
   return { status: r.statusCode, body: r.body ? JSON.parse(r.body) : null }
 }
 
@@ -3776,7 +3777,7 @@ test('system settings: admins change policies at runtime (validated, audited); e
   assert.equal((await viaToken('GET', '/api/v1/me')).statusCode, 401)
   await put('accessTokens', { enabled: true, maxPerUser: 10, maxExpiryDays: 365, defaultExpiryDays: 90 })
 
-  // rate limiting: none by default, then a small limit for tokens only; the web app is never limited; an exemption lifts it
+  // rate limiting: none by default, then a small limit; tokens always count; the web app is never limited; an exemption lifts it
   assert.equal((await viaToken('GET', '/api/v1/me')).headers['x-ratelimit-limit'], undefined)
   await put('rateLimiting', { enabled: true, mode: 'limit', requests: 1, intervalSeconds: 3600, burst: 2, exemptions: [] })
   const r = [await viaToken('GET', '/api/v1/me'), await viaToken('GET', '/api/v1/me'), await viaToken('GET', '/api/v1/me')]
@@ -5104,5 +5105,35 @@ test('[0705.R2] a webhook never reaches private addresses, whatever its name res
   assert.equal(urlProblem('https://hooks.example.com/{issue.key}'), null)
   for (const u of ['https://[::ffff:7f00:1]/x', 'https://[::ffff:a9fe:a9fe]/latest', 'https://[64:ff9b::7f00:1]/x']) assert.ok(urlProblem(u), u)
   assert.equal(fillUrl('https://h.example/{issue.key}/${project.key}', { issue: { key: 'A B/1', fields: { project: { key: 'AB' } } } }), 'https://h.example/A%20B%2F1/AB')
+})
+
+test('[0706.R1][0706.R2][0706.R3] rate limiting counts every request but the web app’s: a script with a developer sign-in, and anonymous requests as one', { skip }, async () => {
+  const put = (v: object) => call('PUT', '/api/v1/admin/settings/rateLimiting', v)
+  const { clearSettingsCache } = await import('../src/settings.ts')
+  const script = async (who = 'rl.script@x.com') => app.inject({ method: 'GET', url: '/api/v1/me', headers: { 'x-dev-user': who } })      // no Origin: a script (the developer login counts as a sign-in)
+  const anon = () => app.inject({ method: 'POST', url: '/api/v1/auth/login', payload: { username: 'rl.nobody', password: 'x' } })
+  await script()
+  assert.equal((await put({ enabled: true, mode: 'limit', requests: 1, intervalSeconds: 3600, burst: 2, exemptions: [] })).status, 200)
+  clearSettingsCache()
+  try {
+    // R1: a script with a developer sign-in is limited; the web app (its Origin, or same-origin) never is
+    assert.deepEqual([(await script()).statusCode, (await script()).statusCode, (await script()).statusCode], [200, 200, 429])
+    for (let n = 0; n < 4; n++) assert.equal((await call('GET', '/api/v1/me', undefined, 'rl.script@x.com')).status, 200)
+    assert.equal((await app.inject({ method: 'GET', url: '/api/v1/me', headers: { 'x-dev-user': 'rl.script@x.com', 'sec-fetch-site': 'same-origin' } })).statusCode, 200)
+    // R2: anonymous requests count together, as Anonymous
+    const a = [await anon(), await anon(), await anon()]
+    assert.deepEqual(a.map(r => r.statusCode), [401, 401, 429])
+    await pool.query('delete from login_failures')
+    const list = (await call('GET', '/api/v1/admin/rate-limits/limited')).body
+    assert.ok(list.some((x: any) => x.userId === null && x.name === 'Anonymous'))
+    assert.ok(list.some((x: any) => x.email === 'rl.script@x.com'))
+    // R2: an exemption for Anonymous lifts it
+    await put({ enabled: true, mode: 'limit', requests: 1, intervalSeconds: 3600, burst: 2, exemptions: [{ userId: 'anonymous', mode: 'unlimited' }] }); clearSettingsCache()
+    assert.equal((await anon()).statusCode, 401)
+    assert.equal((await put({ enabled: true, mode: 'limit', requests: 1, intervalSeconds: 3600, burst: 2, exemptions: [{ userId: 'someone', mode: 'unlimited' }] })).status, 400)
+  } finally {
+    await put({ enabled: false, mode: 'limit', requests: 100, intervalSeconds: 60, burst: 100, exemptions: [] }); clearSettingsCache()
+    await pool.query('delete from login_failures')
+  }
 })
 

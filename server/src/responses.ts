@@ -453,7 +453,7 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'PUT /admin/settings/:key': SettingView,
   'GET /settings/public': z.record(z.string(), z.union([z.record(z.string(), z.unknown()), z.array(z.record(z.string(), z.unknown()))])).describe('attachments, accessTokens, searchAndBulk, dueReminders, timeTracking, projectKeys…; and the priorities and resolutions lists'),
   'GET /admin/rate-limits/limited': z.array(z.object({
-    userId: id, name: z.string(), email: z.string(), firstAt: ts, lastAt: ts, times: z.number().describe('Minutes in which they were refused at least once'),
+    userId: nullable(id).describe('Null: Anonymous, every request without a sign-in (spec 0706)'), name: z.string(), email: z.string(), firstAt: ts, lastAt: ts, times: z.number().describe('Minutes in which they were refused at least once'),
   })),
   'GET /admin/users': z.object({
     items: z.array(z.object({

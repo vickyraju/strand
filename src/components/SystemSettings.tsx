@@ -29,9 +29,9 @@ interface RateLimiting { enabled: boolean; mode: Mode; requests: number; interva
 interface Exemption { userId: string; mode: Mode; requests?: number; intervalSeconds?: number; burst?: number }
 
 const MODES: { id: Mode; label: string; hint: string }[] = [
-  { id: 'limit', label: 'Limit requests', hint: 'Each person’s tokens get the numbers below.' },
+  { id: 'limit', label: 'Limit requests', hint: 'Each person (and Anonymous) gets the numbers below.' },
   { id: 'unlimited', label: 'Allow unlimited requests', hint: 'Count nothing, refuse nothing.' },
-  { id: 'block', label: 'Block all requests', hint: 'Refuse every request made with a token.' },
+  { id: 'block', label: 'Block all requests', hint: 'Refuse every request that counts.' },
 ]
 const INTERVALS = [{ s: 1, label: 'second' }, { s: 60, label: 'minute' }, { s: 3600, label: 'hour' }]
 
@@ -214,13 +214,13 @@ function RateLimitingSection({ setting, save }: { setting: Setting<RateLimiting>
   const [people, setPeople] = useState<Map<string, User>>(new Map())
   const [query, setQuery] = useState('')
   const [found, setFound] = useState<User[]>([])
-  const [limited, setLimited] = useState<{ userId: string; name: string; email: string; lastAt: string; times: number }[] | null>(null)
+  const [limited, setLimited] = useState<{ userId: string | null; name: string; email: string; lastAt: string; times: number }[] | null>(null)
   useEffect(() => { setDraft(setting.value) }, [setting.value])
   useEffect(() => { api<any[]>('GET', '/api/admin/rate-limits/limited').then(setLimited, () => setLimited([])) }, [setting.value])
   useEffect(() => {   // names for the people already exempted
     if (!draft.exemptions.length) return
     // by id: an exempted person may be anywhere among tens of thousands
-    const ids = draft.exemptions.map(e => e.userId).filter(id => !people.has(id)).slice(0, 200)
+    const ids = draft.exemptions.map(e => e.userId).filter(id => id !== 'anonymous' && !people.has(id)).slice(0, 200)
     if (ids.length) api<Row[]>('GET', `/api/users?ids=${ids.join(',')}`).then(rows => setPeople(m => new Map([...m, ...rows.map(r => [r.id, mapUser(r)] as const)])), () => {})
   }, [draft.exemptions.length])
   useEffect(() => {
@@ -273,10 +273,10 @@ function RateLimitingSection({ setting, save }: { setting: Setting<RateLimiting>
           </>}
 
           <div className="settings-row" style={{ alignItems: 'flex-start' }}>
-            <span className="settings-label">Exemptions<span className="muted sm">People whose tokens follow their own rule instead.</span></span>
+            <span className="settings-label">Exemptions<span className="muted sm">People (or Anonymous: every request without a sign-in) who follow their own rule instead.</span></span>
             <div style={{ flex: 1 }}>
               {draft.exemptions.map((ex, i) => {
-                const u = people.get(ex.userId)
+                const u = ex.userId === 'anonymous' ? { id: 'anonymous', name: 'Anonymous', initials: '?', color: '#8A8578' } : people.get(ex.userId)
                 return (
                   <div key={ex.userId} className="form-row" style={{ alignItems: 'center', marginBottom: 6 }}>
                     <span className="admin-person" style={{ minWidth: 180 }}><Avatar user={u} size={20} />{u?.name ?? 'Someone'}</span>
@@ -294,6 +294,9 @@ function RateLimitingSection({ setting, save }: { setting: Setting<RateLimiting>
                   </div>
                 )
               })}
+              {!draft.exemptions.some(e => e.userId === 'anonymous') && (
+                <button className="btn btn-ghost btn-sm" style={{ marginBottom: 6 }} onClick={() => exempt('anonymous')}><Plus size={13} />Anonymous</button>
+              )}
               <div style={{ position: 'relative', maxWidth: 320 }}>
                 <input className="input" placeholder="Add a person…" aria-label="Add an exemption" role="combobox" aria-expanded={offered.length > 0} aria-controls="exempt-list"
                   value={query} onChange={e => { setQuery(e.target.value); setActive(0) }}
@@ -328,7 +331,7 @@ function RateLimitingSection({ setting, save }: { setting: Setting<RateLimiting>
             <table className="table">
               <thead><tr><th>Person</th><th>Last limited</th><th>Minutes limited (24 h)</th></tr></thead>
               <tbody>{limited.map(l => (
-                <tr key={l.userId} style={{ cursor: 'default' }}><td>{l.name} <span className="muted sm">{l.email}</span></td><td>{timeAgo(Date.parse(l.lastAt))}</td><td>{l.times}</td></tr>
+                <tr key={l.userId ?? 'anonymous'} style={{ cursor: 'default' }}><td>{l.name} <span className="muted sm">{l.email}</span></td><td>{timeAgo(Date.parse(l.lastAt))}</td><td>{l.times}</td></tr>
               ))}</tbody>
             </table>
           </div>}
