@@ -358,11 +358,11 @@ const plugin: FastifyPluginAsyncZod = async app => {
   })
 
   // Rate limiting › Limited accounts: who was refused in the last 24 hours (newest first)
-  app.get('/admin/rate-limits/limited', { schema: { tags: TAG, summary: 'People whose access tokens were rate limited in the last 24 hours (global admins)' } }, async req => {
+  app.get('/admin/rate-limits/limited', { schema: { tags: TAG, summary: 'People (and Anonymous) rate limited in the last 24 hours (global admins)' } }, async req => {
     requireAdmin(req)
     return db.query(
-      `select u.id as user_id, u.name, u.email, r.first_at, r.last_at, r.times
-         from rate_limited_accounts r join users u on u.id = r.user_id
+      `select r.user_id, coalesce(u.name, 'Anonymous') as name, coalesce(u.email, '') as email, r.first_at, r.last_at, r.times
+         from rate_limited_accounts r left join users u on u.id = r.user_id
         where r.workspace_id = $1 and r.last_at > now() - interval '24 hours' order by r.last_at desc limit 500`, [req.me.workspaceId])
   })
 

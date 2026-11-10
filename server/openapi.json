@@ -31338,7 +31338,7 @@
     },
     "/api/v1/admin/rate-limits/limited": {
       "get": {
-        "summary": "People whose access tokens were rate limited in the last 24 hours (global admins)",
+        "summary": "People (and Anonymous) rate limited in the last 24 hours (global admins)",
         "tags": [
           "Admin"
         ],
@@ -31353,8 +31353,9 @@
                     "type": "object",
                     "properties": {
                       "userId": {
-                        "type": "string",
-                        "description": "uuid"
+                        "nullable": true,
+                        "description": "Null: Anonymous, every request without a sign-in (spec 0706)",
+                        "type": "string"
                       },
                       "name": {
                         "type": "string"

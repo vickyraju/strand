@@ -1,6 +1,8 @@
 // Rate limiting, the way Jira Data Center does it (Administration › System › Rate limiting):
 // - Off until a workspace admin turns it on in System settings. No limit is built in.
-// - Only requests made with personal access tokens (scripts, integrations) count. People using the web app are never limited.
+// - Every API request counts except those of Strand's own web app (spec 0706), as Jira's counts every external REST request:
+//   access tokens always, other sign-ins when they don't come from the web app. Requests without a sign-in count
+//   together as Anonymous.
 // - A token bucket per person: `requests` new requests every `intervalSeconds`, saving up unused ones to `burst`.
 // - Modes: limit (the numbers), unlimited (never refuse), block (refuse every token request). Exemptions give one person
 //   their own mode and numbers.
@@ -52,8 +54,16 @@ export function rateLimiter() {
 }
 
 export const tooMany = (p: Policy) => new HttpError(429, p.mode === 'block'
-  ? 'Requests with access tokens are blocked by your administrator.'
-  : `Too many requests: at most ${p.requests} every ${p.intervalSeconds} seconds with access tokens. Try again shortly.`)
+  ? 'Requests from scripts and integrations are blocked by your administrator.'
+  : `Too many requests: at most ${p.requests} every ${p.intervalSeconds} seconds. Try again shortly.`)
+
+export const ANONYMOUS = 'anonymous'
+/** A request from Strand's own web app (R1): its Origin is one of the app's addresses, or the browser says same-origin.
+ *  Scripts can send these headers too; rate limiting keeps a server stable, it isn't a lock. */
+export function fromWebApp(headers: Record<string, string | string[] | undefined>, origins: string[]) {
+  const origin = String(headers.origin ?? '').replace(/\/$/, '')
+  return (!!origin && origins.includes(origin)) || headers['sec-fetch-site'] === 'same-origin'
+}
 
 /** Records that someone was refused, for the "Limited accounts" list. At most once a minute per person and pod, so a
  *  script hammering the API does not turn every refusal into a write. */
@@ -61,7 +71,10 @@ const noted = new Map<string, number>()
 export async function noteLimited(workspaceId: string, userId: string, now = Date.now()) {
   if ((noted.get(userId) ?? 0) > now - 60_000) return
   noted.set(userId, now)
-  await db.query(
+  if (userId === ANONYMOUS) await db.query(
+    `insert into rate_limited_accounts (workspace_id, user_id) values ($1, null)
+     on conflict (workspace_id) where user_id is null do update set last_at = now(), times = rate_limited_accounts.times + 1`, [workspaceId])
+  else await db.query(
     `insert into rate_limited_accounts (workspace_id, user_id) values ($1, $2)
-     on conflict (workspace_id, user_id) do update set last_at = now(), times = rate_limited_accounts.times + 1`, [workspaceId, userId])
+     on conflict (workspace_id, user_id) where user_id is not null do update set last_at = now(), times = rate_limited_accounts.times + 1`, [workspaceId, userId])
 }

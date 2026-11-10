@@ -17,7 +17,7 @@ const days = (max: number) => z.number().int().min(1).max(max)
 export const SETTINGS = {
   rateLimiting: {
     label: 'Rate limiting',
-    description: 'Limits how many API requests a person’s access tokens (scripts and integrations) can make. The web app is never limited. Off until you turn it on.',
+    description: 'Limits how many API requests each person can make from scripts and integrations, whatever they sign in with (access tokens, Microsoft or login sessions). Strand’s own web app is never limited. Requests without a sign-in count together as Anonymous. Off until you turn it on.',
     public: false,
     schema: z.object({
       enabled: z.boolean().describe('Off: no limits at all'),
@@ -26,7 +26,7 @@ export const SETTINGS = {
       intervalSeconds: z.number().int().min(1).max(86_400).describe('The interval, in seconds'),
       burst: z.number().int().min(1).max(10_000_000).describe('Most unused requests that can build up (at least the requests allowed)'),
       exemptions: z.array(z.object({
-        userId: z.string().uuid(),
+        userId: z.union([z.string().uuid(), z.literal('anonymous')]).describe('A person, or anonymous for every request without a sign-in (spec 0706)'),
         mode: z.enum(['limit', 'unlimited', 'block']),
         requests: z.number().int().min(1).max(1_000_000).optional(),
         intervalSeconds: z.number().int().min(1).max(86_400).optional(),
