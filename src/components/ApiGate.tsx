@@ -3,6 +3,7 @@ import { api, apiEnabled, errorMessage, getLogin, setLogin, ApiError } from '../
 import { completeSignIn, hasSession, passwordSignedIn, showsLoginForm, signIn, type AuthConfig } from '../api/auth'
 import { Logomark } from './NavRail'
 import { Modal } from './ui'
+import AnnouncementBanner from './AnnouncementBanner'
 
 type Phase = 'checking' | 'signed-out' | 'ready'
 
@@ -51,10 +52,10 @@ export default function ApiGate({ children }: { children: ReactNode }) {
   if (!config) return <Card title="Sign in" text="Strand can’t reach its server right now."><p role="alert" className="text-danger">{error}</p></Card>
 
   if (config.dev && !new URLSearchParams(location.search).has('auth_fallback'))
-    return <Card title="Sign in" text="This is a development server. Use your work email and the shared dev secret."><DevLoginForm onSignedIn={() => setPhase('ready')} /></Card>
+    return <Card title="Sign in" announcement={config.announcement ?? ''} text="This is a development server. Use your work email and the shared dev secret."><DevLoginForm onSignedIn={() => setPhase('ready')} /></Card>
   const form = showsLoginForm(config, location.search)
   return (
-    <Card title="Sign in" text={form ? 'Use your company username and password.' : 'Use your company Microsoft account.'}>
+    <Card announcement={config.announcement ?? ''} title="Sign in" text={form ? 'Use your company username and password.' : 'Use your company Microsoft account.'}>
       {error && <p role="alert" className="text-danger">{error}</p>}
       {form && <LoginForm onSignedIn={() => { setError(''); void check().then(setPhase) }} />}
       {config.entra && (
@@ -175,9 +176,10 @@ function DevLoginForm({ onSignedIn }: { onSignedIn: () => void }) {
   )
 }
 
-function Card({ title, text, children }: { title: string; text: string; children?: ReactNode }) {
+function Card({ title, text, children, announcement = '' }: { title: string; text: string; children?: ReactNode; announcement?: string }) {
   return (
     <div className="welcome">
+      <AnnouncementBanner text={announcement} />
       <div className="welcome-card">
         <Logomark size={40} />
         <h1 className="welcome-title">{title}</h1>

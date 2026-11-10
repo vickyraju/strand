@@ -35,6 +35,16 @@ export const SETTINGS = {
     }).refine(v => v.burst >= v.requests, { message: 'Max requests must be at least the requests allowed', path: ['burst'] }),
     default: { enabled: false, mode: 'limit', requests: 100, intervalSeconds: 60, burst: 100, exemptions: [] },
   },
+  announcement: {
+    label: 'Announcement banner',
+    description: 'A message at the top of every page (Jira’s announcement banner). Public: also on the login page. Plain text; https:// addresses become links. Empty: no banner.',
+    public: true,
+    schema: z.object({
+      text: z.string().max(2000).describe('The announcement; empty for none'),
+      visibility: z.enum(['public', 'private']).describe('public: everyone, also on the login page; private: people signed in'),
+    }),
+    default: { text: '', visibility: 'private' },
+  },
   attachments: {
     label: 'Attachments',
     description: 'Whether people can attach files to work items, and how large a file may be.',

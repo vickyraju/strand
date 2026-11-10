@@ -7,7 +7,7 @@ import { API_URL, buildRequest, withPrefix } from './client.ts'
 
 /** Entra's public settings, as the server publishes them. */
 export interface EntraClient { name: string; tenantId: string; clientId: string; authority: string; scope: string }
-export interface AuthConfig { loginForm: boolean; fallback: boolean; entra: EntraClient | null; /** Strand's developer login is on (AUTH_DEV) */ dev?: boolean }
+export interface AuthConfig { loginForm: boolean; fallback: boolean; entra: EntraClient | null; /** Strand's developer login is on (AUTH_DEV) */ dev?: boolean; /** A Public announcement (spec 0701) */ announcement?: string | null }
 
 // —— Pure helpers (unit-tested) ——
 

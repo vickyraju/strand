@@ -168,7 +168,7 @@ Checked against Atlassian's Data Center documentation on 5 November 2026 (Jira S
 | ID | Jira capability | Jira DC | Strand | Status | Decision | Spec | Notes |
 |---|---|---|---|---|---|---|---|
 | AD-01 | Audit log | Global and per project, coverage levels ([audit](https://confluence.atlassian.com/adminjiraserver/auditing-in-jira-938847740.html)) | Global and per project | match | match | — | |
-| AD-02 | Announcement banner | Yes | Absent | absent | match | 0701 | |
+| AD-02 | Announcement banner | Yes, public or private, HTML | System settings › Announcement banner: public or private, preview, closable until it changes | match | match | 0701 | Plain text with links, not HTML (no scripts) |
 | AD-03 | Look and feel | Logo and colours | Absent | absent | match | 0702 | |
 | AD-04 | Rate limiting | Everyone, per node ([rate](https://confluence.atlassian.com/adminjiraserver/improving-instance-stability-with-rate-limiting-983794911.html)) | Token requests only | partial | match | 0706 | |
 | AD-05 | Language packs | Yes | English only | absent | open | 0708 | |

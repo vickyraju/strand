@@ -1587,3 +1587,11 @@ h2.empty-title, h2.section-title, h2.side-title { margin: 0 }
 .swatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px }
 .control-refine { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-bottom: 12px }
 .report-list { list-style: none; padding: 0; margin: 6px 0 0; display: grid; gap: 4px; font-size: 13px }
+/* The announcement banner (spec 0701) */
+.announcement { display: flex; align-items: flex-start; gap: 10px; padding: 8px 16px; background: #FFF7E0; border-bottom: 1px solid #F5D98B; color: #5C4813; font-size: 13px }
+[data-theme='dark'] .announcement { background: #3A3015; border-color: #5C4813; color: #F5E3B0 }
+.announcement-icon { flex-shrink: 0; margin-top: 2px }
+.announcement-text { flex: 1; margin: 0; white-space: pre-wrap; line-height: 1.5 }
+.announcement-text a { color: inherit; text-decoration: underline }
+.welcome .announcement { position: fixed; top: 0; left: 0; right: 0 }
+.announcement-preview { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden }

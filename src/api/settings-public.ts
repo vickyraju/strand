@@ -7,6 +7,7 @@ import { DEFAULT_KEY_RULE, type KeyRule } from '../../server/src/shared/projectK
 import { DEFAULT_TIME, parseDuration, formatDuration, statLabel, type TimeSettings } from '../data/time'
 
 export interface PublicSettings {
+  announcement: { text: string; visibility: 'public' | 'private' }
   attachments: { enabled: boolean; maxSizeMb: number }
   accessTokens: { enabled: boolean; maxPerUser: number; maxExpiryDays: number; defaultExpiryDays: number }
   searchAndBulk: { exportMaxRows: number; bulkMaxItems: number; importMaxRows: number }
@@ -21,6 +22,7 @@ export interface PublicSettings {
 
 /** The same values as the server's defaults; used without a server and until the real ones arrive. */
 export const DEFAULT_SETTINGS: PublicSettings = {
+  announcement: { text: '', visibility: 'private' },
   attachments: { enabled: true, maxSizeMb: 25 },
   accessTokens: { enabled: true, maxPerUser: 10, maxExpiryDays: 365, defaultExpiryDays: 90 },
   searchAndBulk: { exportMaxRows: 20_000, bulkMaxItems: 200, importMaxRows: 10_000 },

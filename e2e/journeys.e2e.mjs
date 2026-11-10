@@ -1638,3 +1638,25 @@ test('[0411.R1][0411.R2][0411.R3][0411.R4] the epic, version, burnup, epic burnd
   assert.deepEqual(o.problems, [])
 })
 
+test('[0701.R2][0701.R4][0701.R5] an admin writes an announcement: the preview shows it, everyone sees it, and closing it lasts until it changes', { skip, timeout: 90_000 }, async () => {
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url('/admin/settings/announcement'))
+  await o.fill('#announcement-text', 'Planned maintenance on Saturday. Details: https://status.example.com')
+  await o.waitForSelector('.announcement-preview >> a[href="https://status.example.com"]')
+  await o.click('section[aria-label="Announcement banner"] button:has-text("Save")')
+  await o.waitForSelector('section[aria-label="Announcement banner"] button:has-text("Save"):disabled')
+  const m = await signIn('maya@e2e.test')
+  await m.waitForSelector('[aria-label="Announcement"] >> text=Planned maintenance on Saturday')
+  await m.click('[aria-label="Close the announcement"]')
+  await m.reload()
+  await m.waitForSelector('nav')
+  assert.equal(await m.locator('[aria-label="Announcement"]').count(), 0)
+  // a new announcement shows again
+  await owner('PUT', '/admin/settings/announcement', { text: 'Maintenance moved to Sunday', visibility: 'private' })
+  await new Promise(r => setTimeout(r, 10_500))                                    // the settings cache
+  await m.reload()
+  await m.waitForSelector('[aria-label="Announcement"] >> text=Maintenance moved to Sunday')
+  await owner('PUT', '/admin/settings/announcement', { text: '', visibility: 'private' })
+  assert.deepEqual([...o.problems, ...m.problems], [])
+})
+

@@ -7,6 +7,7 @@ import { z } from 'zod'
 import { db, tx } from '../db.ts'
 import { HttpError, SESSION_PREFIX, devLogin, hashToken, requireAdmin, requireSignIn, signInAs, signedIn, joinSystemGroup, type Identity } from '../auth.ts'
 import { audit, changes } from '../audit.ts'
+import { getSetting } from '../settings.ts'
 import { RESET_FORMAT, checkInternal, checkLength, internalPerson, newLink, recentlySent, sendLink, setPassword } from '../localUsers.ts'
 import { verifyPassword } from '../passwords.ts'
 import {
@@ -51,11 +52,19 @@ async function countFailure(username: string) {
     [username, maxFailures, lockMinutes])
 }
 
+/** A Public announcement (spec 0701) shows on the login page too. */
+async function publicAnnouncement() {
+  const [w] = await db.query<{ id: string }>('select id from workspaces order by created_at limit 1')
+  if (!w) return null
+  const a = await getSetting(w.id, 'announcement')
+  return a.visibility === 'public' && a.text.trim() ? a.text : null
+}
+
 const publicConfig = async () => {
   const c = await getAuthConfig()
   const e = c.entra?.enabled ? c.entra : null
   return {
-    loginForm: c.loginForm, fallback: c.fallback, dev: devLogin,
+    announcement: await publicAnnouncement(), loginForm: c.loginForm, fallback: c.fallback, dev: devLogin,
     entra: e && { name: e.name, tenantId: e.tenantId, clientId: e.webClientId, authority: e.authority, scope: scopeOf(e) },
   }
 }

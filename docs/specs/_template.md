@@ -10,6 +10,14 @@ Why this change, in a few lines.
 - **Jira DC:** what Jira does, with the Atlassian page (URL), the Jira version it describes and the date it was checked.
 - **Strand today:** what Strand does, with `file:line`.
 
+## Community and Atlassian backlog
+
+What Jira's users say about this feature and what Atlassian has left open, with links:
+
+- **Complaints and workarounds** on the Atlassian Community.
+- **Open suggestions and bugs** on jira.atlassian.com (key, votes, status), and what was fixed in which version.
+- **Proposed improvements** for Strand: each one a proposal for the product owner to accept or decline. Accepted ones become rules below; core behaviour stays Jira's, and Jira data still migrates.
+
 ## Rules
 
 - **R1** One behaviour, stated so a test can check it.

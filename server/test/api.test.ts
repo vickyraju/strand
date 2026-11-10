@@ -3720,7 +3720,7 @@ test('system settings: admins change policies at runtime (validated, audited); e
   const { clearSettingsCache } = await import('../src/settings.ts')
   const put = (key: string, value: object, who = 'owner@x.com') => call('PUT', `/api/v1/admin/settings/${key}`, value, who)
   const all = (await call('GET', '/api/v1/admin/settings')).body
-  assert.deepEqual(all.map((s: any) => s.key), ['rateLimiting', 'attachments', 'accessTokens', 'searchAndBulk', 'signIn', 'groups', 'testing', 'dueReminders', 'email', 'deletedItems', 'projectKeys', 'timeTracking'])
+  assert.deepEqual(all.map((s: any) => s.key), ['rateLimiting', 'announcement', 'attachments', 'accessTokens', 'searchAndBulk', 'signIn', 'groups', 'testing', 'dueReminders', 'email', 'deletedItems', 'projectKeys', 'timeTracking'])
   assert.equal(all.find((s: any) => s.key === 'rateLimiting').value.enabled, false)                  // no limit unless an admin sets one
   assert.equal((await call('GET', '/api/v1/admin/settings', undefined, 'set.member@x.com')).status, 403)
   assert.equal((await put('attachments', { enabled: true, maxSizeMb: 5 }, 'set.member@x.com')).status, 403)
@@ -3730,7 +3730,7 @@ test('system settings: admins change policies at runtime (validated, audited); e
 
   // public settings: what the web app needs, for anyone signed in (not rate limiting)
   const pub = (await call('GET', '/api/v1/settings/public', undefined, 'set.member@x.com')).body
-  assert.deepEqual(Object.keys(pub).sort(), ['accessTokens', 'attachments', 'dueReminders', 'groups', 'priorities', 'projectKeys', 'resolutions', 'searchAndBulk', 'testing', 'timeTracking'])
+  assert.deepEqual(Object.keys(pub).sort(), ['accessTokens', 'announcement', 'attachments', 'dueReminders', 'groups', 'priorities', 'projectKeys', 'resolutions', 'searchAndBulk', 'testing', 'timeTracking'])
 
   // attachments: size limit and the switch
   await call('POST', '/api/v1/projects', { name: 'Settings', key: 'SET', template: 'kanban' })
@@ -4825,5 +4825,20 @@ test('[0410.R1][0410.R2][0410.R9] control chart: cycle time is the time in the c
   const bugs = withBugs.body.quickFilters.find((f: any) => f.name === 'Bugs').id
   assert.deepEqual((await report(`&quick=${bugs}`)).items.map((i: any) => i.key), [bug.key])
   assert.equal((await call('GET', `/api/v1/boards/${board.id}/reports/control?statuses=`)).status, 400)
+})
+
+test('[0701.R1][0701.R2] the announcement banner: saved and audited; signed-in people get it; the login page only when it is Public', { skip }, async () => {
+  const pub = async () => JSON.parse((await app.inject({ method: 'GET', url: '/api/v1/auth/config' })).body).announcement
+  assert.equal((await call('PUT', '/api/v1/admin/settings/announcement', { text: 'Maintenance on Saturday 10:00 UTC', visibility: 'private' })).status, 200)
+  assert.equal((await call('GET', '/api/v1/settings/public', undefined, 'someone.else@x.com')).body.announcement.text, 'Maintenance on Saturday 10:00 UTC')
+  assert.equal(await pub(), null)                                                           // Private: not before signing in
+  assert.equal((await call('PUT', '/api/v1/admin/settings/announcement', { text: 'Maintenance on Saturday 10:00 UTC', visibility: 'public' })).status, 200)
+  const { clearSettingsCache } = await import('../src/settings.ts'); clearSettingsCache()
+  assert.equal(await pub(), 'Maintenance on Saturday 10:00 UTC')
+  assert.equal((await call('PUT', '/api/v1/admin/settings/announcement', { text: 'x', visibility: 'public' }, 'someone.else@x.com')).status, 403)
+  assert.equal((await call('PUT', '/api/v1/admin/settings/announcement', { text: 'x'.repeat(2001), visibility: 'public' })).status, 400)
+  assert.ok((await pool.query(`select 1 from audit_log where action = 'settings.announcement.updated' and target = 'Announcement banner'`)).rows.length)
+  await call('PUT', '/api/v1/admin/settings/announcement', { text: '', visibility: 'private' }); clearSettingsCache()
+  assert.equal(await pub(), null)
 })
 

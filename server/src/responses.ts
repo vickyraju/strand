@@ -236,7 +236,7 @@ export const CREATED = new Set([
 
 export const RESPONSES: Record<string, z.ZodType> = {
   'GET /me': Me,
-  'GET /auth/config': z.object({ loginForm: z.boolean(), fallback: z.boolean(), dev: z.boolean().describe('Strand’s developer login is on (AUTH_DEV)'),
+  'GET /auth/config': z.object({ announcement: nullable(z.string()).describe('A Public announcement banner (spec 0701)'), loginForm: z.boolean(), fallback: z.boolean(), dev: z.boolean().describe('Strand’s developer login is on (AUTH_DEV)'),
     entra: nullable(z.object({ name: z.string(), tenantId: z.string(), clientId: z.string(), authority: z.string(), scope: z.string() })).describe('Null when Microsoft sign-in is off') }),
   'POST /auth/login': z.object({ token: z.string().describe('Send as Authorization: Bearer'), expiresAt: ts }),
   'GET /admin/authentication': AuthMethods,
