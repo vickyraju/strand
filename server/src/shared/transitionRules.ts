@@ -28,6 +28,7 @@ export type Action =
   | { kind: 'set'; field: string; value: string | number | null } // null clears; 'today' sets a date field to today
   | { kind: 'copyFromParent'; field: string }
   | { kind: 'comment'; body: string }
+  | { kind: 'webhook'; webhookId: string }                        // Jira's "Trigger a webhook" post function (spec 0715 R6)
 
 export interface TransitionRules { restrict?: ConditionGroup; validate?: Validator[]; screen?: string[]; actions?: Action[] }
 

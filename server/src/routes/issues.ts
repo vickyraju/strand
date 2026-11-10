@@ -5,7 +5,7 @@ import { HttpError, type Me } from '../auth.ts'
 import { canJoinWork, commentShown, levelOk, minFor, need, roleOf, visible, visibleAs, type ProjectRole, ARCHIVED, READS, accessTo, notArchived, type Permission, canSee } from '../access.ts'
 import { publish } from '../events.ts'
 import { audit } from '../audit.ts'
-import { emit } from '../webhooks.ts'
+import { emit, triggerWebhook } from '../webhooks.ts'
 import { getSetting } from '../settings.ts'
 import { runRules, moveAllowed } from '../rules.ts'
 import { available, ruleContext, transitionById, transitionTo, type TransitionRow } from '../transitions.ts'
@@ -120,6 +120,15 @@ async function watchersOf(d: Db, issue: { id: string; assigneeId: string | null;
 
 /** A transition's actions, after the move, in the same transaction: field changes (recorded as made by the transition)
  *  and comments by the mover. An assignee who isn't in the project is skipped, as automation does. */
+/** Jira's `transition` in a post function's webhook (spec 0715 R6): the workflow the item's type uses, the transition, and the statuses. */
+async function transitionInfo(d: Db, cur: any, t: TransitionRow, toId: string) {
+  const [wf] = await d.query<{ id: string; name: string }>(
+    `select w.id, w.name from projects p join workflow_schemes s on s.id = p.workflow_scheme_id
+       join workflows w on w.id = coalesce((s.mappings->>$2)::uuid, s.default_workflow_id) where p.id = $1`, [cur.projectId, cur.type])
+  const name = async (id: string) => (await d.query<{ name: string }>('select name from statuses where id = $1', [id]))[0]?.name ?? null
+  return { workflowId: wf?.id ?? null, workflowName: wf?.name ?? null, transitionId: t.id, transitionName: t.name, from_status: await name(cur.statusId), to_status: await name(toId) }
+}
+
 export async function runActions(d: Db, me: Me | null, issueId: string, t: TransitionRow, ctx: RuleCtx) {
   if (!t.rules.actions?.length) return
   const [now] = await d.query<any>(`${ISSUE_ROW} where i.id = $1`, [issueId])
@@ -313,8 +322,13 @@ async function applyPatch(d: Db, me: Me, cur: any, patch: z.infer<typeof patchBo
   if (patch.rank !== undefined) for (const p of await keepRanksApart(d, me.workspaceId, cur.id, patch.rank)) await publish(d, p, { type: 'issues.reranked' })
   await publish(d, cur.projectId, { type: 'issue.updated', id: cur.id, key: cur.key, editors: await editorsOf(d, cur.id) })
   // webhooks (spec 0705): Jira's changelog, one item per changed field
-  if (changed.length || t) await emit(d, me.workspaceId, 'jira:issue_updated', { issueId: cur.id, projectId: cur.projectId }, me.id,
-    changed.map(f => ({ field: f, from: cur[f] == null ? null : String(cur[f]), to: (patch as any)[f] == null ? null : String((patch as any)[f]) })))
+  // as Jira's (spec 0715 R3): an assignee change alone is issue_assigned, a transition issue_generic, anything else issue_updated
+  const type = moving || t ? 'issue_generic' as const : changed.length === 1 && changed[0] === 'assigneeId' ? 'issue_assigned' as const : 'issue_updated' as const
+  const changelog = changed.map(f => ({ field: f, from: cur[f] ?? null, to: (patch as any)[f] ?? null }))
+  if (changed.length || t) await emit(d, me.workspaceId, 'jira:issue_updated', { issueId: cur.id, projectId: cur.projectId, type }, me.id, changelog)
+  // a transition's "Trigger a webhook" post functions (spec 0715 R6)
+  for (const a of t?.rules.actions ?? []) if (a.kind === 'webhook')
+    await triggerWebhook(d, me.workspaceId, a.webhookId, cur.id, cur.projectId, me.id, await transitionInfo(d, cur, t!, patch.statusId ?? cur.statusId), changelog)
   return (await d.query<any>(`${ISSUE_ROW} where i.id = $1`, [cur.id]))[0]
 }
 
@@ -890,6 +904,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
       for (const u of [req.me.id, ...mentioned]) await d.query('insert into issue_watchers (issue_id, user_id) values ($1, $2) on conflict do nothing', [i.id, u])
       await publish(d, i.projectId, { type: 'comment.created', key: i.key })
       await emit(d, req.me.workspaceId, 'comment_created', { issueId: i.id, projectId: i.projectId, commentId: c.id }, req.me.id)
+      await emit(d, req.me.workspaceId, 'jira:issue_updated', { issueId: i.id, projectId: i.projectId, commentId: c.id, type: 'issue_commented' }, req.me.id)   // as Jira's (spec 0715 R2)
       return c
     })
   })
@@ -911,14 +926,16 @@ const plugin: FastifyPluginAsyncZod = async app => {
     const c = await commentFor(d, req, req.params.id, 'editOwnComments', 'editAllComments')
     const [row] = await d.query('update comments set body = $2, edited_at = now() where id = $1 returning *', [c.id, req.body.body])
     await emit(d, req.me.workspaceId, 'comment_updated', { issueId: c.issueId, projectId: c.projectId, commentId: c.id }, req.me.id)
+    await emit(d, req.me.workspaceId, 'jira:issue_updated', { issueId: c.issueId, projectId: c.projectId, commentId: c.id, type: 'issue_comment_edited' }, req.me.id)
     if (c.authorId !== req.me.id) await audit(d, req, { action: 'comment.moderated', type: 'comment', id: c.id, name: c.key, project: { id: c.projectId, key: c.key.split('-')[0]! }, after: { edited: true } })
     return row
   }))
   app.delete('/comments/:id', { schema: { tags: ['Comments & work logs'], summary: 'Delete a comment: your own, or anyone’s as a project admin (audited)', params: idP } }, async (req, reply) => {
     await tx(async d => {
       const c = await commentFor(d, req, req.params.id, 'deleteOwnComments', 'deleteAllComments')
-      await d.query('delete from comments where id = $1', [c.id])
-      await emit(d, req.me.workspaceId, 'comment_deleted', { issueId: c.issueId, projectId: c.projectId, commentId: c.id, entity: { id: c.id } }, req.me.id)
+      const [gone] = await d.query('delete from comments where id = $1 returning *', [c.id])
+      await emit(d, req.me.workspaceId, 'comment_deleted', { issueId: c.issueId, projectId: c.projectId, commentId: c.id, entity: gone }, req.me.id)
+      await emit(d, req.me.workspaceId, 'jira:issue_updated', { issueId: c.issueId, projectId: c.projectId, commentId: c.id, entity: gone, type: 'issue_comment_deleted' }, req.me.id)
       if (c.authorId !== req.me.id) await audit(d, req, { action: 'comment.moderated', type: 'comment', id: c.id, name: c.key, project: { id: c.projectId, key: c.key.split('-')[0]! }, after: { deleted: true } })
     })
     reply.code(204).send()
@@ -965,8 +982,9 @@ const plugin: FastifyPluginAsyncZod = async app => {
       const i = await issueByKey(d, req, req.params.key, false, 'workOnIssues')
       const [w] = await d.query('insert into worklogs (id, issue_id, user_id, minutes, date, note) values (coalesce($6::uuid, uuid_v7()), $1, $2, $3, $4, $5) returning *',
         [i.id, req.me.id, b.minutes, b.date, b.note, b.id ?? null])
-      await emit(d, req.me.workspaceId, 'worklog_created', { issueId: i.id, projectId: i.projectId, worklogId: w.id }, req.me.id)
       await remaining(d, i.id, b.minutes, adjustOf(b))
+      await emit(d, req.me.workspaceId, 'worklog_created', { issueId: i.id, projectId: i.projectId, worklogId: w.id }, req.me.id)
+      await emit(d, req.me.workspaceId, 'jira:issue_updated', { issueId: i.id, projectId: i.projectId, type: 'issue_worklogged' }, req.me.id)   // as Jira's (spec 0715 R2)
       await publish(d, i.projectId, { type: 'issue.updated', id: i.id, key: i.key })
       return w
     })
@@ -979,8 +997,9 @@ const plugin: FastifyPluginAsyncZod = async app => {
     return tx(async d => {
       const w = await worklogFor(d, req, req.params.id)
       const [row] = await d.query(`update worklogs set minutes = $2, date = $3, note = $4 where id = $1 returning *`, [w.id, b.minutes ?? w.minutes, b.date ?? w.date, b.note ?? w.note])
-      await emit(d, req.me.workspaceId, 'worklog_updated', { issueId: w.issueId, projectId: w.projectId, worklogId: w.id }, req.me.id)
       if (b.minutes !== undefined && b.minutes !== w.minutes) await remaining(d, w.issueId, b.minutes - w.minutes, adjustOf(b))
+      await emit(d, req.me.workspaceId, 'worklog_updated', { issueId: w.issueId, projectId: w.projectId, worklogId: w.id }, req.me.id)
+      await emit(d, req.me.workspaceId, 'jira:worklog_updated', { issueId: w.issueId, projectId: w.projectId, worklogId: w.id, type: 'issue_worklog_updated' }, req.me.id)
       if (w.userId !== req.me.id) await audit(d, req, { action: 'worklog.updated', type: 'worklog', id: w.id, project: { id: w.projectId, key: w.projectKey }, before: { minutes: w.minutes, date: w.date, note: w.note }, after: { minutes: row.minutes, date: row.date, note: row.note } })
       return row
     })
@@ -991,9 +1010,10 @@ const plugin: FastifyPluginAsyncZod = async app => {
   } }, async (req, reply) => {
     await tx(async d => {
       const w = await worklogFor(d, req, req.params.id)
-      await d.query('delete from worklogs where id = $1', [w.id])
-      await emit(d, req.me.workspaceId, 'worklog_deleted', { issueId: w.issueId, projectId: w.projectId, worklogId: w.id, entity: { id: w.id } }, req.me.id)
+      const [gone] = await d.query('delete from worklogs where id = $1 returning *', [w.id])
       await remaining(d, w.issueId, -w.minutes, adjustOf(req.query))
+      await emit(d, req.me.workspaceId, 'worklog_deleted', { issueId: w.issueId, projectId: w.projectId, worklogId: w.id, entity: gone }, req.me.id)
+      await emit(d, req.me.workspaceId, 'jira:worklog_updated', { issueId: w.issueId, projectId: w.projectId, worklogId: w.id, entity: gone, type: 'issue_worklog_deleted' }, req.me.id)
       if (w.userId !== req.me.id) await audit(d, req, { action: 'worklog.deleted', type: 'worklog', id: w.id, project: { id: w.projectId, key: w.projectKey }, before: { minutes: w.minutes, date: w.date, note: w.note, by: w.userId } })
     })
     reply.code(204).send()

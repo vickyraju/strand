@@ -11,28 +11,50 @@ import type { Me } from './auth.ts'
 import { enqueue, registerJob } from './jobs.ts'
 import { unseal } from './secrets.ts'
 import { jqlToSql, parseOr400 } from './jqlSql.ts'
-import { ISSUE_ROW } from './routes/issues.ts'
+import { briefIssue, jiraChangelog, jiraComment, jiraIssue, jiraSprint, jiraUser, jiraVersion, jiraWorklog, lookups, type Change } from './jiraShapes.ts'
 
+/** Every event Jira DC's webhooks offer (spec 0715 R1). */
 export const EVENTS = [
-  'jira:issue_created', 'jira:issue_updated', 'jira:issue_deleted',
+  'jira:issue_created', 'jira:issue_updated', 'jira:issue_deleted', 'jira:worklog_updated',
   'comment_created', 'comment_updated', 'comment_deleted',
   'worklog_created', 'worklog_updated', 'worklog_deleted',
   'issuelink_created', 'issuelink_deleted',
   'project_created', 'project_updated', 'project_deleted',
-  'jira:version_created', 'jira:version_updated', 'jira:version_released', 'jira:version_unreleased', 'jira:version_deleted',
+  'jira:version_created', 'jira:version_updated', 'jira:version_released', 'jira:version_unreleased', 'jira:version_moved', 'jira:version_deleted',
+  'user_created', 'user_updated', 'user_deleted',
+  'option_voting_changed', 'option_watching_changed', 'option_unassigned_issues_changed', 'option_subtasks_changed', 'option_attachments_changed',
+  'option_issuelinks_changed', 'option_timetracking_changed',
   'sprint_created', 'sprint_started', 'sprint_closed', 'sprint_updated', 'sprint_deleted',
-  'board_created', 'board_updated', 'board_deleted',
-  'user_created', 'user_updated',
+  'board_created', 'board_updated', 'board_deleted', 'board_configuration_changed',
 ] as const
 export type WebhookEvent = typeof EVENTS[number] | 'ping'
+/** Events Strand never sends: nothing in Strand makes these changes (versions are ordered by date; these options can't be switched off). */
+export const NEVER_SENT = new Set<string>(['jira:version_moved', 'option_voting_changed', 'option_watching_changed', 'option_unassigned_issues_changed',
+  'option_subtasks_changed', 'option_issuelinks_changed', 'option_timetracking_changed'])
 /** Events about one work item: the JQL filter applies to them all (R4; Jira's filter misses comments and work logs). */
-const ISSUE_EVENTS = new Set<string>(['jira:issue_created', 'jira:issue_updated', 'jira:issue_deleted', 'comment_created', 'comment_updated', 'comment_deleted',
+const ISSUE_EVENTS = new Set<string>(['jira:issue_created', 'jira:issue_updated', 'jira:issue_deleted', 'jira:worklog_updated', 'comment_created', 'comment_updated', 'comment_deleted',
   'worklog_created', 'worklog_updated', 'worklog_deleted', 'issuelink_created', 'issuelink_deleted'])
+/** Jira's event behind an issue webhook (spec 0715 R3). */
+export type IssueEventType = 'issue_created' | 'issue_updated' | 'issue_assigned' | 'issue_generic' | 'issue_commented' | 'issue_comment_edited' | 'issue_comment_deleted'
+  | 'issue_worklogged' | 'issue_worklog_updated' | 'issue_worklog_deleted' | 'issue_deleted'
 const ATTEMPTS = 6                                                                   // the first and 5 retries (R6)
 
 /** What an event is about: ids, loaded when the body is built. */
-export interface Ref { issueId?: string; projectId?: string; commentId?: string; worklogId?: string; linkId?: string; versionId?: string; sprintId?: string; boardId?: string; userId?: string; entity?: unknown }
-export interface ChangeItem { field: string; from: string | null; to: string | null }
+export interface Ref {
+  issueId?: string; projectId?: string; commentId?: string; worklogId?: string; linkId?: string; versionId?: string; sprintId?: string; boardId?: string; userId?: string
+  entity?: unknown
+  /** What it was before (sprint_updated's oldValue) */
+  old?: unknown
+  /** The version a deleted one was merged into */
+  mergedToId?: string
+  /** Jira's event behind an issue webhook */
+  type?: IssueEventType
+  /** A transition's post function (Jira's `transition`), and the one webhook it triggers */
+  transition?: Record<string, unknown>
+  /** A setting switched (Jira's option events) */
+  property?: { key: string; value: string }
+}
+export type ChangeItem = Change
 
 // Most changes happen where nobody has a webhook: knowing that saves queueing a job per change (cached per server)
 const any = new Map<string, { at: number; on: boolean }>()
@@ -47,70 +69,98 @@ async function hasWebhooks(d: Db, ws: string) {
 
 /** Queues an event, in the caller's transaction: a change that fails sends nothing (R6). The body is taken now, as the
  *  item is at this moment (as Jira's); matching webhooks and sending happen in background jobs. */
-export async function emit(d: Db, ws: string, event: WebhookEvent, ref: Ref, actorId: string | null, changelog?: ChangeItem[]) {
+export async function emit(d: Db, ws: string, event: WebhookEvent, ref: Ref, actorId: string | null, changelog?: ChangeItem[], only?: string) {
   if (!(await hasWebhooks(d, ws))) return
   const at = Date.now()
-  await enqueue(d, 'webhooks.event', { ws, event, ref, body: await body(d, event, ref, actorId, changelog ?? null, at) }, { workspaceId: ws, maxAttempts: 3 })
+  await enqueue(d, 'webhooks.event', { ws, event, ref, only, body: await body(d, ws, event, ref, actorId, changelog ?? null, at) }, { workspaceId: ws, maxAttempts: 3 })
+}
+
+/** A transition's "Trigger a webhook" post function (spec 0715 R6): that one webhook, as jira:issue_updated with Jira's `transition`. */
+export async function triggerWebhook(d: Db, ws: string, webhookId: string, issueId: string, projectId: string, actorId: string | null, transition: Record<string, unknown>, changelog: ChangeItem[]) {
+  await emit(d, ws, 'jira:issue_updated', { issueId, projectId, type: 'issue_generic', transition }, actorId, changelog, webhookId)
 }
 
 /** Configuration changes reach webhooks through their audit entries. */
-const FROM_AUDIT: Record<string, (after: any) => WebhookEvent | null> = {
-  'project.created': () => 'project_created', 'project.updated': () => 'project_updated', 'project.key_changed': () => 'project_updated',
-  'project.category_changed': () => 'project_updated', 'project.deleted': () => 'project_deleted',
-  'project.release.created': () => 'jira:version_created', 'project.release.released': () => 'jira:version_released',
-  'project.release.updated': a => (a?.released === false ? 'jira:version_unreleased' : a?.released === true ? 'jira:version_released' : 'jira:version_updated'),
-  'project.release.deleted': () => 'jira:version_deleted', 'project.release.merged': () => 'jira:version_deleted',
-  'board.created': () => 'board_created', 'board.updated': () => 'board_updated', 'board.deleted': () => 'board_deleted',
-  'user.created': () => 'user_created', 'user.updated': () => 'user_updated', 'sprint.deleted': () => 'sprint_deleted',
+const BOARD_CONFIG = new Set(['jql', 'columns', 'swimlanes', 'quickFilters', 'cardFields', 'estimation', 'kanbanBacklog', 'doneDays', 'workingDays'])
+const FROM_AUDIT: Record<string, (after: any, before: any) => WebhookEvent[]> = {
+  'project.created': () => ['project_created'], 'project.updated': () => ['project_updated'], 'project.key_changed': () => ['project_updated'],
+  'project.category_changed': () => ['project_updated'], 'project.deleted': () => ['project_deleted'],
+  'project.release.created': () => ['jira:version_created'], 'project.release.released': () => ['jira:version_released'],
+  'project.release.updated': a => [a?.released === false ? 'jira:version_unreleased' : a?.released === true ? 'jira:version_released' : 'jira:version_updated'],
+  'project.release.deleted': () => ['jira:version_deleted'],
+  'board.created': () => ['board_created'], 'board.deleted': () => ['board_deleted'],
+  // a board's name or admins is board_updated; its filter, columns and the rest is Jira's board_configuration_changed (spec 0715 R2)
+  'board.updated': (a, b) => [
+    ...(a?.name !== undefined || a?.changed?.includes('admins') ? ['board_updated' as const] : []),
+    ...(a?.jql !== undefined || b?.jql !== undefined || a?.changed?.some((k: string) => BOARD_CONFIG.has(k)) ? ['board_configuration_changed' as const] : []),
+  ],
+  'user.created': () => ['user_created'], 'user.updated': () => ['user_updated'], 'user.anonymised': () => ['user_deleted'], 'sprint.deleted': () => ['sprint_deleted'],
+  'settings.attachments.updated': (a, b) => (a?.enabled !== undefined && a.enabled !== b?.enabled ? ['option_attachments_changed'] : []),
 }
 export async function emitFromAudit(d: Db, ws: string | null, actorId: string | null, e: { action: string; type: string; id?: string | null; project?: { id: string } | null; before?: unknown; after?: unknown }) {
-  const f = FROM_AUDIT[e.action]
-  const event = f?.(e.after)
-  if (!ws || !event) return
-  const ref: Ref = { projectId: e.project?.id, entity: e.before ?? e.after }
-  if (event.startsWith('jira:version')) ref.versionId = e.id ?? undefined
-  else if (event.startsWith('board')) ref.boardId = e.id ?? undefined
-  else if (event.startsWith('user')) ref.userId = e.id ?? undefined
-  else if (event.startsWith('sprint')) ref.sprintId = e.id ?? undefined
-  else if (event.startsWith('project')) ref.projectId = e.id ?? e.project?.id
-  await emit(d, ws, event, ref, actorId)
-}
-
-// —— The body, in Jira's shape (R3) ——
-
-const jiraUser = (u: { name: string; email: string; username: string | null } | undefined) => u && ({ name: u.username ?? u.email, displayName: u.name, emailAddress: u.email })
-
-async function jiraIssue(d: Db, issueId: string) {
-  const [i] = await d.query<any>(`${ISSUE_ROW.replace('from issues i', ', p.name as project_name from issues i')} where i.id = $1`, [issueId])
-  if (!i) return null
-  const [st] = await d.query<{ name: string; category: string }>('select name, category from statuses where id = $1', [i.statusId])
-  const person = async (id: string | null) => (id ? jiraUser((await d.query<any>('select name, email, username from users where id = $1', [id]))[0]) : null)
-  return {
-    id: i.id, key: i.key, self: null,
-    fields: {
-      summary: i.title, description: i.description, issuetype: { name: i.type }, priority: { name: i.priority },
-      status: { id: i.statusId, name: st?.name, statusCategory: { key: st?.category } }, resolution: i.resolution ? { name: i.resolution } : null,
-      project: { id: i.projectId, key: i.key.split('-')[0], name: i.projectName },
-      assignee: await person(i.assigneeId), reporter: await person(i.reporterId), labels: i.labels,
-      created: i.createdAt, updated: i.updatedAt, duedate: i.dueDate, parent: i.parentId ? { id: i.parentId } : null,
-    },
+  const events = FROM_AUDIT[e.action]?.(e.after, e.before) ?? []
+  if (!ws) return
+  for (const event of events) {
+    const ref: Ref = { projectId: e.project?.id, entity: e.before ?? e.after }
+    if (event.startsWith('jira:version')) ref.versionId = e.id ?? undefined
+    else if (event.startsWith('board')) ref.boardId = e.id ?? undefined
+    else if (event.startsWith('user')) ref.userId = e.id ?? undefined
+    else if (event.startsWith('sprint')) ref.sprintId = e.id ?? undefined
+    else if (event.startsWith('project')) ref.projectId = e.id ?? e.project?.id
+    else if (event === 'option_attachments_changed') ref.property = { key: 'jira.option.allowattachments', value: String((e.after as any).enabled) }
+    await emit(d, ws, event, ref, actorId)
   }
 }
 
-async function body(d: Db, event: WebhookEvent, ref: Ref, actorId: string | null, changelog: ChangeItem[] | null, at: number) {
-  const out: Record<string, unknown> = { webhookEvent: event, timestamp: at }
-  if (actorId) out.user = jiraUser((await d.query<any>('select name, email, username from users where id = $1', [actorId]))[0])
-  if (ref.issueId) out.issue = await jiraIssue(d, ref.issueId)
-  if (changelog?.length) out.changelog = { id: randomUUID(), items: changelog.map(c => ({ field: c.field, fieldtype: 'jira', from: c.from, fromString: c.from, to: c.to, toString: c.to })) }
+// —— The body, in Jira's shape (spec 0705 R3, spec 0715 R4) ——
+
+async function body(d: Db, ws: string, event: WebhookEvent, ref: Ref, actorId: string | null, changes: ChangeItem[] | null, at: number) {
+  const L = lookups(d)
+  const out: Record<string, unknown> = { timestamp: at, webhookEvent: event }
+  const issueEvent = ISSUE_EVENTS.has(event) && !!ref.issueId
+  if (issueEvent && (event.startsWith('jira:'))) out.issue_event_type_name = ref.type ?? (event === 'jira:issue_created' ? 'issue_created' : event === 'jira:issue_deleted' ? 'issue_deleted' : 'issue_updated')
+  if (actorId) out.user = await L.user(actorId)
+  // issue events carry the whole item; comment, work log and link events a short one (key, summary, status, priority, type)
+  if (ref.issueId) out.issue = event.startsWith('jira:') ? await jiraIssue(d, L, ref.issueId) : await briefIssue(L, ref.issueId)
+  if (changes?.length && ref.issueId) {
+    const items = await jiraChangelog(d, L, ref.issueId, changes)
+    if (items.length) out.changelog = { id: randomUUID(), items }
+  }
+  if (ref.transition) out.transition = ref.transition
   const row = async (sql: string, id?: string) => (id ? (await d.query<any>(sql, [id]))[0] ?? ref.entity ?? { id } : undefined)
-  if (ref.commentId) out.comment = await row('select id, body, author_id, created_at, edited_at as updated_at from comments where id = $1', ref.commentId)
-  if (ref.worklogId) out.worklog = await row('select id, issue_id, user_id, minutes, date, note from worklogs where id = $1', ref.worklogId)
-  if (ref.linkId) out.issueLink = ref.entity ?? { id: ref.linkId }
-  if (ref.versionId) out.version = await row('select id, name, description, start_date, release_date, released, archived, project_id from releases where id = $1', ref.versionId)
-  if (ref.sprintId) out.sprint = await row('select id, name, goal, state, started_at, ends_at, completed_at, board_id from sprints where id = $1', ref.sprintId)
-  if (ref.boardId) out.board = await row('select id, name, type, project_id from boards where id = $1', ref.boardId)
-  if (ref.userId) out.user = jiraUser((await d.query<any>('select name, email, username from users where id = $1', [ref.userId]))[0])
-  if (ref.projectId && !ref.issueId) out.project = await row('select id, key, name, description from projects where id = $1', ref.projectId)
+  if (ref.commentId) out.comment = await jiraComment(L, await row('select * from comments where id = $1', ref.commentId), d)
+  if (ref.worklogId) out.worklog = await jiraWorklog(L, await row('select * from worklogs where id = $1', ref.worklogId))
+  if (ref.linkId) {
+    const [from, to, type] = ref.linkId.split(':')
+    const [t] = await d.query<any>('select id, name, inward, outward from link_types where workspace_id = $1 and id = $2', [ws, type])
+    out.issueLink = { id: ref.linkId, sourceIssueId: from, destinationIssueId: to,
+      issueLinkType: { id: type, name: t?.name ?? type, outwardName: t?.outward ?? type, inwardName: t?.inward ?? type, isSubTaskLinkType: false, isSystemLinkType: false }, systemLink: false }
+  }
+  if (ref.versionId) out.version = jiraVersion(await row('select * from releases where id = $1', ref.versionId))
+  if (ref.mergedToId) out.mergedTo = jiraVersion(await row('select * from releases where id = $1', ref.mergedToId))
+  if (ref.sprintId) out.sprint = jiraSprint(await row('select * from sprints where id = $1', ref.sprintId))
+  if (ref.old && event === 'sprint_updated') out.oldValue = jiraSprint(ref.old)
+  if (ref.boardId) {
+    const b = await row('select * from boards where id = $1', ref.boardId)
+    out.board = { id: b.id, self: null, name: b.name, type: b.type }
+    if (event === 'board_configuration_changed') out.configuration = {
+      id: b.id, name: b.name, self: null, filter: { id: b.id, self: null, query: b.jql ?? '' },
+      columnConfig: { columns: (b.columns ?? []).map((c: any) => ({ name: c.name, statuses: (c.statusIds ?? []).map((id: string) => ({ id, self: null })), ...(c.min != null ? { min: c.min } : {}), ...(c.max != null ? { max: c.max } : {}) })),
+        constraintType: (b.columns ?? []).some((c: any) => c.min != null || c.max != null) ? 'issueCount' : 'none' },
+      estimation: { type: b.estimation === 'count' ? 'issueCount' : 'field', field: b.estimation === 'time' ? { fieldId: 'timeoriginalestimate', displayName: 'Original Time Estimate' } : { displayName: 'Story Points' } },
+      ranking: { rankCustomFieldId: null },
+    }
+  }
+  if (ref.userId) {
+    const [u] = await d.query<any>('select id, name, email, username, active from users where id = $1', [ref.userId])
+    out.user = jiraUser(u)
+  }
+  if (ref.projectId && !ref.issueId) {
+    const p = await row('select * from projects where id = $1', ref.projectId)
+    out.project = { self: null, id: p.id, key: p.key, name: p.name, description: p.description ?? '', projectTypeKey: 'software', assigneeType: 'UNASSIGNED',
+      ...(p.lead_id ? { projectLead: await L.user(p.lead_id) } : {}) }
+  }
+  if (ref.property) out.property = ref.property
   return out
 }
 
@@ -119,6 +169,7 @@ export function fillUrl(url: string, b: any) {
   const vars: Record<string, unknown> = {
     'issue.key': b.issue?.key, 'issue.id': b.issue?.id, 'project.key': b.issue?.fields?.project?.key ?? b.project?.key, 'project.id': b.issue?.fields?.project?.id ?? b.project?.id,
     'sprint.id': b.sprint?.id, 'version.id': b.version?.id, 'board.id': b.board?.id, 'modifiedUser.name': b.user?.name,
+    'modifiedUser.key': b.user?.key, 'mergedVersion.id': b.mergedTo?.id,
   }
   return url.replace(/\$?\{([a-zA-Z.]+)\}/g, (m, k: string) => (k in vars ? encodeURIComponent(String(vars[k] ?? '')) : m))
 }
@@ -220,9 +271,12 @@ export async function queueCall(d: Db, hook: { id: string; workspaceId: string; 
 }
 
 // The event: which webhooks want it, whether each one's JQL matches, then one call each
-registerJob('webhooks.event', async (p: { ws: string; event: WebhookEvent; ref: Ref; body: Record<string, unknown> }) => {
-  const hooks = await db.query<{ id: string; workspaceId: string; url: string; jql: string | null; excludeBody: boolean }>(
-    `select id, workspace_id, url, jql, exclude_body from webhooks where workspace_id = $1 and enabled and (cardinality(events) = 0 or $2 = any(events))`, [p.ws, p.event])
+registerJob('webhooks.event', async (p: { ws: string; event: WebhookEvent; ref: Ref; body: Record<string, unknown>; only?: string }) => {
+  // a transition's post function goes to its one webhook, whatever events it subscribes to (spec 0715 R6)
+  const hooks = await db.query<{ id: string; workspaceId: string; url: string; jql: string | null; excludeBody: boolean }>(p.only
+    ? `select id, workspace_id, url, jql, exclude_body from webhooks where workspace_id = $1 and enabled and id = $3 and $2::text is not null`
+    : `select id, workspace_id, url, jql, exclude_body from webhooks where workspace_id = $1 and enabled and (cardinality(events) = 0 or $2 = any(events))`,
+    p.only ? [p.ws, p.event, p.only] : [p.ws, p.event])
   if (!hooks.length) return { calls: 0 }
   const b = p.body
   const system = { id: (b.user as any)?.id ?? '00000000-0000-0000-0000-000000000000', workspaceId: p.ws, admin: true, role: 'admin', via: 'entra', email: 'webhooks', name: 'Webhooks' } as Me

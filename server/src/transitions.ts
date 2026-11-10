@@ -37,6 +37,7 @@ export const rulesSchema = z.object({
       .refine(a => a.field !== 'labels' || a.value == null || label.safeParse(a.value).success, { message: 'A label is one word: no spaces', path: ['value'] }),
     z.object({ kind: z.literal('copyFromParent'), field }),
     z.object({ kind: z.literal('comment'), body: z.string().min(1).max(20000) }),
+    z.object({ kind: z.literal('webhook'), webhookId: uuid.describe('A webhook of Administration › Webhooks (spec 0715)') }),
   ])).max(LIMITS.actions).optional(),
 }).superRefine((r, c) => {
   if (r.restrict && groupsIn(r.restrict) > LIMITS.groups) c.addIssue({ code: 'custom', path: ['restrict'], message: `At most ${LIMITS.groups} groups` })

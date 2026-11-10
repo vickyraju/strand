@@ -32751,7 +32751,7 @@
             "in": "path",
             "name": "key",
             "required": true,
-            "description": "One of: rateLimiting, announcement, attachments, accessTokens, searchAndBulk, signIn, groups, automation, testing, dueReminders, email, deletedItems, projectKeys, timeTracking"
+            "description": "One of: rateLimiting, announcement, attachments, accessTokens, searchAndBulk, signIn, groups, webhooks, automation, testing, dueReminders, email, deletedItems, projectKeys, timeTracking"
           }
         ],
         "responses": {
@@ -45975,6 +45975,27 @@
                                       "kind",
                                       "body"
                                     ]
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "kind": {
+                                        "type": "string",
+                                        "enum": [
+                                          "webhook"
+                                        ]
+                                      },
+                                      "webhookId": {
+                                        "type": "string",
+                                        "format": "uuid",
+                                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                                        "description": "A webhook of Administration › Webhooks (spec 0715)"
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "webhookId"
+                                    ]
                                   }
                                 ]
                               }
@@ -56835,7 +56856,7 @@
                   "events": {
                     "default": [],
                     "description": "Jira’s event names; empty: every event",
-                    "maxItems": 29,
+                    "maxItems": 40,
                     "type": "array",
                     "items": {
                       "type": "string",
@@ -56843,6 +56864,7 @@
                         "jira:issue_created",
                         "jira:issue_updated",
                         "jira:issue_deleted",
+                        "jira:worklog_updated",
                         "comment_created",
                         "comment_updated",
                         "comment_deleted",
@@ -56858,7 +56880,18 @@
                         "jira:version_updated",
                         "jira:version_released",
                         "jira:version_unreleased",
+                        "jira:version_moved",
                         "jira:version_deleted",
+                        "user_created",
+                        "user_updated",
+                        "user_deleted",
+                        "option_voting_changed",
+                        "option_watching_changed",
+                        "option_unassigned_issues_changed",
+                        "option_subtasks_changed",
+                        "option_attachments_changed",
+                        "option_issuelinks_changed",
+                        "option_timetracking_changed",
                         "sprint_created",
                         "sprint_started",
                         "sprint_closed",
@@ -56867,8 +56900,7 @@
                         "board_created",
                         "board_updated",
                         "board_deleted",
-                        "user_created",
-                        "user_updated"
+                        "board_configuration_changed"
                       ]
                     }
                   },
@@ -57303,7 +57335,7 @@
                   "events": {
                     "default": [],
                     "description": "Jira’s event names; empty: every event",
-                    "maxItems": 29,
+                    "maxItems": 40,
                     "type": "array",
                     "items": {
                       "type": "string",
@@ -57311,6 +57343,7 @@
                         "jira:issue_created",
                         "jira:issue_updated",
                         "jira:issue_deleted",
+                        "jira:worklog_updated",
                         "comment_created",
                         "comment_updated",
                         "comment_deleted",
@@ -57326,7 +57359,18 @@
                         "jira:version_updated",
                         "jira:version_released",
                         "jira:version_unreleased",
+                        "jira:version_moved",
                         "jira:version_deleted",
+                        "user_created",
+                        "user_updated",
+                        "user_deleted",
+                        "option_voting_changed",
+                        "option_watching_changed",
+                        "option_unassigned_issues_changed",
+                        "option_subtasks_changed",
+                        "option_attachments_changed",
+                        "option_issuelinks_changed",
+                        "option_timetracking_changed",
                         "sprint_created",
                         "sprint_started",
                         "sprint_closed",
@@ -57335,8 +57379,7 @@
                         "board_created",
                         "board_updated",
                         "board_deleted",
-                        "user_created",
-                        "user_updated"
+                        "board_configuration_changed"
                       ]
                     }
                   },

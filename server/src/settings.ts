@@ -95,6 +95,17 @@ export const SETTINGS = {
     schema: z.object({ whoCanCreate: z.enum(['everyone', 'admins']).describe('Who may make a group: everyone, or system administrators only') }),
     default: { whoCanCreate: 'everyone' as 'everyone' | 'admins' },
   },
+  webhooks: {
+    label: 'Webhooks',
+    description: 'The ids your Jira gave Jira Software’s fields, so webhooks carry them under the same keys and integrations built for Jira read them unchanged. Find them in Jira under Administration › Issues › Custom fields.',
+    public: false,
+    schema: z.object({
+      fieldIds: z.object(Object.fromEntries((['sprint', 'epicLink', 'epicName', 'epicStatus', 'epicColour', 'storyPoints', 'rank', 'flagged'] as const)
+        .map(k => [k, z.string().regex(/^customfield_\d{1,9}$/, 'Like customfield_10100')])) as Record<'sprint' | 'epicLink' | 'epicName' | 'epicStatus' | 'epicColour' | 'storyPoints' | 'rank' | 'flagged', z.ZodString>),
+    }),
+    default: { fieldIds: { sprint: 'customfield_10100', epicLink: 'customfield_10101', epicStatus: 'customfield_10102', epicName: 'customfield_10103',
+      epicColour: 'customfield_10104', rank: 'customfield_10105', storyPoints: 'customfield_10106', flagged: 'customfield_10107' } },
+  },
   automation: {
     label: 'Automation',
     description: 'Limits for scheduled automation rules: how often one may run, and how many work items one run acts on.',
