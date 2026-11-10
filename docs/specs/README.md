@@ -89,7 +89,7 @@ The roadmap, in order. Bugs come first, then the permission model, then the data
 | 0606 | Batched email, autowatch preference, mentions don't make watchers | 6 | Planned |
 | 0607 | Incoming mail | 6 | Planned |
 | 0608 | Print and XML export | 6 | Planned |
-| [0701](0701-announcement-banner.md) | Announcement banner | 7 | Approved |
+| [0701](0701-announcement-banner.md) | Announcement banner | 7 | Ported |
 | [0702](0702-look-and-feel.md) | Look and feel | 7 | Approved |
 | 0703 | Project key change, categories, avatars | 7 | Planned |
 | 0704 | User anonymisation | 7 | Planned |
