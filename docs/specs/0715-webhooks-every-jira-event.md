@@ -1,6 +1,6 @@
 # 0715 Webhooks: every Jira DC event, Jira's payloads
 
-Status: Approved (PO, 10 Nov 2026: "add all the webhooks that jira dc offers today … match the response … so that there won't be much change needed to the integrations")
+Status: Ported (aws-jira `98b567f`, strand `4d55f63`), approved by the PO on 10 Nov 2026; awaiting verification
 Parity rows: IN-01
 
 ## Context and Jira reference

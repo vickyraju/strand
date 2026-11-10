@@ -1,6 +1,6 @@
 # 0716 Epic Status
 
-Status: Approved (PO, 10 Nov 2026: "all the should be handled as how Jira DC handles them currently")
+Status: Ported (aws-jira `52ad087`, strand `2a0a497`), approved by the PO on 10 Nov 2026; awaiting verification
 Parity rows: AG-10
 
 ## Context and Jira reference
