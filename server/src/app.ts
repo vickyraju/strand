@@ -33,6 +33,7 @@ import authentication, { ownPassword, publicAuth } from './routes/authentication
 import directories from './routes/directories.ts'
 import lookAndFeel, { publicLook } from './routes/lookAndFeel.ts'
 import projectExtras, { publicAvatars } from './routes/projectExtras.ts'
+import webhookRoutes from './routes/webhooks.ts'
 import { startDirectories } from './directories.ts'
 import { startAuth } from './authConfig.ts'
 import { githubWebhook } from './routes/github.ts'
@@ -152,6 +153,7 @@ export async function build() {
       await v1.register(directories)
       await v1.register(lookAndFeel)
       await v1.register(projectExtras)
+      await v1.register(webhookRoutes)
     }
     await api.register(routes, { prefix: '/api/v1' })
     // ponytail: the unversioned /api is kept as a hidden alias so clients built before /api/v1 keep working;

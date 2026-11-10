@@ -10,6 +10,7 @@ import { HttpError, requireAdmin, signedIn, type Me } from '../auth.ts'
 import { ARCHIVED, READS, accessTo, levelOk, minFor, need, visible, type Permission, type ProjectRole } from '../access.ts'
 import { publish, subscribe } from '../events.ts'
 import { audit, changes } from '../audit.ts'
+import { emit } from '../webhooks.ts'
 import { enqueue, kickJobs } from '../jobs.ts'
 import { backupBucket, backupSettings } from '../backups.ts'
 import { applyScheme, previewing, typeWorkflows } from '../workflows.ts'
@@ -892,6 +893,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     const [s] = await db.query(
       `insert into sprints (id, workspace_id, project_id, name, goal, ends_at, board_id) values (coalesce($6::uuid, uuid_v7()), $1, $2, $3, $4, $5, $7) returning *`,
       [req.me.workspaceId, p.id, b.name, b.goal ?? '', b.endsAt ?? null, b.id ?? null, board.id])
+    await emit(db, req.me.workspaceId, 'sprint_created', { sprintId: s.id, projectId: p.id }, req.me.id)   // webhooks (spec 0705)
     return s
   })
 
@@ -903,6 +905,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
       `update sprints set ${w.cols.map((c, i) => `${c} = $${i + 3}`).join(', ')} where id = $1 and project_id = $2 returning *`,
       [req.params.id, p.id, ...w.vals])
     if (!s) throw new HttpError(404, 'Not found')
+    await emit(db, req.me.workspaceId, 'sprint_updated', { sprintId: s.id, projectId: p.id }, req.me.id)
     return s
   })
 
@@ -959,6 +962,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
                 start_estimates = (select coalesce(jsonb_object_agg(id, ${STAT}), '{}') from issues i where sprint_id = sprints.id and deleted_at is null)   -- for the Sprint Report (0402)
           where id = $1 and project_id = $2 and state = 'planned' returning *`, [req.params.id, p.id, endsAt])
       if (!s) throw new HttpError(409, 'Sprint is not planned, or another sprint is already active on its board')
+      await emit(d, req.me.workspaceId, 'sprint_started', { sprintId: s.id, projectId: p.id }, req.me.id)
       return s
     })
   })
@@ -1003,6 +1007,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
           where sprint_id = $1 and deleted_at is null
             and status_id in (select st.id from statuses st where not ${done('st')})
             and project_id not in (select id from projects where archived_at is not null)`, [cur.id, doneArg, moveTo])   // unfinished work from every project in it, except archived ones (read-only)
+      await emit(d, req.me.workspaceId, 'sprint_closed', { sprintId: s.id, projectId: p.id }, req.me.id)
       return newSprint ? { ...s, newSprint } : s
     })
   })

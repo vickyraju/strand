@@ -20,6 +20,9 @@ const PanelStat = z.object({ issues: z.number(), completed: z.number(), unestima
 const ProjectCategory = z.object({ id, name: z.string(), description: z.string(), projects: z.number().describe('Projects in it') })
 const LookAndFeel = z.object({ siteTitle: z.string(), showTitle: z.boolean(), brandColor: z.string(),
   logo: nullable(z.string()).describe('The logo’s address under the API, or null for Strand’s'), favicon: nullable(z.string()) })
+const Webhook = z.object({ id, name: z.string(), description: z.string(), url: z.string(), events: z.array(z.string()).describe('Jira’s event names; empty: every event'),
+  jql: nullable(z.string()), excludeBody: z.boolean(), enabled: z.boolean(), createdAt: ts, updatedAt: ts,
+  lastCall: nullable(z.object({ event: z.string(), state: z.string(), statusCode: nullable(z.number()), at: ts })) })
 export const UserDirectory = z.object({
   id, name: z.string(), type: z.enum(['ad', 'ldap']), position: z.number(), enabled: z.boolean(), config: directoryConfig,
   hasPassword: z.boolean().describe('The service account’s password is stored (it is never returned)'),
@@ -249,6 +252,12 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'PUT /admin/authentication': AuthMethods,
   'PUT /admin/authentication/entra': AuthMethods,
   'GET /admin/directories': z.array(UserDirectory),
+  'GET /admin/webhooks': z.array(Webhook), 'GET /admin/webhooks/:id': Webhook, 'PUT /admin/webhooks/:id': Webhook,
+  'POST /admin/webhooks': Webhook.extend({ secret: z.string().describe('The signing secret, shown this once') }),
+  'POST /admin/webhooks/:id/secret': z.object({ secret: z.string() }),
+  'POST /admin/webhooks/:id/test': z.object({ callId: id }), 'POST /admin/webhooks/:id/calls/:callId/redeliver': z.object({ callId: id }),
+  'GET /admin/webhooks/:id/calls': z.array(z.object({ id, event: z.string(), deliveryId: id, url: z.string(), state: z.enum(['queued', 'retrying', 'delivered', 'failed']),
+    attempts: z.number(), statusCode: nullable(z.number()), error: nullable(z.string()), createdAt: ts, finishedAt: nullable(ts) })),
   'GET /admin/users/:id/anonymise': z.object({
     alias: z.string().describe('The name they will show as'),
     transfer: z.object({ projectsLed: z.array(z.object({ key: z.string(), name: z.string() })), componentsLed: z.number(), sharedViews: z.number(), groupsAloneOwned: z.array(z.object({ name: z.string() })) }),

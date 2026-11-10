@@ -5,6 +5,7 @@ import { HttpError, type Me } from '../auth.ts'
 import { canJoinWork, commentShown, levelOk, minFor, need, roleOf, visible, visibleAs, type ProjectRole, ARCHIVED, READS, accessTo, notArchived, type Permission, canSee } from '../access.ts'
 import { publish } from '../events.ts'
 import { audit } from '../audit.ts'
+import { emit } from '../webhooks.ts'
 import { getSetting } from '../settings.ts'
 import { runRules, moveAllowed } from '../rules.ts'
 import { available, ruleContext, transitionById, transitionTo, type TransitionRow } from '../transitions.ts'
@@ -306,6 +307,9 @@ async function applyPatch(d: Db, me: Me, cur: any, patch: z.infer<typeof patchBo
   }
   if (patch.rank !== undefined) for (const p of await keepRanksApart(d, me.workspaceId, cur.id, patch.rank)) await publish(d, p, { type: 'issues.reranked' })
   await publish(d, cur.projectId, { type: 'issue.updated', id: cur.id, key: cur.key, editors: await editorsOf(d, cur.id) })
+  // webhooks (spec 0705): Jira's changelog, one item per changed field
+  if (changed.length || t) await emit(d, me.workspaceId, 'jira:issue_updated', { issueId: cur.id, projectId: cur.projectId }, me.id,
+    changed.map(f => ({ field: f, from: cur[f] == null ? null : String(cur[f]), to: (patch as any)[f] == null ? null : String((patch as any)[f]) })))
   return (await d.query<any>(`${ISSUE_ROW} where i.id = $1`, [cur.id]))[0]
 }
 
@@ -370,6 +374,7 @@ async function deleteItem(d: Db, who: { me: Me; ip?: string }, i: any) {
       where x.id = t.id and p.id = x.project_id returning x.id, p.key || '-' || x.number as key`, [i.id, i.type, who.me.id])
   for (const g of gone) await audit(d, who, { action: 'issue.deleted', type: 'issue', id: g.id, name: g.key, project: { id: i.projectId, key: i.key.split('-')[0]! } })
   await publish(d, i.projectId, { type: 'issue.deleted', id: i.id, key: i.key })
+  for (const g of gone) await emit(d, who.me.workspaceId, 'jira:issue_deleted', { issueId: g.id, projectId: i.projectId }, who.me.id)
   if (i.type === 'epic') await publish(d, i.projectId, { type: 'issues.reranked' })   // its items lost their epic
   return gone.length
 }
@@ -474,6 +479,7 @@ export async function insertIssue(d: Db, me: Me, projectId: string, b: Record<st
   if (b.assigneeId) await note(d, b.assigneeId, me, row!.id, 'assigned', 'assigned you a work item')
   await runRules(d, { projectId, issueId: row!.id, reporterId: me.id, leadId: pr!.leadId }, { kind: 'created' })
   await publish(d, projectId, { type: 'issue.created', id: row!.id })
+  await emit(d, me.workspaceId, 'jira:issue_created', { issueId: row!.id, projectId }, me.id)
   return row!.id
 }
 
@@ -763,7 +769,11 @@ const plugin: FastifyPluginAsyncZod = async app => {
     if (!(await db.query('select 1 from link_types where workspace_id = $1 and id = $2', [req.me.workspaceId, b.type])).length) throw new HttpError(400, 'No such link type', { type: 'Unknown link type' })
     if (b.type === 'tests' && (a.type !== 'test' || (TEST_TYPES as readonly string[]).includes(t.type)))
       throw new HttpError(400, 'A Test tests a requirement: link from the Test to a story, epic or other requirement', { type: 'Not a Test and a requirement' })
-    await db.query('insert into issue_links (issue_id, target_id, type) values ($1, $2, $3) on conflict do nothing', [a.id, t.id, b.type])
+    await tx(async d => {
+      const [l] = await d.query('insert into issue_links (issue_id, target_id, type) values ($1, $2, $3) on conflict do nothing returning 1', [a.id, t.id, b.type])
+      if (l) await emit(d, req.me.workspaceId, 'issuelink_created', { issueId: a.id, projectId: a.projectId, linkId: `${a.id}:${t.id}:${b.type}`,
+        entity: { sourceIssueId: a.id, destinationIssueId: t.id, issueLinkType: { name: b.type } } }, req.me.id)
+    })
     reply.code(204).send()
   })
   app.delete('/issues/:key/links', { schema: {
@@ -772,7 +782,11 @@ const plugin: FastifyPluginAsyncZod = async app => {
   } }, async (req, reply) => {
     const q = { type: req.query.type, targetKey: req.query.target }
     const [a, t] = await Promise.all([issueByKey(db, req, req.params.key), issueByKey(db, req, q.targetKey, false, 'viewer')])
-    await db.query('delete from issue_links where issue_id = $1 and target_id = $2 and type = $3', [a.id, t.id, q.type])
+    await tx(async d => {
+      const [l] = await d.query('delete from issue_links where issue_id = $1 and target_id = $2 and type = $3 returning 1', [a.id, t.id, q.type])
+      if (l) await emit(d, req.me.workspaceId, 'issuelink_deleted', { issueId: a.id, projectId: a.projectId, linkId: `${a.id}:${t.id}:${q.type}`,
+        entity: { sourceIssueId: a.id, destinationIssueId: t.id, issueLinkType: { name: q.type } } }, req.me.id)
+    })
     reply.code(204).send()
   })
   app.put('/issues/:key/watch', { schema: { tags: ['Links & watchers'], summary: 'Watch an issue', params: keyP } }, async (req, reply) => {
@@ -863,6 +877,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
       for (const u of await readers(d, i.projectId, (await watchersOf(d, i)).filter(w => !mentioned.includes(w)), b.visibility)) await note(d, u, req.me, i.id, 'commented', 'commented on a work item')
       for (const u of [req.me.id, ...mentioned]) await d.query('insert into issue_watchers (issue_id, user_id) values ($1, $2) on conflict do nothing', [i.id, u])
       await publish(d, i.projectId, { type: 'comment.created', key: i.key })
+      await emit(d, req.me.workspaceId, 'comment_created', { issueId: i.id, projectId: i.projectId, commentId: c.id }, req.me.id)
       return c
     })
   })
@@ -870,8 +885,8 @@ const plugin: FastifyPluginAsyncZod = async app => {
   /** A comment I may change: my own (Edit/Delete own comments), or anyone's with Edit/Delete all comments (project admins,
    *  spec 0203); in an archived project, none (0102). Someone else's comment is in the audit log. */
   const commentFor = async (d: Db, req: { me: Me; method: string; ip?: string }, id: string, own: Permission, all: Permission) => {
-    const [c] = await d.query<{ id: string; authorId: string; projectId: string; key: string }>(
-      `select c.id, c.author_id, i.project_id, p.key || '-' || i.number as key from comments c join issues i on i.id = c.issue_id join projects p on p.id = i.project_id
+    const [c] = await d.query<{ id: string; authorId: string; projectId: string; issueId: string; key: string }>(
+      `select c.id, c.author_id, i.project_id, i.id as issue_id, p.key || '-' || i.number as key from comments c join issues i on i.id = c.issue_id join projects p on p.id = i.project_id
         where c.id = $1 and i.workspace_id = $2 and i.deleted_at is null for update of c`, [id, req.me.workspaceId])
     const a = c ? await accessTo(d, req.me, c.projectId) : null
     // a comment I can't read doesn't exist, as far as I can tell
@@ -883,6 +898,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
   app.patch('/comments/:id', { schema: { tags: ['Comments & work logs'], summary: 'Edit a comment: your own, or anyone’s as a project admin (audited)', params: idP, body } }, async req => tx(async d => {
     const c = await commentFor(d, req, req.params.id, 'editOwnComments', 'editAllComments')
     const [row] = await d.query('update comments set body = $2, edited_at = now() where id = $1 returning *', [c.id, req.body.body])
+    await emit(d, req.me.workspaceId, 'comment_updated', { issueId: c.issueId, projectId: c.projectId, commentId: c.id }, req.me.id)
     if (c.authorId !== req.me.id) await audit(d, req, { action: 'comment.moderated', type: 'comment', id: c.id, name: c.key, project: { id: c.projectId, key: c.key.split('-')[0]! }, after: { edited: true } })
     return row
   }))
@@ -890,6 +906,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     await tx(async d => {
       const c = await commentFor(d, req, req.params.id, 'deleteOwnComments', 'deleteAllComments')
       await d.query('delete from comments where id = $1', [c.id])
+      await emit(d, req.me.workspaceId, 'comment_deleted', { issueId: c.issueId, projectId: c.projectId, commentId: c.id, entity: { id: c.id } }, req.me.id)
       if (c.authorId !== req.me.id) await audit(d, req, { action: 'comment.moderated', type: 'comment', id: c.id, name: c.key, project: { id: c.projectId, key: c.key.split('-')[0]! }, after: { deleted: true } })
     })
     reply.code(204).send()
@@ -936,6 +953,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
       const i = await issueByKey(d, req, req.params.key, false, 'workOnIssues')
       const [w] = await d.query('insert into worklogs (id, issue_id, user_id, minutes, date, note) values (coalesce($6::uuid, uuid_v7()), $1, $2, $3, $4, $5) returning *',
         [i.id, req.me.id, b.minutes, b.date, b.note, b.id ?? null])
+      await emit(d, req.me.workspaceId, 'worklog_created', { issueId: i.id, projectId: i.projectId, worklogId: w.id }, req.me.id)
       await remaining(d, i.id, b.minutes, adjustOf(b))
       await publish(d, i.projectId, { type: 'issue.updated', id: i.id, key: i.key })
       return w
@@ -949,6 +967,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     return tx(async d => {
       const w = await worklogFor(d, req, req.params.id)
       const [row] = await d.query(`update worklogs set minutes = $2, date = $3, note = $4 where id = $1 returning *`, [w.id, b.minutes ?? w.minutes, b.date ?? w.date, b.note ?? w.note])
+      await emit(d, req.me.workspaceId, 'worklog_updated', { issueId: w.issueId, projectId: w.projectId, worklogId: w.id }, req.me.id)
       if (b.minutes !== undefined && b.minutes !== w.minutes) await remaining(d, w.issueId, b.minutes - w.minutes, adjustOf(b))
       if (w.userId !== req.me.id) await audit(d, req, { action: 'worklog.updated', type: 'worklog', id: w.id, project: { id: w.projectId, key: w.projectKey }, before: { minutes: w.minutes, date: w.date, note: w.note }, after: { minutes: row.minutes, date: row.date, note: row.note } })
       return row
@@ -961,6 +980,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     await tx(async d => {
       const w = await worklogFor(d, req, req.params.id)
       await d.query('delete from worklogs where id = $1', [w.id])
+      await emit(d, req.me.workspaceId, 'worklog_deleted', { issueId: w.issueId, projectId: w.projectId, worklogId: w.id, entity: { id: w.id } }, req.me.id)
       await remaining(d, w.issueId, -w.minutes, adjustOf(req.query))
       if (w.userId !== req.me.id) await audit(d, req, { action: 'worklog.deleted', type: 'worklog', id: w.id, project: { id: w.projectId, key: w.projectKey }, before: { minutes: w.minutes, date: w.date, note: w.note, by: w.userId } })
     })

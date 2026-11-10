@@ -3424,6 +3424,11 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     'GET /admin/directories/internal': ['gadmin', '/admin/directories/internal'],
     'GET /look-and-feel': ['public', '/look-and-feel'],   // 0702.R2
     'GET /project-categories': ['any', '/project-categories'],   // 0703.R5
+    'GET /admin/webhooks': ['gadmin', '/admin/webhooks'], 'POST /admin/webhooks': ['gadmin', '/admin/webhooks', { name: 'Matrix hook', url: 'https://hooks.example.com/x' }],   // 0705.R1
+    'GET /admin/webhooks/{id}': ['gadmin', `/admin/webhooks/${none}`], 'PUT /admin/webhooks/{id}': ['gadmin', `/admin/webhooks/${none}`, { name: 'x', url: 'https://hooks.example.com/x' }],
+    'DELETE /admin/webhooks/{id}': ['gadmin', `/admin/webhooks/${none}`], 'POST /admin/webhooks/{id}/secret': ['gadmin', `/admin/webhooks/${none}/secret`],
+    'POST /admin/webhooks/{id}/test': ['gadmin', `/admin/webhooks/${none}/test`], 'GET /admin/webhooks/{id}/calls': ['gadmin', `/admin/webhooks/${none}/calls`],
+    'POST /admin/webhooks/{id}/calls/{callId}/redeliver': ['gadmin', `/admin/webhooks/${none}/calls/${none}/redeliver`],
     'GET /admin/users/{id}/anonymise': ['gadmin', `/admin/users/${none}/anonymise`], 'POST /admin/users/{id}/anonymise': ['gadmin', `/admin/users/${none}/anonymise`, {}],   // 0704.R1
     'POST /admin/project-categories': ['gadmin', '/admin/project-categories', { name: 'Matrix category' }],
     'PATCH /admin/project-categories/{id}': ['gadmin', `/admin/project-categories/${none}`, { name: 'x' }], 'DELETE /admin/project-categories/{id}': ['gadmin', `/admin/project-categories/${none}`],
@@ -5013,5 +5018,89 @@ test('[0704.R1][0704.R2][0704.R3][0704.R4][0704.R5][0704.R6] anonymising a deact
   const again = await call('POST', `/api/v1/admin/users/${lena}/anonymise`, { transferTo: mo })
   assert.equal(again.status, 202); await runJobs()
   assert.equal((await pool.query('select name from users where id = $1', [lena])).rows[0].name, alias)
+})
+
+test('[0705.R1][0705.R2][0705.R3][0705.R4][0705.R5][0705.R6][0705.R7][0705.R8] outgoing webhooks: Jira-shaped events, signed, filtered by JQL, retried, never to the server’s own network', { skip }, async () => {
+  const { runJobs } = await import('../src/jobs.ts')
+  const { createHmac } = await import('node:crypto')
+  process.env.STRAND_SECRET_KEY ??= 'a-secret-key-for-tests-only-0705-xxxxxxxx'          // secrets are kept encrypted
+  // a stand-in receiver; it answers 500 while `failing`
+  const got: { url: string; headers: any; body: string }[] = []
+  let failing = false
+  const receiver = createServer((req, res) => { let b = ''; req.on('data', c => { b += c }); req.on('end', () => { got.push({ url: req.url!, headers: req.headers, body: b }); res.writeHead(failing ? 500 : 200).end('ok') }) })
+  await new Promise<void>(r => receiver.listen(0, '127.0.0.1', r))
+  const base = `http://127.0.0.1:${(receiver.address() as { port: number }).port}`
+  const add = (b: object) => call('POST', '/api/v1/admin/webhooks', { name: 'CI', ...b })
+  // R2: http and private addresses only when the server allows them
+  for (const url of ['http://hooks.example.com/x', 'https://127.0.0.1/x', 'https://169.254.169.254/latest', 'https://10.0.0.5/x', 'https://localhost/x', 'https://user:pw@hooks.example.com/x'])
+    assert.equal((await add({ url })).status, 400, url)
+  process.env.STRAND_WEBHOOK_HTTP_HOSTS = '127.0.0.1'; process.env.STRAND_WEBHOOK_PRIVATE_HOSTS = '127.0.0.1'
+  try {
+    // R1, R4: a bad JQL is refused; a filtered webhook for issue events
+    assert.equal((await add({ url: `${base}/x`, jql: 'project = = WHK' })).status, 400)
+    assert.equal((await call('POST', '/api/v1/projects', { name: 'Hooked', key: 'WHK', template: 'kanban' })).status, 201)
+    const made = await add({ url: `${base}/jira/{issue.key}?p={project.key}`, events: ['jira:issue_created', 'jira:issue_updated', 'comment_created'], jql: 'project = WHK AND type = bug' })
+    assert.equal(made.status, 201, JSON.stringify(made.body))
+    const hook = made.body
+    assert.match(hook.secret, /^whsec_/)
+    assert.equal((await call('GET', `/api/v1/admin/webhooks/${hook.id}`)).body.secret, undefined)            // shown once
+    // R3, R5: a matching bug is created then updated: Jira's body, the changelog, the signature, the URL filled in
+    const bug = (await call('POST', '/api/v1/projects/WHK/issues', { title: 'Broken', type: 'bug' })).body
+    await call('POST', '/api/v1/projects/WHK/issues', { title: 'Not a bug', type: 'task' })                    // filtered out (R4)
+    await call('PATCH', `/api/v1/issues/${bug.key}`, { title: 'Broken badly' })
+    await call('POST', `/api/v1/issues/${bug.key}/comments`, { body: 'Seen it' })
+    await runJobs(50); await runJobs(50)
+    const bodies = got.map(g => JSON.parse(g.body))
+    assert.deepEqual(bodies.map(b => b.webhookEvent), ['jira:issue_created', 'jira:issue_updated', 'comment_created'])
+    assert.equal(got[0]!.url, `/jira/${bug.key}?p=WHK`)
+    assert.deepEqual([bodies[0].issue.key, bodies[0].issue.fields.summary, bodies[0].issue.fields.issuetype.name, bodies[0].user.emailAddress], [bug.key, 'Broken', 'bug', 'owner@x.com'])
+    assert.deepEqual(bodies[1].changelog.items.map((i: any) => [i.field, i.fromString, i.toString]), [['title', 'Broken', 'Broken badly']])
+    assert.equal(bodies[2].comment.body, 'Seen it')
+    assert.equal(got[0]!.headers['x-strand-signature'], `sha256=${createHmac('sha256', hook.secret).update(got[0]!.body).digest('hex')}`)
+    assert.equal(got[0]!.headers['x-strand-event'], 'jira:issue_created')
+    // R6, R7: a failing receiver is retried, then shown failed; redeliver sends it again
+    failing = true; got.length = 0
+    await call('PATCH', `/api/v1/issues/${bug.key}`, { title: 'Broken again' })
+    await runJobs(50)
+    const callsNow = async () => (await call('GET', `/api/v1/admin/webhooks/${hook.id}/calls`)).body
+    let last = (await callsNow())[0]
+    assert.deepEqual([last.event, last.state, last.statusCode], ['jira:issue_updated', 'retrying', 500])
+    for (let n = 0; n < 6; n++) { await pool.query(`update jobs set run_at = now() where kind = 'webhook.deliver' and status = 'queued'`); await runJobs(50) }
+    last = (await callsNow())[0]
+    assert.deepEqual([last.state, last.attempts], ['failed', 6])
+    failing = false
+    assert.equal((await call('POST', `/api/v1/admin/webhooks/${hook.id}/calls/${last.id}/redeliver`)).status, 202)
+    await runJobs(50)
+    assert.equal((await callsNow())[0].state, 'delivered')
+    // R7: ping; R8: disabled sends nothing (ping still works)
+    await call('PUT', `/api/v1/admin/webhooks/${hook.id}`, { name: 'CI', url: hook.url, events: hook.events, jql: hook.jql, enabled: false })
+    got.length = 0
+    await call('PATCH', `/api/v1/issues/${bug.key}`, { title: 'Quiet now' }); await runJobs(50); await runJobs(50)
+    assert.equal(got.length, 0)
+    assert.equal((await call('POST', `/api/v1/admin/webhooks/${hook.id}/test`)).status, 202); await runJobs(50)
+    assert.equal(JSON.parse(got[0]!.body).webhookEvent, 'ping')
+    // Exclude body; regenerating the secret changes the signature
+    const quiet = (await add({ url: `${base}/nobody`, events: ['project_updated'], excludeBody: true })).body
+    const fresh = (await call('POST', `/api/v1/admin/webhooks/${quiet.id}/secret`)).body.secret
+    got.length = 0
+    await call('PATCH', '/api/v1/projects/WHK', { description: 'Changed' }); await runJobs(50); await runJobs(50)
+    const q = got.find(g => g.url === '/nobody')!
+    assert.equal(q.body, '')
+    assert.equal(q.headers['x-strand-signature'], `sha256=${createHmac('sha256', fresh).update('').digest('hex')}`)
+    assert.ok((await pool.query(`select 1 from audit_log where action = 'webhook.created'`)).rows.length)
+  } finally {
+    delete process.env.STRAND_WEBHOOK_HTTP_HOSTS; delete process.env.STRAND_WEBHOOK_PRIVATE_HOSTS
+    await pool.query('delete from webhooks'); (await import('../src/webhooks.ts')).forgetWebhookCache()
+    receiver.close()
+  }
+})
+
+test('[0705.R2] a webhook never reaches private addresses, whatever its name resolves to', { skip }, async () => {
+  const { privateAddress, urlProblem, fillUrl } = await import('../src/webhooks.ts')
+  for (const a of ['127.0.0.1', '10.1.2.3', '172.20.0.1', '192.168.1.1', '169.254.169.254', '100.64.0.1', '0.0.0.0', '::1', 'fd00::1', 'fe80::1', '::ffff:127.0.0.1'])
+    assert.equal(privateAddress(a), true, a)
+  for (const a of ['8.8.8.8', '1.1.1.1', '2606:4700::1111']) assert.equal(privateAddress(a), false, a)
+  assert.equal(urlProblem('https://hooks.example.com/{issue.key}'), null)
+  assert.equal(fillUrl('https://h.example/{issue.key}/${project.key}', { issue: { key: 'A B/1', fields: { project: { key: 'AB' } } } }), 'https://h.example/A%20B%2F1/AB')
 })
 
