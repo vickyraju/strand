@@ -23,7 +23,7 @@ const mapTransition = (t: Row): Transition => ({
   ...(t.typeKeys?.length ? { types: t.typeKeys } : {}),
 })
 const mapRule = (r: Row): Rule => ({
-  id: r.id, name: r.name, enabled: r.enabled, trigger: r.trigger, actions: r.actions, runs: r.runs ?? 0,
+  id: r.id, name: r.name, enabled: r.enabled, trigger: r.trigger, actions: r.actions, runs: r.runs ?? 0, ...(r.condition ? { condition: r.condition } : {}),
   ...(r.failures ? { failures: r.failures } : {}), ...(r.ownerId ? { ownerId: r.ownerId } : {}),
 })
 const mapField = (f: Row): FieldDef => ({ id: f.id, name: f.name, kind: f.kind, ...(f.options ? { options: f.options } : {}) })

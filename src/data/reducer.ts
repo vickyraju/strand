@@ -175,13 +175,14 @@ export interface Board extends BoardRef {
 /** Automation: "When <trigger> then <actions>". */
 export type RuleTrigger =
   | { kind: 'created' }
-  | { kind: 'status'; to: string }
+  | { kind: 'status'; to: string; /** a global rule names the status (spec 0709) */ toName?: string }
   | { kind: 'assigned' }
+  | { kind: 'scheduled'; everyMinutes: number; jql: string; changedSinceLastRun?: boolean }   // runs on the server (spec 0709)
 export type RuleAction =
   | { kind: 'assign'; to: 'reporter' | 'lead' | 'unassign' | string }
   | { kind: 'priority'; value: Priority }
   | { kind: 'label'; value: string }
-  | { kind: 'status'; value: string }
+  | { kind: 'status'; value: string; /** a global rule names the status (spec 0709) */ name?: string }
   | { kind: 'comment'; body: string }
 export interface Rule {
   id:      string
@@ -189,6 +190,8 @@ export interface Rule {
   enabled: boolean
   trigger: RuleTrigger
   actions: RuleAction[]
+  /** JQL the item must match; checked by the server only (spec 0709) */
+  condition?: string | null
   runs:    number
   /** Runs that failed (from the server) */
   failures?: number
@@ -1097,7 +1100,7 @@ export function runRules(state: State, issueId: string, events: RuleTrigger[], n
   const issue = state.issues.find(i => i.id === issueId)
   const project = state.projects.find(p => p.id === issue?.projectId)
   if (!issue || !project?.rules?.length) return state
-  const matches = project.rules.filter(r => r.enabled && events.some(e =>
+  const matches = project.rules.filter(r => r.enabled && !r.condition?.trim() && events.some(e =>   // a condition is JQL: the server decides
     e.kind === r.trigger.kind && (e.kind !== 'status' || (r.trigger.kind === 'status' && r.trigger.to === e.to))))
   if (!matches.length) return state
 

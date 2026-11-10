@@ -22,6 +22,7 @@ import UserDirectories from './UserDirectories'
 import ProjectCategories from './ProjectCategories'
 import WebhooksAdmin from './WebhooksAdmin'
 import DevelopmentTools from './DevelopmentTools'
+import GlobalAutomation from './GlobalAutomation'
 import SharedViewsAdmin from './SharedViewsAdmin'
 import ArchivedProjects from './admin/ArchivedProjects'
 
@@ -51,6 +52,7 @@ export default function AdminView({ section = 'people', item }: { section?: Admi
       {section === 'project-categories' && <ProjectCategories />}
       {section === 'webhooks' && <WebhooksAdmin />}
       {section === 'development' && <DevelopmentTools />}
+      {section === 'automation' && <GlobalAutomation />}
       {section === 'workflows' && <WorkflowsAdmin tab={item === 'statuses' || item === 'schemes' ? item : 'workflows'} />}
       {section === 'link-types' && <LinkTypesAdmin />}
       {(section === 'priorities' || section === 'resolutions') && <ListsAdmin kind={section} />}

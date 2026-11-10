@@ -2146,6 +2146,91 @@ test('automation audit log: every run is recorded; a failing rule undoes only it
   assert.equal((await call('GET', '/api/v1/projects/AAL/automation/runs', undefined, 'aal.member@x.com')).status, 403)
 })
 
+test('[0709.R1][0709.R2][0709.R3][0709.R4] automation: JQL conditions, scheduled rules, and global rules over a category, chosen projects or all', { skip, timeout: 60_000 }, async () => {
+  const { runJobs } = await import('../src/jobs.ts')
+  const { clearSettingsCache } = await import('../src/settings.ts')
+  for (const [name, key] of [['Auto A', 'AUA'], ['Auto B', 'AUB'], ['Auto C', 'AUC']]) await call('POST', '/api/v1/projects', { name, key, template: 'kanban' })
+  await join('AUA', 'aua.member@x.com', 'member')
+  const me = (await call('GET', '/api/v1/me')).body.id
+  const mk = async (key: string, o: object = {}, who?: string) => (await call('POST', `/api/v1/projects/${key}/issues`, { title: 'x', ...o }, who)).body
+  const labels = async (k: string) => (await call('GET', `/api/v1/issues/${k}`)).body.labels
+  const runsOf = async (rule: string) => (await pool.query('select result, steps from rule_runs where rule_id = $1 order by at', [rule])).rows
+
+  // R1: a JQL condition; currentUser() is whoever made the change
+  assert.equal((await call('POST', '/api/v1/projects/AUA/rules', { name: 'Bad', trigger: { kind: 'created' }, condition: 'type = = bug', actions: [{ kind: 'label', value: 'x' }] })).status, 400)
+  const cond = (await call('POST', '/api/v1/projects/AUA/rules', { name: 'My bugs', trigger: { kind: 'created' }, condition: 'type = bug AND assignee = currentUser()', actions: [{ kind: 'label', value: 'triage' }] })).body
+  const mine = await mk('AUA', { type: 'bug', assigneeId: me })
+  const theirs = await mk('AUA', { type: 'bug', assigneeId: me }, 'aua.member@x.com')
+  const task = await mk('AUA', { type: 'task', assigneeId: me })
+  assert.deepEqual([await labels(mine.key), await labels(theirs.key), await labels(task.key)], [['triage'], [], []])
+  assert.deepEqual((await runsOf(cond.id)).map(r => r.result), ['success', 'condition_not_met', 'condition_not_met'])
+  const dry = (await call('POST', '/api/v1/projects/AUA/automation/dry-run', { issue: task.key, condition: 'type = bug', actions: [{ kind: 'label', value: 'x' }] })).body
+  assert.deepEqual([dry.conditionMet, dry.steps], [false, []])
+  await call('PATCH', `/api/v1/projects/AUA/rules/${cond.id}`, { enabled: false })
+
+  // R2: scheduled rules
+  const sched = (body: object) => call('POST', '/api/v1/projects/AUA/rules', { name: 'Sweep', actions: [{ kind: 'label', value: 'swept' }], ...body })
+  assert.equal((await sched({ trigger: { kind: 'scheduled', everyMinutes: 1, jql: 'type = task' } })).status, 400)    // shorter than System settings allow
+  assert.equal((await sched({ trigger: { kind: 'scheduled', everyMinutes: 60 } })).status, 400)                       // no JQL
+  const sweep = (await sched({ trigger: { kind: 'scheduled', everyMinutes: 60, jql: 'type = task', changedSinceLastRun: true } })).body
+  const queued = async () => (await pool.query(`select run_at from jobs where dedupe_key = $1 and status = 'queued'`, [`automation.scheduled:${sweep.id}`])).rows
+  assert.equal((await queued()).length, 1)
+  assert.ok(new Date((await queued())[0].run_at).getTime() > Date.now() + 59 * 60_000)
+  const tick = async () => { await pool.query(`update jobs set run_at = now() where dedupe_key = $1 and status = 'queued'`, [`automation.scheduled:${sweep.id}`]); await runJobs() }
+  await tick()
+  assert.deepEqual([await labels(task.key), await labels(mine.key)], [['swept'], ['triage']])
+  assert.equal((await queued()).length, 1)                                          // the next run is queued when one ends
+  const before = (await runsOf(sweep.id)).length
+  await tick()                                                                      // nobody changed anything: its own label doesn't count
+  assert.equal((await runsOf(sweep.id)).length, before)
+  await call('PATCH', `/api/v1/issues/${task.key}`, { title: 'changed by a person' })
+  await tick()
+  assert.equal((await runsOf(sweep.id)).length, before + 1)
+  // at most maxItemsPerRun items a run; the log says the rest wait
+  await call('PUT', '/api/v1/admin/settings/automation', { minScheduleMinutes: 5, maxItemsPerRun: 1 }); clearSettingsCache()
+  await mk('AUA', { type: 'task' }); await mk('AUA', { type: 'task' })
+  await tick()
+  const last = (await runsOf(sweep.id)).slice(-2)
+  assert.deepEqual(last.map(r => r.result), ['success', 'some_skipped'])
+  assert.match(last[1].steps[0].note, /wait for the next run/)
+  await call('PUT', '/api/v1/admin/settings/automation', { minScheduleMinutes: 5, maxItemsPerRun: 1000 }); clearSettingsCache()
+  await call('PATCH', `/api/v1/projects/AUA/rules/${sweep.id}`, { enabled: false })
+  assert.equal((await queued()).length, 0)
+
+  // R3: a global rule over a category covers a project added to it later
+  const cat = (await call('POST', '/api/v1/admin/project-categories', { name: 'Ops automation' })).body
+  await call('PATCH', '/api/v1/projects/AUA', { categoryId: cat.id })
+  const g = await call('POST', '/api/v1/admin/automation/rules', { name: 'Ops label', scope: { kind: 'category', categoryId: cat.id }, trigger: { kind: 'created' }, actions: [{ kind: 'label', value: 'ops' }] })
+  assert.equal(g.status, 200)
+  assert.deepEqual(g.body.scope, { kind: 'category', categoryId: cat.id, categoryName: 'Ops automation' })
+  assert.deepEqual([await labels((await mk('AUA')).key), await labels((await mk('AUB')).key)], [['ops'], []])
+  await call('PATCH', '/api/v1/projects/AUC', { categoryId: cat.id })
+  assert.deepEqual(await labels((await mk('AUC')).key), ['ops'])
+  // chosen projects, statuses by name; a project without the status is skipped and logged
+  assert.equal((await call('POST', '/api/v1/admin/automation/rules', { name: 'x', scope: { kind: 'projects', projectKeys: ['NOPE'] }, trigger: { kind: 'created' }, actions: [{ kind: 'label', value: 'x' }] })).status, 400)
+  const started = (await call('POST', '/api/v1/admin/automation/rules', { name: 'Started', scope: { kind: 'projects', projectKeys: ['aub'] },
+    trigger: { kind: 'status', toName: 'in progress' }, actions: [{ kind: 'label', value: 'started' }, { kind: 'status', name: 'Nowhere' }] })).body
+  assert.deepEqual(started.scope, { kind: 'projects', projectKeys: ['AUB'] })
+  const b1 = await mk('AUB')
+  const prog = (await call('GET', '/api/v1/projects/AUB')).body.statuses.find((s: any) => s.name === 'In progress')
+  await call('PATCH', `/api/v1/issues/${b1.key}`, { statusId: prog.id })
+  assert.deepEqual(await labels(b1.key), ['started'])
+  const runs = (await call('GET', `/api/v1/admin/automation/runs?rule=${started.id}`)).body
+  assert.deepEqual([runs[0].issueKey, runs[0].result, runs[0].steps[1].note], [b1.key, 'some_skipped', 'a status change: this project has no status “Nowhere”'])
+  // project admins see the global rules that apply, read-only; only system admins change them
+  assert.deepEqual((await call('GET', '/api/v1/projects/AUA/automation/global')).body.map((r: any) => r.name), ['Ops label'])
+  assert.deepEqual((await call('GET', '/api/v1/projects/AUB/automation/global')).body.map((r: any) => r.name), ['Started'])
+  assert.equal((await call('GET', '/api/v1/projects/AUA/automation/global', undefined, 'aua.member@x.com')).status, 403)
+  assert.equal((await call('GET', '/api/v1/admin/automation/rules', undefined, 'aua.member@x.com')).status, 403)
+  // R4: audited; removing it stops it
+  assert.equal((await call('PUT', `/api/v1/admin/automation/rules/${g.body.id}`, { name: 'Ops label', scope: { kind: 'all' }, trigger: { kind: 'created' }, actions: [{ kind: 'label', value: 'ops' }] })).status, 200)
+  assert.deepEqual(await labels((await mk('AUB')).key), ['ops'])
+  assert.equal((await call('DELETE', `/api/v1/admin/automation/rules/${g.body.id}`)).status, 204)
+  assert.deepEqual(await labels((await mk('AUB')).key), [])
+  assert.deepEqual((await pool.query(`select action from audit_log where target_id = $1 order by at`, [g.body.id])).rows.map(r => r.action),
+    ['automation.global.created', 'automation.global.updated', 'automation.global.deleted'])
+})
+
 test('[0307.R3] CSV import: a dry run checks every row; the import runs as a job; running it again adds nothing twice', { skip, timeout: 60_000 }, async () => {
   const p = (await call('POST', '/api/v1/projects', { name: 'From CSV', key: 'CSV', template: 'kanban' })).body
   await join('CSV', 'imp.ann@x.com')
@@ -3485,6 +3570,10 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     'GET /admin/directories/internal': ['gadmin', '/admin/directories/internal'],
     'GET /look-and-feel': ['public', '/look-and-feel'],   // 0702.R2
     'GET /project-categories': ['any', '/project-categories'],   // 0703.R5
+    'GET /admin/automation/rules': ['gadmin', '/admin/automation/rules'], 'GET /admin/automation/runs': ['gadmin', '/admin/automation/runs'],   // 0709.R3
+    'POST /admin/automation/rules': ['gadmin', '/admin/automation/rules', { name: 'Matrix rule', scope: { kind: 'all' }, trigger: { kind: 'created' }, actions: [{ kind: 'label', value: 'matrix' }] }],
+    'PUT /admin/automation/rules/{id}': ['gadmin', `/admin/automation/rules/${none}`, { name: 'x', scope: { kind: 'all' }, trigger: { kind: 'created' }, actions: [{ kind: 'label', value: 'x' }] }],
+    'DELETE /admin/automation/rules/{id}': ['gadmin', `/admin/automation/rules/${none}`], 'GET /projects/{key}/automation/global': ['padmin', `/projects/${K}/automation/global`],
     'GET /admin/development': ['gadmin', '/admin/development'], 'PUT /admin/development/accounts/{id}': ['gadmin', `/admin/development/accounts/${none}`, { status: 'active' }],   // 0707.R1
     'DELETE /admin/development/accounts/{id}': ['gadmin', `/admin/development/accounts/${none}`], 'PUT /admin/development/repositories/{id}': ['gadmin', `/admin/development/repositories/${none}`, { projectKeys: [] }],
     'GET /admin/webhooks': ['gadmin', '/admin/webhooks'], 'POST /admin/webhooks': ['gadmin', '/admin/webhooks', { name: 'Matrix hook', url: 'https://hooks.example.com/x' }],   // 0705.R1
@@ -3793,7 +3882,7 @@ test('system settings: admins change policies at runtime (validated, audited); e
   const { clearSettingsCache } = await import('../src/settings.ts')
   const put = (key: string, value: object, who = 'owner@x.com') => call('PUT', `/api/v1/admin/settings/${key}`, value, who)
   const all = (await call('GET', '/api/v1/admin/settings')).body
-  assert.deepEqual(all.map((s: any) => s.key), ['rateLimiting', 'announcement', 'attachments', 'accessTokens', 'searchAndBulk', 'signIn', 'groups', 'testing', 'dueReminders', 'email', 'deletedItems', 'projectKeys', 'timeTracking'])
+  assert.deepEqual(all.map((s: any) => s.key), ['rateLimiting', 'announcement', 'attachments', 'accessTokens', 'searchAndBulk', 'signIn', 'groups', 'automation', 'testing', 'dueReminders', 'email', 'deletedItems', 'projectKeys', 'timeTracking'])
   assert.equal(all.find((s: any) => s.key === 'rateLimiting').value.enabled, false)                  // no limit unless an admin sets one
   assert.equal((await call('GET', '/api/v1/admin/settings', undefined, 'set.member@x.com')).status, 403)
   assert.equal((await put('attachments', { enabled: true, maxSizeMb: 5 }, 'set.member@x.com')).status, 403)

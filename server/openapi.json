@@ -2508,8 +2508,9 @@
                             "description": "uuid"
                           },
                           "projectId": {
-                            "type": "string",
-                            "description": "uuid"
+                            "nullable": true,
+                            "description": "Null: a global rule (spec 0709)",
+                            "type": "string"
                           },
                           "name": {
                             "type": "string"
@@ -2528,6 +2529,11 @@
                               "additionalProperties": {}
                             }
                           },
+                          "condition": {
+                            "nullable": true,
+                            "description": "JQL the item must match",
+                            "type": "string"
+                          },
                           "runs": {
                             "type": "number"
                           },
@@ -2538,6 +2544,11 @@
                             "nullable": true,
                             "type": "string",
                             "description": "uuid"
+                          },
+                          "lastRunAt": {
+                            "nullable": true,
+                            "type": "string",
+                            "description": "ISO 8601 timestamp"
                           }
                         },
                         "required": [
@@ -2547,9 +2558,11 @@
                           "enabled",
                           "trigger",
                           "actions",
+                          "condition",
                           "runs",
                           "failures",
-                          "ownerId"
+                          "ownerId",
+                          "lastRunAt"
                         ],
                         "additionalProperties": false
                       }
@@ -3659,8 +3672,9 @@
                             "description": "uuid"
                           },
                           "projectId": {
-                            "type": "string",
-                            "description": "uuid"
+                            "nullable": true,
+                            "description": "Null: a global rule (spec 0709)",
+                            "type": "string"
                           },
                           "name": {
                             "type": "string"
@@ -3679,6 +3693,11 @@
                               "additionalProperties": {}
                             }
                           },
+                          "condition": {
+                            "nullable": true,
+                            "description": "JQL the item must match",
+                            "type": "string"
+                          },
                           "runs": {
                             "type": "number"
                           },
@@ -3689,6 +3708,11 @@
                             "nullable": true,
                             "type": "string",
                             "description": "uuid"
+                          },
+                          "lastRunAt": {
+                            "nullable": true,
+                            "type": "string",
+                            "description": "ISO 8601 timestamp"
                           }
                         },
                         "required": [
@@ -3698,9 +3722,11 @@
                           "enabled",
                           "trigger",
                           "actions",
+                          "condition",
                           "runs",
                           "failures",
-                          "ownerId"
+                          "ownerId",
+                          "lastRunAt"
                         ],
                         "additionalProperties": false
                       }
@@ -4544,8 +4570,9 @@
                             "description": "uuid"
                           },
                           "projectId": {
-                            "type": "string",
-                            "description": "uuid"
+                            "nullable": true,
+                            "description": "Null: a global rule (spec 0709)",
+                            "type": "string"
                           },
                           "name": {
                             "type": "string"
@@ -4564,6 +4591,11 @@
                               "additionalProperties": {}
                             }
                           },
+                          "condition": {
+                            "nullable": true,
+                            "description": "JQL the item must match",
+                            "type": "string"
+                          },
                           "runs": {
                             "type": "number"
                           },
@@ -4574,6 +4606,11 @@
                             "nullable": true,
                             "type": "string",
                             "description": "uuid"
+                          },
+                          "lastRunAt": {
+                            "nullable": true,
+                            "type": "string",
+                            "description": "ISO 8601 timestamp"
                           }
                         },
                         "required": [
@@ -4583,9 +4620,11 @@
                           "enabled",
                           "trigger",
                           "actions",
+                          "condition",
                           "runs",
                           "failures",
-                          "ownerId"
+                          "ownerId",
+                          "lastRunAt"
                         ],
                         "additionalProperties": false
                       }
@@ -5608,8 +5647,9 @@
                             "description": "uuid"
                           },
                           "projectId": {
-                            "type": "string",
-                            "description": "uuid"
+                            "nullable": true,
+                            "description": "Null: a global rule (spec 0709)",
+                            "type": "string"
                           },
                           "name": {
                             "type": "string"
@@ -5628,6 +5668,11 @@
                               "additionalProperties": {}
                             }
                           },
+                          "condition": {
+                            "nullable": true,
+                            "description": "JQL the item must match",
+                            "type": "string"
+                          },
                           "runs": {
                             "type": "number"
                           },
@@ -5638,6 +5683,11 @@
                             "nullable": true,
                             "type": "string",
                             "description": "uuid"
+                          },
+                          "lastRunAt": {
+                            "nullable": true,
+                            "type": "string",
+                            "description": "ISO 8601 timestamp"
                           }
                         },
                         "required": [
@@ -5647,9 +5697,11 @@
                           "enabled",
                           "trigger",
                           "actions",
+                          "condition",
                           "runs",
                           "failures",
-                          "ownerId"
+                          "ownerId",
+                          "lastRunAt"
                         ],
                         "additionalProperties": false
                       }
@@ -6542,8 +6594,9 @@
                             "description": "uuid"
                           },
                           "projectId": {
-                            "type": "string",
-                            "description": "uuid"
+                            "nullable": true,
+                            "description": "Null: a global rule (spec 0709)",
+                            "type": "string"
                           },
                           "name": {
                             "type": "string"
@@ -6562,6 +6615,11 @@
                               "additionalProperties": {}
                             }
                           },
+                          "condition": {
+                            "nullable": true,
+                            "description": "JQL the item must match",
+                            "type": "string"
+                          },
                           "runs": {
                             "type": "number"
                           },
@@ -6572,6 +6630,11 @@
                             "nullable": true,
                             "type": "string",
                             "description": "uuid"
+                          },
+                          "lastRunAt": {
+                            "nullable": true,
+                            "type": "string",
+                            "description": "ISO 8601 timestamp"
                           }
                         },
                         "required": [
@@ -6581,9 +6644,11 @@
                           "enabled",
                           "trigger",
                           "actions",
+                          "condition",
                           "runs",
                           "failures",
-                          "ownerId"
+                          "ownerId",
+                          "lastRunAt"
                         ],
                         "additionalProperties": false
                       }
@@ -8756,18 +8821,40 @@
                         "enum": [
                           "created",
                           "status",
-                          "assigned"
+                          "assigned",
+                          "scheduled"
                         ]
                       },
                       "to": {
                         "type": "string",
                         "format": "uuid",
                         "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                      },
+                      "everyMinutes": {
+                        "description": "Scheduled: how often, in minutes (spec 0709)",
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 525600
+                      },
+                      "jql": {
+                        "description": "Scheduled: the work items it acts on",
+                        "type": "string",
+                        "maxLength": 2000
+                      },
+                      "changedSinceLastRun": {
+                        "description": "Scheduled: only items changed since its last run",
+                        "type": "boolean"
                       }
                     },
                     "required": [
                       "kind"
                     ]
+                  },
+                  "condition": {
+                    "nullable": true,
+                    "description": "JQL the item must match for the rule to act (spec 0709)",
+                    "type": "string",
+                    "maxLength": 2000
                   },
                   "actions": {
                     "type": "array",
@@ -8831,8 +8918,9 @@
                       "description": "uuid"
                     },
                     "projectId": {
-                      "type": "string",
-                      "description": "uuid"
+                      "nullable": true,
+                      "description": "Null: a global rule (spec 0709)",
+                      "type": "string"
                     },
                     "name": {
                       "type": "string"
@@ -8851,6 +8939,11 @@
                         "additionalProperties": {}
                       }
                     },
+                    "condition": {
+                      "nullable": true,
+                      "description": "JQL the item must match",
+                      "type": "string"
+                    },
                     "runs": {
                       "type": "number"
                     },
@@ -8861,6 +8954,11 @@
                       "nullable": true,
                       "type": "string",
                       "description": "uuid"
+                    },
+                    "lastRunAt": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "ISO 8601 timestamp"
                     }
                   },
                   "required": [
@@ -8870,9 +8968,11 @@
                     "enabled",
                     "trigger",
                     "actions",
+                    "condition",
                     "runs",
                     "failures",
-                    "ownerId"
+                    "ownerId",
+                    "lastRunAt"
                   ],
                   "additionalProperties": false
                 }
@@ -8992,18 +9092,40 @@
                         "enum": [
                           "created",
                           "status",
-                          "assigned"
+                          "assigned",
+                          "scheduled"
                         ]
                       },
                       "to": {
                         "type": "string",
                         "format": "uuid",
                         "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                      },
+                      "everyMinutes": {
+                        "description": "Scheduled: how often, in minutes (spec 0709)",
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 525600
+                      },
+                      "jql": {
+                        "description": "Scheduled: the work items it acts on",
+                        "type": "string",
+                        "maxLength": 2000
+                      },
+                      "changedSinceLastRun": {
+                        "description": "Scheduled: only items changed since its last run",
+                        "type": "boolean"
                       }
                     },
                     "required": [
                       "kind"
                     ]
+                  },
+                  "condition": {
+                    "nullable": true,
+                    "description": "JQL the item must match for the rule to act (spec 0709)",
+                    "type": "string",
+                    "maxLength": 2000
                   },
                   "actions": {
                     "type": "array",
@@ -9066,8 +9188,9 @@
                       "description": "uuid"
                     },
                     "projectId": {
-                      "type": "string",
-                      "description": "uuid"
+                      "nullable": true,
+                      "description": "Null: a global rule (spec 0709)",
+                      "type": "string"
                     },
                     "name": {
                       "type": "string"
@@ -9086,6 +9209,11 @@
                         "additionalProperties": {}
                       }
                     },
+                    "condition": {
+                      "nullable": true,
+                      "description": "JQL the item must match",
+                      "type": "string"
+                    },
                     "runs": {
                       "type": "number"
                     },
@@ -9096,6 +9224,11 @@
                       "nullable": true,
                       "type": "string",
                       "description": "uuid"
+                    },
+                    "lastRunAt": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "ISO 8601 timestamp"
                     }
                   },
                   "required": [
@@ -9105,9 +9238,11 @@
                     "enabled",
                     "trigger",
                     "actions",
+                    "condition",
                     "runs",
                     "failures",
-                    "ownerId"
+                    "ownerId",
+                    "lastRunAt"
                   ],
                   "additionalProperties": false
                 }
@@ -11748,7 +11883,8 @@
                 "success",
                 "some_skipped",
                 "no_change",
-                "failed"
+                "failed",
+                "condition_not_met"
               ]
             },
             "in": "query",
@@ -11816,7 +11952,8 @@
                           "success",
                           "some_skipped",
                           "no_change",
-                          "failed"
+                          "failed",
+                          "condition_not_met"
                         ]
                       },
                       "steps": {
@@ -11997,6 +12134,12 @@
                       ],
                       "additionalProperties": {}
                     }
+                  },
+                  "condition": {
+                    "description": "The rule’s JQL condition, checked first (spec 0709)",
+                    "nullable": true,
+                    "type": "string",
+                    "maxLength": 2000
                   }
                 },
                 "required": [
@@ -12057,11 +12200,16 @@
                     "error": {
                       "nullable": true,
                       "type": "string"
+                    },
+                    "conditionMet": {
+                      "type": "boolean",
+                      "description": "False: the condition doesn’t match, so the rule wouldn’t act"
                     }
                   },
                   "required": [
                     "steps",
-                    "error"
+                    "error",
+                    "conditionMet"
                   ],
                   "additionalProperties": false
                 }
@@ -31116,7 +31264,7 @@
             "in": "path",
             "name": "key",
             "required": true,
-            "description": "One of: rateLimiting, announcement, attachments, accessTokens, searchAndBulk, signIn, groups, testing, dueReminders, email, deletedItems, projectKeys, timeTracking"
+            "description": "One of: rateLimiting, announcement, attachments, accessTokens, searchAndBulk, signIn, groups, automation, testing, dueReminders, email, deletedItems, projectKeys, timeTracking"
           }
         ],
         "responses": {
@@ -56368,6 +56516,1376 @@
                     "callId"
                   ],
                   "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/automation/rules": {
+      "get": {
+        "summary": "Global automation rules (system administrators)",
+        "tags": [
+          "Automation"
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "description": "uuid"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "enabled": {
+                        "type": "boolean"
+                      },
+                      "trigger": {
+                        "type": "object",
+                        "additionalProperties": {}
+                      },
+                      "actions": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "additionalProperties": {}
+                        }
+                      },
+                      "condition": {
+                        "nullable": true,
+                        "type": "string"
+                      },
+                      "runs": {
+                        "type": "number"
+                      },
+                      "failures": {
+                        "type": "number"
+                      },
+                      "ownerId": {
+                        "nullable": true,
+                        "type": "string",
+                        "description": "uuid"
+                      },
+                      "lastRunAt": {
+                        "nullable": true,
+                        "type": "string",
+                        "description": "ISO 8601 timestamp"
+                      },
+                      "scope": {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "all",
+                              "category",
+                              "projects"
+                            ]
+                          },
+                          "categoryId": {
+                            "type": "string",
+                            "description": "uuid"
+                          },
+                          "categoryName": {
+                            "nullable": true,
+                            "type": "string"
+                          },
+                          "projectKeys": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name",
+                      "enabled",
+                      "trigger",
+                      "actions",
+                      "condition",
+                      "runs",
+                      "failures",
+                      "ownerId",
+                      "lastRunAt",
+                      "scope"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Add a global automation rule",
+        "tags": [
+          "Automation"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "enabled": {
+                    "default": true,
+                    "type": "boolean"
+                  },
+                  "scope": {
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "all"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "category"
+                            ]
+                          },
+                          "categoryId": {
+                            "type": "string",
+                            "format": "uuid",
+                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "categoryId"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "projects"
+                            ]
+                          },
+                          "projectKeys": {
+                            "minItems": 1,
+                            "maxItems": 1000,
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 20
+                            }
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "projectKeys"
+                        ]
+                      }
+                    ]
+                  },
+                  "trigger": {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "created",
+                          "status",
+                          "assigned",
+                          "scheduled"
+                        ]
+                      },
+                      "toName": {
+                        "description": "Status: its name",
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 100
+                      },
+                      "everyMinutes": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 525600
+                      },
+                      "jql": {
+                        "type": "string",
+                        "maxLength": 2000
+                      },
+                      "changedSinceLastRun": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ]
+                  },
+                  "actions": {
+                    "minItems": 1,
+                    "maxItems": 20,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "assign",
+                            "priority",
+                            "label",
+                            "status",
+                            "comment"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ],
+                      "additionalProperties": {}
+                    }
+                  },
+                  "condition": {
+                    "default": null,
+                    "nullable": true,
+                    "type": "string",
+                    "maxLength": 2000
+                  }
+                },
+                "required": [
+                  "name",
+                  "scope",
+                  "trigger",
+                  "actions"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "trigger": {
+                      "type": "object",
+                      "additionalProperties": {}
+                    },
+                    "actions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": {}
+                      }
+                    },
+                    "condition": {
+                      "nullable": true,
+                      "type": "string"
+                    },
+                    "runs": {
+                      "type": "number"
+                    },
+                    "failures": {
+                      "type": "number"
+                    },
+                    "ownerId": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "lastRunAt": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "ISO 8601 timestamp"
+                    },
+                    "scope": {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "all",
+                            "category",
+                            "projects"
+                          ]
+                        },
+                        "categoryId": {
+                          "type": "string",
+                          "description": "uuid"
+                        },
+                        "categoryName": {
+                          "nullable": true,
+                          "type": "string"
+                        },
+                        "projectKeys": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "enabled",
+                    "trigger",
+                    "actions",
+                    "condition",
+                    "runs",
+                    "failures",
+                    "ownerId",
+                    "lastRunAt",
+                    "scope"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/automation/rules/{id}": {
+      "put": {
+        "summary": "Change a global automation rule",
+        "tags": [
+          "Automation"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "enabled": {
+                    "default": true,
+                    "type": "boolean"
+                  },
+                  "scope": {
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "all"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "category"
+                            ]
+                          },
+                          "categoryId": {
+                            "type": "string",
+                            "format": "uuid",
+                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "categoryId"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "projects"
+                            ]
+                          },
+                          "projectKeys": {
+                            "minItems": 1,
+                            "maxItems": 1000,
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 20
+                            }
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "projectKeys"
+                        ]
+                      }
+                    ]
+                  },
+                  "trigger": {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "created",
+                          "status",
+                          "assigned",
+                          "scheduled"
+                        ]
+                      },
+                      "toName": {
+                        "description": "Status: its name",
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 100
+                      },
+                      "everyMinutes": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 525600
+                      },
+                      "jql": {
+                        "type": "string",
+                        "maxLength": 2000
+                      },
+                      "changedSinceLastRun": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ]
+                  },
+                  "actions": {
+                    "minItems": 1,
+                    "maxItems": 20,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "assign",
+                            "priority",
+                            "label",
+                            "status",
+                            "comment"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ],
+                      "additionalProperties": {}
+                    }
+                  },
+                  "condition": {
+                    "default": null,
+                    "nullable": true,
+                    "type": "string",
+                    "maxLength": 2000
+                  }
+                },
+                "required": [
+                  "name",
+                  "scope",
+                  "trigger",
+                  "actions"
+                ]
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "trigger": {
+                      "type": "object",
+                      "additionalProperties": {}
+                    },
+                    "actions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": {}
+                      }
+                    },
+                    "condition": {
+                      "nullable": true,
+                      "type": "string"
+                    },
+                    "runs": {
+                      "type": "number"
+                    },
+                    "failures": {
+                      "type": "number"
+                    },
+                    "ownerId": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "lastRunAt": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "ISO 8601 timestamp"
+                    },
+                    "scope": {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "all",
+                            "category",
+                            "projects"
+                          ]
+                        },
+                        "categoryId": {
+                          "type": "string",
+                          "description": "uuid"
+                        },
+                        "categoryName": {
+                          "nullable": true,
+                          "type": "string"
+                        },
+                        "projectKeys": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "enabled",
+                    "trigger",
+                    "actions",
+                    "condition",
+                    "runs",
+                    "failures",
+                    "ownerId",
+                    "lastRunAt",
+                    "scope"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Remove a global automation rule (changes it made stay)",
+        "tags": [
+          "Automation"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/automation/runs": {
+      "get": {
+        "summary": "Recent runs of global rules, newest first (90 days)",
+        "tags": [
+          "Automation"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "query",
+            "name": "rule",
+            "required": false
+          },
+          {
+            "schema": {
+              "default": 50,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "in": "query",
+            "name": "limit",
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "description": "uuid"
+                      },
+                      "ruleId": {
+                        "type": "string",
+                        "description": "uuid"
+                      },
+                      "rule": {
+                        "type": "string"
+                      },
+                      "issueId": {
+                        "nullable": true,
+                        "type": "string",
+                        "description": "uuid"
+                      },
+                      "issueKey": {
+                        "nullable": true,
+                        "type": "string"
+                      },
+                      "trigger": {
+                        "type": "object",
+                        "additionalProperties": {}
+                      },
+                      "result": {
+                        "type": "string",
+                        "enum": [
+                          "success",
+                          "some_skipped",
+                          "no_change",
+                          "failed",
+                          "condition_not_met"
+                        ]
+                      },
+                      "steps": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "action": {
+                              "type": "string"
+                            },
+                            "outcome": {
+                              "type": "string",
+                              "enum": [
+                                "done",
+                                "skipped",
+                                "unchanged",
+                                "failed"
+                              ]
+                            },
+                            "note": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "action",
+                            "outcome"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "error": {
+                        "nullable": true,
+                        "type": "string"
+                      },
+                      "at": {
+                        "type": "string",
+                        "description": "ISO 8601 timestamp"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "ruleId",
+                      "rule",
+                      "issueId",
+                      "issueKey",
+                      "trigger",
+                      "result",
+                      "steps",
+                      "error",
+                      "at"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{key}/automation/global": {
+      "get": {
+        "summary": "Global automation rules that apply to this project (read-only; project admins)",
+        "tags": [
+          "Automation"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "key",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "description": "uuid"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "enabled": {
+                        "type": "boolean"
+                      },
+                      "trigger": {
+                        "type": "object",
+                        "additionalProperties": {}
+                      },
+                      "actions": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "additionalProperties": {}
+                        }
+                      },
+                      "condition": {
+                        "nullable": true,
+                        "type": "string"
+                      },
+                      "runs": {
+                        "type": "number"
+                      },
+                      "failures": {
+                        "type": "number"
+                      },
+                      "ownerId": {
+                        "nullable": true,
+                        "type": "string",
+                        "description": "uuid"
+                      },
+                      "lastRunAt": {
+                        "nullable": true,
+                        "type": "string",
+                        "description": "ISO 8601 timestamp"
+                      },
+                      "scope": {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "all",
+                              "category",
+                              "projects"
+                            ]
+                          },
+                          "categoryId": {
+                            "type": "string",
+                            "description": "uuid"
+                          },
+                          "categoryName": {
+                            "nullable": true,
+                            "type": "string"
+                          },
+                          "projectKeys": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name",
+                      "enabled",
+                      "trigger",
+                      "actions",
+                      "condition",
+                      "runs",
+                      "failures",
+                      "ownerId",
+                      "lastRunAt",
+                      "scope"
+                    ],
+                    "additionalProperties": false
+                  }
                 }
               }
             }

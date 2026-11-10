@@ -15,7 +15,7 @@ import { enqueue, kickJobs } from '../jobs.ts'
 import { backupBucket, backupSettings } from '../backups.ts'
 import { applyScheme, previewing, typeWorkflows } from '../workflows.ts'
 import { firstBoard, needSprintManager } from '../boards.ts'
-import { dryRun } from '../rules.ts'
+import { checkRule, dryRun, scheduleRule } from '../rules.ts'
 import { TEST_TYPES } from './issues.ts'
 import { checkImport } from '../csvImport.ts'
 import { getSetting } from '../settings.ts'
@@ -73,7 +73,7 @@ async function requireProjectAdmin(_req: FastifyRequest, p: { role: ProjectRole;
 const CHILD = {
   fields:      { table: 'field_defs',     cols: ['name', 'kind', 'options', 'position'], json: ['options'] },
   templates:   { table: 'item_templates', cols: ['name', 'type', 'title', 'description', 'priority', 'labels', 'estimate'] },
-  rules:       { table: 'rules',          cols: ['name', 'enabled', 'trigger', 'actions'], json: ['trigger', 'actions'] },
+  rules:       { table: 'rules',          cols: ['name', 'enabled', 'trigger', 'actions', 'condition'], json: ['trigger', 'actions'] },
   releases:    { table: 'releases',       cols: ['name', 'description', 'startDate', 'releaseDate', 'archived', 'released'], ws: true },
   components:  { table: 'components',     cols: ['name', 'description', 'leadId', 'defaultAssignee'] },
 } as const
@@ -90,7 +90,11 @@ const childPatch = {
   }).partial(),
   rules: z.object({
     name: z.string().min(1), enabled: z.boolean(),
-    trigger: z.object({ kind: z.enum(['created', 'status', 'assigned']), to: uuid.optional() }),
+    trigger: z.object({ kind: z.enum(['created', 'status', 'assigned', 'scheduled']), to: uuid.optional(),
+      everyMinutes: z.number().int().min(1).max(525_600).optional().describe('Scheduled: how often, in minutes (spec 0709)'),
+      jql: z.string().trim().max(2000).optional().describe('Scheduled: the work items it acts on'),
+      changedSinceLastRun: z.boolean().optional().describe('Scheduled: only items changed since its last run') }),
+    condition: z.string().trim().max(2000).nullable().describe('JQL the item must match for the rule to act (spec 0709)'),
     actions: z.array(z.object({ kind: z.enum(['assign', 'priority', 'label', 'status', 'comment']) }).passthrough()
       .refine(a => a.kind !== 'label' || label.safeParse(a.value).success, 'A label is one word: no spaces')),
   }).partial(),
@@ -431,6 +435,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
       const body = req.body as Record<string, unknown>
       if (kind === 'fields' && body.options) body.options = withOptionIds(body.options as Opt[])
       await checkPriorities(req.me.workspaceId, kind, body)
+      if (kind === 'rules') await checkRule(db, req.me, body)
       const w = pick(body, [...cfg.cols], json)
       // Ordered collections (statuses, fields) go to the end unless the caller says where
       if ((cfg.cols as readonly string[]).includes('position') && body.position === undefined) {
@@ -445,6 +450,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
         const [row] = await d.query(
           `insert into ${cfg.table} (${cols.join(', ')}) values (${vals.map((_, i) => `$${i + 1}`).join(', ')}) returning *`, vals)
         await audit(d, req, { action: `project.${what.replace(' ', '_')}.created`, type: what, id: row.id, name: row.name ?? null, project: p, after: body })
+        if (kind === 'rules') await scheduleRule(d, row, req.me.workspaceId)
         return row
       })
     })
@@ -455,6 +461,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
       const patch = req.body as Record<string, unknown>
       if (kind === 'fields' && patch.options) patch.options = withOptionIds(patch.options as Opt[])
       await checkPriorities(req.me.workspaceId, kind, patch)
+      if (kind === 'rules') await checkRule(db, req.me, patch)
       const w = pick(patch, [...cfg.cols], json)
       if (!w.keys.length) throw new HttpError(400, 'Nothing to update')
       return tx(async d => {
@@ -472,6 +479,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
         if (kind === 'fields' && patch.options) await carryOptions(d, p.id, before.id, before.options ?? [], patch.options as Opt[])
         const c = changes(before, req.body as Record<string, unknown>)
         if (c.changed) await audit(d, req, { action: `project.${what.replace(' ', '_')}.updated`, type: what, id: row.id, name: row.name ?? null, project: p, before: c.before, after: c.after })
+        if (kind === 'rules' && (patch.trigger !== undefined || patch.enabled !== undefined)) await scheduleRule(d, row, req.me.workspaceId)
         return row
       })
     })
@@ -643,7 +651,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
   // ── Automation's audit log and dry run (project admins, as in Jira) ──
   app.get('/projects/:key/automation/runs', { schema: {
     tags: T.config, summary: 'Recent automation runs, newest first: what started each, the item, what each action did, and how it ended (90 days)',
-    params: keyP, querystring: z.object({ rule: uuid.optional(), result: z.enum(['success', 'some_skipped', 'no_change', 'failed']).optional(), limit: z.coerce.number().int().min(1).max(200).default(50) }),
+    params: keyP, querystring: z.object({ rule: uuid.optional(), result: z.enum(['success', 'some_skipped', 'no_change', 'failed', 'condition_not_met']).optional(), limit: z.coerce.number().int().min(1).max(200).default(50) }),
   } }, async req => {
     const p = await projectByKey(db, req, req.params.key)
     await requireProjectAdmin(req, p)
@@ -659,7 +667,8 @@ const plugin: FastifyPluginAsyncZod = async app => {
   })
   app.post('/projects/:key/automation/dry-run', { schema: {
     tags: T.config, summary: 'What these actions would do to a work item, without doing it (project admins)', params: keyP,
-    body: z.object({ issue: z.string().describe('Key of a work item in this project'), actions: childPatch.rules.shape.actions.unwrap() }),
+    body: z.object({ issue: z.string().describe('Key of a work item in this project'), actions: childPatch.rules.shape.actions.unwrap(),
+      condition: z.string().trim().max(2000).nullable().optional().describe('The rule’s JQL condition, checked first (spec 0709)') }),
   } }, async req => {
     const p = await projectByKey(db, req, req.params.key)
     await requireProjectAdmin(req, p)
@@ -667,7 +676,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
       const [i] = await d.query<any>(`select i.id, i.reporter_id, pr.lead_id from issues i join projects pr on pr.id = i.project_id
                                        where i.project_id = $1 and pr.key || '-' || i.number = upper($2) and i.deleted_at is null`, [p.id, req.body.issue])
       if (!i) throw new HttpError(404, 'No such work item in this project', { issue: 'Not found here' })
-      return dryRun(d, { projectId: p.id, issueId: i.id, reporterId: i.reporterId, leadId: i.leadId }, { actions: req.body.actions })
+      return dryRun(d, { projectId: p.id, issueId: i.id, reporterId: i.reporterId, leadId: i.leadId, actorId: req.me.id }, { actions: req.body.actions, condition: req.body.condition })
     })
   })
 

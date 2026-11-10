@@ -29,7 +29,7 @@ export function itemsOf(projects: Project[], kind: Kind): Item[] {
       case 'statuses':    return p.statuses.map(s => mk(s, { wipLimit: s.wipLimit ?? null }))       // the board's WIP limit is all a project sets
       case 'fields':      return p.fields.map((f, position) => mk(f, { name: f.name, kind: f.kind, options: f.options ?? null, position }))
       case 'templates':   return p.templates.map(t => mk(t, { name: t.name, type: t.type, title: t.title, description: t.description, priority: t.priority, labels: t.labels, estimate: t.estimate ?? null }))
-      case 'rules':       return p.rules.map(r => mk(r, { name: r.name, enabled: r.enabled, trigger: r.trigger, actions: r.actions }))
+      case 'rules':       return p.rules.map(r => mk(r, { name: r.name, enabled: r.enabled, trigger: r.trigger, actions: r.actions, condition: r.condition?.trim() || null }))
       case 'components':  return (p.components ?? []).map(c => mk(c, { name: c.name, description: c.description, leadId: c.leadId ?? null, defaultAssignee: c.defaultAssignee }))
       case 'releases':    return p.releases.map(r => mk(r, { name: r.name, description: r.description, startDate: r.startDate ?? null, releaseDate: r.releaseDate ?? null, archived: !!r.archived }, r.released))
     }
