@@ -107,12 +107,12 @@ Same rules.
 
 ## Out of scope and deliberate divergences
 
-- **Mark as Done** (Jira's Epic Status, apart from the workflow): not built. An epic leaves the panel when its own status is Done. To be confirmed with the PO.
+- **Mark as Done** (Jira's Epic Status, apart from the workflow): built by spec 0716.
 - **Ranking epics in the panel:** they keep their backlog rank.
 - **The board option to turn the Epics panel off** (Kanban): not built.
 
 ## Open questions
 
-- Should Strand add Jira's separate Epic Status ("Mark as Done")? Data migrated from Jira would carry it.
+- ~~Should Strand add Jira's separate Epic Status ("Mark as Done")?~~ Answered 10 Nov 2026 by the PO: as Jira DC does (spec 0716).
 
 ## Changelog
