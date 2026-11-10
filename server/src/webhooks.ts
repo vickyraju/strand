@@ -126,16 +126,44 @@ export function fillUrl(url: string, b: any) {
 // —— Where a webhook may call (R2) ——
 
 const list = (v?: string) => (v ?? '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
-/** Loopback, link-local (cloud metadata), private, carrier-grade NAT, multicast and other special ranges. */
-export function privateAddress(a: string) {
-  const v4 = a.startsWith('::ffff:') ? a.slice(7) : a
-  if (isIP(v4) === 4) {
-    const [x, y] = v4.split('.').map(Number) as [number, number]
-    return x === 0 || x === 10 || x === 127 || (x === 169 && y === 254) || (x === 172 && y >= 16 && y <= 31) || (x === 192 && y === 168)
-      || (x === 100 && y >= 64 && y <= 127) || x >= 224
+const v4Private = (v4: string) => {
+  const [x, y] = v4.split('.').map(Number) as [number, number]
+  return x === 0 || x === 10 || x === 127 || (x === 169 && y === 254) || (x === 172 && y >= 16 && y <= 31) || (x === 192 && y === 168)
+    || (x === 100 && y >= 64 && y <= 127) || (x === 192 && y === 0) || (x === 198 && (y === 18 || y === 19)) || x >= 224
+}
+/** An IPv6 address as its eight 16-bit groups (`::` expanded, a trailing dotted IPv4 turned into two groups), or null. */
+export function ipv6Groups(a: string): number[] | null {
+  let s = a.toLowerCase().replace(/^\[|\]$/g, '').replace(/%.*$/, '')
+  const dotted = /(\d+\.\d+\.\d+\.\d+)$/.exec(s)
+  if (dotted) {
+    if (isIP(dotted[1]!) !== 4) return null
+    const [p, q, r, t] = dotted[1]!.split('.').map(Number) as [number, number, number, number]
+    s = s.slice(0, -dotted[1]!.length) + `${((p << 8) | q).toString(16)}:${((r << 8) | t).toString(16)}`
   }
-  const l = a.toLowerCase()
-  return l === '::' || l === '::1' || l.startsWith('fe8') || l.startsWith('fe9') || l.startsWith('fea') || l.startsWith('feb') || l.startsWith('fc') || l.startsWith('fd') || l.startsWith('ff')
+  const halves = s.split('::')
+  if (halves.length > 2) return null
+  const part = (x: string) => (x ? x.split(':') : [])
+  const head = part(halves[0]!), tail = halves.length === 2 ? part(halves[1]!) : []
+  const fill = 8 - head.length - tail.length
+  if ((halves.length === 1 && fill !== 0) || fill < 0) return null
+  const groups = [...head, ...Array(halves.length === 2 ? fill : 0).fill('0'), ...tail]
+  if (groups.length !== 8 || groups.some(g => !/^[0-9a-f]{1,4}$/.test(g))) return null
+  return groups.map(g => parseInt(g, 16))
+}
+/** Loopback, link-local (cloud metadata), private, carrier-grade NAT, multicast and other special ranges, also when an
+ *  IPv4 address hides inside IPv6 (mapped ::ffff:a.b.c.d in any spelling, compatible ::a.b.c.d, NAT64, 6to4). Anything
+ *  that can't be read is treated as private. */
+export function privateAddress(a: string): boolean {
+  if (isIP(a) === 4) return v4Private(a)
+  const g = ipv6Groups(a)
+  if (!g) return true
+  const v4 = (hi: number, lo: number) => `${hi >> 8}.${hi & 255}.${lo >> 8}.${lo & 255}`
+  const zero = (n: number) => g.slice(0, n).every(x => x === 0)
+  if (zero(5) && g[5] === 0xffff) return v4Private(v4(g[6]!, g[7]!))                    // IPv4-mapped
+  if (zero(6)) return true                                                                // ::, ::1 and IPv4-compatible
+  if (g[0] === 0x64 && g[1] === 0xff9b && g.slice(2, 6).every(x => x === 0)) return v4Private(v4(g[6]!, g[7]!))   // NAT64
+  if (g[0] === 0x2002) return v4Private(v4(g[1]!, g[2]!))                                 // 6to4
+  return (g[0]! & 0xfe00) === 0xfc00 || (g[0]! & 0xffc0) === 0xfe80 || (g[0]! & 0xff00) === 0xff00 || (g[0] === 0x2001 && g[1] === 0xdb8)
 }
 
 /** Why this URL can't be a webhook's, or null (R2). */
@@ -157,6 +185,8 @@ function send(url: string, payload: string | null, headers: Record<string, strin
   const u = new URL(url)
   const allowed = list(process.env.STRAND_WEBHOOK_PRIVATE_HOSTS)
   const host = u.hostname.toLowerCase().replace(/^\[|\]$/g, '')
+  // an address written in the URL is connected to without a lookup: check it here
+  if (isIP(host) && privateAddress(host) && !allowed.includes(host)) return Promise.reject(new Error(`${host} is a private address`))
   return new Promise((ok, fail) => {
     const req = (u.protocol === 'https:' ? https : http).request(u, {
       method: 'POST', timeout: 10_000, headers: { ...headers, ...(payload !== null ? { 'content-length': String(Buffer.byteLength(payload)) } : { 'content-length': '0' }) },
