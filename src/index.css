@@ -1585,3 +1585,4 @@ h2.empty-title, h2.section-title, h2.side-title { margin: 0 }
 .panel-stats { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; margin: 6px 4px 2px 26px; font-size: 12px }
 .panel-stats dt { color: var(--text-2) }
 .swatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px }
+.control-refine { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-bottom: 12px }

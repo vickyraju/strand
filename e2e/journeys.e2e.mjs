@@ -1603,3 +1603,17 @@ test('[0407.R1][0407.R3][0407.R4][0407.R5][0407.R8][0407.R9][0407.R10][0407.R12]
   assert.deepEqual([...o.problems, ...v.problems], [])
 })
 
+test('[0410.R1][0410.R4][0410.R8] the control chart shows an item that went through In progress, in its chart and its table', { skip, timeout: 90_000 }, async () => {
+  await owner('POST', '/projects', { name: 'Controlled', key: 'CCH', template: 'kanban' })
+  const p = (await owner('GET', '/projects/CCH')).body
+  const item = (await owner('POST', '/projects/CCH/issues', { title: 'Measured work' })).body
+  for (const name of ['In progress', 'Done']) await owner('PATCH', `/issues/${item.key}`, { statusId: p.statuses.find(x => x.name === name).id })
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url('/project/CCH/reports/control'))
+  await o.waitForSelector('[aria-label="Control chart: cycle time per item"]')
+  await o.waitForSelector('[aria-label="Control chart items"] >> text=Measured work')
+  await o.selectOption('[aria-label="Timeframe"]', '7')
+  await o.waitForSelector('[aria-label="Control chart items"] >> text=Measured work')
+  assert.deepEqual(o.problems, [])
+})
+

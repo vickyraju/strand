@@ -242,6 +242,10 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'PUT /admin/authentication': AuthMethods,
   'PUT /admin/authentication/entra': AuthMethods,
   'GET /admin/directories': z.array(UserDirectory),
+  'GET /boards/:id/reports/control': z.object({
+    items: z.array(z.object({ id, key: z.string(), title: z.string(), type: z.string(), leftAt: ts.describe('When it last left the chosen columns'), minutes: z.number().describe('Cycle time: minutes spent in the chosen columns, every visit') })),
+    truncated: z.boolean().describe('More than 5000 items: the most recent are returned'),
+  }),
   'GET /boards/:id/panels': z.object({
     epics: z.array(z.unknown()).describe('The board’s epics that aren’t Done, in rank order (work item rows)'),
     epicStats: z.record(z.string(), PanelStat).describe('Per epic id, and "none" for items without an epic'),

@@ -1,7 +1,8 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { useBoard } from '../api/boards'
 import { useDurations } from '../api/settings-public'
-import { TrendingDown, ClipboardCheck, BarChart3, Layers, ArrowLeftRight, Timer, Users, ShieldCheck, GitMerge, ListChecks } from 'lucide-react'
+import { TrendingDown, ClipboardCheck, BarChart3, Layers, ArrowLeftRight, Timer, Users, ShieldCheck, GitMerge, ListChecks, Activity } from 'lucide-react'
+import ControlChart from './ControlChart'
 import { useStore, userOf, isDone, statOf, CATEGORY_COLOR, type Project } from '../data/store'
 import { burndown, velocity, cumulativeFlow, createdVsResolved, cycleTimes, dayLabel } from '../data/analytics'
 import { useApp } from '../appContext'
@@ -13,14 +14,15 @@ import { LineChart, ColumnChart, Legend, Scatter, HBars } from './charts'
 import { Avatar, ConfirmDialog, Empty, Picker, typeMeta, typeList, plural, priorityLabel } from './ui'
 import { can } from '../data/access'
 
-type ReportId = 'sprint' | 'burndown' | 'velocity' | 'cfd' | 'created' | 'cycle' | 'workload' | 'test-coverage' | 'traceability' | 'test-runs'
+type ReportId = 'sprint' | 'burndown' | 'velocity' | 'cfd' | 'created' | 'control' | 'cycle' | 'workload' | 'test-coverage' | 'traceability' | 'test-runs'
 
-const REPORTS: { id: ReportId; name: string; desc: string; Icon: typeof Layers; scrum?: boolean; testing?: boolean }[] = [
+const REPORTS: { id: ReportId; name: string; desc: string; Icon: typeof Layers; scrum?: boolean; testing?: boolean; server?: boolean }[] = [
   { id: 'sprint',   name: 'Sprint report',   desc: 'What a sprint completed, what it didn’t, and what changed while it ran.', Icon: ClipboardCheck, scrum: true },
   { id: 'burndown', name: 'Sprint burndown', desc: 'Work remaining in a sprint against the ideal pace.', Icon: TrendingDown, scrum: true },
   { id: 'velocity', name: 'Velocity',        desc: 'Points committed vs completed per sprint.',         Icon: BarChart3, scrum: true },
   { id: 'cfd',      name: 'Cumulative flow', desc: 'Work in each stage over time. Widening bands mean bottlenecks.', Icon: Layers },
   { id: 'created',  name: 'Created vs resolved', desc: 'Is the backlog growing or shrinking?',          Icon: ArrowLeftRight },
+  { id: 'control',  name: 'Control chart',   desc: 'How long each item spent in the columns you choose, with the average and the rolling average.', Icon: Activity, server: true },
   { id: 'cycle',    name: 'Cycle time',      desc: 'How long items take from start to done.',           Icon: Timer },
   { id: 'workload', name: 'Workload',        desc: 'Open items and points per person.',                 Icon: Users },
   { id: 'test-coverage', name: 'Requirement coverage', desc: 'Which requirements are tested, and how they are doing.', Icon: ShieldCheck, testing: true },
@@ -35,7 +37,7 @@ const useReport = () => ({ state: useContext(ReportState)! })
 export default function ReportsView({ project, report }: { project: Project; report?: string }) {
   const { openProject } = useApp()
   const data = useReportState(project)
-  const available = REPORTS.filter(r => (!r.scrum || project.template === 'scrum') && (!r.testing || (project.testing && apiEnabled)))
+  const available = REPORTS.filter(r => (!r.scrum || project.template === 'scrum') && (!r.testing || (project.testing && apiEnabled)) && (!r.server || apiEnabled))
   const current = available.find(r => r.id === report) ?? available[0]
 
   return (
@@ -58,6 +60,7 @@ export default function ReportsView({ project, report }: { project: Project; rep
         {current.id === 'test-coverage' ? <CoverageReport project={project} />
           : current.id === 'traceability' ? <TraceabilityReport project={project} />
           : current.id === 'test-runs' ? <TestRunsReport project={project} />
+          : current.id === 'control' ? <ControlChart project={project} />
           : data.error ? <p className="hint error" role="alert">{data.error}</p>
           : !data.state ? <p className="muted" role="status">Loading the project's history…</p>
           : <ReportState.Provider value={data.state}>
