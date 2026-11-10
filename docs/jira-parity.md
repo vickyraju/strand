@@ -169,7 +169,7 @@ Checked against Atlassian's Data Center documentation on 5 November 2026 (Jira S
 |---|---|---|---|---|---|---|---|
 | AD-01 | Audit log | Global and per project, coverage levels ([audit](https://confluence.atlassian.com/adminjiraserver/auditing-in-jira-938847740.html)) | Global and per project | match | match | — | |
 | AD-02 | Announcement banner | Yes, public or private, HTML | System settings › Announcement banner: public or private, preview, closable until it changes | match | match | 0701 | Plain text with links, not HTML (no scripts) |
-| AD-03 | Look and feel | Logo and colours | Absent | absent | match | 0702 | |
+| AD-03 | Look and feel | Site title, logo, favicon, colours, date formats | Site title, logo, favicon, one brand colour with worked-out shades for light and dark themes (readability enforced), reset | match | match | 0702 | Date formats follow each browser |
 | AD-04 | Rate limiting | Everyone, per node ([rate](https://confluence.atlassian.com/adminjiraserver/improving-instance-stability-with-rate-limiting-983794911.html)) | Token requests only | partial | match | 0706 | |
 | AD-05 | Language packs | Yes | English only | absent | open | 0708 | |
 | AUTH-01 | Authentication methods | Administration › System › Authentication methods: SSO configurations enabled or disabled, login form shown or hidden ([idp](https://confluence.atlassian.com/enterprise/using-multiple-identity-providers-1044779993.html)) | Entra configured and turned on or off in Administration; login form shown or hidden; at least one way in | match | match | 0711 | Entra is the only SSO provider (PO); SAML and other OIDC providers not built |

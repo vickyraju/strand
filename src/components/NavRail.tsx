@@ -9,6 +9,7 @@ import { isGlobalAdmin } from '../data/access'
 import { apiEnabled } from '../api/client'
 import { useApp } from '../appContext'
 import { href, navigate, type Route, type ProjectTab } from '../router'
+import { imageUrl, useLook } from '../api/look'
 import { ProjectIcon } from './ProjectView'
 
 export function Logomark({ size = 28 }: { size?: number }) {
@@ -42,6 +43,7 @@ export default function NavRail({ collapsed, onCollapseToggle, onCmdK, route, dr
 }) {
   const { state, dispatch } = useStore()
   const { goTo, openIssue } = useApp()
+  const look = useLook()                                                       // site title and logo (spec 0702)
   const currentKey = route.name === 'project' ? route.key : undefined
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set(currentKey ? [currentKey] : []))
   const unread = state.notifications.filter(n => n.userId === state.me?.id && !n.read && !n.archived).length
@@ -98,8 +100,8 @@ export default function NavRail({ collapsed, onCollapseToggle, onCmdK, route, dr
   return (
     <nav className={`nav-rail${collapsed ? ' collapsed' : ''}${drawer ? ` drawer ${drawer}` : ''}`} aria-label="Main navigation" aria-hidden={drawer === 'closed' || undefined} inert={drawer === 'closed' || undefined}>
       <div className="nav-head">
-        <Logomark size={26} />
-        <span className="nav-label nav-workspace" title={state.workspaceName}>{state.workspaceName}</span>
+        {look.logo ? <img className="site-logo" src={imageUrl(look.logo)!} alt={look.siteTitle} /> : <Logomark size={26} />}
+        {(look.showTitle || !look.logo) && <span className="nav-label nav-workspace" title={look.siteTitle}>{look.siteTitle}</span>}
         <button className="icon-btn" onClick={onCollapseToggle} title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
           {collapsed ? <PanelLeftOpen size={16} strokeWidth={1.75} /> : <PanelLeftClose size={16} strokeWidth={1.75} />}
         </button>

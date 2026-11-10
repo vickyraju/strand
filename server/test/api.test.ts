@@ -3407,6 +3407,11 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     'POST /admin/users': ['gadmin', '/admin/users', { username: 'matrix.local', name: 'Matrix Local', email: 'matrix.local@x.com', password: 'matrix-password' }],   // 0714.R9
     'PATCH /admin/users/{id}': ['gadmin', `/admin/users/${none}`, { name: 'x' }], 'PUT /admin/users/{id}/password': ['gadmin', `/admin/users/${none}/password`, { password: 'matrix-password' }],
     'GET /admin/directories/internal': ['gadmin', '/admin/directories/internal'],
+    'GET /look-and-feel': ['public', '/look-and-feel'],   // 0702.R2
+    'PUT /admin/look-and-feel': ['gadmin', '/admin/look-and-feel', { siteTitle: 'Strand', showTitle: true, brandColor: '#368727' }],   // 0702.R1
+    'DELETE /admin/look-and-feel': ['gadmin', '/admin/look-and-feel'],
+    'PUT /admin/look-and-feel/logo': ['gadmin', '/admin/look-and-feel/logo', { image: 'eA==' }], 'DELETE /admin/look-and-feel/logo': ['gadmin', '/admin/look-and-feel/logo'],
+    'PUT /admin/look-and-feel/favicon': ['gadmin', '/admin/look-and-feel/favicon', { image: 'eA==' }], 'DELETE /admin/look-and-feel/favicon': ['gadmin', '/admin/look-and-feel/favicon'],
     'GET /boards/{id}/panels': ['read', `/boards/${board}/panels`],   // 0407.R2
     'GET /boards/{id}/reports/control': ['read', `/boards/${board}/reports/control?statuses=${none}`],   // 0410.R1
     'GET /admin/directories': ['gadmin', '/admin/directories'], 'GET /admin/directories/presets': ['gadmin', '/admin/directories/presets'],   // 0712.R13
@@ -4805,5 +4810,35 @@ test('[0701.R1][0701.R2] the announcement banner: saved and audited; signed-in p
   assert.ok((await pool.query(`select 1 from audit_log where action = 'settings.announcement.updated' and target = 'Announcement banner'`)).rows.length)
   await call('PUT', '/api/v1/admin/settings/announcement', { text: '', visibility: 'private' }); clearSettingsCache()
   assert.equal(await pub(), null)
+})
+
+test('[0702.R1][0702.R2][0702.R3][0702.R4][0702.R5] look and feel: title and colour saved, audited and public; images checked by content and served safely; reset', { skip }, async () => {
+  const pub = async () => JSON.parse((await app.inject({ method: 'GET', url: '/api/v1/look-and-feel' })).body)
+  assert.deepEqual(await pub(), { siteTitle: 'Strand', showTitle: true, brandColor: '#368727', logo: null, favicon: null })
+  // R1, R4: saved and audited; a colour too light for white text is refused
+  const saved = await call('PUT', '/api/v1/admin/look-and-feel', { siteTitle: 'Acme Work', showTitle: false, brandColor: '#1d4ed8' })
+  assert.deepEqual([saved.status, saved.body.brandColor], [200, '#1D4ED8'])
+  const light = await call('PUT', '/api/v1/admin/look-and-feel', { siteTitle: 'Acme Work', showTitle: false, brandColor: '#FACC15' })
+  assert.equal(light.status, 400); assert.ok(light.body.errors.brandColor)
+  assert.equal((await pub()).siteTitle, 'Acme Work')
+  assert.ok((await pool.query(`select 1 from audit_log where action = 'look_and_feel.updated'`)).rows.length)
+  // R3: a PNG is taken and served as one, with nosniff; SVG and HTML named as an image are refused; size limits
+  const png = Buffer.from('89504e470d0a1a0a0000000d4948445200000001000000010806000000', 'hex')
+  assert.equal((await call('PUT', '/api/v1/admin/look-and-feel/logo', { image: png.toString('base64') })).status, 200)
+  const url = (await pub()).logo
+  assert.match(url, /^\/look-and-feel\/logo\?v=/)
+  const img = await app.inject({ method: 'GET', url: `/api/v1${url}` })
+  assert.deepEqual([img.statusCode, img.headers['content-type'], img.headers['x-content-type-options']], [200, 'image/png', 'nosniff'])
+  assert.ok(img.rawPayload.equals(png))
+  for (const bad of ['<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>', '<html><script>alert(1)</script></html>'])
+    assert.equal((await call('PUT', '/api/v1/admin/look-and-feel/logo', { image: Buffer.from(bad).toString('base64') })).status, 400)
+  const big = Buffer.concat([png, Buffer.alloc(70 * 1024)])
+  assert.equal((await call('PUT', '/api/v1/admin/look-and-feel/favicon', { image: big.toString('base64') })).status, 400)
+  // not with an access token
+  const pat = (await call('POST', '/api/v1/me/tokens', { name: 'look' })).body.token
+  assert.equal((await app.inject({ method: 'DELETE', url: '/api/v1/admin/look-and-feel', headers: { authorization: `Bearer ${pat}` } })).statusCode, 403)
+  // R5: reset defaults
+  assert.deepEqual((await call('DELETE', '/api/v1/admin/look-and-feel')).body, { siteTitle: 'Strand', showTitle: true, brandColor: '#368727', logo: null, favicon: null })
+  assert.equal((await app.inject({ method: 'GET', url: '/api/v1/look-and-feel/logo' })).statusCode, 404)
 })
 

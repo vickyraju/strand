@@ -17,6 +17,8 @@ export const Me = z.object({ id, email: z.string(), name: z.string(), workspaceI
 
 const EntraConfig = z.object({ enabled: z.boolean(), name: z.string(), tenantId: z.string(), apiClientId: z.string(), webClientId: z.string(), authority: z.string() })
 const PanelStat = z.object({ issues: z.number(), completed: z.number(), unestimated: z.number(), estimate: z.number(), todo: z.number(), inProgress: z.number(), done: z.number() })
+const LookAndFeel = z.object({ siteTitle: z.string(), showTitle: z.boolean(), brandColor: z.string(),
+  logo: nullable(z.string()).describe('The logo’s address under the API, or null for Strand’s'), favicon: nullable(z.string()) })
 export const UserDirectory = z.object({
   id, name: z.string(), type: z.enum(['ad', 'ldap']), position: z.number(), enabled: z.boolean(), config: directoryConfig,
   hasPassword: z.boolean().describe('The service account’s password is stored (it is never returned)'),
@@ -239,6 +241,9 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'PUT /admin/authentication': AuthMethods,
   'PUT /admin/authentication/entra': AuthMethods,
   'GET /admin/directories': z.array(UserDirectory),
+  'GET /look-and-feel': LookAndFeel, 'PUT /admin/look-and-feel': LookAndFeel, 'DELETE /admin/look-and-feel': LookAndFeel,
+  'PUT /admin/look-and-feel/logo': LookAndFeel, 'DELETE /admin/look-and-feel/logo': LookAndFeel,
+  'PUT /admin/look-and-feel/favicon': LookAndFeel, 'DELETE /admin/look-and-feel/favicon': LookAndFeel,
   'GET /boards/:id/reports/control': z.object({
     items: z.array(z.object({ id, key: z.string(), title: z.string(), type: z.string(), leftAt: ts.describe('When it last left the chosen columns'), minutes: z.number().describe('Cycle time: minutes spent in the chosen columns, every visit') })),
     truncated: z.boolean().describe('More than 5000 items: the most recent are returned'),

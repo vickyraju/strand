@@ -32,6 +32,7 @@ import { useLocation, navigate, href, type Route } from './router'
 import { Empty } from './components/ui'
 import ErrorBoundary from './components/ErrorBoundary'
 import AnnouncementBanner from './components/AnnouncementBanner'
+import { useLook } from './api/look'
 import { usePublicSettings } from './api/settings-public'
 
 
@@ -59,7 +60,8 @@ export default function App() {
 
 function Shell() {
   const { state, dispatch, undoType } = useStore()
-  const publicSettings = usePublicSettings()   // the screens re-render when the priority and resolution lists arrive or change (spec 0305); the announcement (0701)
+  const publicSettings = usePublicSettings()
+  const look = useLook()   // the screens re-render when the priority and resolution lists arrive or change (spec 0305); the announcement (0701)
   const { route, peek } = useLocation()
   const [railCollapsed, setRailCollapsed]   = useState(() => window.innerWidth < 1024)
   // Phones: the sidebar is a drawer opened from the top bar
@@ -218,8 +220,8 @@ function Shell() {
       : project ? [project.name]
       : route.name === 'inbox' ? ['Inbox'] : route.name === 'search' ? ['Search'] : route.name === 'projects' ? ['Projects']
       : route.name === 'settings' ? ['Settings'] : route.name === 'admin' ? [isGlobalAdmin(state) ? 'Administration' : 'Configuration'] : route.name === 'home' ? ['Your work'] : []
-    document.title = [...parts, state.workspaceName || 'Forge'].join(' · ')
-  }, [route, fullIssue, project, state.workspaceName])
+    document.title = [...parts, look.siteTitle].join(' · ')                       // the site title (spec 0702)
+  }, [route, fullIssue, project, look.siteTitle])
 
   // Unknown project tab → its default tab, keeping the URL tidy
   useEffect(() => {

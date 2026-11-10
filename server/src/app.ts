@@ -31,6 +31,7 @@ import boardRoutes from './routes/boards.ts'
 import listRoutes from './routes/lists.ts'
 import authentication, { ownPassword, publicAuth } from './routes/authentication.ts'
 import directories from './routes/directories.ts'
+import lookAndFeel, { publicLook } from './routes/lookAndFeel.ts'
 import { startDirectories } from './directories.ts'
 import { startAuth } from './authConfig.ts'
 import { githubWebhook } from './routes/github.ts'
@@ -111,6 +112,7 @@ export async function build() {
   await app.register(scim, { prefix: '/scim/v2' })          // own bearer-token auth
   // signing in itself (spec 0711): the login page's configuration, the login form, signing out; no sign-in needed
   await app.register(publicAuth, { prefix: '/api/v1' })
+  await app.register(publicLook, { prefix: '/api/v1' })    // look and feel (spec 0702): the login page draws with it
   await app.register(githubWebhook, { prefix: '/integrations/github/webhook' })   // GitHub signs each call; no user login
 
   const resources: FastifyPluginAsync = async api => {
@@ -145,6 +147,7 @@ export async function build() {
       await v1.register(authentication)
       await v1.register(ownPassword)
       await v1.register(directories)
+      await v1.register(lookAndFeel)
     }, { prefix: '/api/v1' })
     // Xray's addresses for importing CI results: same sign-in and rate limits as the API
     await api.register(raven, { prefix: '/rest/raven/1.0' })
