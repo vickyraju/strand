@@ -1705,3 +1705,23 @@ test('[0703.R1][0703.R3][0703.R5][0703.R6] an admin changes a project’s key: a
   assert.deepEqual(o.problems, [])
 })
 
+test('[0704.R1][0704.R4][0704.R6] an admin anonymises a deactivated person: the preview, a confirmation by alias, and their name becomes the alias', { skip, timeout: 120_000 }, async () => {
+  await owner('POST', '/admin/users', { username: 'gone.gary', name: 'Gary Gone', email: 'gary@local.e2e.test', password: 'gary-password-1' })
+  const gary = (await owner('GET', '/admin/users?query=gary')).body.items[0]
+  await owner('POST', '/admin/users/bulk', { userIds: [gary.id], action: 'deactivate' })
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url('/admin/people'))
+  await o.fill('[aria-label="Find a person"]', 'gary')
+  await o.click('[aria-label="Anonymise Gary Gone"]')
+  await o.waitForSelector('text=This can’t be undone')
+  const alias = await o.locator('.modal b.mono').innerText()
+  assert.match(alias, /^user-[0-9a-f]{6}$/)
+  assert.ok(await o.locator('.modal button:has-text("Anonymise"):disabled').count())
+  await o.fill('#anon-confirm', alias)
+  await o.click('.modal button:has-text("Anonymise")')
+  await o.waitForSelector('text=Gary Gone anonymised')
+  const after = (await owner('GET', `/admin/users?query=${alias}`)).body.items[0]
+  assert.deepEqual([after.name, after.username, !!after.anonymisedAt], [alias, null, true])
+  assert.deepEqual(o.problems, [])
+})
+

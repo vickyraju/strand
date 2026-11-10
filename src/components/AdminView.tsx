@@ -9,7 +9,7 @@ import { formatBytes } from '../data/files'
 import { Avatar, ConfirmDialog, Empty, LoadError, Loading, Modal, openRow, plural, Toggle } from './ui'
 import SystemSettings, { SETTINGS_PAGES } from './SystemSettings'
 import AdminShell, { ITEMS, PageAction } from './admin/AdminShell'
-import { CreateUserDialog, EditUserDialog } from './admin/LocalUsers'
+import { AnonymiseDialog, CreateUserDialog, EditUserDialog } from './admin/LocalUsers'
 import { GroupPicker, Progress, useJob, type GroupRef } from './admin/scale'
 import TestStatusesAdmin from './testing/TestStatusesAdmin'
 import GroupsView from './groups/GroupsView'
@@ -76,7 +76,7 @@ function useLoad<T>(path: string) {
 
 interface Person {
   id: string; name: string; email: string; initials: string; color: string; title: string | null; active: boolean; role: 'owner' | 'admin' | 'member'; projects: number
-  lastActiveAt: string | null; lastSignInAt: string | null; directory?: string | null; username?: string | null; hasPassword?: boolean; groups: { id: string; name: string }[]
+  lastActiveAt: string | null; lastSignInAt: string | null; directory?: string | null; username?: string | null; hasPassword?: boolean; anonymisedAt?: string | null; groups: { id: string; name: string }[]
 }
 type BulkAction = 'deactivate' | 'reactivate' | 'add-to-group' | 'remove-from-group'
 const BULK: Record<BulkAction, string> = { deactivate: 'Deactivate', reactivate: 'Reactivate', 'add-to-group': 'Add to group…', 'remove-from-group': 'Remove from group…' }
@@ -103,6 +103,7 @@ function People() {
   const [jobId, setJobId] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
   const [editing, setEditing] = useState<Person | null>(null)
+  const [anonymising, setAnonymising] = useState<Person | null>(null)
   const seq = useRef(0)
   const filter: Record<string, string> = { ...(q.trim() ? { query: q.trim() } : {}), status, ...(inactive ? { inactive } : {}), ...(group ? (inGroup === 'in' ? { group: group.id } : { notInGroup: group.id }) : {}) }
   const load = (more = false) => {
@@ -183,7 +184,12 @@ function People() {
                   <td className="muted sm admin-wrap">{p.groups.length > 4 ? `${p.groups.slice(0, 3).map(g => g.name).join(', ')} and ${p.groups.length - 3} more` : p.groups.map(g => g.name).join(', ')}</td>
                   <td className="muted" title={p.lastSignInAt ? `Last sign-in ${new Date(p.lastSignInAt).toLocaleString()}` : 'Never signed in'}>{p.lastActiveAt ? timeAgo(Date.parse(p.lastActiveAt)) : 'Never'}</td>
                   <td>{p.active ? <span className="lozenge lozenge-done">Active</span> : <span className="lozenge lozenge-todo">Deactivated</span>}</td>
-                  <td style={{ textAlign: 'right' }}>{!p.directory && p.username !== 'recovery_admin' && <button className="btn btn-ghost btn-sm" aria-label={`Edit ${p.name}`} onClick={() => setEditing(p)}>Edit</button>}</td>
+                  <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                    {p.anonymisedAt ? <span className="muted sm">Anonymised</span> : <>
+                      {!p.directory && p.username !== 'recovery_admin' && <button className="btn btn-ghost btn-sm" aria-label={`Edit ${p.name}`} onClick={() => setEditing(p)}>Edit</button>}
+                      {!p.active && p.role !== 'owner' && <button className="btn btn-ghost btn-sm" aria-label={`Anonymise ${p.name}`} onClick={() => setAnonymising(p)}>Anonymise…</button>}
+                    </>}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -201,6 +207,7 @@ function People() {
       )}
       {creating && <CreateUserDialog onClose={() => setCreating(false)} onCreated={() => load()} />}
       {editing && <EditUserDialog person={editing} onClose={() => setEditing(null)} onSaved={() => load()} />}
+      {anonymising && <AnonymiseDialog person={anonymising} onClose={() => setAnonymising(null)} onDone={() => load()} />}
       {bulk && (
         <ConfirmDialog title={`${BULK[bulk.action].replace('…', '')}: ${count.toLocaleString()} ${count === 1 ? 'person' : 'people'}`}
           action={BULK[bulk.action].replace('…', '')} danger={bulk.action === 'deactivate'} typeToConfirm={everyone && count > 100 ? String(count) : undefined}

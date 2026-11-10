@@ -3424,6 +3424,7 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     'GET /admin/directories/internal': ['gadmin', '/admin/directories/internal'],
     'GET /look-and-feel': ['public', '/look-and-feel'],   // 0702.R2
     'GET /project-categories': ['any', '/project-categories'],   // 0703.R5
+    'GET /admin/users/{id}/anonymise': ['gadmin', `/admin/users/${none}/anonymise`], 'POST /admin/users/{id}/anonymise': ['gadmin', `/admin/users/${none}/anonymise`, {}],   // 0704.R1
     'POST /admin/project-categories': ['gadmin', '/admin/project-categories', { name: 'Matrix category' }],
     'PATCH /admin/project-categories/{id}': ['gadmin', `/admin/project-categories/${none}`, { name: 'x' }], 'DELETE /admin/project-categories/{id}': ['gadmin', `/admin/project-categories/${none}`],
     'PUT /projects/{key}/avatar': ['padmin', `/projects/${K}/avatar`, { image: 'eA==' }], 'DELETE /projects/{key}/avatar': ['padmin', `/projects/${K}/avatar`],   // 0703.R8
@@ -4943,5 +4944,74 @@ test('[0703.R5][0703.R6][0703.R7][0703.R8] project categories and avatars: made 
   assert.equal((await call('DELETE', `/api/v1/admin/project-categories/${c.id}`)).status, 204)
   assert.equal((await call('GET', '/api/v1/projects/CAT')).body.category, null)
   assert.deepEqual(await jql('project = CAT AND category is EMPTY'), [item.key])
+})
+
+test('[0704.R1][0704.R2][0704.R3][0704.R4][0704.R5][0704.R6] anonymising a deactivated person: refused while active; the preview; transfers; their name gone everywhere; running it again is harmless', { skip }, async () => {
+  const { runJobs } = await import('../src/jobs.ts')
+  const { aliasOf } = await import('../src/anonymise.ts')
+  assert.equal((await call('POST', '/api/v1/projects', { name: 'Leaver', key: 'LVR', template: 'kanban' })).status, 201)
+  await join('LVR', 'lena.leaver@x.com', 'admin'); await join('LVR', 'mo.mate@x.com')
+  const id = async (w: string) => (await call('GET', '/api/v1/me', undefined, w)).body.id as string
+  const lena = await id('lena.leaver@x.com'), mo = await id('mo.mate@x.com')
+  await pool.query(`update users set name = 'Lena Leaver', title = 'Engineer' where id = $1`, [lena])
+  // her traces: she leads the project and a component, reports and comments, is mentioned, owns views, a group and a token
+  assert.equal((await call('PATCH', '/api/v1/projects/LVR', { leadId: lena })).status, 200)
+  const comp = (await call('POST', '/api/v1/projects/LVR/components', { name: 'Billing', leadId: lena })).body
+  const item = (await call('POST', '/api/v1/projects/LVR/issues', { title: 'Hers', description: 'Ask @Lena Leaver first' }, 'lena.leaver@x.com')).body
+  await call('POST', `/api/v1/issues/${item.key}/comments`, { body: 'Thanks @Lena Leaver, done' }, 'mo.mate@x.com')
+  await call('POST', `/api/v1/issues/${item.key}/comments`, { body: 'My own note' }, 'lena.leaver@x.com')
+  const shared = (await call('POST', '/api/v1/views', { name: 'Team view', shared: true, filters: { q: '' } }, 'lena.leaver@x.com')).body
+  await call('POST', '/api/v1/views', { name: 'Just mine', shared: false, filters: { q: '' } }, 'lena.leaver@x.com')
+  const mosView = (await call('POST', '/api/v1/views', { name: 'Lena’s work', shared: false, filters: { jql: `assignee = "lena.leaver@x.com"` } }, 'mo.mate@x.com')).body
+  const group = (await call('POST', '/api/v1/groups', { name: 'lena-only' }, 'lena.leaver@x.com')).body
+  await pool.query('delete from group_owners where group_id = $1 and user_id <> $2', [group.id, lena])
+  assert.equal((await call('POST', '/api/v1/me/tokens', { name: 'leaver' }, 'lena.leaver@x.com')).status, 201)
+  // R1: active people are refused; tokens can't do it
+  assert.equal((await call('GET', `/api/v1/admin/users/${lena}/anonymise`)).status, 409)
+  assert.equal((await call('POST', '/api/v1/admin/users/bulk', { userIds: [lena], action: 'deactivate' })).status, 200)
+  // R4: the preview
+  const pv = (await call('GET', `/api/v1/admin/users/${lena}/anonymise`)).body
+  assert.equal(pv.alias, aliasOf(lena))
+  assert.deepEqual([pv.transfer.projectsLed.map((p: any) => p.key), pv.transfer.componentsLed, pv.transfer.sharedViews, pv.transfer.groupsAloneOwned.map((g: any) => g.name)], [['LVR'], 1, 1, ['lena-only']])
+  assert.deepEqual([pv.change.comments, pv.change.reported, pv.change.mentions, pv.remove.privateViews], [1, 1, 2, 1])
+  assert.deepEqual(pv.actionsRequired.map((v: any) => v.id), [mosView.id])
+  // R5: someone must take over what she leads and owns
+  assert.equal((await call('POST', `/api/v1/admin/users/${lena}/anonymise`, {})).status, 400)
+  const started = await call('POST', `/api/v1/admin/users/${lena}/anonymise`, { transferTo: mo })
+  assert.equal(started.status, 202)
+  await runJobs()
+  assert.equal((await pool.query('select status from jobs where id = $1', [started.body.jobId])).rows[0].status, 'done')
+  // R3: her row; what was only hers is gone; her work shows the alias
+  const alias = aliasOf(lena)
+  const [u] = (await pool.query('select name, email, username, title, entra_oid, active, anonymised_at from users where id = $1', [lena])).rows
+  assert.deepEqual([u.name, u.username, u.title, u.entra_oid, u.active, !!u.anonymised_at], [alias, null, null, null, false, true])
+  assert.match(u.email, /^anonymised-.*@invalid$/)
+  for (const t of ['personal_access_tokens', 'user_sessions', 'stars', 'group_owners'])
+    assert.equal((await pool.query(`select count(*)::int as n from ${t} where user_id = $1`, [lena])).rows[0].n, 0, t)
+  const after = (await call('GET', `/api/v1/issues/${item.key}?expand=comments`)).body
+  assert.equal(after.description, `Ask @${alias} first`)
+  const bodies = (await pool.query('select body from comments where issue_id = $1 order by created_at', [item.id])).rows.map(r => r.body)
+  assert.deepEqual(bodies, [`Thanks @${alias}, done`, 'My own note'])
+  assert.equal((await pool.query(`select count(*)::int as n from audit_log where actor = 'lena.leaver@x.com' or target = 'lena.leaver@x.com'`)).rows[0].n, 0)
+  assert.equal((await pool.query(`select count(*)::int as n from audit_log where coalesce(before::text, '') || coalesce(after::text, '') like '%lena.leaver@x.com%'`)).rows[0].n, 0)
+  // the audit log is still append-only outside an anonymisation, and even inside one its ids and actions can't change
+  await assert.rejects(pool.query(`update audit_log set target = 'x' where id = (select id from audit_log limit 1)`), /can only be added to/)
+  await assert.rejects(pool.query(`delete from audit_log where id = (select id from audit_log limit 1)`), /can only be added to/)
+  const c = await pool.connect()
+  try {
+    await c.query('begin'); await c.query(`select set_config('strand.anonymising', 'on', true)`)
+    await assert.rejects(c.query(`update audit_log set action = 'forged' where id = (select id from audit_log limit 1)`), /can only be added to/)
+  } finally { await c.query('rollback'); c.release() }
+  // R5: transfers
+  assert.equal((await call('GET', '/api/v1/projects/LVR')).body.leadId, mo)
+  assert.equal((await pool.query('select lead_id from components where id = $1', [comp.id])).rows[0].lead_id, mo)
+  assert.equal((await pool.query('select owner_id from saved_views where id = $1', [shared.id])).rows[0].owner_id, mo)
+  assert.equal((await pool.query(`select count(*)::int as n from saved_views where owner_id = $1`, [lena])).rows[0].n, 0)
+  assert.ok((await pool.query('select 1 from group_owners where group_id = $1 and user_id = $2', [group.id, mo])).rows.length)
+  // R6: audited, and running it again changes nothing more
+  assert.ok((await pool.query(`select 1 from audit_log where action = 'user.anonymised' and target_id = $1`, [lena])).rows.length)
+  const again = await call('POST', `/api/v1/admin/users/${lena}/anonymise`, { transferTo: mo })
+  assert.equal(again.status, 202); await runJobs()
+  assert.equal((await pool.query('select name from users where id = $1', [lena])).rows[0].name, alias)
 })
 

@@ -249,6 +249,14 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'PUT /admin/authentication': AuthMethods,
   'PUT /admin/authentication/entra': AuthMethods,
   'GET /admin/directories': z.array(UserDirectory),
+  'GET /admin/users/:id/anonymise': z.object({
+    alias: z.string().describe('The name they will show as'),
+    transfer: z.object({ projectsLed: z.array(z.object({ key: z.string(), name: z.string() })), componentsLed: z.number(), sharedViews: z.number(), groupsAloneOwned: z.array(z.object({ name: z.string() })) }),
+    change: z.object({ comments: z.number(), reported: z.number(), assigned: z.number(), mentions: z.number() }),
+    remove: z.object({ privateViews: z.number() }),
+    actionsRequired: z.array(z.object({ id, name: z.string() })).describe('Saved views whose query names them: JQL isn’t rewritten'),
+  }),
+  'POST /admin/users/:id/anonymise': z.object({ jobId: id }),
   'GET /project-categories': z.array(ProjectCategory), 'POST /admin/project-categories': ProjectCategory, 'PATCH /admin/project-categories/:id': ProjectCategory,
   'PUT /projects/:key/avatar': z.object({ avatar: z.string().describe('The avatar’s address under the API') }),
   'GET /look-and-feel': LookAndFeel, 'PUT /admin/look-and-feel': LookAndFeel, 'DELETE /admin/look-and-feel': LookAndFeel,
@@ -442,7 +450,7 @@ export const RESPONSES: Record<string, z.ZodType> = {
     items: z.array(z.object({
       id, name: z.string(), email: z.string(), initials: z.string(), color: z.string(), title: nullable(z.string()), active: z.boolean(),
       role: z.enum(['owner', 'admin', 'member']), createdAt: ts, projects: z.number().describe('Projects they are a member of'),
-      lastActiveAt: nullable(ts).describe('Last used Strand (to the hour)'), lastSignInAt: nullable(ts), directory: nullable(z.string()).describe('The user directory they come from (spec 0712)'), username: nullable(z.string()), hasPassword: z.boolean().describe('Keeps a password in Strand (spec 0714)'), groups: z.array(z.object({ id, name: z.string() })),
+      lastActiveAt: nullable(ts).describe('Last used Strand (to the hour)'), lastSignInAt: nullable(ts), directory: nullable(z.string()).describe('The user directory they come from (spec 0712)'), username: nullable(z.string()), hasPassword: z.boolean().describe('Keeps a password in Strand (spec 0714)'), anonymisedAt: nullable(ts).describe('Anonymised (spec 0704)'), groups: z.array(z.object({ id, name: z.string() })),
     })),
     total: z.number().describe('Everyone the filter matches'), next: nullable(z.string()).describe('Pass back as `cursor`; null on the last page'),
   }),
