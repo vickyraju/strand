@@ -1,6 +1,6 @@
 # 0709 Automation: conditions, schedules, global rules
 
-Status: Approved (PO, 10 Nov 2026: "move ahead with phase 7 … don't wait for my approval")
+Status: Ported (aws-jira `b0117ce`, strand `59ebe5d`), approved by the PO on 10 Nov 2026; awaiting verification
 Parity rows: AU-01
 
 ## Context and Jira reference
