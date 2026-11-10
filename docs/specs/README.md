@@ -90,7 +90,7 @@ The roadmap, in order. Bugs come first, then the permission model, then the data
 | 0607 | Incoming mail | 6 | Planned |
 | 0608 | Print and XML export | 6 | Planned |
 | [0701](0701-announcement-banner.md) | Announcement banner | 7 | Ported |
-| [0702](0702-look-and-feel.md) | Look and feel | 7 | Approved |
+| [0702](0702-look-and-feel.md) | Look and feel | 7 | Ported |
 | [0703](0703-project-key-categories-avatars.md) | Project key change, categories, avatars | 7 | Approved |
 | 0704 | User anonymisation | 7 | Planned |
 | 0705 | Outgoing webhooks | 7 | Planned |
