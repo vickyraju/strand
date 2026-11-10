@@ -182,6 +182,7 @@ export const BulkCount = z.object({ count: z.number() })
 export const ReportData = z.object({
   issues: z.array(IssueRow),
   statusChanges: z.array(z.object({ issueId: id, fromId: nullable(id), toId: id, at: ts })).describe('Every status change, oldest first'),
+  joins: z.array(z.object({ issueId: id, field: z.enum(['parentId', 'fixReleaseIds']), value: z.string().describe('The epic, or the fix versions comma-separated'), at: ts })).describe('When items were put into an epic or versions, oldest first (spec 0411)'),
 })
 export const IssuePage = z.object({ items: z.array(IssueRow), next: nullable(z.string()).describe('Pass back as `cursor` for the next page; null on the last page') })
 

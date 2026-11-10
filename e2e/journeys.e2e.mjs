@@ -1586,3 +1586,24 @@ test('[0410.R1][0410.R4][0410.R8] the control chart shows an item that went thro
   assert.deepEqual(o.problems, [])
 })
 
+test('[0411.R1][0411.R2][0411.R3][0411.R4] the epic, version, burnup, epic burndown and release burndown reports draw for a Scrum project', { skip, timeout: 120_000 }, async () => {
+  await owner('POST', '/projects', { name: 'Reported', key: 'REP', template: 'scrum' })
+  const p = (await owner('GET', '/projects/REP')).body
+  const epic = (await owner('POST', '/projects/REP/issues', { title: 'Reporting epic', type: 'epic' })).body
+  const v = (await owner('POST', '/projects/REP/releases', { name: '3.0' })).body
+  const sprint = (await owner('POST', '/projects/REP/sprints', { name: 'REP Sprint 1' })).body
+  const a = (await owner('POST', '/projects/REP/issues', { title: 'Report me', parentId: epic.id, fixReleaseIds: [v.id], estimate: 3, sprintId: sprint.id })).body
+  await owner('POST', '/projects/REP/issues', { title: 'Still open', parentId: epic.id, fixReleaseIds: [v.id], estimate: 5, sprintId: sprint.id })
+  assert.equal((await owner('POST', `/projects/REP/sprints/${sprint.id}/start`, { endsAt: new Date(Date.now() + 14 * 86_400_000).toISOString() })).status, 200)
+  await owner('PATCH', `/issues/${a.key}`, { statusId: p.statuses.find(x => x.category === 'done').id })
+  const o = await signIn('owner@e2e.test')
+  const open = async (report, check) => { await o.goto(url(`/project/REP/reports/${report}`)); await o.waitForSelector(check) }
+  await open('epic', '[aria-label="Completed"] >> text=Report me')
+  await o.waitForSelector('[aria-label="Incomplete"] >> text=Still open')
+  await open('version', 'text=predicted release date')
+  await open('burnup', '[aria-label="Burnup for REP Sprint 1"]')
+  await open('epic-burndown', '[aria-label="Epic burndown"]')
+  await open('release-burndown', '[aria-label="Release burndown"]')
+  assert.deepEqual(o.problems, [])
+})
+

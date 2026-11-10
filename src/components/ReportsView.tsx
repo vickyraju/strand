@@ -1,7 +1,8 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { useBoard } from '../api/boards'
 import { useDurations } from '../api/settings-public'
-import { TrendingDown, ClipboardCheck, BarChart3, Layers, ArrowLeftRight, Timer, Users, ShieldCheck, GitMerge, ListChecks, Activity } from 'lucide-react'
+import { TrendingDown, ClipboardCheck, BarChart3, Layers, ArrowLeftRight, Timer, Users, ShieldCheck, GitMerge, ListChecks, Activity, TrendingUp, Zap, Rocket } from 'lucide-react'
+import { Burnup, EpicReport, ScopeBurndown, VersionReport } from './AgileReports'
 import ControlChart from './ControlChart'
 import { useStore, userOf, isDone, statOf, CATEGORY_COLOR, type Project } from '../data/store'
 import { burndown, velocity, cumulativeFlow, createdVsResolved, cycleTimes, dayLabel } from '../data/analytics'
@@ -14,12 +15,17 @@ import { LineChart, ColumnChart, Legend, Scatter, HBars } from './charts'
 import { Avatar, ConfirmDialog, Empty, Picker, typeMeta, typeList, plural, priorityLabel } from './ui'
 import { can } from '../data/access'
 
-type ReportId = 'sprint' | 'burndown' | 'velocity' | 'cfd' | 'created' | 'control' | 'cycle' | 'workload' | 'test-coverage' | 'traceability' | 'test-runs'
+type ReportId = 'sprint' | 'burndown' | 'burnup' | 'velocity' | 'epic' | 'version' | 'epic-burndown' | 'release-burndown' | 'cfd' | 'created' | 'control' | 'cycle' | 'workload' | 'test-coverage' | 'traceability' | 'test-runs'
 
 const REPORTS: { id: ReportId; name: string; desc: string; Icon: typeof Layers; scrum?: boolean; testing?: boolean; server?: boolean }[] = [
   { id: 'sprint',   name: 'Sprint report',   desc: 'What a sprint completed, what it didn’t, and what changed while it ran.', Icon: ClipboardCheck, scrum: true },
   { id: 'burndown', name: 'Sprint burndown', desc: 'Work remaining in a sprint against the ideal pace.', Icon: TrendingDown, scrum: true },
+  { id: 'burnup',   name: 'Burnup',          desc: 'A sprint’s scope and the work completed, against the guideline.', Icon: TrendingUp, scrum: true },
+  { id: 'epic-burndown', name: 'Epic burndown', desc: 'An epic’s work per sprint: completed, remaining and added, and how many sprints are left.', Icon: TrendingDown, scrum: true },
+  { id: 'release-burndown', name: 'Release burndown', desc: 'A version’s work per sprint: completed, remaining and added, and how many sprints are left.', Icon: TrendingDown, scrum: true },
   { id: 'velocity', name: 'Velocity',        desc: 'Points committed vs completed per sprint.',         Icon: BarChart3, scrum: true },
+  { id: 'epic',     name: 'Epic report',     desc: 'An epic’s total and completed work over time, and its items.', Icon: Zap },
+  { id: 'version',  name: 'Version report',  desc: 'A version’s progress and its predicted release date.', Icon: Rocket },
   { id: 'cfd',      name: 'Cumulative flow', desc: 'Work in each stage over time. Widening bands mean bottlenecks.', Icon: Layers },
   { id: 'created',  name: 'Created vs resolved', desc: 'Is the backlog growing or shrinking?',          Icon: ArrowLeftRight },
   { id: 'control',  name: 'Control chart',   desc: 'How long each item spent in the columns you choose, with the average and the rolling average.', Icon: Activity, server: true },
@@ -67,6 +73,11 @@ export default function ReportsView({ project, report }: { project: Project; rep
         {current.id === 'sprint'   && <SprintReport project={project} />}
         {current.id === 'burndown' && <Burndown project={project} />}
         {current.id === 'velocity' && <Velocity project={project} />}
+        {current.id === 'burnup'   && <Burnup project={project} state={data.state} />}
+        {current.id === 'epic'     && <EpicReport project={project} state={data.state} />}
+        {current.id === 'version'  && <VersionReport project={project} state={data.state} />}
+        {current.id === 'epic-burndown' && <ScopeBurndown key="epic" project={project} state={data.state} kind="epic" />}
+        {current.id === 'release-burndown' && <ScopeBurndown key="version" project={project} state={data.state} kind="version" />}
         {current.id === 'cfd'      && <Flow project={project} />}
         {current.id === 'created'  && <CreatedResolved project={project} />}
         {current.id === 'cycle'    && <Cycle project={project} />}

@@ -15837,11 +15837,47 @@
                         "additionalProperties": false
                       },
                       "description": "Every status change, oldest first"
+                    },
+                    "joins": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "issueId": {
+                            "type": "string",
+                            "description": "uuid"
+                          },
+                          "field": {
+                            "type": "string",
+                            "enum": [
+                              "parentId",
+                              "fixReleaseIds"
+                            ]
+                          },
+                          "value": {
+                            "type": "string",
+                            "description": "The epic, or the fix versions comma-separated"
+                          },
+                          "at": {
+                            "type": "string",
+                            "description": "ISO 8601 timestamp"
+                          }
+                        },
+                        "required": [
+                          "issueId",
+                          "field",
+                          "value",
+                          "at"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "description": "When items were put into an epic or versions, oldest first (spec 0411)"
                     }
                   },
                   "required": [
                     "issues",
-                    "statusChanges"
+                    "statusChanges",
+                    "joins"
                   ],
                   "additionalProperties": false
                 }
