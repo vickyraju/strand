@@ -2131,7 +2131,13 @@ test('issue security: an item with a level is invisible everywhere to people out
   assert.equal((await call('POST', `/api/v1/issues/${hidden.key}/comments`, { body: 'x' }, 'sec.bob@x.com')).status, 404)
   const keys = (rows: any[]) => rows.map((r: any) => r.key)
   assert.deepEqual(keys((await as('/api/v1/projects/SEC/issues')).body.items), [open.key])
-  assert.deepEqual(keys((await as('/api/v1/projects/SEC/report-data')).body.issues), [open.key])
+  // the reports' history too: when a hidden item joined a version is hidden with it (spec 0411)
+  const rel = (await call('POST', '/api/v1/projects/SEC/releases', { name: 'Sec 1' })).body
+  assert.equal((await call('PATCH', `/api/v1/issues/${hidden.key}`, { fixReleaseIds: [rel.id] })).status, 200)
+  const bobs = (await as('/api/v1/projects/SEC/report-data')).body
+  assert.deepEqual(keys(bobs.issues), [open.key])
+  assert.deepEqual(bobs.joins.filter((j: any) => j.issueId === hidden.id), [])
+  assert.ok((await call('GET', '/api/v1/projects/SEC/report-data', undefined, 'sec.ann@x.com')).body.joins.some((j: any) => j.issueId === hidden.id))
   assert.deepEqual(keys((await as('/api/v1/search?q=vulnerability&resolution=all')).body.items), [])
   assert.deepEqual(keys((await as(`/api/v1/search?jql=${encodeURIComponent('project = SEC')}`)).body.items), [open.key])
   assert.doesNotMatch((await app.inject({ method: 'GET', url: '/api/v1/search/export.csv?q=&resolution=all', headers: { 'x-dev-user': 'sec.bob@x.com' } })).body, /Hidden vulnerability/)
