@@ -1,6 +1,6 @@
 # 0411 Version, epic, epic burndown, release burndown and burnup reports
 
-Status: Approved (PO, 10 Nov 2026: "proceed with phase 4 … don't wait for my approval")
+Status: Ported (aws-jira `1f2c95a`, strand `f31ab3e`), approved by the PO on 10 Nov 2026; awaiting verification
 Parity rows: AG-12
 
 ## Context and Jira reference
