@@ -26,11 +26,14 @@ const OPS = { empty: 'is empty', notEmpty: 'has a value', is: 'is', isNot: 'is n
 export default function RulesEditor({ rules, onChange, statuses }: Props) {
   const [groups, setGroups] = useState<Group[]>([])
   useEffect(() => { if (apiEnabled) api<Group[]>('GET', '/api/groups/search').then(setGroups, () => {}) }, [])
+  // Jira's "Trigger a webhook" post function (spec 0715 R6): offered when there are webhooks
+  const [hooks, setHooks] = useState<Group[]>([])
+  useEffect(() => { if (apiEnabled) api<Group[]>('GET', '/api/admin/webhooks').then(setHooks, () => {}) }, [])
   // workflows are shared by projects, so their rules use the standard fields (each project has its own custom fields)
   const fieldList = Object.entries(RULE_FIELDS).map(([k, v]) => ({ key: k, name: v }))
   const fieldName = (k: string) => (k === 'comment' ? 'Comment' : fieldList.find(f => f.key === k)?.name ?? 'A field that was removed')
   const statusName = (id: string) => statuses.find(s => s.id === id)?.name ?? 'a removed status'
-  const ctx = { groups, fieldList, fieldName, statusName, statuses }
+  const ctx = { groups, fieldList, fieldName, statusName, statuses, hooks }
   const set = (patch: Partial<TransitionRules>) => onChange(clean({ ...rules, ...patch }))
 
   const restrict = rules.restrict ?? { op: 'all' as const, items: [] }
@@ -61,7 +64,7 @@ export default function RulesEditor({ rules, onChange, statuses }: Props) {
         <h3 className="subhead">Perform actions</h3>
         <p className="hint">Changes made as part of the move, recorded in the item’s history as done by this transition.</p>
         <List items={rules.actions ?? []} limit={LIMITS.actions} onChange={actions => set({ actions })}
-          add={ACTIONS}
+          add={hooks.length ? [...ACTIONS, ['Trigger a webhook', { kind: 'webhook', webhookId: hooks[0]!.id }]] : ACTIONS}
           render={(a, put) => <ActionRow a={a} put={put} ctx={ctx} />} />
       </section>
     </div>
@@ -78,7 +81,7 @@ function clean(r: TransitionRules): TransitionRules {
   return out
 }
 
-type Ctx = { groups: Group[]; fieldList: { key: string; name: string }[]; fieldName: (k: string) => string; statusName: (id: string) => string; statuses: Status[] }
+type Ctx = { groups: Group[]; hooks: Group[]; fieldList: { key: string; name: string }[]; fieldName: (k: string) => string; statusName: (id: string) => string; statuses: Status[] }
 
 /** A list of rules with an "Add" menu; each row edits one rule and can be removed. */
 function List<T>({ items, limit, onChange, add, render }: {
@@ -224,6 +227,12 @@ function ActionRow({ a, put, ctx }: { a: Action; put: (a: Action) => void; ctx: 
     }
     case 'copyFromParent': return <span className="rule-line">Copy
       <FieldSelect value={a.field} fields={ctx.fieldList} onChange={field => put({ ...a, field })} />from the parent item</span>
+    case 'webhook': return <span className="rule-line">Trigger the webhook
+      <select className="input input-sm" aria-label="Webhook" value={a.webhookId} onChange={e => put({ kind: 'webhook', webhookId: e.target.value })}>
+        {!ctx.hooks.some(h => h.id === a.webhookId) && <option value={a.webhookId}>a webhook that was removed</option>}
+        {ctx.hooks.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
+      </select>
+    </span>
     case 'comment': return <span className="rule-line" style={{ flex: 1 }}>Comment
       <input className="input input-sm" style={{ flex: 1 }} aria-label="Comment" value={a.body} placeholder="What to write" onChange={e => put({ ...a, body: e.target.value })} />
     </span>

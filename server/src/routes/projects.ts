@@ -736,7 +736,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     if (from.includes(req.params.id)) throw new HttpError(400, 'A version can’t be merged into itself', { from: 'Includes the target' })
     return tx(async d => {
       const target = await usableRelease(d, p.id, req.params.id, null, 'id')
-      const gone = await d.query<{ id: string; name: string; archived: boolean }>('select id, name, archived from releases where project_id = $1 and id = any($2::uuid[]) for update', [p.id, from])
+      const gone = await d.query<{ id: string; name: string; archived: boolean }>('select * from releases where project_id = $1 and id = any($2::uuid[]) for update', [p.id, from])
       if (gone.length !== from.length) throw new HttpError(400, 'Every version merged must be one of this project’s', { from: 'Unknown version' })
       const archived = gone.find(g => g.archived)
       if (archived) throw new HttpError(400, `Version ${archived.name} is archived`, { from: 'Archived' })
@@ -746,6 +746,8 @@ const plugin: FastifyPluginAsyncZod = async app => {
       }
       await d.query('delete from releases where id = any($1::uuid[])', [from])
       await audit(d, req, { action: 'project.release.merged', type: 'release', id: target.id, name: target.name, project: p, before: { versions: gone.map(g => g.name) } })
+      // Jira's: each merged version is deleted, with the version it went into (spec 0715 R2)
+      for (const g of gone) await emit(d, req.me.workspaceId, 'jira:version_deleted', { projectId: p.id, versionId: g.id, entity: g, mergedToId: target.id }, req.me.id)
       return (await d.query('select * from releases where id = $1', [target.id]))[0]
     })
   })
@@ -851,11 +853,12 @@ const plugin: FastifyPluginAsyncZod = async app => {
     const w = pick(req.body, ['name', 'goal', 'endsAt'])
     if (!w.keys.length) throw new HttpError(400, 'Nothing to update')
     const { p } = await managedSprint(db, req)
+    const [old] = await db.query('select * from sprints where id = $1 and project_id = $2', [req.params.id, p.id])
     const [s] = await db.query(
       `update sprints set ${w.cols.map((c, i) => `${c} = $${i + 3}`).join(', ')} where id = $1 and project_id = $2 returning *`,
       [req.params.id, p.id, ...w.vals])
     if (!s) throw new HttpError(404, 'Not found')
-    await emit(db, req.me.workspaceId, 'sprint_updated', { sprintId: s.id, projectId: p.id }, req.me.id)
+    await emit(db, req.me.workspaceId, 'sprint_updated', { sprintId: s.id, projectId: p.id, old }, req.me.id)   // Jira's oldValue (spec 0715 R4)
     return s
   })
 

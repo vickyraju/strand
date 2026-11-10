@@ -11,18 +11,22 @@ import { PageAction } from './admin/AdminShell'
 interface Hook { id: string; name: string; description: string; url: string; events: string[]; jql: string | null; excludeBody: boolean; enabled: boolean; lastCall: { event: string; state: string; statusCode: number | null; at: string } | null }
 interface Call { id: string; event: string; url: string; state: 'queued' | 'retrying' | 'delivered' | 'failed'; attempts: number; statusCode: number | null; error: string | null; createdAt: string }
 
-/** Jira's events, in its groups. */
+/** Every event Jira DC's webhooks offer, in its groups (spec 0715). */
 const GROUPS: [string, [string, string][]][] = [
-  ['Issue', [['jira:issue_created', 'created'], ['jira:issue_updated', 'updated'], ['jira:issue_deleted', 'deleted']]],
+  ['Issue', [['jira:issue_created', 'created'], ['jira:issue_updated', 'updated'], ['jira:issue_deleted', 'deleted'], ['jira:worklog_updated', 'worklog changed']]],
   ['Comment', [['comment_created', 'created'], ['comment_updated', 'updated'], ['comment_deleted', 'deleted']]],
   ['Worklog', [['worklog_created', 'created'], ['worklog_updated', 'updated'], ['worklog_deleted', 'deleted']]],
   ['Issue link', [['issuelink_created', 'created'], ['issuelink_deleted', 'deleted']]],
   ['Project', [['project_created', 'created'], ['project_updated', 'updated'], ['project_deleted', 'deleted']]],
-  ['Version', [['jira:version_created', 'created'], ['jira:version_updated', 'updated'], ['jira:version_released', 'released'], ['jira:version_unreleased', 'unreleased'], ['jira:version_deleted', 'deleted']]],
-  ['Sprint', [['sprint_created', 'created'], ['sprint_started', 'started'], ['sprint_closed', 'closed'], ['sprint_updated', 'updated'], ['sprint_deleted', 'deleted']]],
-  ['Board', [['board_created', 'created'], ['board_updated', 'updated'], ['board_deleted', 'deleted']]],
-  ['User', [['user_created', 'created'], ['user_updated', 'updated']]],
+  ['Version', [['jira:version_released', 'released'], ['jira:version_unreleased', 'unreleased'], ['jira:version_created', 'created'], ['jira:version_moved', 'moved'], ['jira:version_updated', 'updated'], ['jira:version_deleted', 'deleted or merged']]],
+  ['User', [['user_created', 'created'], ['user_updated', 'updated'], ['user_deleted', 'deleted (anonymised)']]],
+  ['Jira configuration', [['option_voting_changed', 'voting'], ['option_watching_changed', 'watching'], ['option_unassigned_issues_changed', 'unassigned issues'],
+    ['option_subtasks_changed', 'sub-tasks'], ['option_attachments_changed', 'attachments'], ['option_issuelinks_changed', 'issue links'], ['option_timetracking_changed', 'time tracking']]],
+  ['Sprint', [['sprint_created', 'created'], ['sprint_deleted', 'deleted'], ['sprint_updated', 'updated'], ['sprint_started', 'started'], ['sprint_closed', 'closed']]],
+  ['Board', [['board_created', 'created'], ['board_updated', 'updated'], ['board_deleted', 'deleted'], ['board_configuration_changed', 'configuration changed']]],
 ]
+/** Chosen for webhooks moved from Jira, but nothing in Strand makes these changes. */
+const NEVER_SENT = new Set(['jira:version_moved', 'option_voting_changed', 'option_watching_changed', 'option_unassigned_issues_changed', 'option_subtasks_changed', 'option_issuelinks_changed', 'option_timetracking_changed'])
 
 export default function WebhooksAdmin() {
   const [rows, setRows] = useState<Hook[] | null>(null)
@@ -98,7 +102,8 @@ function Editor({ hook, onClose, onSaved }: { hook: Hook | null; onClose: () => 
         {!all && <div className="webhook-events">
           {GROUPS.map(([g, evs]) => (
             <div key={g}><b className="sm">{g}</b>
-              {evs.map(([e, l]) => <label key={e} className="check-row"><input type="checkbox" checked={f.events.includes(e)} onChange={() => toggle(e)} />{l}</label>)}
+              {evs.map(([e, l]) => <label key={e} className="check-row" title={NEVER_SENT.has(e) ? 'Never sent: Strand has no such change' : e}>
+                <input type="checkbox" checked={f.events.includes(e)} onChange={() => toggle(e)} />{l}{NEVER_SENT.has(e) && <span className="muted sm"> (never sent)</span>}</label>)}
             </div>
           ))}
         </div>}

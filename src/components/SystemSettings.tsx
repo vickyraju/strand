@@ -21,6 +21,7 @@ export const SETTINGS_PAGES = [
   { id: 'search-and-bulk', label: 'Search, export and bulk' }, { id: 'email', label: 'Email notifications' }, { id: 'groups', label: 'Group creation' },
   { id: 'testing', label: 'Testing' }, { id: 'due-dates', label: 'Due dates' }, { id: 'deleted-items', label: 'Deleted work items' },
   { id: 'time-tracking', label: 'Time tracking' }, { id: 'project-keys', label: 'Project keys' }, { id: 'sign-in', label: 'Sign-in' },
+  { id: 'automation', label: 'Automation' }, { id: 'webhooks', label: 'Webhooks' },
 ] as const
 
 interface Setting<V = any> { key: string; label: string; description: string; value: V; default: V }
@@ -64,6 +65,18 @@ export default function SystemSettings({ page = SETTINGS_PAGES[0].id }: { page?:
       {page === 'look-and-feel' && <LookAndFeel />}
       {page === 'announcement' && <AnnouncementSection setting={of('announcement')} save={v => save('announcement', v)} />}
       {page === 'rate-limiting' && <RateLimitingSection setting={of<RateLimiting>('rateLimiting')} save={v => save('rateLimiting', v)} />}
+      {page === 'automation' && <SimpleSection setting={of('automation')} save={v => save('automation', v)} fields={[
+        { key: 'minScheduleMinutes', label: 'Shortest schedule', hint: 'Minutes between two runs of a scheduled rule, at least', type: 'number', min: 1, max: 1440 },
+        { key: 'maxItemsPerRun', label: 'Work items a scheduled run acts on', hint: 'The rest wait for the next run', type: 'number', min: 1, max: 100000 },
+      ]} />}
+      {page === 'webhooks' && (() => {
+        // Jira Software's field ids, shown flat and saved under fieldIds (spec 0715 R5)
+        const s = of<{ fieldIds: Record<string, string> }>('webhooks')
+        return <SimpleSection setting={{ ...s, value: s.value.fieldIds, default: s.default.fieldIds }} save={v => save('webhooks', { fieldIds: v })} fields={([
+          ['sprint', 'Sprint'], ['epicLink', 'Epic Link'], ['epicName', 'Epic Name'], ['epicStatus', 'Epic Status'], ['epicColour', 'Epic Colour'],
+          ['storyPoints', 'Story Points'], ['rank', 'Rank'], ['flagged', 'Flagged'],
+        ] as const).map(([key, label]) => ({ key, label, type: 'text' as const }))} />
+      })()}
       {page === 'attachments' && <SimpleSection setting={of('attachments')} save={v => save('attachments', v)} fields={[
         { key: 'enabled', label: 'Allow attachments', type: 'toggle' },
         { key: 'maxSizeMb', label: 'Largest file (MB)', type: 'number', min: 1, max: 2048 },

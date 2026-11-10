@@ -33,7 +33,7 @@ import authentication, { ownPassword, publicAuth } from './routes/authentication
 import directories from './routes/directories.ts'
 import lookAndFeel, { publicLook } from './routes/lookAndFeel.ts'
 import projectExtras, { publicAvatars } from './routes/projectExtras.ts'
-import webhookRoutes from './routes/webhooks.ts'
+import webhookRoutes, { jiraRest as jiraWebhooks } from './routes/webhooks.ts'
 import automationRoutes from './routes/automation.ts'
 import { startDirectories } from './directories.ts'
 import { startAuth } from './authConfig.ts'
@@ -169,6 +169,7 @@ export async function build() {
     }, { prefix: '/api/v1' })
     // Xray's addresses for importing CI results: same sign-in and rate limits as the API
     await api.register(raven, { prefix: '/rest/raven/1.0' })
+    await api.register(jiraWebhooks, { prefix: '/rest/webhooks/1.0' })   // Jira's webhook REST (spec 0715 R7)
   }
   await app.register(resources)
 

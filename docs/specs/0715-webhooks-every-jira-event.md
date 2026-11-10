@@ -24,7 +24,7 @@ Parity rows: IN-01
   - `issue`: as Jira's REST `GET /rest/api/2/issue` returns it: `id`, `self`, `key`, `fields` with Jira's field ids and shapes (`summary`, `issuetype`, `status` with `statusCategory`, `priority`, `assignee`, `reporter`, `creator`, `project`, `labels`, `components`, `fixVersions`, `versions`, `created`, `updated`, `duedate`, `resolution`, `resolutiondate`, time tracking in seconds, `parent`, `subtasks`, `issuelinks`, `comment`, `worklog`, Jira Software's custom fields).
   - `changelog` on `jira:issue_updated`: `id`, `items` of `field`, `fieldtype`, `from`, `fromString`, `to`, `toString`, in Jira's field names.
   - `comment` when the change carried one. Other events carry `comment`, `worklog`, `issueLink`, `project`, `version` (with `mergedTo` on a merge), `user`, `sprint` (with `oldValue` on an update), `board` or `configuration`.
-  - In Jira, a comment, a work log or a transition also fires `jira:issue_updated` (with its `issue_event_type_name`).
+  - In Jira, a comment, a new work log or a transition also fires `jira:issue_updated` (with its `issue_event_type_name`); a work log changed or deleted fires `jira:worklog_updated`.
 - **Strand today** (spec 0705): 29 of Jira's events, a body in Jira's outline but with Strand's names inside it (changelog fields `title`, `statusId`; issue type keys; status categories `todo`), no `issue_event_type_name`, no post function, no Jira REST.
 
 ## Community and Atlassian backlog
@@ -45,8 +45,8 @@ Spec 0705's research applies. Checked 10 Nov 2026 on [jira.atlassian.com](https:
 
   Those can be chosen (so webhooks from Jira carry over) and are marked "never sent: Strand has no such change".
 - **R2: When.**
-  - `jira:issue_updated` also fires for a comment added, edited or deleted, a work log added, edited or deleted, and a transition, as Jira's does.
-  - `jira:worklog_updated` fires when a work log is edited or deleted.
+  - `jira:issue_updated` also fires for a comment added, edited or deleted, a work log added, and a transition, as Jira's does.
+  - `jira:worklog_updated` (not `jira:issue_updated`) fires when a work log is edited or deleted, as Jira's does.
   - `user_deleted` fires when a person is anonymised (Strand never deletes people; anonymising is how their data goes).
   - `board_configuration_changed` fires when a board's columns, filter, estimation or swimlanes change; `board_updated` when its name or admins do.
   - `option_attachments_changed` fires when attachments are turned on or off.
@@ -55,7 +55,7 @@ Spec 0705's research applies. Checked 10 Nov 2026 on [jira.atlassian.com](https:
   - `issue_assigned` when only the assignee changed;
   - `issue_generic` for a transition (as Jira's default workflows fire);
   - `issue_commented`, `issue_comment_edited`, `issue_comment_deleted`;
-  - `issue_worklogged`, `issue_worklog_updated`, `issue_worklog_deleted`;
+  - `issue_worklogged` (on `jira:issue_updated`); `issue_worklog_updated` and `issue_worklog_deleted` (on `jira:worklog_updated`);
   - otherwise `issue_updated`.
 - **R4: Jira's representations.**
   - **People:** `name` is the username (else the email), `key` is the person's id, `emailAddress`, `displayName`, `active`, `timeZone`.
@@ -91,6 +91,7 @@ Spec 0705's research applies. Checked 10 Nov 2026 on [jira.atlassian.com](https:
 ## Screens
 
 - Administration › Webhooks: every Jira event in Jira's groups, the never-sent ones marked.
+- System settings › Automation: spec 0709's limits (missing until now).
 - The transition editor's Actions: **Trigger a webhook**.
 - System settings › Webhooks: Jira Software's field ids.
 
@@ -126,3 +127,5 @@ Same rules.
 None.
 
 ## Changelog
+
+- 10 Nov 2026, while building: work log changes fire `jira:worklog_updated` rather than `jira:issue_updated`, as Jira maps its events; System settings › Automation (spec 0709's limits) gained its page.

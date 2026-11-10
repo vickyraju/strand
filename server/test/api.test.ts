@@ -3882,7 +3882,7 @@ test('system settings: admins change policies at runtime (validated, audited); e
   const { clearSettingsCache } = await import('../src/settings.ts')
   const put = (key: string, value: object, who = 'owner@x.com') => call('PUT', `/api/v1/admin/settings/${key}`, value, who)
   const all = (await call('GET', '/api/v1/admin/settings')).body
-  assert.deepEqual(all.map((s: any) => s.key), ['rateLimiting', 'announcement', 'attachments', 'accessTokens', 'searchAndBulk', 'signIn', 'groups', 'automation', 'testing', 'dueReminders', 'email', 'deletedItems', 'projectKeys', 'timeTracking'])
+  assert.deepEqual(all.map((s: any) => s.key), ['rateLimiting', 'announcement', 'attachments', 'accessTokens', 'searchAndBulk', 'signIn', 'groups', 'webhooks', 'automation', 'testing', 'dueReminders', 'email', 'deletedItems', 'projectKeys', 'timeTracking'])
   assert.equal(all.find((s: any) => s.key === 'rateLimiting').value.enabled, false)                  // no limit unless an admin sets one
   assert.equal((await call('GET', '/api/v1/admin/settings', undefined, 'set.member@x.com')).status, 403)
   assert.equal((await put('attachments', { enabled: true, maxSizeMb: 5 }, 'set.member@x.com')).status, 403)
@@ -5198,10 +5198,11 @@ test('[0705.R1][0705.R2][0705.R3][0705.R4][0705.R5][0705.R6][0705.R7][0705.R8] o
     await call('POST', `/api/v1/issues/${bug.key}/comments`, { body: 'Seen it' })
     await runJobs(50); await runJobs(50)
     const bodies = got.map(g => JSON.parse(g.body))
-    assert.deepEqual(bodies.map(b => b.webhookEvent), ['jira:issue_created', 'jira:issue_updated', 'comment_created'])
+    // a comment fires jira:issue_updated too, as Jira's (spec 0715 R2)
+    assert.deepEqual(bodies.map(b => b.webhookEvent), ['jira:issue_created', 'jira:issue_updated', 'comment_created', 'jira:issue_updated'])
     assert.equal(got[0]!.url, `/jira/${bug.key}?p=WHK`)
-    assert.deepEqual([bodies[0].issue.key, bodies[0].issue.fields.summary, bodies[0].issue.fields.issuetype.name, bodies[0].user.emailAddress], [bug.key, 'Broken', 'bug', 'owner@x.com'])
-    assert.deepEqual(bodies[1].changelog.items.map((i: any) => [i.field, i.fromString, i.toString]), [['title', 'Broken', 'Broken badly']])
+    assert.deepEqual([bodies[0].issue.key, bodies[0].issue.fields.summary, bodies[0].issue.fields.issuetype.name, bodies[0].user.emailAddress], [bug.key, 'Broken', 'Bug', 'owner@x.com'])
+    assert.deepEqual(bodies[1].changelog.items.map((i: any) => [i.field, i.fromString, i.toString]), [['summary', 'Broken', 'Broken badly']])
     assert.equal(bodies[2].comment.body, 'Seen it')
     assert.equal(got[0]!.headers['x-strand-signature'], `sha256=${createHmac('sha256', hook.secret).update(got[0]!.body).digest('hex')}`)
     assert.equal(got[0]!.headers['x-strand-event'], 'jira:issue_created')
@@ -5238,6 +5239,131 @@ test('[0705.R1][0705.R2][0705.R3][0705.R4][0705.R5][0705.R6][0705.R7][0705.R8] o
   } finally {
     delete process.env.STRAND_WEBHOOK_HTTP_HOSTS; delete process.env.STRAND_WEBHOOK_PRIVATE_HOSTS
     await pool.query('delete from webhooks'); (await import('../src/webhooks.ts')).forgetWebhookCache()
+    receiver.close()
+  }
+})
+
+test('[0715.R1][0715.R2][0715.R3][0715.R4][0715.R5][0715.R6][0715.R7][0715.R8] webhooks: every Jira DC event, in Jira’s representations; the post function; Jira’s webhook REST', { skip, timeout: 60_000 }, async () => {
+  const { runJobs } = await import('../src/jobs.ts')
+  const { clearSettingsCache } = await import('../src/settings.ts')
+  process.env.STRAND_SECRET_KEY ??= 'a-secret-key-for-tests-only-0705-xxxxxxxx'
+  const got: { url: string; body: any }[] = []
+  const receiver = createServer((req, res) => { let b = ''; req.on('data', c => { b += c }); req.on('end', () => { got.push({ url: req.url!, body: b ? JSON.parse(b) : null }); res.writeHead(200).end('ok') }) })
+  await new Promise<void>(r => receiver.listen(0, '127.0.0.1', r))
+  const base = `http://127.0.0.1:${(receiver.address() as { port: number }).port}`
+  process.env.STRAND_WEBHOOK_HTTP_HOSTS = '127.0.0.1'; process.env.STRAND_WEBHOOK_PRIVATE_HOSTS = '127.0.0.1'
+  const flush = async () => { await runJobs(100); await runJobs(100) }
+  const take = async () => { await flush(); const out = got.splice(0); return out }
+  const of = (calls: { body: any }[], e: string) => calls.filter(c => c.body?.webhookEvent === e).map(c => c.body)
+  try {
+    assert.equal((await call('POST', '/api/v1/projects', { name: 'Jira shaped', key: 'WHJ', template: 'scrum' })).status, 201)
+    const proj = (await call('GET', '/api/v1/projects/WHJ')).body
+    const me = (await call('GET', '/api/v1/me')).body
+    const v1 = (await call('POST', '/api/v1/projects/WHJ/releases', { name: '1.0' })).body
+    const v2 = (await call('POST', '/api/v1/projects/WHJ/releases', { name: '1.1' })).body
+    // R1, R8: a webhook for every event; Jira's URL variables, both spellings
+    const hook = (await call('POST', '/api/v1/admin/webhooks', { name: 'All', url: `${base}/all?m={mergedVersion.id}&u=\${modifiedUser.key}` })).body
+    assert.ok(hook.id)
+    const item = (await call('POST', '/api/v1/projects/WHJ/issues', { title: 'Shaped', type: 'story', estimate: 5, labels: ['api'], fixReleaseIds: [v1.id], dueDate: '2026-12-01' })).body
+    let calls = await take()
+    // R3, R4, R5: the created item as Jira's REST returns it
+    const created = of(calls, 'jira:issue_created')[0]
+    const f = created.issue.fields
+    assert.equal(created.issue_event_type_name, 'issue_created')
+    assert.deepEqual([f.issuetype.name, f.issuetype.id, f.status.statusCategory.key, f.priority.name, f.labels, f.duedate], ['Story', 'story', 'new', 'Medium', ['api'], '2026-12-01'])
+    assert.match(f.created, /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}\+0000$/)
+    assert.deepEqual([f.fixVersions[0].name, f.project.key, f.project.projectTypeKey, f.customfield_10106, f.reporter.key], ['1.0', 'WHJ', 'software', 5, me.id])
+    assert.deepEqual([created.user.name, created.user.displayName, created.user.active], [me.email, me.name, true])
+    assert.equal(calls[0]!.url, `/all?m=&u=${me.id}`)
+    // R3: the assignee alone is issue_assigned; a move issue_generic; the changelog in Jira's names
+    await join('WHJ', 'whj.dev@x.com')
+    const dev = (await call('GET', '/api/v1/me', undefined, 'whj.dev@x.com')).body
+    await call('PATCH', `/api/v1/issues/${item.key}`, { assigneeId: dev.id })
+    const prog = proj.statuses.find((s: any) => s.category === 'in-progress')
+    await call('PATCH', `/api/v1/issues/${item.key}`, { statusId: prog.id })
+    await call('PATCH', `/api/v1/issues/${item.key}`, { estimate: 8, fixReleaseIds: [v2.id], timeEstimate: 90 })
+    const ups = of(await take(), 'jira:issue_updated')
+    assert.deepEqual(ups.map(u => u.issue_event_type_name), ['issue_assigned', 'issue_generic', 'issue_updated'])
+    assert.deepEqual(ups[0].changelog.items, [{ field: 'assignee', fieldtype: 'jira', from: null, fromString: null, to: dev.email, toString: dev.name }])
+    assert.deepEqual(ups[1].changelog.items.map((i: any) => [i.field, i.fromString, i.toString]), [['status', proj.statuses[0].name, prog.name]])
+    // (a first original estimate starts the remaining one, as Jira's)
+    assert.deepEqual(ups[2].changelog.items.map((i: any) => [i.field, i.fieldtype, i.from, i.fromString, i.to, i.toString]), [
+      ['Story Points', 'custom', '5', '5', '8', '8'], ['timeoriginalestimate', 'jira', null, null, '5400', '5400'],
+      ['Fix Version', 'jira', v1.id, '1.0', null, null], ['Fix Version', 'jira', null, null, v2.id, '1.1'], ['timeestimate', 'jira', null, null, '5400', '5400']])
+    assert.deepEqual([ups[2].issue.fields.timeoriginalestimate, ups[2].issue.fields.assignee.key, ups[2].issue.fields.status.statusCategory.key], [5400, dev.id, 'indeterminate'])
+    // R2: comments and work logs fire jira:issue_updated (and work log changes jira:worklog_updated), as Jira's
+    const c = (await call('POST', `/api/v1/issues/${item.key}/comments`, { body: 'Looks right' })).body
+    calls = await take()
+    assert.deepEqual([of(calls, 'comment_created')[0].comment.body, of(calls, 'comment_created')[0].comment.author.key, of(calls, 'comment_created')[0].issue.key], ['Looks right', me.id, item.key])
+    assert.deepEqual([of(calls, 'jira:issue_updated')[0].issue_event_type_name, of(calls, 'jira:issue_updated')[0].comment.id], ['issue_commented', c.id])
+    await call('DELETE', `/api/v1/comments/${c.id}`)
+    assert.equal(of(await take(), 'jira:issue_updated')[0].issue_event_type_name, 'issue_comment_deleted')
+    const w = (await call('POST', `/api/v1/issues/${item.key}/worklogs`, { minutes: 30, date: '2026-11-10' })).body
+    calls = await take()
+    assert.deepEqual([of(calls, 'worklog_created')[0].worklog.timeSpentSeconds, of(calls, 'worklog_created')[0].worklog.timeSpent, of(calls, 'jira:issue_updated')[0].issue_event_type_name], [1800, '30m', 'issue_worklogged'])
+    await call('PATCH', `/api/v1/worklogs/${w.id}`, { minutes: 60 })
+    calls = await take()
+    const wu = of(calls, 'jira:worklog_updated')[0]
+    assert.deepEqual([wu.issue_event_type_name, wu.worklog.timeSpentSeconds, wu.issue.fields.timespent, of(calls, 'worklog_updated').length], ['issue_worklog_updated', 3600, 3600, 1])
+    // R5: Jira Software's field ids come from System settings
+    assert.equal((await call('PUT', '/api/v1/admin/settings/webhooks', { fieldIds: { sprint: 'customfield_10100', epicLink: 'customfield_10101', epicStatus: 'customfield_10102', epicName: 'customfield_10103', epicColour: 'customfield_10104', rank: 'customfield_10105', storyPoints: 'customfield_20002', flagged: 'customfield_10107' } })).status, 200)
+    clearSettingsCache()
+    await call('PATCH', `/api/v1/issues/${item.key}`, { title: 'Shaped again' })
+    assert.equal(of(await take(), 'jira:issue_updated')[0].issue.fields.customfield_20002, 8)
+    // R2, R4: a sprint update carries its oldValue; a merge deletes the merged version with the one it went into
+    const sp = (await call('POST', '/api/v1/projects/WHJ/sprints', { name: 'S1' })).body
+    await take()
+    await call('PATCH', `/api/v1/projects/WHJ/sprints/${sp.id}`, { name: 'S1 renamed' })
+    const su = of(await take(), 'sprint_updated')[0]
+    assert.deepEqual([su.sprint.name, su.oldValue.name, su.sprint.state], ['S1 renamed', 'S1', 'future'])
+    await call('POST', `/api/v1/projects/WHJ/releases/${v2.id}/merge`, { from: [v1.id] })
+    calls = await take()
+    const del = calls.find(x => x.body.webhookEvent === 'jira:version_deleted')!
+    assert.deepEqual([del.body.version.name, del.body.mergedTo.name, del.url.startsWith(`/all?m=${v2.id}`)], ['1.0', '1.1', true])
+    // R2: a board's name is board_updated; its columns are board_configuration_changed
+    const [board] = (await call('GET', '/api/v1/projects/WHJ/boards')).body
+    await call('PATCH', `/api/v1/boards/${board.id}`, { name: 'Renamed board' })
+    assert.deepEqual((await take()).map(x => x.body.webhookEvent).filter(e => e.startsWith('board')), ['board_updated'])
+    const full = (await call('GET', `/api/v1/boards/${board.id}`)).body
+    await call('PATCH', `/api/v1/boards/${board.id}`, { columns: full.columns.slice().reverse() })
+    calls = await take()
+    const bc = of(calls, 'board_configuration_changed')[0]
+    assert.deepEqual([bc.board.name, bc.configuration.columnConfig.columns.length], ['Renamed board', full.columns.length])
+    // R2: switching attachments is Jira's option_attachments_changed
+    const att = (await call('GET', '/api/v1/admin/settings')).body.find((s: any) => s.key === 'attachments').value
+    await call('PUT', '/api/v1/admin/settings/attachments', { ...att, enabled: !att.enabled })
+    assert.equal(of(await take(), 'option_attachments_changed')[0].property.key, 'jira.option.allowattachments')
+    await call('PUT', '/api/v1/admin/settings/attachments', att); clearSettingsCache(); await take()
+    // R6: a transition's post function sends to its webhook, whatever that webhook subscribes to, with Jira's transition
+    const post = (await call('POST', '/api/v1/admin/webhooks', { name: 'Post function', url: `${base}/post`, events: ['project_deleted'] })).body
+    const done = proj.statuses.find((s: any) => s.category === 'done')
+    const [t] = (await pool.query(`select id, name from transitions where project_id = $1 and to_id = $2 and (from_ids is null or $3 = any(from_ids))
+      and (type_keys is null or 'story' = any(type_keys)) order by id limit 1`, [proj.id, done.id, prog.id])).rows   // the one the move uses
+    await pool.query(`update transitions set rules = $2 where id = $1`, [t.id, JSON.stringify({ actions: [{ kind: 'webhook', webhookId: post.id }] })])
+    const moved = await call('PATCH', `/api/v1/issues/${item.key}`, { statusId: done.id })
+    assert.equal(moved.status, 200, JSON.stringify(moved.body))
+    const fired = (await take()).filter(x => x.url === '/post').map(x => x.body)
+    assert.equal(fired.length, 1)
+    assert.deepEqual([fired[0].webhookEvent, fired[0].issue_event_type_name, fired[0].transition.transitionName, fired[0].transition.from_status, fired[0].transition.to_status],
+      ['jira:issue_updated', 'issue_generic', t.name, prog.name, done.name])
+    assert.ok(fired[0].transition.workflowName)
+    // R7: Jira's webhook REST, Jira 9's and Jira 10's shapes; system admins only
+    const made = await call('POST', '/rest/webhooks/1.0/webhook', { name: 'From Jira', url: `${base}/jira9`, events: ['jira:issue_created'], filters: { 'issue-related-events-section': 'project = WHJ' }, excludeBody: false })
+    assert.equal(made.status, 201, JSON.stringify(made.body))
+    assert.deepEqual([made.body.filters['issue-related-events-section'], made.body.enabled, made.body.lastUpdatedUser], ['project = WHJ', true, me.email])
+    assert.match(made.body.secret, /^whsec_/)
+    assert.ok((await call('GET', '/rest/webhooks/1.0/webhook')).body.some((x: any) => x.id === made.body.id))
+    const changed = (await call('PUT', `/rest/webhooks/1.0/webhook/${made.body.id}`, { name: 'From Jira 10', url: `${base}/jira10`, events: ['jira:issue_created'], configuration: { FILTERS: '', EXCLUDE_BODY: 'true' }, active: false })).body
+    assert.deepEqual([changed.name, changed.excludeBody, changed.enabled, changed.configuration.EXCLUDE_BODY], ['From Jira 10', true, false, 'true'])
+    assert.equal((await call('GET', '/rest/webhooks/1.0/webhook', undefined, 'whj.dev@x.com')).status, 403)
+    assert.equal((await call('POST', '/rest/webhooks/1.0/webhook', { name: 'x', url: `${base}/x`, events: ['not_an_event'] })).status, 400)
+    assert.equal((await call('DELETE', `/rest/webhooks/1.0/webhook/${made.body.id}`)).status, 204)
+    assert.equal((await call('GET', `/rest/webhooks/1.0/webhook/${made.body.id}`)).status, 404)
+  } finally {
+    delete process.env.STRAND_WEBHOOK_HTTP_HOSTS; delete process.env.STRAND_WEBHOOK_PRIVATE_HOSTS
+    await pool.query('delete from webhooks'); (await import('../src/webhooks.ts')).forgetWebhookCache()
+    await call('PUT', '/api/v1/admin/settings/webhooks', { fieldIds: { sprint: 'customfield_10100', epicLink: 'customfield_10101', epicStatus: 'customfield_10102', epicName: 'customfield_10103', epicColour: 'customfield_10104', rank: 'customfield_10105', storyPoints: 'customfield_10106', flagged: 'customfield_10107' } })
+    clearSettingsCache()
     receiver.close()
   }
 })
