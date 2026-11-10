@@ -9,7 +9,7 @@ export type OnDemand = 'ready' | 'loading' | 'missing'
  *  `missing` = the server does not know it (or you cannot see it). Without an API every project is already local. */
 export function useProjectOnDemand(key: string | undefined): OnDemand {
   const { state, dispatch } = useStore()
-  const present = !!key && state.projects.some(p => p.key === key)
+  const present = !!key && state.projects.some(p => p.key === key || !!p.oldKeys?.includes(key))   // an earlier key too (spec 0703)
   const [missing, setMissing] = useState<string | null>(null)
 
   useEffect(() => {

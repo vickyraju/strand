@@ -49,7 +49,8 @@ export async function loadWorkspace(keep: string[] = []): Promise<State> {
   // Nothing starred or opened yet (a new teammate, a new browser): start from where work is happening, not from an empty app
   if (!keys.length) keys = (await api<{ key: string }[]>('GET', '/api/me/projects/recent').catch(() => [])).map(p => p.key)
   const loaded = await mapLimit(keys, 6, async k => { try { return await fetchProject(k) } catch { return null } })   // a project that is gone or hidden is skipped
-  const ok = loaded.filter((x): x is NonNullable<typeof x> => !!x)
+  // a project remembered by an earlier key and by its current one loads twice: keep one (spec 0703)
+  const ok = loaded.filter((x): x is NonNullable<typeof x> => !!x).filter((x, i, all) => all.findIndex(y => y.project.id === x.project.id) === i)
   const state = mapWorkspace(me, users, [], starredPage.items.map(p => p.id), { views, notifications })
   state.projects = ok.map(x => x.project)
   if (linkTypes) state.linkTypes = linkTypes.map(({ id, name, outward, inward, builtin }) => ({ id, name, outward, inward, builtin }))

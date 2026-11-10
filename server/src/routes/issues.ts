@@ -68,7 +68,8 @@ export async function issueByKey(d: Db, req: { me: Me; method: string }, ref: st
   const ws = req.me.workspaceId
   const [i] = byId
     ? await d.query<any>(`${ISSUE_ROW} where i.workspace_id = $1 and i.id = $2 ${live}`, [ws, ref])
-    : await d.query<any>(`${ISSUE_ROW} where i.workspace_id = $1 and p.key = $2 and i.number = $3 ${live}`, [ws, m![1]!.toUpperCase(), Number(m![2])])
+    : await d.query<any>(`${ISSUE_ROW} where i.workspace_id = $1 and i.number = $3 ${live}
+        and (p.key = $2 or p.id = (select project_id from project_key_history where workspace_id = $1 and key = $2))`, [ws, m![1]!.toUpperCase(), Number(m![2])])   // an old key too (spec 0703)
   const a = i ? await accessTo(d, req.me, i.projectId) : null
   if (!i || !a) throw new HttpError(404, 'Issue not found')
   // an archived project's items open by their key, read-only (spec 0102); opening one may still record the view

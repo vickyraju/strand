@@ -19,6 +19,7 @@ import LinkTypesAdmin from './LinkTypesAdmin'
 import ListsAdmin from './ListsAdmin'
 import AuthMethods from './AuthMethods'
 import UserDirectories from './UserDirectories'
+import ProjectCategories from './ProjectCategories'
 import SharedViewsAdmin from './SharedViewsAdmin'
 import ArchivedProjects from './admin/ArchivedProjects'
 
@@ -45,6 +46,7 @@ export default function AdminView({ section = 'people', item }: { section?: Admi
       {section === 'groups' && <GroupsView admin={admin} openId={item && UUID.test(item) ? item : null} onOpen={id => navigate(href({ name: 'admin', section: 'groups', ...(id ? { item: id } : {}) }))} />}
       {section === 'auth-methods' && <AuthMethods />}
       {section === 'directories' && <UserDirectories />}
+      {section === 'project-categories' && <ProjectCategories />}
       {section === 'workflows' && <WorkflowsAdmin tab={item === 'statuses' || item === 'schemes' ? item : 'workflows'} />}
       {section === 'link-types' && <LinkTypesAdmin />}
       {(section === 'priorities' || section === 'resolutions') && <ListsAdmin kind={section} />}

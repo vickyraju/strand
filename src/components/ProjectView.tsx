@@ -10,7 +10,7 @@ import { plansInBacklog } from '../data/reducer'
 import { useApp } from '../appContext'
 import { can, canAdmin, isGlobalAdmin } from '../data/access'
 import { navigate, href, type ProjectTab } from '../router'
-import { api, apiEnabled } from '../api/client'
+import { api, apiEnabled, errorMessage } from '../api/client'
 import { useProjectEvents } from '../api/presence'
 import BoardView from './BoardView'
 import DeletedItems from './DeletedItems'
@@ -23,6 +23,7 @@ import { TemplatesPanel, ImportPanel } from './TemplatesImport'
 import { useFilters } from './filters'
 import { Avatar, ConfirmDialog, Empty, Modal, plural } from './ui'
 import { loadProjectByKey } from '../api/load'
+import { imageUrl } from '../api/look'
 import { UserPicker } from './UserPicker'
 
 // Screens most people don't open first load on demand to keep the first page fast
@@ -40,7 +41,9 @@ export const TAB_LABEL: Record<ProjectTab, string> = {
 
 // ── Shared bits ────────────────────────────────────────────
 
-export function ProjectIcon({ project, size = 16 }: { project: Pick<Project, 'name' | 'color'>; size?: number }) {
+export function ProjectIcon({ project, size = 16 }: { project: Pick<Project, 'name' | 'color'> & { avatar?: string | null }; size?: number }) {
+  const src = imageUrl(project.avatar ?? null)                                          // its avatar (spec 0703)
+  if (src) return <img className="proj-icon proj-avatar" src={src} alt="" width={size} height={size} style={{ borderRadius: Math.max(3, size / 5) }} />
   return (
     <span className="proj-icon" style={{ background: project.color, width: size, height: size, fontSize: size * 0.5, borderRadius: Math.max(3, size / 5) }} aria-hidden>
       {project.name[0]?.toUpperCase()}
@@ -65,16 +68,19 @@ export function StarButton({ projectId }: { projectId: string }) {
 /** Search every project in the workspace on the server (the screen below lists only the ones loaded: starred and recent). */
 function RemoteProjectSearch() {
   const [q, setQ] = useState('')
-  const [rows, setRows] = useState<{ id: string; key: string; name: string; template: string; openCount: number }[]>([])
+  const [category, setCategory] = useState('')                                    // a category id, 'none', or '' for any (spec 0703)
+  const [categories, setCategories] = useState<{ id: string; name: string }[]>([])
+  useEffect(() => { api<{ id: string; name: string }[]>('GET', '/api/project-categories').then(setCategories, () => {}) }, [])
+  const [rows, setRows] = useState<{ id: string; key: string; name: string; template: string; openCount: number; color: string; avatar?: string | null; category?: { id: string; name: string } | null }[]>([])
   const [next, setNext] = useState<string | null>(null)
   const [status, setStatus] = useState<'idle' | 'loading' | 'error'>('idle')
   const term = q.trim()
 
   const url = (cursor?: string) =>
-    `/api/projects/search?query=${encodeURIComponent(term)}&limit=20${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`
+    `/api/projects/search?query=${encodeURIComponent(term)}&limit=20${category ? `&category=${category}` : ''}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`
 
   useEffect(() => {
-    if (!term) { setRows([]); setNext(null); setStatus('idle'); return }
+    if (!term && !category) { setRows([]); setNext(null); setStatus('idle'); return }
     let cancelled = false
     setStatus('loading')
     const t = window.setTimeout(() => {   // wait for a pause in typing
@@ -84,7 +90,7 @@ function RemoteProjectSearch() {
       )
     }, 300)
     return () => { cancelled = true; window.clearTimeout(t) }
-  }, [term]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [term, category]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const more = () => {
     if (!next) return
@@ -98,20 +104,25 @@ function RemoteProjectSearch() {
       <div className="form-row" style={{ alignItems: 'center' }}>
         <input className="input" style={{ flex: 1, maxWidth: 420 }} type="search" aria-label="Search all projects" placeholder="Search all projects by name or key…"
           value={q} onChange={e => setQ(e.target.value)} />
+        {categories.length > 0 && <select className="input" style={{ width: 'auto' }} aria-label="Category" value={category} onChange={e => setCategory(e.target.value)}>
+          <option value="">Any category</option><option value="none">No category</option>
+          {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>}
       </div>
-      {term && (
+      {(term || category) && (
         <div className="card-table" style={{ marginTop: 10, marginInline: 0 }} role="region" aria-label="Project search results" aria-live="polite">
           {status === 'error' ? <p className="muted" style={{ padding: 14 }}>Could not search. Try again.</p>
             : rows.length === 0 && status === 'loading' ? <p className="muted" style={{ padding: 14 }}>Searching…</p>
-            : rows.length === 0 ? <p className="muted" style={{ padding: 14 }}>No projects match “{term}”.</p>
+            : rows.length === 0 ? <p className="muted" style={{ padding: 14 }}>No projects match.</p>
             : (
               <table className="table">
-                <thead><tr><th>Name</th><th style={{ width: 90 }}>Key</th><th style={{ width: 100 }}>Type</th><th style={{ width: 120 }}>Open items</th></tr></thead>
+                <thead><tr><th>Name</th><th style={{ width: 90 }}>Key</th><th style={{ width: 160 }}>Category</th><th style={{ width: 100 }}>Type</th><th style={{ width: 120 }}>Open items</th></tr></thead>
                 <tbody>
                   {rows.map(p => (
                     <tr key={p.id} tabIndex={0} onClick={() => navigate(href({ name: 'project', key: p.key }))} onKeyDown={e => e.key === 'Enter' && navigate(href({ name: 'project', key: p.key }))}>
-                      <td className="strong">{p.name}</td>
+                      <td><span className="cell-flex strong"><ProjectIcon project={p} size={20} />{p.name}</span></td>
                       <td className="mono">{p.key}</td>
+                      <td className="muted">{p.category?.name ?? ''}</td>
                       <td>{p.template === 'scrum' ? 'Scrum' : 'Kanban'}</td>
                       <td className="muted">{p.openCount}</td>
                     </tr>
@@ -158,6 +169,7 @@ export function ProjectsView({ onCreate }: { onCreate: () => void }) {
                 <th style={{ width: 44 }}><span className="sr-only">Starred</span></th>
                 <th>Name</th>
                 <th style={{ width: 90 }}>Key</th>
+                <th style={{ width: 140 }}>Category</th>
                 <th style={{ width: 100 }}>Type</th>
                 <th style={{ width: 200 }}>Progress</th>
                 <th style={{ width: 190 }}>Lead</th>
@@ -175,6 +187,7 @@ export function ProjectsView({ onCreate }: { onCreate: () => void }) {
                     <td><StarButton projectId={p.id} /></td>
                     <td><span className="cell-flex strong"><ProjectIcon project={p} size={24} />{p.name}</span></td>
                     <td className="mono">{p.key}</td>
+                    <td className="muted">{p.category?.name ?? ''}</td>
                     <td>{p.template === 'scrum' ? 'Scrum' : 'Kanban'}</td>
                     <td>
                       <span className="cell-flex">
@@ -334,6 +347,7 @@ function ProjectSettings({ project }: { project: Project }) {
   const [deleting, setDeleting] = useState(false)
   const [archiving, setArchiving] = useState(false)
   const [confirm, setConfirm] = useState('')
+  const [newKey, setNewKey] = useState<string | null>(null)
   const update = (patch: ProjectPatch) => dispatch({ type: 'updateProject', id: project.id, patch })
   const lead = userOf(state, project.leadId)
   const count = state.issues.filter(i => i.projectId === project.id).length
@@ -348,11 +362,15 @@ function ProjectSettings({ project }: { project: Project }) {
             <input id="ps-name" className="input" value={name} onChange={e => setName(e.target.value)}
               onBlur={() => name.trim() ? (name.trim() !== project.name && (update({ name: name.trim() }), toast('Project renamed'))) : setName(project.name)} />
           </div>
-          <div style={{ width: 120 }}>
+          <div style={{ width: 160 }}>
             <span className="label">Key</span>
-            <div className="static-field mono" title="Keys can’t change once work items exist">{project.key}</div>
+            {apiEnabled && isGlobalAdmin(state)
+              ? <button className="static-field mono link-btn" title="Change the key" onClick={() => setNewKey(project.key)}>{project.key}</button>
+              : <div className="static-field mono">{project.key}</div>}
+            {!!project.oldKeys?.length && <span className="muted sm">Earlier: {project.oldKeys.join(', ')}</span>}
           </div>
         </div>
+        {apiEnabled && <ProjectExtras project={project} admin={isGlobalAdmin(state)} />}
         <label className="label" htmlFor="ps-desc" style={{ marginTop: 14 }}>Description</label>
         <textarea id="ps-desc" className="input" rows={3} value={description} onChange={e => setDescription(e.target.value)}
           onBlur={() => description !== project.description && update({ description: description.trim() })} placeholder="What is this project for? Shown under the project name." />
@@ -379,6 +397,16 @@ function ProjectSettings({ project }: { project: Project }) {
         </div>
       </section>
 
+      {newKey !== null && <ConfirmDialog title={`Change ${project.key}’s key`} action="Change key" danger={false}
+        onClose={() => setNewKey(null)}
+        onConfirm={async () => {
+          const r = await api<{ key: string }>('PATCH', `/api/projects/${encodeURIComponent(project.key)}`, { key: newKey.trim().toUpperCase() })
+          location.assign(`/project/${r.key}/settings`)                              // every item's key changes: start fresh
+        }}>
+        <p>Every work item takes the new key ({newKey.trim().toUpperCase() || '…'}-1, -2…). The old key keeps finding them: links, searches, filters and boards still work. No other project can take {project.key} afterwards.</p>
+        <label className="label" htmlFor="ps-key" style={{ marginTop: 12 }}>New key</label>
+        <input id="ps-key" className="input mono" value={newKey} onChange={e => setNewKey(e.target.value.toUpperCase())} autoFocus />
+      </ConfirmDialog>}
       <WorkflowPanel project={project} />
       {apiEnabled && <BoardsPanel project={project} />}
       {apiEnabled && can(project, 'deleteIssues') && <DeletedItems project={project} />}
@@ -455,3 +483,44 @@ function ProjectSettings({ project }: { project: Project }) {
     </div>
   )
 }
+
+/** A project's category (system administrators) and avatar (its admins), spec 0703. */
+function ProjectExtras({ project, admin }: { project: Project; admin: boolean }) {
+  const { dispatch } = useStore()
+  const { toast } = useApp()
+  const [categories, setCategories] = useState<{ id: string; name: string }[] | null>(null)
+  useEffect(() => { api<{ id: string; name: string }[]>('GET', '/api/project-categories').then(setCategories, () => setCategories([])) }, [])
+  const reload = () => loadProjectByKey(project.key).then(({ project: p, sprints }) => dispatch({ type: 'loadProject', project: p, sprints }))
+  const fail = (e: unknown) => toast(errorMessage(e), { tone: 'warn' })
+  const upload = (file: File) => {
+    const r = new FileReader()
+    r.onload = () => api('PUT', `/api/projects/${encodeURIComponent(project.key)}/avatar`, { image: String(r.result) }).then(() => { void reload(); toast('Avatar saved') }, fail)
+    r.readAsDataURL(file)
+  }
+  return (
+    <div className="form-row" style={{ marginTop: 14 }}>
+      <div>
+        <span className="label">Category</span>
+        {admin
+          ? <select className="input" style={{ width: 'auto' }} aria-label="Project category" value={project.category?.id ?? ''}
+              onChange={e => api('PATCH', `/api/projects/${encodeURIComponent(project.key)}`, { categoryId: e.target.value || null }).then(() => { void reload(); toast('Category saved') }, fail)}>
+              <option value="">None</option>
+              {(categories ?? []).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          : <div className="static-field">{project.category?.name ?? 'None'}</div>}
+      </div>
+      <div>
+        <span className="label">Avatar</span>
+        <div className="cell-flex">
+          <ProjectIcon project={project} size={28} />
+          {canAdmin(project) && <>
+            <label className="btn btn-secondary btn-sm">Upload…<input type="file" accept="image/png,image/jpeg,image/webp" hidden aria-label="Upload avatar"
+              onChange={e => { const f = e.target.files?.[0]; if (f) upload(f); e.target.value = '' }} /></label>
+            {project.avatar && <button className="btn btn-ghost btn-sm" onClick={() => api('DELETE', `/api/projects/${encodeURIComponent(project.key)}/avatar`).then(() => { void reload(); toast('Avatar removed') }, fail)}>Remove</button>}
+          </>}
+        </div>
+      </div>
+    </div>
+  )
+}
+

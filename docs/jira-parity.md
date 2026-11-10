@@ -60,9 +60,9 @@ Checked against Atlassian's Data Center documentation on 5 November 2026 (Jira S
 | ID | Jira capability | Jira DC | Strand | Status | Decision | Spec | Notes |
 |---|---|---|---|---|---|---|---|
 | PRJ-01 | Archive a project | Jira admins only; archived data is read-only and hidden ([archiving](https://confluence.atlassian.com/adminjiraserver/archiving-a-project-938847621.html)) | Global admins only; read-only for everyone; hidden from lists, search and boards; Administration › Archived projects | match | match | 0102 | |
-| PRJ-02 | Project key change | Admins can change it; old keys keep working ([key](https://confluence.atlassian.com/adminjiraserver/editing-a-project-key-938847080.html)) | Key fixed | absent | match | 0703 | Needs key history (0501). |
+| PRJ-02 | Project key change | Admins can change it; old keys keep working ([key](https://confluence.atlassian.com/adminjiraserver/editing-a-project-key-938847080.html)) | System admins change it; old keys keep finding the project and its items (API, addresses, JQL, boards); no other project takes them | match | match | 0703 | Board filters keep working without edits (better than Jira) |
 | PRJ-03 | Project key format | Uppercase letters by default ([key]) | System settings › Project keys: Jira's default pattern [A-Z][A-Z]+ and 10 characters; a new pattern must fit existing keys | match | match | 0308 | Digits need an admin to widen the pattern, as in Jira. |
-| PRJ-04 | Categories, avatars | Yes | Colour only | absent | match | 0703 | |
+| PRJ-04 | Categories, avatars | Yes | Project categories (one per project, JQL `category`, list filter); uploaded avatars | match | match | 0703 | Jira's avatar gallery not built |
 | PRJ-05 | Delete a project | Permanent | Job with an S3 backup and restore | better | diverge | — | Keep: "project backups" test. |
 | PRJ-06 | Templates | Scrum, Kanban, Basic, Business templates | Scrum, Kanban | partial | open | — | |
 | PRJ-07 | Project roles to people and groups | Roles with default members | Admin, member and viewer, to people and groups | partial | diverge | 0201 | Fixed roles (PRM-01). |

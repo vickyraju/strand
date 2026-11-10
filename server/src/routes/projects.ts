@@ -31,7 +31,8 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 export async function projectByKey(d: Db, req: { me: Me; method: string }, ref: string, min?: ProjectRole | Permission, o: { archivedOk?: boolean } = {}) {
   const byId = UUID.test(ref)
   const [p] = await d.query<{ id: string; leadId: string | null; key: string }>(
-    `select id, lead_id, key from projects where workspace_id = $1 and ${byId ? 'id = $2' : 'key = $2'}`, [req.me.workspaceId, byId ? ref : ref.toUpperCase()])
+    `select id, lead_id, key from projects where workspace_id = $1 and ${byId ? 'id = $2'
+      : '(key = $2 or id = (select project_id from project_key_history where workspace_id = $1 and key = $2))'}`, [req.me.workspaceId, byId ? ref : ref.toUpperCase()])   // an old key too (spec 0703)
   const a = p ? await accessTo(d, req.me, p.id) : null
   if (!p || !a) throw new HttpError(404, 'Project not found')
   if (a.archived && !READS.has(req.method) && !o.archivedOk) throw new HttpError(403, ARCHIVED)
@@ -110,6 +111,8 @@ const childCreate = Object.fromEntries((Object.keys(childPatch) as Kind[]).map(k
 
 const projectBody = z.object({
   name: z.string().min(1).max(120), description: z.string(), color, leadId: uuid.nullable(),
+  key: z.string().trim().min(2).max(255).transform(k => k.toUpperCase()).describe('A new key (system administrators): its items take it, the old one still finds them (spec 0703)'),
+  categoryId: uuid.nullable().describe('Its project category (system administrators), or null for none (spec 0703)'),
   boardPrefs: z.record(z.string(), z.unknown()), layout: z.record(z.string(), z.unknown()),
 }).partial()
 
@@ -210,6 +213,8 @@ const plugin: FastifyPluginAsyncZod = async app => {
   })
 
   const PROJECT_ROW = `p.id, p.key, p.name, p.description, p.color, p.template, p.lead_id, p.created_at, p.archived_at,
+              p.category_id, (select jsonb_build_object('id', c.id, 'name', c.name) from project_categories c where c.id = p.category_id) as category,
+              case when p.avatar_hash is not null then '/project-avatars/' || p.id || '/' || p.avatar_hash end as avatar,
             (s.user_id is not null) as starred,
             (select count(*) from issues i join statuses st on st.id = i.status_id
               where i.project_id = p.id and i.deleted_at is null and st.category <> 'done') as open_count`
@@ -224,13 +229,15 @@ const plugin: FastifyPluginAsyncZod = async app => {
 
   app.get('/projects/search', { schema: {
     tags: T.projects, summary: 'Find projects by name or key, in name order (keyset-paginated)',
-    querystring: searchQ.extend({ starred: z.enum(['0', '1']).optional().describe('1 = only my starred projects') }),
+    querystring: searchQ.extend({ starred: z.enum(['0', '1']).optional().describe('1 = only my starred projects'), category: z.string().max(40).optional().describe('A category id, or `none` (spec 0703)') }),
   } }, async req => {
     const { query, limit } = req.query, cur = readCursor(req.query.cursor)
     const args: unknown[] = [req.me.workspaceId, req.me.id]
     const where = ['p.workspace_id = $1', 'p.archived_at is null', visible(req.me, 'p.id', args)]
     if (query) { args.push(like(query)); where.push(`(p.name ilike $${args.length} or p.key ilike $${args.length})`) }
     if (req.query.starred === '1') where.push('s.user_id is not null')
+    if (req.query.category === 'none') where.push('p.category_id is null')
+    else if (req.query.category) { if (!/^[0-9a-f-]{36}$/i.test(req.query.category)) throw new HttpError(400, 'Invalid category'); args.push(req.query.category); where.push(`p.category_id = $${args.length}::uuid`) }
     if (cur) { args.push(cur[0].toLowerCase(), cur[1]); where.push(`(lower(p.name), p.id) > ($${args.length - 1}, $${args.length}::uuid)`) }
     args.push(limit + 1)
     const rows = await db.query<any>(
@@ -292,6 +299,9 @@ const plugin: FastifyPluginAsyncZod = async app => {
     if (!keyFits(b.key, rule))
       throw new HttpError(400, `A project key must match ${rule.pattern} and be at most ${rule.maxLength} characters`, { key: describeKeyRule(rule) })
     return tx(async d => {
+      // a key another project had is still its (spec 0703 R1, Jira's rule)
+      if ((await d.query('select 1 from project_key_history where workspace_id = $1 and key = $2', [req.me.workspaceId, b.key])).length)
+        throw new HttpError(409, `${b.key} was another project’s key`, { key: 'Already used' })
       const [sc] = await d.query<{ id: string }>(`select id from workflow_schemes where workspace_id = $1 and ${b.workflowSchemeId ? 'id = $2' : 'lower(name) = $2'}`,
         [req.me.workspaceId, b.workflowSchemeId ?? b.template])
       if (!sc) throw new HttpError(400, 'Choose a workflow scheme', { workflowSchemeId: 'Not found' })
@@ -319,6 +329,34 @@ const plugin: FastifyPluginAsyncZod = async app => {
   app.patch('/projects/:key', { schema: { tags: T.projects, summary: 'Update project details', params: keyP, body: projectBody } }, async req => {
     const p = await projectByKey(db, req, req.params.key)
     await requireProjectAdmin(req, p)
+    const b = req.body
+    // the key and the category: system administrators (spec 0703 R1, R5); other details never touch the category (R7)
+    if ((b.key !== undefined && b.key !== p.key) || b.categoryId !== undefined) {
+      requireAdmin(req)
+      await tx(async d => {
+        const [before] = await d.query<{ key: string; categoryId: string | null }>('select key, category_id from projects where id = $1 for update', [p.id])
+        if (b.categoryId !== undefined && b.categoryId !== before!.categoryId) {
+          if (b.categoryId && !(await d.query('select 1 from project_categories where id = $1 and workspace_id = $2', [b.categoryId, req.me.workspaceId])).length)
+            throw new HttpError(400, 'No such category', { categoryId: 'Unknown category' })
+          await d.query('update projects set category_id = $2 where id = $1', [p.id, b.categoryId])
+          await audit(d, req, { action: 'project.category_changed', type: 'project', id: p.id, name: before!.key, project: p, before: { categoryId: before!.categoryId }, after: { categoryId: b.categoryId } })
+        }
+        if (b.key !== undefined && b.key !== before!.key) {
+          const rule = await getSetting(req.me.workspaceId, 'projectKeys', d)
+          if (!keyFits(b.key, rule)) throw new HttpError(400, `The key must be ${describeKeyRule(rule)}`, { key: 'Doesn’t fit the key pattern' })
+          const [taken] = await d.query<{ key: string }>(
+            `select key from projects where workspace_id = $1 and key = $2 union all
+             select key from project_key_history where workspace_id = $1 and key = $2 and project_id <> $3`, [req.me.workspaceId, b.key, p.id])
+          if (taken) throw new HttpError(409, `${b.key} is or was another project’s key`, { key: 'Already used' })
+          // its own earlier key comes back as its key; the key it leaves keeps finding it
+          await d.query('delete from project_key_history where workspace_id = $1 and key = $2', [req.me.workspaceId, b.key])
+          await d.query('insert into project_key_history (workspace_id, key, project_id, changed_by) values ($1, $2, $3, $4)', [req.me.workspaceId, before!.key, p.id, req.me.id])
+          await d.query('update projects set key = $2 where id = $1', [p.id, b.key])
+          await audit(d, req, { action: 'project.key_changed', type: 'project', id: p.id, name: b.key, project: { id: p.id, key: b.key }, before: { key: before!.key }, after: { key: b.key } })
+        }
+      })
+      p.key = b.key ?? p.key
+    }
     const w = pick(req.body, ['name', 'description', 'color', 'leadId', 'boardPrefs', 'layout'], ['boardPrefs', 'layout'])
     if (w.keys.length) await tx(async d => {
       const [before] = await d.query<Record<string, unknown>>('select name, description, color, lead_id from projects where id = $1 for update', [p.id])
@@ -923,7 +961,13 @@ async function typeWorkflowList(d: Db, projectId: string) {
 
 /** Everything the project screens need in one call (workflow, fields, releases, templates, rules, sprints). */
 export async function projectDetail(d: Db, ws: string, key: string, role: ProjectRole) {
-  const [project] = await d.query<any>('select * from projects where workspace_id = $1 and key = $2', [ws, key.toUpperCase()])
+  const [row] = await d.query<any>(`select pr.*, (select jsonb_build_object('id', c.id, 'name', c.name) from project_categories c where c.id = pr.category_id) as category,
+      array(select h.key from project_key_history h where h.project_id = pr.id order by h.changed_at) as old_keys
+    from projects pr where pr.workspace_id = $1 and pr.key = $2`, [ws, key.toUpperCase()])
+  const { avatar, avatarType, avatarHash, oldKeys, ...project } = row
+  // its keys, current first (spec 0703 R4); the avatar's address, not its bytes (R8)
+  Object.assign(project, { keys: [project.key, ...oldKeys], avatar: avatarHash ? `/project-avatars/${project.id}/${avatarHash}` : null })
+  void avatar; void avatarType
   const p = { id: project.id as string }
   const by = (table: string, order: string) => d.query(`select * from ${table} where project_id = $1 order by ${order}`, [p.id])
   // Sequential: `d` may be a single transaction connection, which can't run queries in parallel

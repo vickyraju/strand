@@ -51,6 +51,7 @@ export function mapProject(p: Row): Project {
   return {
     id: p.id, key: p.key, name: p.name, description: p.description ?? '', color: p.color, template: p.template,
     leadId: p.leadId ?? '',
+    ...(p.keys?.length > 1 ? { oldKeys: p.keys.slice(1) } : {}), ...(p.category !== undefined ? { category: p.category } : {}), ...(p.avatar ? { avatar: p.avatar } : {}),
     statuses: (p.statuses ?? []).map(mapStatus),
     transitions: (p.transitions ?? []).map(mapTransition),
     layout: p.layout ?? {},

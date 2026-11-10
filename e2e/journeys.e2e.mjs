@@ -678,7 +678,7 @@ test('Administration: a grouped menu of links; every page, a group, a Workflows 
   await o.goto(url('/admin'))
   const menu = o.locator('nav[aria-label="Administration"]')
   await menu.locator('.nav-section').first().waitFor()
-  assert.deepEqual(await menu.locator('.nav-section').allInnerTexts(), ['PEOPLE & ACCESS', 'WORK ITEMS', 'SYSTEM'])
+  assert.deepEqual(await menu.locator('.nav-section').allInnerTexts(), ['PEOPLE & ACCESS', 'PROJECTS', 'WORK ITEMS', 'SYSTEM'])
   assert.equal(await menu.locator('a[aria-current="page"]').innerText(), 'People')
   await menu.locator('a:has-text("Test statuses")').click()
   await o.waitForURL(/\/admin\/test-statuses$/)
@@ -1647,5 +1647,30 @@ test('[0702.R1][0702.R2][0702.R4] an admin renames the site and changes its colo
   await p.waitForSelector('text=to Acme Work')
   await owner('DELETE', '/admin/look-and-feel')
   assert.deepEqual([...o.problems, ...p.problems], [])
+})
+
+test('[0703.R1][0703.R3][0703.R5][0703.R6] an admin changes a project’s key: an old address still opens its work; a category groups it in the projects list', { skip, timeout: 120_000 }, async () => {
+  await owner('POST', '/projects', { name: 'Rekeyed', key: 'RKA', template: 'kanban' })
+  const item = (await owner('POST', '/projects/RKA/issues', { title: 'Find me by my old key' })).body
+  const cat = (await owner('POST', '/admin/project-categories', { name: 'Platform team' })).body
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url('/project/RKA/settings'))
+  await o.click('button[title="Change the key"]')
+  await o.fill('#ps-key', 'RKB')
+  await o.click('.modal button:has-text("Change key")')
+  await o.waitForURL(/\/project\/RKB\/settings/)
+  await o.waitForSelector('text=Earlier: RKA')
+  await o.selectOption('[aria-label="Project category"]', cat.id)
+  await o.waitForSelector('text=Category saved')
+  // R3: the old address opens the item at its new key
+  await o.goto(url(`/i/${item.key}`))
+  await o.waitForURL(new RegExp(`/i/RKB-${item.key.split('-')[1]}`))
+  await o.waitForSelector('text=Find me by my old key')
+  // R6: the projects list finds it by category
+  await o.goto(url('/projects'))
+  await o.selectOption('[aria-label="Category"]', cat.id)
+  await o.waitForSelector('[aria-label="Project search results"] >> text=Rekeyed')
+  await o.waitForSelector('[aria-label="Project search results"] >> text=Platform team')
+  assert.deepEqual(o.problems, [])
 })
 
