@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { Users, ScrollText, Archive, SlidersHorizontal, Link2, Bookmark, UsersRound, GitBranch, FlaskConical, ArchiveRestore, Signal, CircleCheck, KeyRound, Network } from 'lucide-react'
+import { Users, ScrollText, Archive, SlidersHorizontal, Link2, Bookmark, UsersRound, GitBranch, FlaskConical, ArchiveRestore, Signal, CircleCheck, KeyRound, Network, FolderTree } from 'lucide-react'
 import { href, navigate, type AdminSection } from '../../router'
 
 // Administration's frame, as Jira lays it out: a grouped menu on the left, and each page with its title, what it is
@@ -13,6 +13,9 @@ export const MENU: { title: string; items: MenuItem[] }[] = [
     { id: 'groups', label: 'Groups', Icon: UsersRound, intro: 'A group gives a whole team a role in a project at once. Its owners decide who is in it; project admins decide what it may do in their project.' },
     { id: 'auth-methods', label: 'Authentication methods', Icon: KeyRound, intro: 'How people sign in: Microsoft Entra single sign-on, the username and password login form, or both. At least one stays on; every change is recorded in the Audit log.' },
     { id: 'directories', label: 'User directories', Icon: Network, intro: 'Your company’s Active Directory or LDAP servers, read only: people sign in on the login form with their corp id and password, and people, groups and memberships are copied in on a schedule. Nobody is ever deleted: people missing from a directory are deactivated.' },
+  ] },
+  { title: 'Projects', items: [
+    { id: 'project-categories', label: 'Project categories', Icon: FolderTree, intro: 'Group projects by department, client or product line. Each project has at most one category, chosen in its details; search finds their work with category = "Name".' },
   ] },
   { title: 'Work items', items: [
     { id: 'workflows', label: 'Workflows', Icon: GitBranch, intro: 'Workflows are shared: a workflow scheme says which workflow each work type uses, and each project uses one scheme. Changing a workflow or a scheme changes every project using it.' },

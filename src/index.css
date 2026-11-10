@@ -1584,7 +1584,7 @@ h2.empty-title, h2.section-title, h2.side-title { margin: 0 }
 .panel-bar { width: calc(100% - 26px); margin: 4px 0 2px 26px }
 .panel-stats { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; margin: 6px 4px 2px 26px; font-size: 12px }
 .panel-stats dt { color: var(--text-2) }
-.swatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px }
+.epic-swatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px }
 .control-refine { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-bottom: 12px }
 .report-list { list-style: none; padding: 0; margin: 6px 0 0; display: grid; gap: 4px; font-size: 13px }
 /* The announcement banner (spec 0701) */
@@ -1599,3 +1599,4 @@ h2.empty-title, h2.section-title, h2.side-title { margin: 0 }
 .site-logo.lg { height: 40px; max-width: 220px; align-self: flex-start }
 .favicon-preview { width: 24px; height: 24px; object-fit: contain }
 .brand-sample { color: #fff; padding: 4px 10px; border-radius: var(--radius); font-size: 13px; font-weight: 600 }
+.proj-avatar { object-fit: cover; flex-shrink: 0 }

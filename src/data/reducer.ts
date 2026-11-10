@@ -100,6 +100,12 @@ export type Resolution = string
 export interface Project {
   id:          string
   key:         string
+  /** Its earlier keys, which still find it (spec 0703) */
+  oldKeys?:    string[]
+  /** Its project category (spec 0703) */
+  category?:   { id: string; name: string } | null
+  /** Its avatar's address under the API (spec 0703) */
+  avatar?:     string | null
   name:        string
   description: string
   color:       string

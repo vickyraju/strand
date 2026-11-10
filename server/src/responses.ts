@@ -17,6 +17,7 @@ export const Me = z.object({ id, email: z.string(), name: z.string(), workspaceI
 
 const EntraConfig = z.object({ enabled: z.boolean(), name: z.string(), tenantId: z.string(), apiClientId: z.string(), webClientId: z.string(), authority: z.string() })
 const PanelStat = z.object({ issues: z.number(), completed: z.number(), unestimated: z.number(), estimate: z.number(), todo: z.number(), inProgress: z.number(), done: z.number() })
+const ProjectCategory = z.object({ id, name: z.string(), description: z.string(), projects: z.number().describe('Projects in it') })
 const LookAndFeel = z.object({ siteTitle: z.string(), showTitle: z.boolean(), brandColor: z.string(),
   logo: nullable(z.string()).describe('The logo’s address under the API, or null for Strand’s'), favicon: nullable(z.string()) })
 export const UserDirectory = z.object({
@@ -76,6 +77,7 @@ export const Sprint = z.object({
 export const ProjectListItem = z.object({
   id, key: z.string(), name: z.string(), description: z.string(), color: z.string(), template: z.enum(['kanban', 'scrum']),
   leadId: nullable(id), createdAt: ts, archivedAt: nullable(ts), starred: z.boolean(), openCount: z.number(),
+  categoryId: nullable(id), category: nullable(z.object({ id, name: z.string() })).describe('Its project category (spec 0703)'), avatar: nullable(z.string()).describe('Its avatar’s address under the API'),
 })
 export const ProjectPage = z.object({ items: z.array(ProjectListItem), next: nullable(z.string()).describe('Pass back as `cursor`; null on the last page') })
 export const UserPage = z.object({ items: z.array(User), next: nullable(z.string()) })
@@ -120,6 +122,8 @@ export const ProjectDetail = z.object({
   id, workspaceId: id, key: z.string(), name: z.string(), description: z.string(), color: z.string(), template: z.enum(['kanban', 'scrum']),
   leadId: nullable(id), archivedAt: nullable(ts), nextNumber: z.number(), testing: z.boolean().describe('Test management is on'), requirementTypes: nullable(z.array(z.string())).describe('Work types counted as requirements (null: all but testing types and Bug)'), boardPrefs: z.record(z.string(), z.unknown()), layout: z.record(z.string(), z.unknown()),
   sample: z.boolean(), createdAt: ts, role: z.enum(['admin', 'member', 'viewer']).describe('My role in this project'),
+  keys: z.array(z.string()).describe('Its key, then its earlier keys, which still find it (spec 0703)'), categoryId: nullable(id), category: nullable(z.object({ id, name: z.string() })),
+  avatar: nullable(z.string()).describe('Its avatar’s address under the API, or null (spec 0703)'),
   statuses: z.array(Status), transitions: z.array(Transition), types: z.array(WorkType), components: z.array(Component), securityLevels: z.array(SecurityLevel.omit({ items: true })), fields: z.array(Field), templates: z.array(Template),
   rules: z.array(Rule), releases: z.array(Release), sprints: z.array(Sprint),
   workflowSchemeId: id.describe('Its workflow scheme'), workflows: z.array(TypeWorkflow),
@@ -245,6 +249,8 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'PUT /admin/authentication': AuthMethods,
   'PUT /admin/authentication/entra': AuthMethods,
   'GET /admin/directories': z.array(UserDirectory),
+  'GET /project-categories': z.array(ProjectCategory), 'POST /admin/project-categories': ProjectCategory, 'PATCH /admin/project-categories/:id': ProjectCategory,
+  'PUT /projects/:key/avatar': z.object({ avatar: z.string().describe('The avatar’s address under the API') }),
   'GET /look-and-feel': LookAndFeel, 'PUT /admin/look-and-feel': LookAndFeel, 'DELETE /admin/look-and-feel': LookAndFeel,
   'PUT /admin/look-and-feel/logo': LookAndFeel, 'DELETE /admin/look-and-feel/logo': LookAndFeel,
   'PUT /admin/look-and-feel/favicon': LookAndFeel, 'DELETE /admin/look-and-feel/favicon': LookAndFeel,

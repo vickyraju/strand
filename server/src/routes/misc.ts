@@ -49,7 +49,7 @@ export async function searchWhere(me: Me, q: SearchFilters, args: unknown[]): Pr
   const text = q.q.trim()
   if (text) {
     const key = /^([A-Za-z][A-Za-z0-9]*)-(\d+)$/.exec(text)
-    if (key) { args.push(key[1]!.toUpperCase(), Number(key[2])); where.push(`(p.key = $${args.length - 1} and i.number = $${args.length})`) }
+    if (key) { args.push(key[1]!.toUpperCase(), Number(key[2])); where.push(`((p.key = $${args.length - 1} or p.id in (select project_id from project_key_history where key = $${args.length - 1} and workspace_id = p.workspace_id)) and i.number = $${args.length})`) }
     else add(`(i.search @@ websearch_to_tsquery('simple', ?) or i.title ilike '%' || ? || '%')`, text.replace(/[%_\\]/g, '\\$&'))
   }
   if (q.project) add('i.project_id = ?', q.project)

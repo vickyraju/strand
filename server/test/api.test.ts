@@ -3423,6 +3423,10 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     'PATCH /admin/users/{id}': ['gadmin', `/admin/users/${none}`, { name: 'x' }], 'PUT /admin/users/{id}/password': ['gadmin', `/admin/users/${none}/password`, { password: 'matrix-password' }],
     'GET /admin/directories/internal': ['gadmin', '/admin/directories/internal'],
     'GET /look-and-feel': ['public', '/look-and-feel'],   // 0702.R2
+    'GET /project-categories': ['any', '/project-categories'],   // 0703.R5
+    'POST /admin/project-categories': ['gadmin', '/admin/project-categories', { name: 'Matrix category' }],
+    'PATCH /admin/project-categories/{id}': ['gadmin', `/admin/project-categories/${none}`, { name: 'x' }], 'DELETE /admin/project-categories/{id}': ['gadmin', `/admin/project-categories/${none}`],
+    'PUT /projects/{key}/avatar': ['padmin', `/projects/${K}/avatar`, { image: 'eA==' }], 'DELETE /projects/{key}/avatar': ['padmin', `/projects/${K}/avatar`],   // 0703.R8
     'PUT /admin/look-and-feel': ['gadmin', '/admin/look-and-feel', { siteTitle: 'Strand', showTitle: true, brandColor: '#368727' }],   // 0702.R1
     'DELETE /admin/look-and-feel': ['gadmin', '/admin/look-and-feel'],
     'PUT /admin/look-and-feel/logo': ['gadmin', '/admin/look-and-feel/logo', { image: 'eA==' }], 'DELETE /admin/look-and-feel/logo': ['gadmin', '/admin/look-and-feel/logo'],
@@ -4875,5 +4879,69 @@ test('[0702.R1][0702.R2][0702.R3][0702.R4][0702.R5] look and feel: title and col
   // R5: reset defaults
   assert.deepEqual((await call('DELETE', '/api/v1/admin/look-and-feel')).body, { siteTitle: 'Strand', showTitle: true, brandColor: '#368727', logo: null, favicon: null })
   assert.equal((await app.inject({ method: 'GET', url: '/api/v1/look-and-feel/logo' })).statusCode, 404)
+})
+
+test('[0703.R1][0703.R2][0703.R4] a project’s key changes: its items take the new key, and the old one still finds them in the API, JQL and a board’s filter', { skip }, async () => {
+  assert.equal((await call('POST', '/api/v1/projects', { name: 'Renamed', key: 'OLDK', template: 'kanban' })).status, 201)
+  assert.equal((await call('POST', '/api/v1/projects', { name: 'Neighbour', key: 'NBR', template: 'kanban' })).status, 201)
+  const item = (await call('POST', '/api/v1/projects/OLDK/issues', { title: 'Keep finding me' })).body
+  const board = (await call('POST', '/api/v1/projects/OLDK/boards', { name: 'Old filter', type: 'kanban', jql: 'project = OLDK' })).body
+  await join('OLDK', 'oldk.member@x.com', 'admin')
+  // R1: system administrators only; the key must fit and be free
+  assert.equal((await call('PATCH', '/api/v1/projects/OLDK', { key: 'NEWK' }, 'oldk.member@x.com')).status, 403)
+  assert.equal((await call('PATCH', '/api/v1/projects/OLDK', { key: 'nbr' })).status, 409)
+  assert.equal((await call('PATCH', '/api/v1/projects/OLDK', { key: '9BAD' })).status, 400)
+  const changed = await call('PATCH', '/api/v1/projects/OLDK', { key: 'newk' })
+  assert.equal(changed.status, 200, JSON.stringify(changed.body))
+  assert.deepEqual([changed.body.key, changed.body.keys], ['NEWK', ['NEWK', 'OLDK']])
+  // R2: the item has the new key; the old key finds it and the project everywhere
+  const n = item.key.split('-')[1]
+  assert.equal((await call('GET', `/api/v1/issues/${item.key}`)).body.key, `NEWK-${n}`)
+  assert.equal((await call('GET', '/api/v1/projects/OLDK')).body.key, 'NEWK')
+  const jql = async (q: string) => (await call('GET', `/api/v1/search?jql=${encodeURIComponent(q)}`)).body.items.map((i: any) => i.key)
+  assert.deepEqual(await jql('project = OLDK'), [`NEWK-${n}`])
+  assert.deepEqual(await jql(`key = OLDK-${n}`), [`NEWK-${n}`])
+  assert.deepEqual((await call('GET', `/api/v1/search?q=OLDK-${n}&resolution=all`)).body.items.map((i: any) => i.key), [`NEWK-${n}`])
+  assert.deepEqual((await call('GET', `/api/v1/boards/${board.id}/issues`)).body.items.map((i: any) => i.key), [`NEWK-${n}`])
+  // nobody else can take the old key; the project can go back to it
+  assert.equal((await call('POST', '/api/v1/projects', { name: 'Thief', key: 'OLDK', template: 'kanban' })).status, 409)
+  assert.equal((await call('PATCH', '/api/v1/projects/NBR', { key: 'OLDK' })).status, 409)
+  const back = await call('PATCH', '/api/v1/projects/NEWK', { key: 'OLDK' })
+  assert.deepEqual([back.status, back.body.keys], [200, ['OLDK', 'NEWK']])
+  assert.ok((await pool.query(`select 1 from audit_log where action = 'project.key_changed'`)).rows.length)
+})
+
+test('[0703.R5][0703.R6][0703.R7][0703.R8] project categories and avatars: made by admins, filtered by JQL and the projects list; editing details keeps the category', { skip }, async () => {
+  assert.equal((await call('POST', '/api/v1/projects', { name: 'Categorised', key: 'CAT', template: 'kanban' })).status, 201)
+  const item = (await call('POST', '/api/v1/projects/CAT/issues', { title: 'In a category' })).body
+  // R5: system administrators make categories, names unique ignoring case
+  const c = (await call('POST', '/api/v1/admin/project-categories', { name: 'Payments', description: 'Money moves' })).body
+  assert.equal((await call('POST', '/api/v1/admin/project-categories', { name: 'payments' })).status, 409)
+  assert.equal((await call('POST', '/api/v1/admin/project-categories', { name: 'X' }, 'someone.else@x.com')).status, 403)
+  await join('CAT', 'cat.admin@x.com', 'admin')
+  assert.equal((await call('PATCH', '/api/v1/projects/CAT', { categoryId: c.id }, 'cat.admin@x.com')).status, 403)
+  assert.deepEqual((await call('PATCH', '/api/v1/projects/CAT', { categoryId: c.id })).body.category, { id: c.id, name: 'Payments' })
+  // R7: editing other details, or the avatar, keeps it
+  assert.equal((await call('PATCH', '/api/v1/projects/CAT', { name: 'Categorised again', description: 'x', color: '#123456' }, 'cat.admin@x.com')).body.category.name, 'Payments')
+  // R6: JQL and the projects list
+  const jql = async (q: string) => (await call('GET', `/api/v1/search?jql=${encodeURIComponent(q)}`)).body.items.map((i: any) => i.key)
+  assert.deepEqual(await jql('category = "payments"'), [item.key])
+  assert.ok(!(await jql('project = CAT AND category is EMPTY')).length)
+  assert.deepEqual((await call('GET', `/api/v1/projects/search?category=${c.id}`)).body.items.map((p: any) => [p.key, p.category.name]), [['CAT', 'Payments']])
+  assert.equal((await call('GET', '/api/v1/project-categories')).body.find((x: any) => x.id === c.id).projects, 1)
+  // R8: a project admin sets an avatar: checked by content, served as an image
+  const png = Buffer.from('89504e470d0a1a0a0000000d4948445200000001000000010806000000', 'hex')
+  const set = await call('PUT', '/api/v1/projects/CAT/avatar', { image: png.toString('base64') }, 'cat.admin@x.com')
+  assert.equal(set.status, 200)
+  assert.match(set.body.avatar, /^\/project-avatars\/[0-9a-f-]{36}\/[0-9a-f]{64}$/)
+  const img = await app.inject({ method: 'GET', url: `/api/v1${set.body.avatar}` })                    // no sign-in: an <img> can't send one
+  assert.equal((await app.inject({ method: 'GET', url: `/api/v1${set.body.avatar.replace(/[0-9a-f]{64}$/, '0'.repeat(64))}` })).statusCode, 404)   // only at its own hash
+  assert.deepEqual([img.statusCode, img.headers['content-type'], img.headers['x-content-type-options']], [200, 'image/png', 'nosniff'])
+  assert.equal((await call('PUT', '/api/v1/projects/CAT/avatar', { image: Buffer.from('<svg/>').toString('base64') }, 'cat.admin@x.com')).status, 400)
+  assert.equal((await call('GET', '/api/v1/projects/CAT')).body.category.name, 'Payments')     // R7 again, after the avatar
+  // deleting the category leaves the project without one
+  assert.equal((await call('DELETE', `/api/v1/admin/project-categories/${c.id}`)).status, 204)
+  assert.equal((await call('GET', '/api/v1/projects/CAT')).body.category, null)
+  assert.deepEqual(await jql('project = CAT AND category is EMPTY'), [item.key])
 })
 

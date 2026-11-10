@@ -11,7 +11,7 @@ const NUMBERS: Record<string, string> = { estimate: 'i.estimate', timeEstimate: 
 const EMPTY: Record<string, string> = {
   flagged: 'not i.flagged', assignee: 'i.assignee_id is null', reporter: 'i.reporter_id is null', labels: 'cardinality(i.labels) = 0', component: 'cardinality(i.component_ids) = 0',
   fixVersion: 'cardinality(i.fix_release_ids) = 0', affectedVersion: 'cardinality(i.affects_release_ids) = 0', sprint: 'i.sprint_id is null', parent: 'i.parent_id is null',
-  resolution: 'i.resolution is null', description: `coalesce(i.description, '') = ''`,
+  resolution: 'i.resolution is null', category: 'p.category_id is null', description: `coalesce(i.description, '') = ''`,
   due: 'i.due_date is null', start: 'i.start_date is null', resolved: 'i.resolved_at is null',
   estimate: 'i.estimate is null', timeEstimate: 'i.time_estimate is null', timeRemaining: 'i.time_remaining is null',
 }
@@ -151,8 +151,10 @@ export async function jqlToSql(d: Db, me: Me, q: Query, args: unknown[]): Promis
   const eq = (c: Clause, v: Value): string => {
     if (c.field === 'key' && v.kind === 'fn' && TEST_FNS.has(v.name)) return testFn(v)
     switch (c.field) {
-      case 'project': { const t = put(text(v, 'project')); return `(p.key = upper(${t}) or lower(p.name) = lower(${t}))` }
-      case 'key': return `(p.key || '-' || i.number) = upper(${put(text(v, 'key'))})`
+      // a project's earlier keys still find it (spec 0703 R2)
+      case 'project': { const t = put(text(v, 'project')); return `(p.key = upper(${t}) or lower(p.name) = lower(${t}) or p.id in (select h.project_id from project_key_history h where h.workspace_id = p.workspace_id and h.key = upper(${t})))` }
+      case 'key': { const t = put(text(v, 'key')); return `((p.key || '-' || i.number) = upper(${t}) or exists (select 1 from project_key_history h where h.project_id = i.project_id and h.key || '-' || i.number = upper(${t})))` }
+      case 'category': return `p.category_id in (select c.id from project_categories c where c.workspace_id = p.workspace_id and lower(c.name) = lower(${put(text(v, 'category'))}))`
       case 'type': { const t = put(text(v, 'type')); return `(i.type = lower(${t}) or exists (select 1 from work_types wt where wt.project_id = i.project_id and wt.key = i.type and lower(wt.name) = lower(${t})))` }
       case 'status': return `lower(st.name) = lower(${put(text(v, 'status'))})`
       case 'statusCategory': {

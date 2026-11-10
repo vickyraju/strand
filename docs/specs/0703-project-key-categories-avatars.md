@@ -62,6 +62,7 @@ Checked 10 Nov 2026 on [jira.atlassian.com](https://jira.atlassian.com/issues/?j
 - **R7: Editing a project keeps its category.** Changing a project's name, description, lead, colour or avatar never changes its category.
 - **R8: Avatars.** A project admin gives the project an avatar: an uploaded image, or none (its colour and initial).
   - PNG, JPEG or WebP up to 128 KB, checked by content and served as an image with `nosniff` (as spec 0702's logo).
+  - Its address is the project's id and the image's own SHA-256, so it loads in an `<img>` without a sign-in, yet only people who see the project learn it.
   - It shows wherever the project does: the menu, the projects list, project pickers, the project's header.
 
 ## Permissions
@@ -77,7 +78,7 @@ Checked 10 Nov 2026 on [jira.atlassian.com](https://jira.atlassian.com/issues/?j
 
 - `project_key_history`: workspace, key, project, changed at, changed by; the primary key (workspace, key).
 - `project_categories`: id, workspace, name, description, unique name per workspace.
-- `projects.category_id` (null), `projects.avatar` bytea, `projects.avatar_type`, `projects.avatar_version`.
+- `projects.category_id` (null), `projects.avatar` bytea, `projects.avatar_type`, `projects.avatar_hash`.
 - The key check on `projects.key` follows System settings (the column check is relaxed to the widest pattern).
 - `strand` gets the same migrations in `supabase/migrations`.
 
@@ -85,7 +86,7 @@ Checked 10 Nov 2026 on [jira.atlassian.com](https://jira.atlassian.com/issues/?j
 
 - `PATCH /projects/:key` accepts `key` (system admins) and `categoryId` (system admins).
 - `GET /projects/:key` gains `keys` and `category`.
-- `PUT /projects/:key/avatar` `{ image }`, `DELETE /projects/:key/avatar`, `GET /projects/:key/avatar`.
+- `PUT /projects/:key/avatar` `{ image }`, `DELETE /projects/:key/avatar`; the image at `GET /project-avatars/:projectId/:sha256`.
 - `GET /project-categories`; `POST`, `PATCH /admin/project-categories/:id`, `DELETE`.
 - Search and JQL: `category`.
 

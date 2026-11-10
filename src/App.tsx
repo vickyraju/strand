@@ -84,6 +84,14 @@ function Shell() {
   const onDemand = useProjectOnDemand(wantedKey)
   const wanted = wantedKey ? state.projects.find(p => p.key === wantedKey) : undefined
   const issuesLoad = useProjectIssues(wanted)
+  // an address with a project's earlier key opens it at its current key (spec 0703 R3)
+  const renamed = wantedKey && !wanted ? state.projects.find(p => p.oldKeys?.includes(wantedKey)) : undefined
+  useEffect(() => {
+    if (!renamed || !wantedKey) return
+    const swap = (k: string) => (k.split('-')[0] === wantedKey ? `${renamed.key}${k.slice(wantedKey.length)}` : k)
+    const next = route.name === 'project' ? { ...route, key: renamed.key } : route.name === 'issue' ? { ...route, key: swap(route.key) } : route
+    navigate(href(next, peek ? swap(peek) : undefined), { replace: true })
+  }, [renamed?.key, wantedKey])   // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (apiEnabled && project) rememberProject(project.key) }, [project?.key]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // When a screen opens an issue it fetched from the server (search, my work, my inbox), the app

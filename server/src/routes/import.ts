@@ -37,7 +37,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
       const boardOf = new Map<string, string>()                  // project → its first board
 
       for (const p of s.projects) {
-        const exists = await d.query('select 1 from projects where workspace_id = $1 and key = $2', [me.workspaceId, p.key])
+        const exists = await d.query('select 1 from projects where workspace_id = $1 and key = $2 union all select 1 from project_key_history where workspace_id = $1 and key = $2', [me.workspaceId, p.key])
         if (exists.length) { report.skippedProjects.push(p.key); continue }
         done.add(p.id)
         const pid = nid(p.id)

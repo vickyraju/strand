@@ -107,7 +107,7 @@ export default function BacklogPanels({ board, project, open, setOpen, epic, set
                 { label: 'Edit name', onClick: () => rename(e.id, e.title) },
                 { label: 'View epic details', onClick: () => openIssue(e.id) },
                 { label: 'Create issue in epic', onClick: () => createIssue({ projectId: project.id, parentId: e.id }) },
-                ...Object.entries(EPIC_COLORS).map(([k, hex], n) => ({ label: `Colour ${n + 1}`, icon: <span className="swatch" style={{ background: hex }} />, divider: n === 0, onClick: () => color(e.id, k) })),
+                ...Object.entries(EPIC_COLORS).map(([k, hex], n) => ({ label: `Colour ${n + 1}`, icon: <span className="epic-swatch" style={{ background: hex }} />, divider: n === 0, onClick: () => color(e.id, k) })),
               ]} />} />
           ))}
         </> : <>
