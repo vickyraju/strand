@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 
 export interface Series { label: string; color: string; values: number[]; dashed?: boolean }
 
-function useWidth() {
+export function useWidth() {
   const ref = useRef<HTMLDivElement>(null)
   const [w, setW] = useState(600)
   useEffect(() => {

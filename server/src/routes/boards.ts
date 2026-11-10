@@ -193,6 +193,45 @@ const plugin: FastifyPluginAsyncZod = async app => {
     return { items, total, next: more && last ? Buffer.from(`${last.rank}|${last.id}`).toString('base64url') : null }
   })
 
+  // Reports › Control chart (spec 0410): each item that left the chosen statuses within the timeframe, when it last left
+  // them, and the total time it spent in them (every visit). Worked out from the status history in one query.
+  app.get('/boards/:id/reports/control', { schema: { tags: T, summary: 'Control chart: cycle time of each item that left the chosen statuses in the timeframe (the board’s filter AND its chosen quick filters); most recent 5000',
+    params: idP, querystring: z.object({
+      days: z.coerce.number().int().min(1).max(36_500).optional().describe('Timeframe in days; leave out for all time'),
+      statuses: z.string().max(4000).describe('Comma-separated global status ids: the columns that make up cycle time'),
+      quick: z.string().max(2000).optional().describe('Comma-separated quick filter ids'),
+    }) } }, async req => {
+    const { board: b } = await boardFor(db, req.me, req.params.id)
+    const q = req.query
+    const chosen = q.statuses.split(',').filter(Boolean)
+    if (!chosen.length || chosen.some(s => !/^[0-9a-f-]{36}$/i.test(s))) throw new HttpError(400, 'Choose at least one column', { statuses: 'Global status ids' })
+    const { where, args } = await boardWhere(db, req.me, b, { quick: q.quick ? q.quick.split(',').filter(Boolean) : [], scope: 'all' })
+    args.push(chosen); const sel = `$${args.length}::text[]`
+    args.push(q.days ?? null); const days = `$${args.length}::int`
+    const rows = await db.query<{ id: string; key: string; title: string; type: string; leftAt: string; minutes: number }>(`
+      with items as (
+        select i.id, p.key || '-' || i.number as key, i.title, i.type, i.status_id, i.created_at
+          from issues i join projects p on p.id = i.project_id join statuses st on st.id = i.status_id
+         where ${where.join(' and ')} and i.type <> 'epic'),
+      changes as (
+        select a.issue_id, a.created_at as at, a.from_value, a.to_value from activity a join items on items.id = a.issue_id where a.field = 'statusId'),
+      visits as (                                                      -- where each item was, from when to when
+        select i.id, coalesce((select c.from_value from changes c where c.issue_id = i.id order by c.at limit 1), i.status_id::text) as status, i.created_at as since from items i
+        union all select issue_id, to_value, at from changes),
+      spans as (
+        select v.id, v.since, lead(v.since) over (partition by v.id order by v.since) as until, st.global_status_id::text = any(${sel}) as chosen
+          from visits v left join statuses st on st.id::text = v.status)
+      select i.id, i.key, i.title, i.type, max(s.until) filter (where s.chosen) as left_at,
+             round(sum(extract(epoch from s.until - s.since)) filter (where s.chosen) / 60)::int as minutes
+        from items i join spans s on s.id = i.id
+       group by i.id, i.key, i.title, i.type
+      having bool_or(s.chosen and s.until is not null)                -- it has left them
+         and not bool_or(s.chosen and s.until is null)                 -- and isn't back in them now
+         and (${days} is null or max(s.until) filter (where s.chosen) > now() - make_interval(days => ${days}))
+       order by left_at desc limit 5001`, args)
+    return { items: rows.slice(0, 5000), truncated: rows.length > 5000 }
+  })
+
   // The backlog's Epics and Versions panels (spec 0407): the board's epics that aren't Done, and for each epic and each
   // version of the board's project how much of the board's work is in it (all of it, not just what the backlog shows)
   app.get('/boards/:id/panels', { schema: { tags: T, summary: 'The backlog’s Epics and Versions panels: open epics, and per epic and version the board’s items, completed, unestimated and estimate (in the board’s statistic)', params: idP } }, async req => {

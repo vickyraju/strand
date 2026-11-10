@@ -3408,6 +3408,7 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     'PATCH /admin/users/{id}': ['gadmin', `/admin/users/${none}`, { name: 'x' }], 'PUT /admin/users/{id}/password': ['gadmin', `/admin/users/${none}/password`, { password: 'matrix-password' }],
     'GET /admin/directories/internal': ['gadmin', '/admin/directories/internal'],
     'GET /boards/{id}/panels': ['read', `/boards/${board}/panels`],   // 0407.R2
+    'GET /boards/{id}/reports/control': ['read', `/boards/${board}/reports/control?statuses=${none}`],   // 0410.R1
     'GET /admin/directories': ['gadmin', '/admin/directories'], 'GET /admin/directories/presets': ['gadmin', '/admin/directories/presets'],   // 0712.R13
     'GET /admin/directories/{id}': ['gadmin', `/admin/directories/${none}`],
     'POST /admin/directories': ['gadmin', '/admin/directories', { name: 'Matrix directory', type: 'ad', enabled: false, config: { ...PRESET_AD, ...corpConfig() }, password: 'x' }],
@@ -4756,5 +4757,38 @@ test('[0407.R2][0407.R6][0407.R7][0407.R11] the backlog’s panels: open epics w
   const keys = async (scope: string) => (await call('GET', `/api/v1/boards/${kb.id}/issues?scope=${scope}`)).body.items.map((i: any) => i.key)
   assert.ok(!(await keys('board')).includes(kepic.key))
   assert.ok((await keys('backlog')).includes(kepic.key))
+})
+
+test('[0410.R1][0410.R2][0410.R9] control chart: cycle time is the time in the chosen columns, every visit; items still there or outside the timeframe are left out', { skip }, async () => {
+  assert.equal((await call('POST', '/api/v1/projects', { name: 'Control', key: 'CTL', template: 'kanban' })).status, 201)
+  const p = (await call('GET', '/api/v1/projects/CTL')).body
+  const [board] = (await call('GET', '/api/v1/projects/CTL/boards')).body
+  const st = (name: string) => p.statuses.find((s: any) => s.name === name)
+  const todo = st('To do'), doing = st('In progress'), done = st('Done')
+  const make = async (title: string, type = 'task') => (await call('POST', '/api/v1/projects/CTL/issues', { title, type })).body
+  const a = await make('Reworked'), b = await make('Quick'), c = await make('Still going'), old = await make('Long ago'), bug = await make('A bug', 'bug')
+  // history written as it would have happened: [hours ago, from, to]
+  const history = async (i: any, created: number, moves: [number, any, any][]) => {
+    await pool.query(`update issues set created_at = now() - make_interval(hours => $2), status_id = $3 where id = $1`, [i.id, created, moves.at(-1)![2].id])
+    for (const [h, from, to] of moves)
+      await pool.query(`insert into activity (issue_id, field, from_value, to_value, text, created_at) values ($1, 'statusId', $2, $3, 'Changed status id', now() - make_interval(hours => $4))`, [i.id, from.id, to.id, h])
+  }
+  await history(a, 100, [[90, todo, doing], [80, doing, done], [50, done, doing], [40, doing, done]])   // 10 h + 10 h in progress
+  await history(b, 30, [[20, todo, doing], [15, doing, done]])                                          // 5 h
+  await history(c, 30, [[20, todo, doing]])                                                              // still in progress
+  await history(old, 2000, [[1900, todo, doing], [1800, doing, done]])                                   // left 75 days ago
+  await history(bug, 30, [[10, todo, doing], [9, doing, done]])                                          // 1 h
+  const report = async (q: string) => (await call('GET', `/api/v1/boards/${board.id}/reports/control?statuses=${doing.globalStatusId}${q}`)).body
+  const r = await report('&days=30')
+  assert.deepEqual(r.items.map((i: any) => [i.key, i.minutes]).sort(), [[a.key, 1200], [b.key, 300], [bug.key, 60]].sort())
+  assert.equal(r.truncated, false)
+  assert.ok(Math.abs(Date.parse(r.items.find((i: any) => i.key === a.key).leftAt) - (Date.now() - 40 * 3600e3)) < 60_000)   // when it last left
+  // all time includes the old one; a quick filter narrows (R2)
+  assert.equal((await report('')).items.length, 4)
+  const k = (await call('GET', `/api/v1/boards/${board.id}`)).body
+  const withBugs = await call('PATCH', `/api/v1/boards/${board.id}`, { quickFilters: [...k.quickFilters, { name: 'Bugs', jql: 'type = bug' }] })
+  const bugs = withBugs.body.quickFilters.find((f: any) => f.name === 'Bugs').id
+  assert.deepEqual((await report(`&quick=${bugs}`)).items.map((i: any) => i.key), [bug.key])
+  assert.equal((await call('GET', `/api/v1/boards/${board.id}/reports/control?statuses=`)).status, 400)
 })
 
