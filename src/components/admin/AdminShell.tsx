@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { Users, ScrollText, Archive, SlidersHorizontal, Link2, Bookmark, UsersRound, GitBranch, FlaskConical, ArchiveRestore, Signal, CircleCheck, KeyRound, Network, FolderTree, Webhook, GitPullRequest } from 'lucide-react'
+import { Users, ScrollText, Archive, SlidersHorizontal, Link2, Bookmark, UsersRound, GitBranch, FlaskConical, ArchiveRestore, Signal, CircleCheck, KeyRound, Network, FolderTree, Webhook, GitPullRequest, Zap } from 'lucide-react'
 import { href, navigate, type AdminSection } from '../../router'
 
 // Administration's frame, as Jira lays it out: a grouped menu on the left, and each page with its title, what it is
@@ -26,6 +26,7 @@ export const MENU: { title: string; items: MenuItem[] }[] = [
   ] },
   { title: 'System', items: [
     { id: 'settings', label: 'System settings', Icon: SlidersHorizontal, intro: 'Policies for the whole workspace. Changes apply within seconds on every server, without a restart, and are recorded in the Audit log.' },
+    { id: 'automation', label: 'Automation', Icon: Zap, intro: 'Global rules: automation that acts in every project, the projects of a category (new ones too), or the projects you choose. Project admins see the ones for their project, read-only.' },
     { id: 'webhooks', label: 'Webhooks', Icon: Webhook, intro: 'Tell other systems when work changes here, with Jira’s events and body. Each call is signed, retried when it fails, and listed with its answer.' },
     { id: 'development', label: 'Development tools', Icon: GitPullRequest, intro: 'Connect GitHub so each work item shows the branches, commits and pull requests that name its key, as Jira’s Development panel.' },
     { id: 'audit', label: 'Audit log', Icon: ScrollText, intro: 'Who changed people, project settings, workflows, automation and deletions, and when. Entries can’t be edited or removed.' },

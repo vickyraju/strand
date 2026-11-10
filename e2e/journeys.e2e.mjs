@@ -1781,3 +1781,30 @@ test('[0707.R1][0707.R2][0707.R3][0707.R4] an admin connects GitHub; the item sh
   assert.match(await o.locator('.modal').innerText(), /#12 DVJ-1 Fix the redirect[\s\S]*Open/i)
   assert.deepEqual(o.problems, [])
 })
+
+test('[0709.R1][0709.R3] a system admin makes a global rule for a category with a condition; new bugs in its projects get the label, and their admins see it read-only', { skip, timeout: 120_000 }, async () => {
+  const owner = as('owner@e2e.test')
+  const cat = (await owner('POST', '/admin/project-categories', { name: 'Robots inc' })).body
+  await owner('POST', '/projects', { name: 'Global one', key: 'GLA', template: 'kanban' })
+  await owner('PATCH', '/projects/GLA', { categoryId: cat.id })
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url('/admin/automation'))
+  await o.click('button:has-text("Create rule")')
+  await o.fill('#rule-name', 'Label robot bugs')
+  await o.selectOption('.modal select[aria-label="Scope"]', 'category')
+  await o.selectOption('.modal select[aria-label="Category"]', { label: 'Robots inc' })
+  await o.click('.modal button:has-text("Add a JQL condition")')
+  await o.fill('.modal .rule-if textarea[aria-label="JQL query"]', 'type = bug')
+  await o.fill('.modal input[aria-label="Label"]', 'robot')
+  await o.click('.modal button:has-text("Save rule")')
+  await o.waitForSelector('.rule-card:has-text("Label robot bugs") >> text=projects in Robots inc')
+  const bug = (await owner('POST', '/projects/GLA/issues', { title: 'Beep', type: 'bug' })).body
+  const task = (await owner('POST', '/projects/GLA/issues', { title: 'Boop', type: 'task' })).body
+  assert.deepEqual([(await owner('GET', `/issues/${bug.key}`)).body.labels, (await owner('GET', `/issues/${task.key}`)).body.labels], [['robot'], []])
+  await o.goto(url('/project/GLA/settings/automation'))
+  const g = o.locator('[aria-label="Global rules"]')
+  await g.locator('text=Label robot bugs').waitFor()
+  assert.match(await g.innerText(), /if type = bug[\s\S]*Administration › Automation/)
+  assert.deepEqual(o.problems, [])
+})
+

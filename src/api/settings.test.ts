@@ -19,7 +19,7 @@ test('settings items serialize exactly what the server stores (positions, null f
   assert.deepEqual(itemsOf([p], 'statuses').map(i => i.body), [{ wipLimit: null }, { wipLimit: 3 }])
   assert.deepEqual(itemsOf([p], 'fields').map(i => [i.body.options, i.body.position]), [[[{ id: 'oa', name: 'A' }, { id: 'ob', name: 'B' }], 0], [null, 1]])
   assert.equal(itemsOf([p], 'templates')[0]!.body.estimate, null)
-  assert.deepEqual(Object.keys(itemsOf([p], 'rules')[0]!.body), ['name', 'enabled', 'trigger', 'actions'])   // `runs` is the server's
+  assert.deepEqual(Object.keys(itemsOf([p], 'rules')[0]!.body), ['name', 'enabled', 'trigger', 'actions', 'condition'])   // `runs` is the server's
   assert.deepEqual([itemsOf([p], 'releases')[0]!.released, itemsOf([p], 'releases')[0]!.body.startDate], [false, null])
 })
 

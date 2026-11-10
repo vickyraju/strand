@@ -8,11 +8,12 @@ import { Modal } from './ui'
 // run: what a rule's actions would do to a work item, with nothing changed.
 
 interface Step { action: string; outcome: 'done' | 'skipped' | 'unchanged' | 'failed'; note?: string }
-interface Run { id: string; ruleId: string; rule: string; issueKey: string | null; result: 'success' | 'some_skipped' | 'no_change' | 'failed'; steps: Step[]; error: string | null; at: string }
+export interface Run { id: string; ruleId: string; rule: string; issueKey: string | null; result: 'success' | 'some_skipped' | 'no_change' | 'failed' | 'condition_not_met'; steps: Step[]; error: string | null; at: string }
 
 const RESULT: Record<Run['result'], { label: string; tone: string }> = {
   success: { label: 'Success', tone: 'lozenge-done' }, some_skipped: { label: 'Some actions skipped', tone: 'lozenge-in-progress' },
   no_change: { label: 'No changes needed', tone: 'lozenge-todo' }, failed: { label: 'Failed', tone: 'lozenge-danger' },
+  condition_not_met: { label: 'Condition not met', tone: 'lozenge-todo' },
 }
 const OUTCOME: Record<Step['outcome'], string> = { done: 'done', skipped: 'skipped', unchanged: 'already so', failed: 'failed' }
 
@@ -62,14 +63,14 @@ export function AuditLogDialog({ project, ruleId, onClose }: { project: Project;
 }
 
 /** In the rule editor: try the actions on a work item, see what they would do. */
-export function DryRun({ project, actions }: { project: Project; actions: RuleAction[] }) {
+export function DryRun({ project, actions, condition }: { project: Project; actions: RuleAction[]; condition?: string | null }) {
   const [key, setKey] = useState('')
-  const [out, setOut] = useState<{ steps: Step[]; error: string | null } | null>(null)
+  const [out, setOut] = useState<{ steps: Step[]; error: string | null; conditionMet?: boolean } | null>(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const run = () => {
     setBusy(true); setError(''); setOut(null)
-    api<{ steps: Step[]; error: string | null }>('POST', `/api/projects/${encodeURIComponent(project.key)}/automation/dry-run`, { issue: key.trim(), actions })
+    api<{ steps: Step[]; error: string | null; conditionMet: boolean }>('POST', `/api/projects/${encodeURIComponent(project.key)}/automation/dry-run`, { issue: key.trim(), actions, condition: condition?.trim() || null })
       .then(setOut, e => setError(errorMessage(e))).finally(() => setBusy(false))
   }
   return (
@@ -81,7 +82,8 @@ export function DryRun({ project, actions }: { project: Project; actions: RuleAc
         <span className="muted sm">Nothing is changed.</span>
       </div>
       {error && <p className="hint error" role="alert">{error}</p>}
-      {out && (out.error ? <p className="hint error" role="alert">It would fail: {out.error}</p> : <StepList steps={out.steps} />)}
+      {out && (out.conditionMet === false ? <p className="hint">The condition doesn’t match it: the rule wouldn’t act.</p>
+        : out.error ? <p className="hint error" role="alert">It would fail: {out.error}</p> : <StepList steps={out.steps} />)}
     </div>
   )
 }

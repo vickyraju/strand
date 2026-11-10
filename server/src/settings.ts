@@ -95,6 +95,16 @@ export const SETTINGS = {
     schema: z.object({ whoCanCreate: z.enum(['everyone', 'admins']).describe('Who may make a group: everyone, or system administrators only') }),
     default: { whoCanCreate: 'everyone' as 'everyone' | 'admins' },
   },
+  automation: {
+    label: 'Automation',
+    description: 'Limits for scheduled automation rules: how often one may run, and how many work items one run acts on.',
+    public: false,
+    schema: z.object({
+      minScheduleMinutes: z.number().int().min(1).max(1440).describe('Shortest interval a scheduled rule may have, in minutes'),
+      maxItemsPerRun: z.number().int().min(1).max(100_000).describe('Most work items one scheduled run acts on; the rest wait for the next run'),
+    }),
+    default: { minScheduleMinutes: 5, maxItemsPerRun: 1000 },
+  },
   testing: {
     label: 'Testing',
     description: 'How test results add up (Xray’s rule: whether a finished run outweighs a newer one that hasn’t finished), and how big a CI results import can be.',

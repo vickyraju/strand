@@ -296,7 +296,7 @@ async function applyPatch(d: Db, me: Me, cur: any, patch: z.infer<typeof patchBo
     }
     await runActions(d, me, cur.id, t, ctx!)
   }
-  const rctx = { projectId: cur.projectId, issueId: cur.id, reporterId: cur.reporterId, leadId: lead?.leadId ?? null }
+  const rctx = { projectId: cur.projectId, issueId: cur.id, reporterId: cur.reporterId, leadId: lead?.leadId ?? null, actorId: me.id }
   if (changed.includes('assigneeId') && patch.assigneeId) {
     await note(d, patch.assigneeId, me, cur.id, 'assigned', 'assigned you a work item')
     await runRules(d, rctx, { kind: 'assigned' })
@@ -477,7 +477,7 @@ export async function insertIssue(d: Db, me: Me, projectId: string, b: Record<st
     `insert into issues (${cols.join(', ')}) values (${vals.map((_, i) => `$${i + 1}`).join(', ')}) returning id`, vals)
   await d.query(`insert into activity (issue_id, actor_id, text) values ($1, $2, $3)`, [row!.id, me.id, created])
   if (b.assigneeId) await note(d, b.assigneeId, me, row!.id, 'assigned', 'assigned you a work item')
-  await runRules(d, { projectId, issueId: row!.id, reporterId: me.id, leadId: pr!.leadId }, { kind: 'created' })
+  await runRules(d, { projectId, issueId: row!.id, reporterId: me.id, leadId: pr!.leadId, actorId: me.id }, { kind: 'created' })
   await publish(d, projectId, { type: 'issue.created', id: row!.id })
   await emit(d, me.workspaceId, 'jira:issue_created', { issueId: row!.id, projectId }, me.id)
   return row!.id

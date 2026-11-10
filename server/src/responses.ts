@@ -67,7 +67,8 @@ export const AvailableTransition = z.object({
 })
 export const Field = z.object({ id, projectId: id, name: z.string(), kind: z.enum(['text', 'number', 'select', 'date']), options: nullable(z.array(z.object({ id: z.string(), name: z.string(), disabled: z.boolean() }))), position: z.number() })
 export const Template = z.object({ id, projectId: id, name: z.string(), type: z.string(), title: z.string(), description: z.string(), priority: z.string(), labels: z.array(z.string()), estimate: nullable(z.number()) })
-export const Rule = z.object({ id, projectId: id, name: z.string(), enabled: z.boolean(), trigger: z.record(z.string(), z.unknown()), actions: z.array(z.record(z.string(), z.unknown())), runs: z.number(), failures: z.number(), ownerId: nullable(id) })
+export const Rule = z.object({ id, projectId: nullable(id).describe('Null: a global rule (spec 0709)'), name: z.string(), enabled: z.boolean(), trigger: z.record(z.string(), z.unknown()),
+  actions: z.array(z.record(z.string(), z.unknown())), condition: nullable(z.string()).describe('JQL the item must match'), runs: z.number(), failures: z.number(), ownerId: nullable(id), lastRunAt: nullable(ts) })
 const Step = z.object({ action: z.string(), outcome: z.enum(['done', 'skipped', 'unchanged', 'failed']), note: z.string().optional() })
 export const Release = z.object({ id, workspaceId: id, projectId: id, name: z.string(), description: z.string(), startDate: nullable(day), releaseDate: nullable(day), released: z.boolean(), releasedAt: nullable(ts), archived: z.boolean().describe('Hidden from pickers; items keep it') })
 export const Sprint = z.object({
@@ -252,6 +253,17 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'PUT /admin/authentication': AuthMethods,
   'PUT /admin/authentication/entra': AuthMethods,
   'GET /admin/directories': z.array(UserDirectory),
+  ...(() => {
+    const GlobalRule = z.object({ id, name: z.string(), enabled: z.boolean(), trigger: z.record(z.string(), z.unknown()), actions: z.array(z.record(z.string(), z.unknown())),
+      condition: nullable(z.string()), runs: z.number(), failures: z.number(), ownerId: nullable(id), lastRunAt: nullable(ts),
+      scope: z.object({ kind: z.enum(['all', 'category', 'projects']), categoryId: id.optional(), categoryName: nullable(z.string()).optional(), projectKeys: z.array(z.string()).optional() }) })
+    const Run = z.object({ id, ruleId: id, rule: z.string(), issueId: nullable(id), issueKey: nullable(z.string()), trigger: z.record(z.string(), z.unknown()),
+      result: z.enum(['success', 'some_skipped', 'no_change', 'failed', 'condition_not_met']), steps: z.array(Step), error: nullable(z.string()), at: ts })
+    return {
+      'GET /admin/automation/rules': z.array(GlobalRule), 'POST /admin/automation/rules': GlobalRule, 'PUT /admin/automation/rules/:id': GlobalRule,
+      'GET /admin/automation/runs': z.array(Run), 'GET /projects/:key/automation/global': z.array(GlobalRule),
+    }
+  })(),
   'GET /admin/development': z.object({
     receiverPath: z.string().describe('Where GitHub sends its webhooks, on the API’s address'), secretSet: z.boolean(),
     accounts: z.array(z.object({ id, accountLogin: z.string(), installationId: z.number(), status: z.enum(['pending', 'active', 'suspended']), createdAt: ts,
@@ -389,8 +401,8 @@ export const RESPONSES: Record<string, z.ZodType> = {
     jobId: nullable(id).describe('The import job (null on a dry run)'), importId: id.optional(),
   }),
   'GET /projects/:key/automation/runs': z.array(z.object({ id, ruleId: id, rule: z.string(), issueId: nullable(id), issueKey: nullable(z.string()), trigger: z.record(z.string(), z.unknown()),
-    result: z.enum(['success', 'some_skipped', 'no_change', 'failed']), steps: z.array(Step), error: nullable(z.string()), at: ts })),
-  'POST /projects/:key/automation/dry-run': z.object({ steps: z.array(Step), error: nullable(z.string()) }),
+    result: z.enum(['success', 'some_skipped', 'no_change', 'failed', 'condition_not_met']), steps: z.array(Step), error: nullable(z.string()), at: ts })),
+  'POST /projects/:key/automation/dry-run': z.object({ steps: z.array(Step), error: nullable(z.string()), conditionMet: z.boolean().describe('False: the condition doesn’t match, so the rule wouldn’t act') }),
   'GET /projects/:key/boards': z.array(z.object({ id, name: z.string(), type: z.enum(['kanban', 'scrum']), jql: z.string(), position: z.number(), hasBacklog: z.boolean().describe('Kanban: it has a Kanban backlog (spec 0406)'), canManage: z.boolean(), canManageSprints: z.boolean() })),
   'POST /projects/:key/boards': Board,
   'GET /boards/:id': Board,

@@ -44,7 +44,7 @@ Checked 10 Nov 2026 on [jira.atlassian.com](https://jira.atlassian.com/issues/?j
 - **R2: Scheduled rules.** Trigger **Scheduled**:
   - runs every N minutes, hours or days. The shortest interval is a System setting;
   - over the items a JQL query finds in the rule's scope (required, since every action acts on an item);
-  - optionally **only items changed since the last run**;
+  - optionally **only items changed since the last run**, by a person: automation's own changes don't count, so a rule can't keep acting on what it just changed;
   - at most N items a run, a System setting. The run log says when items were left out.
   - Each item is acted on in its own savepoint, as today. A scheduled run is a background job; the next one is queued when it ends, so runs never overlap.
 - **R3: Global rules.** Administration › **Automation** (system admins, signed in themselves) holds rules whose scope is:
@@ -116,3 +116,5 @@ Same rules.
 None.
 
 ## Changelog
+
+- 10 Nov 2026, while building: "only items changed since the last run" counts changes by people, so a scheduled rule's own changes don't bring the same items back.
