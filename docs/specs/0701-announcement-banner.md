@@ -1,6 +1,6 @@
 # 0701 Announcement banner
 
-Status: Approved (PO, 10 Nov 2026: "move ahead with phase 7 … don't wait for my approval")
+Status: Ported (aws-jira `a5659c4`, strand `84406f7`), approved by the PO on 10 Nov 2026; awaiting verification
 Parity rows: AD-02
 
 ## Context and Jira reference
