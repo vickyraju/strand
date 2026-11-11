@@ -1,6 +1,6 @@
 # 0412 Estimation by any number field, remaining-estimate tracking, and the team's time zone
 
-Status: Approved (pending work, 12 Nov 2026)
+Status: Ported (aws-jira `307c026`, strand `ef0d77d`), pending work the PO asked to complete on 11 Nov 2026; awaiting verification
 Parity rows: AG-07, AG-08
 
 ## Context and Jira reference
