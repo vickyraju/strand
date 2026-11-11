@@ -2257,3 +2257,33 @@ test('[0803.R1][0803.R2][0803.R6] an epic joins an initiative; a plan shows them
   assert.deepEqual(o.problems, [])
 })
 
+
+test('[0510.R1][0510.R2][0510.R3] the selection bar watches two items, then moves them to Done with a comment; each item’s outcome is shown', { skip, timeout: 120_000 }, async () => {
+  await owner('POST', '/projects', { name: 'Bulk journey', key: 'BKJ', template: 'scrum' })
+  const a = (await owner('POST', '/projects/BKJ/issues', { title: 'Tidy logs' })).body
+  const b = (await owner('POST', '/projects/BKJ/issues', { title: 'Rotate keys' })).body
+  const done = (await owner('GET', '/projects/BKJ')).body.statuses.find(s => s.category === 'done')
+  const me = (await owner('GET', '/me')).body.id
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url('/project/BKJ/backlog'))
+  await o.waitForSelector('text=Rotate keys')
+  await o.click(`[aria-label="Select ${a.key}"]`)
+  await o.click(`[aria-label="Select ${b.key}"]`)
+  // R1: watch them all (the creator already watches, so first stop, then watch again)
+  await o.click('.bulk-bar button:has-text("Unwatch")')
+  await o.waitForSelector('text=Stopped watching 2 items')
+  assert.equal((await owner('GET', `/issues/${a.key}`)).body.watcherIds.includes(me), false)
+  await o.click('.bulk-bar button:has-text("Watch")')
+  await o.waitForSelector('text=Watching 2 items')
+  assert.equal((await owner('GET', `/issues/${b.key}`)).body.watcherIds.includes(me), true)
+  // R2, R3: transition both to Done with a comment; the dialog lists each item's outcome
+  await o.click('.bulk-bar button:has-text("Transition")')
+  await o.selectOption('#bt-to', done.name)
+  await o.fill('#bt-comment', 'Done in bulk')
+  await o.click('.modal button.btn-primary:has-text("Transition")')
+  await o.waitForSelector(`.modal td:has-text("${a.key}")`)
+  assert.equal(await o.locator('.modal td:has-text("Moved")').count(), 2)
+  const after = (await owner('GET', `/issues/${a.key}`)).body
+  assert.deepEqual([after.statusId, after.comments.at(-1).body], [done.id, 'Done in bulk'])
+  assert.deepEqual(o.problems, [])
+})

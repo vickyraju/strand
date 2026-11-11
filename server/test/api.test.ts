@@ -3622,6 +3622,8 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     'GET /issues/{key}/remote-links': ['read', `/issues/${I}/remote-links`], 'POST /issues/{key}/remote-links': ['write', `/issues/${I}/remote-links`, { url: 'https://example.com', title: 'Matrix' }],   // 0507.R1
     'PUT /issues/{key}/remote-links/{id}': ['write', `/issues/${I}/remote-links/${none}`, { url: 'https://example.com', title: 'x' }], 'DELETE /issues/{key}/remote-links/{id}': ['write', `/issues/${I}/remote-links/${none}`],
     'POST /issues/{key}/archive': ['gadmin', `/issues/${I}/archive`], 'POST /issues/{key}/unarchive': ['gadmin', `/issues/${I}/unarchive`],   // 0508.R1
+    'POST /issues/bulk/watch': ['viewer', '/issues/bulk/watch', { issues: [I], watching: true }],   // 0510.R1
+    'POST /issues/bulk/transition': ['any', '/issues/bulk/transition', { issues: [I], toStatus: 'Nowhere' }],   // 0510.R2: every item's outcome, refusals included
     'POST /issues/bulk/archive': ['gadmin', '/issues/bulk/archive', { issues: ['NOPE-1'] }], 'GET /admin/archived-items': ['gadmin', '/admin/archived-items'],
     'POST /issues/{key}/convert': ['write', `/issues/${I}/convert`, { parentKey: null }],   // 0509.R1
     'GET /admin/automation/rules': ['gadmin', '/admin/automation/rules'], 'GET /admin/automation/runs': ['gadmin', '/admin/automation/runs'],   // 0709.R3
@@ -6726,6 +6728,36 @@ test('[0803.R2][0803.R3][0803.R4][0803.R6] plans: from projects or a saved view,
   assert.equal((await call('PATCH', `/api/v1/plans/${plan.id}`, { doneDays: 60 })).body.doneDays, 60)
   assert.ok((await call('GET', `/api/v1/plans/${plan.id}/timeline`)).body.items.some((i: any) => i.id === old.id))   // within 60 days now
   assert.equal((await call('DELETE', `/api/v1/plans/${plan.id}`)).status, 204)
+})
+
+test('[0510.R1][0510.R2] bulk watch and stop watching; bulk transition: each item through its own transition, with fields and a comment, every outcome reported', { skip }, async () => {
+  await call('POST', '/api/v1/projects', { name: 'Bulk moves', key: 'BKT', template: 'kanban' })
+  await call('POST', '/api/v1/projects', { name: 'Bulk other', key: 'BKO', template: 'kanban' })
+  await join('BKT', 'bk.viewer@x.com', 'viewer'); await join('BKT', 'bk.dev@x.com')
+  const mk = async (key: string, title: string) => (await call('POST', `/api/v1/projects/${key}/issues`, { title })).body
+  const [a, b, c] = [await mk('BKT', 'One'), await mk('BKT', 'Two'), await mk('BKO', 'Elsewhere')]
+  // R1: watch and stop watching, for anyone who can see them (a viewer too)
+  assert.deepEqual((await call('POST', '/api/v1/issues/bulk/watch', { issues: [a.key, b.key], watching: true }, 'bk.viewer@x.com')).body, { count: 2 })
+  const viewer = (await call('GET', '/api/v1/me', undefined, 'bk.viewer@x.com')).body.id
+  const watching = async (key: string) => (await call('GET', `/api/v1/issues/${key}`)).body.watcherIds.includes(viewer)
+  assert.deepEqual([await watching(a.key), await watching(b.key)], [true, true])
+  await call('POST', '/api/v1/issues/bulk/watch', { issues: [a.key], watching: false }, 'bk.viewer@x.com')
+  assert.deepEqual([await watching(a.key), await watching(b.key)], [false, true])
+  assert.equal((await call('POST', '/api/v1/issues/bulk/watch', { issues: [c.key], watching: true }, 'bk.viewer@x.com')).status, 404)   // not their project
+  // R2: to Done in both projects, with a resolution and a comment; a viewer can't transition
+  const done = (await call('GET', '/api/v1/projects/BKT')).body.statuses.find((x: any) => x.category === 'done')
+  await call('PATCH', `/api/v1/issues/${b.key}`, { statusId: done.id })
+  const r = (await call('POST', '/api/v1/issues/bulk/transition', { issues: [a.key, b.key, c.key, 'BKT-999'], toStatus: done.name, fields: { resolution: 'Done' }, comment: 'Closing in bulk' })).body
+  assert.deepEqual(r.results.map((x: any) => [x.key, x.outcome]), [[a.key, 'done'], [b.key, 'unchanged'], [c.key, 'done'], ['BKT-999', 'failed']])
+  assert.equal(r.done, 2)
+  const after = (await call('GET', `/api/v1/issues/${a.key}`)).body
+  assert.deepEqual([after.statusId, after.resolution, after.comments.at(-1).body], [done.id, 'Done', 'Closing in bulk'])
+  // a status no transition reaches is skipped with the reason; a failing item doesn't stop the rest
+  const s2 = (await call('POST', '/api/v1/issues/bulk/transition', { issues: [a.key], toStatus: 'Nowhere' })).body
+  assert.deepEqual(s2.results.map((x: any) => x.outcome), ['skipped'])
+  assert.match(s2.results[0].reason, /no transition from .* to Nowhere/)
+  const v = (await call('POST', '/api/v1/issues/bulk/transition', { issues: [a.key], toStatus: 'To do' }, 'bk.viewer@x.com')).body
+  assert.deepEqual(v.results.map((x: any) => x.outcome), ['failed'])
 })
 
 test('[0705.R2] a webhook never reaches private addresses, whatever its name resolves to', { skip }, async () => {
