@@ -317,6 +317,7 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'POST /issues/:key/archive': z.object({ archived: z.array(z.string()) }), 'POST /issues/:key/unarchive': z.object({ restored: z.array(z.string()) }),
   'POST /issues/bulk/archive': z.object({ archived: z.array(z.string()) }),
   'GET /admin/archived-items': z.object({ items: z.array(z.object({ id, key: z.string(), title: z.string(), type: z.string(), project: z.string(), archivedAt: ts, archivedBy: nullable(z.string()) })), next: nullable(z.string()) }),
+  'POST /issues/:key/convert': IssueRow,
   'GET /issues/:key/votes': z.object({ votes: z.number(), hasVoted: z.boolean(), voters: z.array(z.object({ id, name: z.string() })).describe('Empty without View voters and watchers') }),
   'POST /issues/:key/move': z.union([
     z.object({ dryRun: z.literal(true), items: z.array(z.object({ id, key: z.string(), newKey: z.string(),

@@ -3617,6 +3617,7 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     'PUT /issues/{key}/remote-links/{id}': ['write', `/issues/${I}/remote-links/${none}`, { url: 'https://example.com', title: 'x' }], 'DELETE /issues/{key}/remote-links/{id}': ['write', `/issues/${I}/remote-links/${none}`],
     'POST /issues/{key}/archive': ['gadmin', `/issues/${I}/archive`], 'POST /issues/{key}/unarchive': ['gadmin', `/issues/${I}/unarchive`],   // 0508.R1
     'POST /issues/bulk/archive': ['gadmin', '/issues/bulk/archive', { issues: ['NOPE-1'] }], 'GET /admin/archived-items': ['gadmin', '/admin/archived-items'],
+    'POST /issues/{key}/convert': ['write', `/issues/${I}/convert`, { parentKey: null }],   // 0509.R1
     'GET /admin/automation/rules': ['gadmin', '/admin/automation/rules'], 'GET /admin/automation/runs': ['gadmin', '/admin/automation/runs'],   // 0709.R3
     'POST /admin/automation/rules': ['gadmin', '/admin/automation/rules', { name: 'Matrix rule', scope: { kind: 'all' }, trigger: { kind: 'created' }, actions: [{ kind: 'label', value: 'matrix' }] }],
     'PUT /admin/automation/rules/{id}': ['gadmin', `/admin/automation/rules/${none}`, { name: 'x', scope: { kind: 'all' }, trigger: { kind: 'created' }, actions: [{ kind: 'label', value: 'x' }] }],
@@ -5821,6 +5822,28 @@ test('[0508.R1][0508.R2][0508.R3][0508.R4] archiving single items: with sub-item
   assert.deepEqual((await call('POST', '/api/v1/issues/bulk/archive', { issues: [kept.key] })).body.archived, [kept.key])
   // R4: audited and in history
   assert.deepEqual((await pool.query(`select action from audit_log where target = $1 and action like 'issue.%archived' order by at`, [item.key])).rows.map(r => r.action), ['issue.archived', 'issue.unarchived'])
+})
+
+test('[0509.R1][0509.R2][0509.R3] converting to and from sub-items: the parent decides; epics, items with sub-items and other projects refused; history', { skip }, async () => {
+  await call('POST', '/api/v1/projects', { name: 'Converting', key: 'CNV', template: 'kanban' })
+  await call('POST', '/api/v1/projects', { name: 'Elsewhere', key: 'CNX', template: 'kanban' })
+  const mk = async (b: object, key = 'CNV') => (await call('POST', `/api/v1/projects/${key}/issues`, b)).body
+  const epic = await mk({ title: 'Epic', type: 'epic' }), parent = await mk({ title: 'Parent' }), item = await mk({ title: 'Becomes a sub-item', parentId: epic.id })
+  const withSubs = await mk({ title: 'Has sub-items' }); await mk({ title: 'Its sub-item', parentId: withSubs.id })
+  const other = await mk({ title: 'Other project' }, 'CNX')
+  const conv = (key: string, parentKey: string | null) => call('POST', `/api/v1/issues/${key}/convert`, { parentKey })
+  assert.equal((await conv(epic.key, parent.key)).status, 400)
+  assert.equal((await conv(withSubs.key, parent.key)).status, 400)
+  assert.equal((await conv(item.key, epic.key)).status, 400)
+  assert.equal((await conv(item.key, other.key)).status, 400)
+  const sub = (await conv(item.key, parent.key)).body
+  assert.equal(sub.parentId, parent.id)
+  assert.equal((await conv(item.key, parent.key)).status, 400)
+  const back = (await conv(item.key, null)).body
+  assert.equal(back.parentId, null)
+  assert.equal((await conv(item.key, null)).status, 400)
+  const hist = (await pool.query(`select text from activity where issue_id = $1 and text like 'Converted%' order by created_at`, [item.id])).rows.map(r => r.text)
+  assert.deepEqual(hist, [`Converted to a sub-item of ${parent.key}`, 'Converted to an item'])
 })
 
 test('[0705.R2] a webhook never reaches private addresses, whatever its name resolves to', { skip }, async () => {
