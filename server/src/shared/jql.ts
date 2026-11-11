@@ -32,7 +32,7 @@ export const FIELDS: Record<string, string> = {
   type: 'type', issuetype: 'type', status: 'status', statuscategory: 'statusCategory', priority: 'priority',
   assignee: 'assignee', reporter: 'reporter', labels: 'labels', label: 'labels', component: 'component', components: 'component',
   fixversion: 'fixVersion', release: 'fixVersion', affectedversion: 'affectedVersion', affectsversion: 'affectedVersion',
-  sprint: 'sprint', parent: 'parent', epic: 'parent', resolution: 'resolution', flagged: 'flagged', category: 'category', projectcategory: 'category', 'epic status': 'epicStatus', epicstatus: 'epicStatus',
+  sprint: 'sprint', parent: 'parent', epic: 'parent', 'parent link': 'parentLink', parentlink: 'parentLink', resolution: 'resolution', flagged: 'flagged', category: 'category', projectcategory: 'category', 'epic status': 'epicStatus', epicstatus: 'epicStatus',
   text: 'text', summary: 'summary', title: 'summary', description: 'description',
   created: 'created', createddate: 'created', updated: 'updated', updateddate: 'updated', resolved: 'resolved', resolutiondate: 'resolved',
   due: 'due', duedate: 'due', start: 'start', startdate: 'start',

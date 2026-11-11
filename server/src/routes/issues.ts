@@ -27,17 +27,18 @@ const type = z.string().min(1).max(40).describe('A work type key of the project 
 const priority = z.string().min(1).max(40).describe('A priority key from GET /priorities (urgent, high, medium, low, none, or one an admin added)')
 
 /** A field as the history names it: statusId → status, fixReleaseIds → fix versions. */
-const FIELD_WORDS: Record<string, string> = { statusId: 'status', assigneeId: 'assignee', reporterId: 'reporter', sprintId: 'sprint', parentId: 'parent',
+const FIELD_WORDS: Record<string, string> = { statusId: 'status', assigneeId: 'assignee', reporterId: 'reporter', sprintId: 'sprint', parentId: 'parent', parentLinkId: 'parent link',
   fixReleaseIds: 'fix versions', affectsReleaseIds: 'affects versions', componentIds: 'components', title: 'summary' }
 const fieldWords = (f: string) => FIELD_WORDS[f] ?? f.replace(/([A-Z])/g, ' $1').toLowerCase()
 
 export const ISSUE_ROW = `
   select i.id, p.key || '-' || i.number as key, i.project_id, i.number, i.type, i.title, i.description,
          i.status_id, i.priority, i.flagged, i.epic_color, i.epic_status, i.assignee_id, i.reporter_id, i.labels, i.estimate, i.time_estimate, i.time_remaining, i.component_ids, i.affects_release_ids, i.test_spec, i.test_folder_id, i.test_environments, i.revision,
-         i.due_date, i.start_date, i.sprint_id, i.fix_release_ids, live_par.id as parent_id, i.custom, i.rank, i.version,
+         i.due_date, i.start_date, i.sprint_id, i.fix_release_ids, live_par.id as parent_id, live_pl.id as parent_link_id, i.custom, i.rank, i.version,
          i.resolution, i.resolved_at, i.created_at, i.updated_at, i.archived_at, i.archived_by
     from issues i join projects p on p.id = i.project_id
-    left join issues live_par on live_par.id = i.parent_id and live_par.deleted_at is null`   // a deleted parent (an epic) is no parent until restored (spec 0202)
+    left join issues live_par on live_par.id = i.parent_id and live_par.deleted_at is null   -- a deleted parent (an epic) is no parent until restored (spec 0202)
+    left join issues live_pl on live_pl.id = i.parent_link_id and live_pl.deleted_at is null`   // nor a deleted initiative (spec 0803)
 
 // What a Test or Pre-Condition says to do (Xray's three kinds of test)
 const testStep = z.object({
@@ -60,6 +61,7 @@ const patchBody = z.object({
   timeEstimate: z.number().int().nonnegative().nullable(), timeRemaining: z.number().int().nonnegative().nullable().describe('Remaining estimate, minutes (starts at the original estimate)'),
   dueDate: date.nullable(), startDate: date.nullable(),
   sprintId: uuid.nullable(), fixReleaseIds: z.array(uuid).max(50).describe('Fix versions: releases of the project that fix it'), parentId: uuid.nullable(),
+  parentLinkId: uuid.nullable().describe('Epics: the initiative it belongs to (Jira’s Parent Link), in any project (spec 0803)'),
   componentIds: z.array(uuid).max(50).describe('Components of the project'), affectsReleaseIds: z.array(uuid).max(50).describe('Affects versions: releases of the project where it was found'),
   custom: z.record(z.string(), z.union([z.string(), z.number(), z.array(z.string()).max(100)])).describe('Custom field values by field id: text, a number, or a list (multiple-value fields; a cascading field’s option and child option)'), rank: z.number(), testSpec: testSpec.nullable(),
   testFolderId: uuid.nullable().describe('Test repository folder (Tests only; null: the top)'),
@@ -287,6 +289,8 @@ async function applyPatch(d: Db, me: Me, cur: any, patch: z.infer<typeof patchBo
   if (patch.parentId === cur.id) throw new HttpError(400, 'An item cannot be its own parent')
   if ((patch.parentId !== undefined && patch.parentId !== cur.parentId) || retyping)
     await checkLevels(d, me, cur.projectId, cur, patch.type ?? cur.type, patch.parentId !== undefined ? patch.parentId : cur.parentId)
+  if ((patch.parentLinkId !== undefined && patch.parentLinkId !== cur.parentLinkId) || retyping)
+    await checkParentLink(d, me, patch.type ?? cur.type, patch.parentLinkId !== undefined ? patch.parentLinkId : cur.parentLinkId)
   // a first original estimate starts the remaining one (Jira's time tracking)
   if (patch.timeEstimate != null && patch.timeRemaining === undefined && cur.timeRemaining === null) patch = { ...patch, timeRemaining: patch.timeEstimate }
   // whatever happens, the item ends in a status of its type's workflow (a type change may need a new status)
@@ -365,17 +369,35 @@ export async function checkLevels(d: Db, me: Me, projectId: string, item: { id: 
     throw new HttpError(400, 'An epic with work items stays an epic: move its items to another epic first', { type: 'The epic has items' })
   if (item && type === 'epic' && item.type !== 'epic' && await has('true'))
     throw new HttpError(400, 'An item with sub-items can’t become an epic', { type: 'It has sub-items' })
+  // initiatives (spec 0803): above epics, joined only through an epic's Parent Link
+  if (item && type === 'initiative' && item.type !== 'initiative' && await has('true'))
+    throw new HttpError(400, 'An item with work under it can’t become an initiative', { type: 'It has items' })
+  if (item && item.type === 'initiative' && type !== 'initiative' && (await d.query('select 1 from issues where parent_link_id = $1 and deleted_at is null limit 1', [item.id])).length)
+    throw new HttpError(400, 'An initiative with epics stays an initiative: take its epics out first', { type: 'The initiative has epics' })
   if (!parentId) return
   if (type === 'epic') throw new HttpError(400, 'An epic has no parent', { parentId: 'Epics have no parent' })
+  if (type === 'initiative') throw new HttpError(400, 'An initiative has no parent', { parentId: 'Initiatives have no parent' })
   const args: unknown[] = [parentId, me.workspaceId]
   const [p] = await d.query<{ id: string; type: string; projectId: string; grandType: string | null }>(
     `select i.id, i.type, i.project_id, g.type as grand_type from issues i left join issues g on g.id = i.parent_id
       where i.id = $1 and i.workspace_id = $2 and i.deleted_at is null and ${visible(me, 'i.project_id', args)}`, args)
   if (!p) throw new HttpError(400, 'No such parent', { parentId: 'No such parent' })
+  if (p.type === 'initiative') throw new HttpError(400, 'Epics join an initiative through their Parent Link; other work goes under an epic', { parentId: 'An initiative' })
   if (p.type === 'epic') return
   if (p.grandType && p.grandType !== 'epic') throw new HttpError(400, 'A sub-item can’t have sub-items', { parentId: 'That item is a sub-item' })
   if (p.projectId !== projectId) throw new HttpError(400, 'A sub-item is in its parent’s project', { parentId: 'In another project' })
   if (await has('true')) throw new HttpError(400, 'An item with sub-items can’t become a sub-item', { parentId: 'It has sub-items' })
+}
+
+/** Jira's Parent Link (spec 0803 R1): only an epic has one, and it is an initiative I can see, in any project. An epic in an
+ *  initiative stays an epic. */
+export async function checkParentLink(d: Db, me: Me, type: string, parentLinkId: string | null | undefined) {
+  if (!parentLinkId) return
+  if (type !== 'epic') throw new HttpError(400, 'Only an epic has a Parent Link (an epic in an initiative stays an epic: take it out first)', { parentLinkId: 'Epics only' })
+  const args: unknown[] = [parentLinkId, me.workspaceId]
+  const [p] = await d.query<{ type: string }>(`select i.type from issues i where i.id = $1 and i.workspace_id = $2 and i.deleted_at is null and ${visible(me, 'i.project_id', args)}`, args)
+  if (!p) throw new HttpError(400, 'No such initiative', { parentLinkId: 'No such initiative' })
+  if (p.type !== 'initiative') throw new HttpError(400, 'An epic’s Parent Link is an initiative', { parentLinkId: 'Not an initiative' })
 }
 
 /** Components, fix versions and affects versions must be the project's own. An archived version stays on the items that
@@ -492,6 +514,7 @@ export async function insertIssue(d: Db, me: Me, projectId: string, b: Record<st
   await checkFolder(d, projectId, b.type ?? 'task', b.testFolderId)
   await checkParts(d, projectId, b)
   await checkLevels(d, me, projectId, null, b.type ?? 'task', b.parentId)
+  await checkParentLink(d, me, b.type ?? 'task', b.parentLinkId)
   // no priority chosen: the list's default (Medium out of the box, as in Jira; spec 0305 R2)
   if (b.priority === undefined) b = { ...b, priority: await defaultPriority(d, me.workspaceId) }
   else await checkPriority(d, me.workspaceId, b.priority)

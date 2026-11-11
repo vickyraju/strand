@@ -1623,3 +1623,13 @@ h2.empty-title, h2.section-title, h2.side-title { margin: 0 }
 .webhook-events { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px 16px; margin-top: 6px }
 .secret-box { padding: 6px 8px; background: var(--sunken); border-radius: var(--radius); word-break: break-all; flex: 1 }
 .struck { text-decoration: line-through }
+
+/* Plans (spec 0803): lanes for releases and sprints, dependency lines */
+.plan-lane { height: 30px; background: var(--surface-2) }
+.plan-lane .tl-label { background-color: var(--surface-2) }
+.plan-release { position: absolute; top: 6px; font-size: 11px; white-space: nowrap; color: var(--text-2); transform: translateX(-5px) }
+.plan-release.released { color: var(--success, #16a34a) }
+.plan-sprint { position: absolute; top: 6px; height: 18px; padding: 0 6px; font-size: 11px; line-height: 18px; border-radius: 4px; background: color-mix(in srgb, var(--accent) 14%, var(--surface)); color: var(--text-2); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; opacity: .85 }
+.plan-deps { position: absolute; top: 0; left: 0; pointer-events: none; z-index: 2; overflow: visible }
+.plan-dep { fill: none; stroke: var(--accent); stroke-width: 1.5 }
+.plan-dep.broken { stroke: var(--danger); stroke-width: 2 }

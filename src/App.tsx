@@ -15,6 +15,7 @@ import CreateProjectModal from './components/CreateProjectModal'
 import CreateIssueModal from './components/CreateIssueModal'
 import ShortcutsDialog from './components/ShortcutsDialog'
 import { ProjectsView, ProjectView, TAB_LABEL } from './components/ProjectView'
+import PlansView from './components/PlansView'
 import { StoreProvider, useStore, moveContext, type NewIssue } from './data/store'
 import { useProjectIssues } from './api/useProjectIssues'
 import { useProjectOnDemand } from './api/useProjectOnDemand'
@@ -242,7 +243,7 @@ function Shell() {
     const parts =
       fullIssue ? [`${fullIssue.key} ${fullIssue.title}`]
       : project ? [project.name]
-      : route.name === 'inbox' ? ['Inbox'] : route.name === 'search' ? ['Search'] : route.name === 'projects' ? ['Projects']
+      : route.name === 'inbox' ? ['Inbox'] : route.name === 'search' ? ['Search'] : route.name === 'projects' ? ['Projects'] : route.name === 'plans' ? ['Plans']
       : route.name === 'settings' ? ['Settings'] : route.name === 'admin' ? [isGlobalAdmin(state) ? 'Administration' : 'Configuration'] : route.name === 'home' ? ['Your work'] : []
     document.title = [...parts, look.siteTitle].join(' · ')                       // the site title (spec 0702)
   }, [route, fullIssue, project, look.siteTitle])
@@ -274,7 +275,7 @@ function Shell() {
       { label: state.projects.find(p => p.id === fullIssue.projectId)?.name ?? '', onClick: () => actions.openProject(fullIssue.projectId) },
       { label: fullIssue.key },
     ]
-    : [{ label: { home: 'Your work', inbox: 'Inbox', search: 'Search', projects: 'Projects', settings: 'Settings', admin: isGlobalAdmin(state) ? 'Administration' : 'Configuration' }[route.name as 'home'] ?? '' }]
+    : [{ label: { home: 'Your work', inbox: 'Inbox', search: 'Search', projects: 'Projects', plans: 'Plans', settings: 'Settings', admin: isGlobalAdmin(state) ? 'Administration' : 'Configuration' }[route.name as 'home'] ?? '' }]
 
   return (
     <AppContext.Provider value={actions}>
@@ -300,6 +301,7 @@ function Shell() {
             {route.name === 'inbox'    && <InboxView />}
             {route.name === 'search'   && <SearchView query={route.q} viewId={route.view} />}
             {route.name === 'projects' && <ProjectsView onCreate={() => setCreateProjectOpen(true)} />}
+            {route.name === 'plans'    && <PlansView id={route.id} />}
             {route.name === 'settings' && <SettingsView />}
             {route.name === 'admin' && <Suspense fallback={<div className="loading" role="status">Loading…</div>}><AdminView section={route.section} item={route.item} /></Suspense>}
             {route.name === 'project'  && (project
