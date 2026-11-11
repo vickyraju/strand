@@ -55,7 +55,7 @@ export const LinkType = z.object({
 })
 export const Component = z.object({ id, projectId: id, name: z.string(), description: z.string(), leadId: nullable(id), defaultAssignee: z.enum(['none', 'component_lead', 'project_lead']) })
 export const NotificationPrefs = z.object({
-  prefs: z.array(z.object({ kind: z.enum(['assigned', 'mentioned', 'commented', 'status', 'due', 'automation']), inbox: z.boolean(), email: z.boolean() })),
+  prefs: z.array(z.object({ kind: z.enum(['assigned', 'mentioned', 'commented', 'status', 'updated', 'due', 'automation']), inbox: z.boolean(), email: z.boolean() })),
   emailEnabled: z.boolean().describe('The workspace sends email (System settings)'),
 })
 export const SecurityLevel = z.object({
@@ -73,6 +73,8 @@ export const Template = z.object({ id, projectId: id, name: z.string(), type: z.
 export const Rule = z.object({ id, projectId: nullable(id).describe('Null: a global rule (spec 0709)'), name: z.string(), enabled: z.boolean(), trigger: z.record(z.string(), z.unknown()),
   actions: z.array(z.record(z.string(), z.unknown())), condition: nullable(z.string()).describe('JQL the item must match'), runs: z.number(), failures: z.number(), ownerId: nullable(id), lastRunAt: nullable(ts) })
 const Step = z.object({ action: z.string(), outcome: z.enum(['done', 'skipped', 'unchanged', 'failed']), note: z.string().optional() })
+const SchemeEntry = z.object({ id, event: z.string().describe('Jira’s event, as issue_commented'), recipient: z.string(), value: nullable(z.string()), valueName: nullable(z.string()) })
+export const NotificationScheme = z.object({ id, name: z.string(), description: z.string(), isDefault: z.boolean(), projects: z.number().describe('Projects using it'), entries: z.array(SchemeEntry).optional() })
 export const Subscription = z.object({ id, viewId: id, createdBy: id, createdByName: z.string(), groupId: nullable(id), groupName: nullable(z.string()),
   cron: z.string().describe('Quartz cron, as Jira stores schedules'), emailWhenEmpty: z.boolean(), nextRunAt: nullable(ts), lastRunAt: nullable(ts), createdAt: ts })
 export const Release = z.object({ id, workspaceId: id, projectId: id, name: z.string(), description: z.string(), startDate: nullable(day), releaseDate: nullable(day), released: z.boolean(), releasedAt: nullable(ts), archived: z.boolean().describe('Hidden from pickers; items keep it') })
@@ -320,6 +322,10 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'POST /issues/bulk/archive': z.object({ archived: z.array(z.string()) }),
   'GET /admin/archived-items': z.object({ items: z.array(z.object({ id, key: z.string(), title: z.string(), type: z.string(), project: z.string(), archivedAt: ts, archivedBy: nullable(z.string()) })), next: nullable(z.string()) }),
   'POST /issues/:key/convert': IssueRow,
+  'GET /admin/notification-schemes': z.array(NotificationScheme), 'GET /admin/notification-schemes/:id': NotificationScheme, 'POST /admin/notification-schemes': NotificationScheme,
+  'POST /admin/notification-schemes/:id/copy': NotificationScheme, 'PATCH /admin/notification-schemes/:id': NotificationScheme,
+  'POST /admin/notification-schemes/:id/entries': NotificationScheme, 'DELETE /admin/notification-schemes/:id/entries/:entryId': NotificationScheme,
+  'GET /projects/:key/notification-scheme': z.object({ scheme: nullable(z.object({ id, name: z.string() })) }), 'PUT /projects/:key/notification-scheme': z.object({ scheme: nullable(z.object({ id, name: z.string() })) }),
   'GET /views/:id/subscriptions': z.array(Subscription), 'POST /views/:id/subscriptions': Subscription, 'PATCH /subscriptions/:id': Subscription,
   'POST /subscriptions/:id/run': z.object({ jobId: id }),
   'GET /issues/:key/votes': z.object({ votes: z.number(), hasVoted: z.boolean(), voters: z.array(z.object({ id, name: z.string() })).describe('Empty without View voters and watchers') }),

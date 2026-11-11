@@ -27,6 +27,7 @@ import CustomFieldsAdmin from './CustomFieldsAdmin'
 import FieldConfigsAdmin from './FieldConfigsAdmin'
 import ScreensAdmin from './ScreensAdmin'
 import ArchivedItems from './ArchivedItems'
+import NotificationSchemes from './NotificationSchemes'
 import SharedViewsAdmin from './SharedViewsAdmin'
 import ArchivedProjects from './admin/ArchivedProjects'
 
@@ -68,6 +69,7 @@ export default function AdminView({ section = 'people', item }: { section?: Admi
       {section === 'audit' && <AuditLog />}
       {section === 'archived' && <ArchivedProjects />}
       {section === 'archived-items' && <ArchivedItems />}
+      {section === 'notification-schemes' && <NotificationSchemes />}
       {section === 'backups' && <Backups />}
       {section === 'views' && <SharedViewsAdmin />}
     </AdminShell>

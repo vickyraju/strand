@@ -11,6 +11,7 @@ import type { Me } from './auth.ts'
 import { enqueue, registerJob } from './jobs.ts'
 import { unseal } from './secrets.ts'
 import { jqlToSql, parseOr400 } from './jqlSql.ts'
+import { notifyEvent } from './routes/notificationSchemes.ts'
 import { briefIssue, jiraChangelog, jiraComment, jiraIssue, jiraSprint, jiraUser, jiraVersion, jiraWorklog, lookups, type Change } from './jiraShapes.ts'
 
 /** Every event Jira DC's webhooks offer (spec 0715 R1). */
@@ -36,7 +37,7 @@ const ISSUE_EVENTS = new Set<string>(['jira:issue_created', 'jira:issue_updated'
   'worklog_created', 'worklog_updated', 'worklog_deleted', 'issuelink_created', 'issuelink_deleted'])
 /** Jira's event behind an issue webhook (spec 0715 R3). */
 export type IssueEventType = 'issue_created' | 'issue_updated' | 'issue_assigned' | 'issue_generic' | 'issue_commented' | 'issue_comment_edited' | 'issue_comment_deleted'
-  | 'issue_worklogged' | 'issue_worklog_updated' | 'issue_worklog_deleted' | 'issue_deleted' | 'issue_moved'
+  | 'issue_worklogged' | 'issue_worklog_updated' | 'issue_worklog_deleted' | 'issue_deleted' | 'issue_moved' | 'issue_resolved' | 'issue_reopened'
 const ATTEMPTS = 6                                                                   // the first and 5 retries (R6)
 
 /** What an event is about: ids, loaded when the body is built. */
@@ -53,6 +54,8 @@ export interface Ref {
   transition?: Record<string, unknown>
   /** A setting switched (Jira's option events) */
   property?: { key: string; value: string }
+  /** People this event doesn't notify (a comment's @mentioned, who hear about the mention instead) */
+  notifyExcept?: string[]
 }
 export type ChangeItem = Change
 
@@ -70,6 +73,12 @@ async function hasWebhooks(d: Db, ws: string) {
 /** Queues an event, in the caller's transaction: a change that fails sends nothing (R6). The body is taken now, as the
  *  item is at this moment (as Jira's); matching webhooks and sending happen in background jobs. */
 export async function emit(d: Db, ws: string, event: WebhookEvent, ref: Ref, actorId: string | null, changelog?: ChangeItem[], only?: string) {
+  // the project's notification scheme hears every work item event too (spec 0605 R3); a post function's webhook is no new event
+  if (ref.issueId && event.startsWith('jira:') && !only) {
+    const type = ref.type ?? (event === 'jira:issue_created' ? 'issue_created' : event === 'jira:issue_deleted' ? 'issue_deleted' : 'issue_updated')
+    const visibility = ref.commentId ? ((ref.entity as any)?.visibility ?? (await d.query<{ visibility: any }>('select visibility from comments where id = $1', [ref.commentId]))[0]?.visibility ?? null) : null
+    await notifyEvent(d, type, ref.issueId, actorId, { visibility, except: ref.notifyExcept })
+  }
   if (!(await hasWebhooks(d, ws))) return
   const at = Date.now()
   await enqueue(d, 'webhooks.event', { ws, event, ref, only, body: await body(d, ws, event, ref, actorId, changelog ?? null, at) }, { workspaceId: ws, maxAttempts: 3 })

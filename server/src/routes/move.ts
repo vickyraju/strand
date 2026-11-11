@@ -9,7 +9,7 @@ import { statusesFor } from '../workflows.ts'
 import { publish } from '../events.ts'
 import { emit } from '../webhooks.ts'
 import { getSetting } from '../settings.ts'
-import { ISSUE_ROW, checkLevels, checkType, issueByKey } from './issues.ts'
+import { ISSUE_ROW, checkLevels, checkType, issueByKey, quietly, sendNotifications } from './issues.ts'
 import { projectByKey } from './projects.ts'
 import { enforceRules, rulesFor } from '../fields.ts'
 
@@ -164,12 +164,13 @@ const plugin: FastifyPluginAsyncZod = async app => {
 
   app.post('/issues/bulk/move', { schema: {
     tags: ['Issues: bulk'], summary: 'Move many items to one project (Jira’s bulk Move); statuses map as for one item, or by statusMap',
-    body: z.object({ issues: z.array(z.string()).min(1).max(5000), ...target, statusMap: z.record(uuid, uuid).optional().describe('Source status id → target status id') }),
+    body: z.object({ issues: z.array(z.string()).min(1).max(5000), ...target, statusMap: z.record(uuid, uuid).optional().describe('Source status id → target status id'), sendNotifications }),
   } }, async req => {
     const { bulkMaxItems } = await getSetting(req.me.workspaceId, 'searchAndBulk')
     const refs = [...new Set(req.body.issues)]
     if (refs.length > bulkMaxItems) throw new HttpError(400, `At most ${bulkMaxItems} items in one bulk change (System settings)`, { issues: 'Too many' })
     return tx(async d => {
+      await quietly(d, req)
       const out: { key: string; newKey: string }[] = []
       for (const ref of refs) {
         const item = await issueByKey(d, req, ref, false, 'browse')

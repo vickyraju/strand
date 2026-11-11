@@ -41,6 +41,7 @@ import fieldConfigRoutes from './routes/fieldConfigs.ts'
 import screenRoutes from './routes/screens.ts'
 import remoteLinkRoutes, { jiraRemoteLinks } from './routes/remoteLinks.ts'
 import subscriptionRoutes, { startSubscriptions } from './routes/subscriptions.ts'
+import notificationSchemeRoutes from './routes/notificationSchemes.ts'
 import { startDirectories } from './directories.ts'
 import { startAuth } from './authConfig.ts'
 import { githubWebhook } from './routes/github.ts'
@@ -179,6 +180,7 @@ export async function build() {
       await v1.register(screenRoutes)
       await v1.register(remoteLinkRoutes)
       await v1.register(subscriptionRoutes)
+      await v1.register(notificationSchemeRoutes)
     }
     await api.register(routes, { prefix: '/api/v1' })
     // ponytail: the unversioned /api is kept as a hidden alias so clients built before /api/v1 keep working;

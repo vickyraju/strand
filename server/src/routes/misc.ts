@@ -284,7 +284,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
   })
 
   // What I hear about, and how (Jira's notification settings): each kind in the Inbox and/or by email
-  const KINDS = ['assigned', 'mentioned', 'commented', 'status', 'due', 'automation'] as const
+  const KINDS = ['assigned', 'mentioned', 'commented', 'status', 'updated', 'due', 'automation'] as const
   const prefsOf = async (userId: string) => {
     const rows = new Map((await db.query<{ kind: string; inbox: boolean; email: boolean }>('select kind, inbox, email from notification_prefs where user_id = $1', [userId])).map(r => [r.kind, r]))
     return KINDS.map(kind => ({ kind, inbox: rows.get(kind)?.inbox ?? true, email: rows.get(kind)?.email ?? true }))

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { X, Trash2, ArrowRightLeft, Archive } from 'lucide-react'
 import { api, apiEnabled, errorMessage } from '../api/client'
-import { issueSync } from '../api/sync'
+import { issueSync, patchOf } from '../api/sync'
+import { mapIssue } from '../api/map'
 import { sprintDeps } from '../api/sprints'
 import { searchProjects, type ProjectOption } from '../api/work'
 import { useStore, type IssuePatch, type Priority } from '../data/store'
@@ -9,7 +10,7 @@ import { planMove } from './TransitionDialog'
 import { useApp } from '../appContext'
 import { Modal, Picker, statusOptions, priorityOptions, plural } from './ui'
 import { UserPicker } from './UserPicker'
-import { can } from '../data/access'
+import { can, canAdmin } from '../data/access'
 import DeleteItemsDialog from './DeleteItemsDialog'
 import { planEpicDrop, planVersionDrop } from './panelRules'
 
@@ -19,6 +20,7 @@ export default function BulkBar({ ids, onClear }: { ids: string[]; onClear: () =
   const { toast } = useApp()
   const [confirm, setConfirm] = useState(false)
   const [moving, setMoving] = useState(false)
+  const [notify, setNotify] = useState(true)
   if (ids.length === 0) return null
 
   const items = state.issues.filter(i => ids.includes(i.id))
@@ -27,6 +29,8 @@ export default function BulkBar({ ids, onClear }: { ids: string[]; onClear: () =
   // Delete issues (spec 0202): only when I may delete in every project the selection is in
   const mayDelete = projectIds.every(id => can(state.projects.find(p => p.id === id), 'deleteIssues'))
   const mayMove = apiEnabled && projectIds.every(id => can(state.projects.find(p => p.id === id), 'moveIssues'))   // spec 0501
+  // Jira's "Send mail for this update" (spec 0605 R5): system administrators, or project admins of every item
+  const mayQuiet = apiEnabled && (state.isAdmin === true || projectIds.every(id => canAdmin(state.projects.find(p => p.id === id))))
   const sprints = project?.template === 'scrum' ? state.sprints.filter(s => s.projectId === project.id && s.state !== 'closed') : []
 
   // Epic and fix version, as the backlog's panels set them (spec 0407 R4, R9): a keyboard way to do what dragging does
@@ -62,7 +66,16 @@ export default function BulkBar({ ids, onClear }: { ids: string[]; onClear: () =
       const skipped = ids.length - target.length
       if (skipped) toast(`${plural(skipped, 'item')} couldn’t move: the workflow doesn’t allow it, or the move needs details. Move ${skipped === 1 ? 'it' : 'them'} one at a time.`, { tone: 'warn' })
     }
-    if (target.length) {
+    if (target.length && !notify) {   // straight to the server's bulk edit, which notifies nobody
+      const chosen = items.filter(i => target.includes(i.id))
+      void issueSync.idle().then(() => api<{ issues: any[] }>('POST', '/api/issues/bulk/edit', {
+        issues: chosen.map(i => issueSync.serverKey(i)), patch: patchOf(chosen[0]!, { ...chosen[0]!, ...patch } as any) ?? {}, sendNotifications: false,
+      })).then(r => {
+        const fresh = r.issues.map(mapIssue)
+        issueSync.merge(fresh); dispatch({ type: 'mergeIssues', issues: fresh })
+        toast(`Updated ${what} on ${plural(target.length, 'item')}, without notifications`)
+      }, e => toast(errorMessage(e), { tone: 'warn' }))
+    } else if (target.length) {
       dispatch({ type: 'updateIssues', ids: target, patch })
       toast(`Updated ${what} on ${plural(target.length, 'item')}`, { undo: 'updateIssues' })
     }
@@ -94,6 +107,7 @@ export default function BulkBar({ ids, onClear }: { ids: string[]; onClear: () =
             onChange={v => toVersion(v === '-' ? null : v)} className="btn btn-ghost btn-sm" title="Add fix version" trigger="Version" />
         )}
         {mayMove && <button className="btn btn-ghost btn-sm" onClick={() => setMoving(true)}><ArrowRightLeft size={14} />Move</button>}
+        {mayQuiet && <label className="sm nowrap" title="Off: nobody is notified of these changes"><input type="checkbox" checked={notify} onChange={e => setNotify(e.target.checked)} /> Send notifications</label>}
         {apiEnabled && state.isAdmin === true && <button className="btn btn-ghost btn-sm" onClick={() => void archiveAll()}><Archive size={14} />Archive</button>}
         {mayDelete && <>
           <span className="bulk-sep" />
@@ -102,13 +116,13 @@ export default function BulkBar({ ids, onClear }: { ids: string[]; onClear: () =
       </div>
 
       {confirm && <DeleteItemsDialog ids={ids} onClose={() => setConfirm(false)} onDeleted={onClear} />}
-      {moving && <BulkMove keys={items.map(i => issueSync.serverKey(i))} from={projectIds} onClose={() => setMoving(false)} onMoved={onClear} />}
+      {moving && <BulkMove keys={items.map(i => issueSync.serverKey(i))} from={projectIds} notify={notify} onClose={() => setMoving(false)} onMoved={onClear} />}
     </>
   )
 }
 
 /** Jira's bulk Move (spec 0501): the selected items to one project; statuses map by name, else by category. */
-function BulkMove({ keys, from, onClose, onMoved }: { keys: string[]; from: string[]; onClose: () => void; onMoved: () => void }) {
+function BulkMove({ keys, from, notify, onClose, onMoved }: { keys: string[]; from: string[]; notify: boolean; onClose: () => void; onMoved: () => void }) {
   const { toast } = useApp()
   const [query, setQuery] = useState('')
   const [found, setFound] = useState<ProjectOption[]>([])
@@ -121,7 +135,7 @@ function BulkMove({ keys, from, onClose, onMoved }: { keys: string[]; from: stri
     setBusy(true); setError('')
     try {
       await issueSync.idle()
-      const r = await api<{ moved: { key: string; newKey: string }[] }>('POST', '/api/issues/bulk/move', { issues: keys, projectKey: target.key })
+      const r = await api<{ moved: { key: string; newKey: string }[] }>('POST', '/api/issues/bulk/move', { issues: keys, projectKey: target.key, sendNotifications: notify })
       for (const id of [...from, target.id]) await sprintDeps.reloadProject(id)
       toast(`Moved ${plural(r.moved.length, 'item')} to ${target.key}`); onMoved(); onClose()
     } catch (e) { setError(errorMessage(e)) } finally { setBusy(false) }
