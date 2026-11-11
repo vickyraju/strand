@@ -5831,6 +5831,67 @@ test('[0601.R1][0601.R2][0601.R3][0601.R4][0601.R5] every change keeps its names
   for (const r of [plan[1], plan[2]]) assert.match(r.rows.map((x: any) => x['QUERY PLAN']).join(' '), /Index.* activity_history_/)
 })
 
+test('[0602.R1][0602.R2][0602.R3][0602.R4] JQL history search: WAS, WAS IN, WAS NOT, WAS NOT IN and CHANGED with AFTER, BEFORE, ON, DURING, BY, FROM and TO', { skip }, async () => {
+  await call('POST', '/api/v1/projects', { name: 'History search', key: 'HSQ', template: 'kanban' })
+  const [todo, doing, done] = (await call('GET', '/api/v1/projects/HSQ')).body.statuses
+  await join('HSQ', 'hsq.ann@x.com')
+  const ann = (await call('GET', '/api/v1/me', undefined, 'hsq.ann@x.com')).body
+  const v1 = (await call('POST', '/api/v1/projects/HSQ/releases', { name: '1.0' })).body, v2 = (await call('POST', '/api/v1/projects/HSQ/releases', { name: '2.0' })).body
+  const mk = async (b: object) => (await call('POST', '/api/v1/projects/HSQ/issues', { title: 'Item', ...b })).body
+  const [a, b, c, d, e] = [await mk({}), await mk({}), await mk({}), await mk({ fixReleaseIds: [v1.id] }), await mk({ fixReleaseIds: [v1.id] })]
+  const edit = (i: any, patch: object) => call('PATCH', `/api/v1/issues/${i.key}`, patch)
+  await edit(a, { statusId: doing.id }); await edit(a, { statusId: done.id }); await edit(a, { assigneeId: ann.id }); await edit(a, { priority: 'high' })
+  await edit(c, { fixReleaseIds: [v1.id] }); await edit(c, { fixReleaseIds: [v1.id, v2.id] }); await edit(c, { fixReleaseIds: [v2.id] })
+  await edit(e, { fixReleaseIds: [v2.id] })
+  // A was created ten days ago, started five days ago and finished two days ago
+  await pool.query(`update issues set created_at = now() - interval '10 days' where id = $1`, [a.id])
+  await pool.query(`update activity set created_at = now() - interval '5 days' where issue_id = $1 and field = 'statusId' and to_value = $2`, [a.id, doing.id])
+  await pool.query(`update activity set created_at = now() - interval '2 days' where issue_id = $1 and field = 'statusId' and to_value = $2`, [a.id, done.id])
+  const [{ day }] = (await pool.query(`select to_char(now() - interval '5 days', 'YYYY-MM-DD') as day`)).rows
+  await pool.query('update statuses set name = $2 where id = $1', [doing.id, 'Doing now'])   // the history keeps the name it had
+  const keys = async (jql: string) => {
+    const r = await call('GET', `/api/v1/search?jql=${encodeURIComponent(`project = HSQ AND ${jql}`)}&limit=50`)
+    assert.equal(r.status, 200, `${jql}: ${JSON.stringify(r.body)}`)
+    return r.body.items.map((i: any) => i.key).sort()
+  }
+  const K = (...xs: any[]) => xs.map(x => x.key).sort()
+  // R1, R2: values now, at creation and in between; old names and ids; WAS NOT; lists; NOT
+  assert.deepEqual(await keys(`status WAS "${doing.name}"`), K(a))
+  assert.deepEqual(await keys(`status WAS "${doing.id}"`), K(a))
+  assert.deepEqual(await keys(`status WAS "${todo.name}"`), K(a, b, c, d, e))
+  assert.deepEqual(await keys(`status WAS NOT "${doing.name}"`), K(b, c, d, e))
+  assert.deepEqual(await keys(`status WAS IN ("${doing.name}", "${done.name}")`), K(a))
+  assert.deepEqual(await keys(`status WAS NOT IN ("${doing.name}", "${done.name}")`), K(b, c, d, e))
+  assert.deepEqual(await keys(`NOT status WAS "${doing.name}"`), K(b, c, d, e))
+  assert.deepEqual(await keys(`assignee WAS "hsq.ann@x.com"`), K(a))
+  assert.deepEqual(await keys(`assignee WAS EMPTY`), K(a, b, c, d, e))
+  assert.deepEqual(await keys(`priority WAS High`), K(a))
+  assert.deepEqual(await keys(`status CHANGED`), K(a))
+  // R3: predicates
+  assert.deepEqual(await keys(`status WAS "${doing.name}" BEFORE "-6d"`), [])
+  assert.deepEqual(await keys(`status WAS "${doing.name}" BEFORE "-4d"`), K(a))
+  assert.deepEqual(await keys(`status WAS "${doing.name}" AFTER "-1d"`), [])
+  assert.deepEqual(await keys(`status WAS "${doing.name}" AFTER "-3d"`), K(a))
+  assert.deepEqual(await keys(`status WAS "${doing.name}" DURING ("-4d", "-3d")`), K(a))
+  assert.deepEqual(await keys(`status WAS "${done.name}" DURING ("-9d", "-6d")`), [])
+  assert.deepEqual(await keys(`status WAS "${todo.name}" ON "${day}"`), K(a))   // the others were created today
+  assert.deepEqual(await keys(`status CHANGED ON "${day}"`), K(a))
+  assert.deepEqual(await keys(`status CHANGED FROM "${todo.name}" TO "${doing.name}" BY currentUser()`), K(a))
+  assert.deepEqual(await keys(`status CHANGED FROM "${done.name}"`), [])
+  assert.deepEqual(await keys(`status CHANGED BY "hsq.ann@x.com"`), [])
+  assert.deepEqual(await keys(`assignee WAS "hsq.ann@x.com" BY currentUser()`), K(a))
+  assert.deepEqual(await keys(`assignee CHANGED FROM EMPTY TO "hsq.ann@x.com" AFTER "-1d"`), K(a))
+  // R4: fix versions
+  assert.deepEqual(await keys(`fixVersion WAS "1.0"`), K(c, d, e))
+  assert.deepEqual(await keys(`fixVersion WAS EMPTY`), K(a, b, c))
+  assert.deepEqual(await keys(`fixVersion WAS NOT EMPTY`), K(d, e))
+  assert.deepEqual(await keys(`fixVersion CHANGED FROM "1.0"`), K(c, e))
+  assert.deepEqual(await keys(`fixVersion CHANGED FROM "1.0" TO "2.0"`), K(e))
+  assert.deepEqual(await keys(`fixVersion WAS "2.0" BY currentUser()`), K(c, e))
+  // other fields: Jira's six only
+  for (const q of ['labels WAS x', 'type CHANGED']) assert.equal((await call('GET', `/api/v1/search?jql=${encodeURIComponent(q)}`)).status, 400)
+})
+
 test('[0705.R2] a webhook never reaches private addresses, whatever its name resolves to', { skip }, async () => {
   const { privateAddress, urlProblem, fillUrl } = await import('../src/webhooks.ts')
   for (const a of ['127.0.0.1', '10.1.2.3', '172.20.0.1', '192.168.1.1', '169.254.169.254', '100.64.0.1', '0.0.0.0', '::1', 'fd00::1', 'fe80::1', '::ffff:127.0.0.1',

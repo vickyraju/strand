@@ -135,7 +135,7 @@ Checked against Atlassian's Data Center documentation on 5 November 2026 (Jira S
 
 | ID | Jira capability | Jira DC | Strand | Status | Decision | Spec | Notes |
 |---|---|---|---|---|---|---|---|
-| SR-01 | JQL fields and operators | All fields; WAS, CHANGED, BY, DURING… ([jqlop]) | Most fields; no history operators | partial | match | 0601, 0602 | |
+| SR-01 | JQL fields and operators | All fields; WAS, CHANGED, BY, DURING… ([jqlop]) | Most fields; WAS, WAS IN, WAS NOT, WAS NOT IN and CHANGED on Jira's six fields with AFTER, BEFORE, ON, DURING, BY, FROM and TO, over the indexed history | match | match | 0601, 0602 | History search on more fields is a proposal |
 | SR-02 | JQL functions | About 35 ([jqlfn]) | currentUser, now, startOfDay, endOfDay, startOfWeek, openSprints, closedSprints, membersOf, Xray functions | partial | match | 0603 | |
 | SR-03 | `~` text search | Word search with stemming | Substring match (`jqlSql.ts`) | diverges | open | — | |
 | SR-04 | Saved filters and sharing | View and edit sharing; admins change the owner | Same (`misc.ts`) | match | match | 0203 | Sharing limited to your own groups and projects (PRM-06). |

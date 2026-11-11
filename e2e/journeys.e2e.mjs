@@ -1999,3 +1999,20 @@ test('[0601.R4] the History tab shows each change with its old and new names', {
   assert.deepEqual(o.problems, [])
 })
 
+test('[0602.R1] JQL: status WAS finds an item that has moved on', { skip, timeout: 120_000 }, async () => {
+  await owner('POST', '/projects', { name: 'Was journey', key: 'WSJ', template: 'kanban' })
+  const [, doing, done] = (await owner('GET', '/projects/WSJ')).body.statuses
+  const moved = (await owner('POST', '/projects/WSJ/issues', { title: 'Moved on' })).body
+  await owner('POST', '/projects/WSJ/issues', { title: 'Never started' })
+  await owner('PATCH', `/issues/${moved.key}`, { statusId: doing.id })
+  await owner('PATCH', `/issues/${moved.key}`, { statusId: done.id })
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url('/search?q='))
+  await o.click('button:has-text("Switch to JQL")')
+  await o.fill('textarea[aria-label="JQL query"]', `project = WSJ AND status WAS "${doing.name}"`)
+  await o.press('textarea[aria-label="JQL query"]', 'Enter')
+  await o.waitForSelector(`text=${moved.key}`)
+  await o.waitForSelector('text=1 result')
+  assert.deepEqual(o.problems, [])
+})
+

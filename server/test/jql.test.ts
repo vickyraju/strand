@@ -64,3 +64,23 @@ test('[0101.R1] a board filter’s projects: named by project = / in, narrowed b
     '(project = A OR assignee = x) AND (project = B OR assignee = y)'])
     assert.equal(p(open), null, open)
 })
+
+test('[0602.R1][0602.R3] jql: WAS, WAS IN, WAS NOT, WAS NOT IN and CHANGED with their predicates', () => {
+  const w = (src: string) => parseJql(src).where
+  assert.deepEqual(w('status WAS "In Progress"'), { kind: 'clause', field: 'status', op: 'was', values: [{ kind: 'text', text: 'In Progress' }], history: {} })
+  assert.deepEqual(w('status was in (Done, Closed)'), { kind: 'clause', field: 'status', op: 'was in', values: [{ kind: 'text', text: 'Done' }, { kind: 'text', text: 'Closed' }], history: {} })
+  assert.equal((w('assignee WAS NOT EMPTY') as any).op, 'was not')
+  assert.equal((w('fixVersion WAS NOT IN ("1.0")') as any).op, 'was not in')
+  assert.deepEqual((w('status WAS Done AFTER "2026-01-01" BEFORE -1d ON 2026-01-05 DURING ("2026-01-01", now()) BY (ann, currentUser())') as any).history, {
+    after: { kind: 'text', text: '2026-01-01' }, before: { kind: 'text', text: '-1d' }, on: { kind: 'text', text: '2026-01-05' },
+    during: [{ kind: 'text', text: '2026-01-01' }, { kind: 'fn', name: 'now' }], by: [{ kind: 'text', text: 'ann' }, { kind: 'fn', name: 'currentuser' }] })
+  assert.deepEqual(w('status CHANGED FROM "To Do" TO Done BY ann AND priority = high'), { kind: 'and', items: [
+    { kind: 'clause', field: 'status', op: 'changed', values: [], history: { from: { kind: 'text', text: 'To Do' }, to: { kind: 'text', text: 'Done' }, by: [{ kind: 'text', text: 'ann' }] } },
+    { kind: 'clause', field: 'priority', op: '=', values: [{ kind: 'text', text: 'high' }] }] })
+  assert.equal((w('NOT status WAS Done') as any).kind, 'not')
+  const err = (src: string) => { try { parseJql(src); return null } catch (e) { return (e as JqlError).message } }
+  assert.match(err('status WAS Done DURING ("2026-01-01")')!, /DURING takes two dates/)
+  assert.match(err('status WAS Done FROM x')!, /join clauses with AND or OR/)   // FROM and TO only follow CHANGED
+  assert.match(err('status WAS IN Done')!, /Expected “\(”/)
+})
+
