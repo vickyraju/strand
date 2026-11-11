@@ -30,7 +30,7 @@ export default function ReleasesView({ project, releaseId }: { project: Project;
   const [groupBy, setGroupBy] = useState<TableGroup>('status')
   const releases = project.releases
   const setReleases = (next: Release[]) => dispatch({ type: 'updateProject', id: project.id, patch: { releases: next } })
-  const itemsOf = (r: Release) => itemsInRelease(state.issues.filter(i => i.projectId === project.id), r.id)
+  const itemsOf = (r: Release) => itemsInRelease(state.issues.filter(i => !i.archivedAt && i.projectId === project.id), r.id)
   const current = releases.find(r => r.id === releaseId)
 
   const archive = (r: Release, archived: boolean) => { setReleases(releases.map(x => x.id === r.id ? { ...x, archived } : x)); toast(`${r.name} ${archived ? 'archived' : 'unarchived'}`) }
@@ -193,7 +193,7 @@ export function ReleaseDialog({ release, isNew, onClose, onSave }: { release: Re
 function ReleaseDialogConfirm({ project, release, onClose }: { project: Project; release: Release; onClose: () => void }) {
   const { state, dispatch } = useStore()
   const { toast } = useApp()
-  const open = state.issues.filter(i => i.projectId === project.id && !!i.fixReleaseIds?.includes(release.id) && !isDone(project, i))
+  const open = state.issues.filter(i => !i.archivedAt && i.projectId === project.id && !!i.fixReleaseIds?.includes(release.id) && !isDone(project, i))
   const others = project.releases.filter(r => r.id !== release.id && !r.released && !r.archived)
   const [moveTo, setMoveTo] = useState<string>(others[0]?.id ?? '')
   return (
@@ -226,7 +226,7 @@ const swap = (list: string[] | undefined, from: string, to?: string) => list?.in
  *  browser has loaded), else counted here. */
 function useUsage(project: Project, release: Release) {
   const { state } = useStore()
-  const mine = state.issues.filter(i => i.projectId === project.id)
+  const mine = state.issues.filter(i => !i.archivedAt && i.projectId === project.id)
   const local = { fix: mine.filter(i => i.fixReleaseIds?.includes(release.id)).length, affects: mine.filter(i => i.affectsReleaseIds?.includes(release.id)).length }
   const [usage, setUsage] = useState<{ fix: number; affects: number } | null>(apiEnabled ? null : local)
   useEffect(() => {
@@ -244,7 +244,7 @@ function useVersionChange(project: Project) {
     try {
       if (apiEnabled) { await issueSync.idle(); await changeOnServer('releases', o.call, { ...project, releases: o.next }, show) }
       else {
-        for (const i of state.issues.filter(i => i.projectId === project.id)) { const patch = o.local(i); if (patch) dispatch({ type: 'updateIssues', ids: [i.id], patch }) }
+        for (const i of state.issues.filter(i => !i.archivedAt && i.projectId === project.id)) { const patch = o.local(i); if (patch) dispatch({ type: 'updateIssues', ids: [i.id], patch }) }
         show()
       }
       toast(o.done)

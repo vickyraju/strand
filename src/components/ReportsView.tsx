@@ -272,7 +272,7 @@ function CreatedResolved({ project }: { project: Project }) {
 
 function Workload({ project }: { project: Project }) {
   const { state } = useReport()
-  const open = state.issues.filter(i => i.projectId === project.id && i.type !== 'epic' && !isDone(project, i))
+  const open = state.issues.filter(i => !i.archivedAt && i.projectId === project.id && i.type !== 'epic' && !isDone(project, i))
   if (open.length === 0) return <NoData text="There is no open work in this project." />
   const rows = [...new Set(open.map(i => i.assigneeId ?? ''))].map(id => {
     const mine = open.filter(i => (i.assigneeId ?? '') === id)

@@ -110,6 +110,7 @@ export const mapIssue = (i: Row): Issue => ({
   ...(i.sprintId ? { sprintId: i.sprintId } : {}), ...(i.fixReleaseIds?.length ? { fixReleaseIds: i.fixReleaseIds } : {}), ...(i.flagged != null ? { flagged: !!i.flagged } : {}), ...(i.epicColor ? { epicColor: i.epicColor } : {}), ...(i.epicStatus ? { epicStatus: i.epicStatus } : {}),
   ...(i.parentId ? { parentId: i.parentId } : {}),
   ...(i.resolution ? { resolution: i.resolution, resolvedAt: ms(i.resolvedAt) } : {}),
+  ...(i.archivedAt ? { archivedAt: ms(i.archivedAt) } : {}),
   watcherIds: [], links: [], attachments: [], worklogs: [],
   custom: i.custom ?? {}, rank: i.rank ?? 0, createdAt: ms(i.createdAt) ?? Date.now(), updatedAt: ms(i.updatedAt) ?? Date.now(),
 })

@@ -359,6 +359,8 @@ export interface Issue {
   /** How a finished item ended, and when it last reached Done (kept in step with the status). */
   resolution?: Resolution
   resolvedAt?: number
+  /** Archived (spec 0508): read-only, out of lists; it still opens by its key */
+  archivedAt?: number
   /** Original time estimate in minutes. */
   timeEstimate?: number
   /** What a Test or Pre-Condition says to do (Xray's test kinds) */

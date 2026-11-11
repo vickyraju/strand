@@ -39,6 +39,7 @@ import moveRoutes from './routes/move.ts'
 import customFieldRoutes from './routes/customFields.ts'
 import fieldConfigRoutes from './routes/fieldConfigs.ts'
 import screenRoutes from './routes/screens.ts'
+import remoteLinkRoutes, { jiraRemoteLinks } from './routes/remoteLinks.ts'
 import { startDirectories } from './directories.ts'
 import { startAuth } from './authConfig.ts'
 import { githubWebhook } from './routes/github.ts'
@@ -174,10 +175,12 @@ export async function build() {
       await v1.register(customFieldRoutes)
       await v1.register(fieldConfigRoutes)
       await v1.register(screenRoutes)
+      await v1.register(remoteLinkRoutes)
     }, { prefix: '/api/v1' })
     // Xray's addresses for importing CI results: same sign-in and rate limits as the API
     await api.register(raven, { prefix: '/rest/raven/1.0' })
     await api.register(jiraWebhooks, { prefix: '/rest/webhooks/1.0' })   // Jira's webhook REST (spec 0715 R7)
+    await api.register(jiraRemoteLinks, { prefix: '/rest/api/2' })   // Jira's remote issue links (spec 0507 R2)
   }
   await app.register(resources)
 

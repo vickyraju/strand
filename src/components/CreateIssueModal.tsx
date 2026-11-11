@@ -41,7 +41,7 @@ export default function CreateIssueModal({ defaults, onClose }: {
   if (!project) return null
   const parent = state.issues.find(i => i.id === parentId)
   // Parents: the project's epics, plus the item a sub-item was started from
-  const parentOptions = state.issues.filter(i => i.projectId === projectId && (i.type === 'epic' || i.id === defaults.parentId))
+  const parentOptions = state.issues.filter(i => !i.archivedAt && i.projectId === projectId && (i.type === 'epic' || i.id === defaults.parentId))
   const sprints = state.sprints.filter(s => s.projectId === projectId && s.state !== 'closed')
   const sprint = sprints.find(s => s.id === sprintId)
 

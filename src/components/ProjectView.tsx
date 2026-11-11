@@ -179,7 +179,7 @@ export function ProjectsView({ onCreate }: { onCreate: () => void }) {
             <tbody>
               {state.projects.map(p => {
                 const lead = userOf(state, p.leadId)
-                const items = state.issues.filter(i => i.projectId === p.id && i.type !== 'epic')
+                const items = state.issues.filter(i => !i.archivedAt && i.projectId === p.id && i.type !== 'epic')
                 const done = items.filter(i => isDone(p, i)).length
                 const last = Math.max(p.createdAt, ...items.map(i => i.updatedAt))
                 return (
@@ -253,7 +253,7 @@ export function ProjectView({ project, tab, sub, quick }: { project: Project; ta
     ...(project.testing ? [{ id: 'tests' as const, Icon: FlaskConical }] : []),
     { id: 'settings', Icon: Settings },
   ]
-  const members = [...new Set([project.leadId, ...state.issues.filter(i => i.projectId === project.id).map(i => i.assigneeId)])]
+  const members = [...new Set([project.leadId, ...state.issues.filter(i => !i.archivedAt && i.projectId === project.id).map(i => i.assigneeId)])]
     .map(id => userOf(state, id)).filter(u => !!u)
 
   return (
@@ -307,7 +307,7 @@ function ListTab({ project }: { project: Project }) {
   const { state } = useStore()
   const { createIssue } = useApp()
   const [groupBy, setGroupBy] = useState<TableGroup>(() => (localStorage.getItem(`forge:list-group:${project.id}`) as TableGroup) ?? 'status')
-  const all = state.issues.filter(i => i.projectId === project.id)
+  const all = state.issues.filter(i => !i.archivedAt && i.projectId === project.id)
   const people = [...new Set(all.map(i => i.assigneeId).filter((x): x is string => !!x))].map(id => userOf(state, id)!).filter(Boolean)
   const filters = useFilters(people, project)
 
@@ -350,7 +350,7 @@ function ProjectSettings({ project }: { project: Project }) {
   const [newKey, setNewKey] = useState<string | null>(null)
   const update = (patch: ProjectPatch) => dispatch({ type: 'updateProject', id: project.id, patch })
   const lead = userOf(state, project.leadId)
-  const count = state.issues.filter(i => i.projectId === project.id).length
+  const count = state.issues.filter(i => !i.archivedAt && i.projectId === project.id).length
 
   return (
     <div className="settings">

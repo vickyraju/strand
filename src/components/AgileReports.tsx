@@ -47,7 +47,7 @@ export function Burnup({ project, state }: { project: Project; state: State }) {
 /** R2: one epic's total and completed work over time, and its three lists. */
 export function EpicReport({ project, state }: { project: Project; state: State }) {
   const { estimation } = useStatistic(project)
-  const epics = state.issues.filter(i => i.projectId === project.id && i.type === 'epic').sort((a, b) => a.rank - b.rank)
+  const epics = state.issues.filter(i => !i.archivedAt && i.projectId === project.id && i.type === 'epic').sort((a, b) => a.rank - b.rank)
   const [id, setId] = useState(epics.find(e => categoryOf(project, e.status) !== 'done')?.id ?? epics[0]?.id)
   const epic = epics.find(e => e.id === id)
   if (!epic) return <NoData text="Create an epic and add work items to it to see its report." />
@@ -121,7 +121,7 @@ export function ScopeBurndown({ project, state, kind }: { project: Project; stat
   const { estimation } = useStatistic(project)
   const { stat } = useDurations()
   const options = kind === 'epic'
-    ? state.issues.filter(i => i.projectId === project.id && i.type === 'epic').sort((a, b) => a.rank - b.rank).map(e => ({ value: e.id, label: `${e.key} ${e.title}`, done: categoryOf(project, e.status) === 'done' }))
+    ? state.issues.filter(i => !i.archivedAt && i.projectId === project.id && i.type === 'epic').sort((a, b) => a.rank - b.rank).map(e => ({ value: e.id, label: `${e.key} ${e.title}`, done: categoryOf(project, e.status) === 'done' }))
     : project.releases.filter(r => !r.archived).map(r => ({ value: r.id, label: r.name, done: r.released }))
   const [id, setId] = useState(options.find(o => !o.done)?.value ?? options[0]?.value)
   const chosen = options.find(o => o.value === id)

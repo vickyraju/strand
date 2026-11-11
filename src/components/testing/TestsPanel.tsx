@@ -70,7 +70,7 @@ function AddTestsDialog({ issue, project, plan, onClose, onAdded }: { issue: Iss
   const [jql, setJql] = useState(`project = ${project.key} AND type = test`)
   const [folder, setFolder] = useState('')
   const [error, setError] = useState('')
-  const tests = state.issues.filter(i => i.projectId === project.id && i.type === 'test'
+  const tests = state.issues.filter(i => !i.archivedAt && i.projectId === project.id && i.type === 'test'
     && (!q.trim() || i.key.toLowerCase().includes(q.trim().toLowerCase()) || i.title.toLowerCase().includes(q.trim().toLowerCase()))).slice(0, 100)
   const add = () => api('POST', `/api/issues/${enc(issue.key)}/tests`, { ...(mode === 'pick' ? { keys: picked } : { jql }), ...(plan && folder.trim() ? { folder: folder.trim() } : {}) })
     .then(onAdded, e => setError(errorMessage(e)))

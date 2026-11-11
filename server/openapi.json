@@ -17461,6 +17461,16 @@
                           "updatedAt": {
                             "type": "string",
                             "description": "ISO 8601 timestamp"
+                          },
+                          "archivedAt": {
+                            "nullable": true,
+                            "description": "When it was archived (spec 0508): read-only, out of lists",
+                            "type": "string"
+                          },
+                          "archivedBy": {
+                            "nullable": true,
+                            "type": "string",
+                            "description": "uuid"
                           }
                         },
                         "required": [
@@ -17499,7 +17509,9 @@
                           "resolution",
                           "resolvedAt",
                           "createdAt",
-                          "updatedAt"
+                          "updatedAt",
+                          "archivedAt",
+                          "archivedBy"
                         ],
                         "additionalProperties": false
                       }
@@ -18015,6 +18027,16 @@
                           "updatedAt": {
                             "type": "string",
                             "description": "ISO 8601 timestamp"
+                          },
+                          "archivedAt": {
+                            "nullable": true,
+                            "description": "When it was archived (spec 0508): read-only, out of lists",
+                            "type": "string"
+                          },
+                          "archivedBy": {
+                            "nullable": true,
+                            "type": "string",
+                            "description": "uuid"
                           }
                         },
                         "required": [
@@ -18053,7 +18075,9 @@
                           "resolution",
                           "resolvedAt",
                           "createdAt",
-                          "updatedAt"
+                          "updatedAt",
+                          "archivedAt",
+                          "archivedBy"
                         ],
                         "additionalProperties": false
                       }
@@ -18672,6 +18696,16 @@
                     "updatedAt": {
                       "type": "string",
                       "description": "ISO 8601 timestamp"
+                    },
+                    "archivedAt": {
+                      "nullable": true,
+                      "description": "When it was archived (spec 0508): read-only, out of lists",
+                      "type": "string"
+                    },
+                    "archivedBy": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "uuid"
                     }
                   },
                   "required": [
@@ -18710,7 +18744,9 @@
                     "resolution",
                     "resolvedAt",
                     "createdAt",
-                    "updatedAt"
+                    "updatedAt",
+                    "archivedAt",
+                    "archivedBy"
                   ],
                   "additionalProperties": false
                 }
@@ -19058,6 +19094,16 @@
                     "updatedAt": {
                       "type": "string",
                       "description": "ISO 8601 timestamp"
+                    },
+                    "archivedAt": {
+                      "nullable": true,
+                      "description": "When it was archived (spec 0508): read-only, out of lists",
+                      "type": "string"
+                    },
+                    "archivedBy": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "uuid"
                     }
                   },
                   "required": [
@@ -19096,7 +19142,9 @@
                     "resolution",
                     "resolvedAt",
                     "createdAt",
-                    "updatedAt"
+                    "updatedAt",
+                    "archivedAt",
+                    "archivedBy"
                   ],
                   "additionalProperties": false
                 }
@@ -19406,6 +19454,16 @@
                     "updatedAt": {
                       "type": "string",
                       "description": "ISO 8601 timestamp"
+                    },
+                    "archivedAt": {
+                      "nullable": true,
+                      "description": "When it was archived (spec 0508): read-only, out of lists",
+                      "type": "string"
+                    },
+                    "archivedBy": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "uuid"
                     },
                     "links": {
                       "type": "array",
@@ -19843,6 +19901,16 @@
                           "updatedAt": {
                             "type": "string",
                             "description": "ISO 8601 timestamp"
+                          },
+                          "archivedAt": {
+                            "nullable": true,
+                            "description": "When it was archived (spec 0508): read-only, out of lists",
+                            "type": "string"
+                          },
+                          "archivedBy": {
+                            "nullable": true,
+                            "type": "string",
+                            "description": "uuid"
                           }
                         },
                         "required": [
@@ -19881,7 +19949,9 @@
                           "resolution",
                           "resolvedAt",
                           "createdAt",
-                          "updatedAt"
+                          "updatedAt",
+                          "archivedAt",
+                          "archivedBy"
                         ],
                         "additionalProperties": false
                       }
@@ -19923,7 +19993,9 @@
                     "resolution",
                     "resolvedAt",
                     "createdAt",
-                    "updatedAt"
+                    "updatedAt",
+                    "archivedAt",
+                    "archivedBy"
                   ],
                   "additionalProperties": false
                 }
@@ -20543,6 +20615,16 @@
                     "updatedAt": {
                       "type": "string",
                       "description": "ISO 8601 timestamp"
+                    },
+                    "archivedAt": {
+                      "nullable": true,
+                      "description": "When it was archived (spec 0508): read-only, out of lists",
+                      "type": "string"
+                    },
+                    "archivedBy": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "uuid"
                     }
                   },
                   "required": [
@@ -20581,7 +20663,9 @@
                     "resolution",
                     "resolvedAt",
                     "createdAt",
-                    "updatedAt"
+                    "updatedAt",
+                    "archivedAt",
+                    "archivedBy"
                   ],
                   "additionalProperties": false
                 }
@@ -22110,6 +22194,16 @@
                     "updatedAt": {
                       "type": "string",
                       "description": "ISO 8601 timestamp"
+                    },
+                    "archivedAt": {
+                      "nullable": true,
+                      "description": "When it was archived (spec 0508): read-only, out of lists",
+                      "type": "string"
+                    },
+                    "archivedBy": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "uuid"
                     }
                   },
                   "required": [
@@ -22148,7 +22242,9 @@
                     "resolution",
                     "resolvedAt",
                     "createdAt",
-                    "updatedAt"
+                    "updatedAt",
+                    "archivedAt",
+                    "archivedBy"
                   ],
                   "additionalProperties": false
                 }
@@ -22767,6 +22863,16 @@
                           "updatedAt": {
                             "type": "string",
                             "description": "ISO 8601 timestamp"
+                          },
+                          "archivedAt": {
+                            "nullable": true,
+                            "description": "When it was archived (spec 0508): read-only, out of lists",
+                            "type": "string"
+                          },
+                          "archivedBy": {
+                            "nullable": true,
+                            "type": "string",
+                            "description": "uuid"
                           }
                         },
                         "required": [
@@ -22805,7 +22911,9 @@
                           "resolution",
                           "resolvedAt",
                           "createdAt",
-                          "updatedAt"
+                          "updatedAt",
+                          "archivedAt",
+                          "archivedBy"
                         ],
                         "additionalProperties": false
                       }
@@ -23814,6 +23922,16 @@
                     "updatedAt": {
                       "type": "string",
                       "description": "ISO 8601 timestamp"
+                    },
+                    "archivedAt": {
+                      "nullable": true,
+                      "description": "When it was archived (spec 0508): read-only, out of lists",
+                      "type": "string"
+                    },
+                    "archivedBy": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "uuid"
                     }
                   },
                   "required": [
@@ -23852,7 +23970,9 @@
                     "resolution",
                     "resolvedAt",
                     "createdAt",
-                    "updatedAt"
+                    "updatedAt",
+                    "archivedAt",
+                    "archivedBy"
                   ],
                   "additionalProperties": false
                 }
@@ -24106,6 +24226,580 @@
           }
         ],
         "responses": {
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/issues/{key}/archive": {
+      "post": {
+        "summary": "Archive a work item and its sub-items: read-only, out of lists, boards and search; it still opens by its key (system administrators)",
+        "tags": [
+          "Issues"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "description": "Issue key (PAY-12) or id (uuid)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "archived": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "archived"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/issues/{key}/unarchive": {
+      "post": {
+        "summary": "Restore an archived work item with its sub-items (system administrators)",
+        "tags": [
+          "Issues"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "description": "Issue key (PAY-12) or id (uuid)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "restored": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "restored"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/issues/bulk/archive": {
+      "post": {
+        "summary": "Archive many work items with their sub-items (system administrators)",
+        "tags": [
+          "Issues: bulk"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "issues": {
+                    "minItems": 1,
+                    "maxItems": 5000,
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "issues"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "archived": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "archived"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/archived-items": {
+      "get": {
+        "summary": "Archived work items, most recently archived first, a page at a time (system administrators)",
+        "tags": [
+          "Issues"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "default": "",
+              "type": "string",
+              "maxLength": 200
+            },
+            "in": "query",
+            "name": "query",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "in": "query",
+            "name": "cursor",
+            "required": false
+          },
+          {
+            "schema": {
+              "default": 50,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "in": "query",
+            "name": "limit",
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "description": "uuid"
+                          },
+                          "key": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "type": {
+                            "type": "string"
+                          },
+                          "project": {
+                            "type": "string"
+                          },
+                          "archivedAt": {
+                            "type": "string",
+                            "description": "ISO 8601 timestamp"
+                          },
+                          "archivedBy": {
+                            "nullable": true,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "key",
+                          "title",
+                          "type",
+                          "project",
+                          "archivedAt",
+                          "archivedBy"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "next": {
+                      "nullable": true,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "items",
+                    "next"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
           "400": {
             "description": "Invalid input; `errors` maps each bad field to a message",
             "content": {
@@ -35085,6 +35779,16 @@
                         "type": "string",
                         "description": "ISO 8601 timestamp"
                       },
+                      "archivedAt": {
+                        "nullable": true,
+                        "description": "When it was archived (spec 0508): read-only, out of lists",
+                        "type": "string"
+                      },
+                      "archivedBy": {
+                        "nullable": true,
+                        "type": "string",
+                        "description": "uuid"
+                      },
                       "folder": {
                         "type": "string",
                         "description": "Folder within a Test Plan (\"\" at the top)"
@@ -35130,6 +35834,8 @@
                       "resolvedAt",
                       "createdAt",
                       "updatedAt",
+                      "archivedAt",
+                      "archivedBy",
                       "folder",
                       "itemPosition"
                     ],
@@ -35471,6 +36177,16 @@
                             "type": "string",
                             "description": "ISO 8601 timestamp"
                           },
+                          "archivedAt": {
+                            "nullable": true,
+                            "description": "When it was archived (spec 0508): read-only, out of lists",
+                            "type": "string"
+                          },
+                          "archivedBy": {
+                            "nullable": true,
+                            "type": "string",
+                            "description": "uuid"
+                          },
                           "folder": {
                             "type": "string",
                             "description": "Folder within a Test Plan (\"\" at the top)"
@@ -35516,6 +36232,8 @@
                           "resolvedAt",
                           "createdAt",
                           "updatedAt",
+                          "archivedAt",
+                          "archivedBy",
                           "folder",
                           "itemPosition"
                         ],
@@ -35856,6 +36574,16 @@
                         "type": "string",
                         "description": "ISO 8601 timestamp"
                       },
+                      "archivedAt": {
+                        "nullable": true,
+                        "description": "When it was archived (spec 0508): read-only, out of lists",
+                        "type": "string"
+                      },
+                      "archivedBy": {
+                        "nullable": true,
+                        "type": "string",
+                        "description": "uuid"
+                      },
                       "folder": {
                         "type": "string",
                         "description": "Folder within a Test Plan (\"\" at the top)"
@@ -35901,6 +36629,8 @@
                       "resolvedAt",
                       "createdAt",
                       "updatedAt",
+                      "archivedAt",
+                      "archivedBy",
                       "folder",
                       "itemPosition"
                     ],
@@ -37626,6 +38356,16 @@
                         "type": "string",
                         "description": "ISO 8601 timestamp"
                       },
+                      "archivedAt": {
+                        "nullable": true,
+                        "description": "When it was archived (spec 0508): read-only, out of lists",
+                        "type": "string"
+                      },
+                      "archivedBy": {
+                        "nullable": true,
+                        "type": "string",
+                        "description": "uuid"
+                      },
                       "folder": {
                         "type": "string",
                         "description": "Folder within a Test Plan (\"\" at the top)"
@@ -37671,6 +38411,8 @@
                       "resolvedAt",
                       "createdAt",
                       "updatedAt",
+                      "archivedAt",
+                      "archivedBy",
                       "folder",
                       "itemPosition"
                     ],
@@ -38018,6 +38760,16 @@
                     "updatedAt": {
                       "type": "string",
                       "description": "ISO 8601 timestamp"
+                    },
+                    "archivedAt": {
+                      "nullable": true,
+                      "description": "When it was archived (spec 0508): read-only, out of lists",
+                      "type": "string"
+                    },
+                    "archivedBy": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "uuid"
                     }
                   },
                   "required": [
@@ -38056,7 +38808,9 @@
                     "resolution",
                     "resolvedAt",
                     "createdAt",
-                    "updatedAt"
+                    "updatedAt",
+                    "archivedAt",
+                    "archivedBy"
                   ],
                   "additionalProperties": false
                 }
@@ -39395,6 +40149,16 @@
                         "updatedAt": {
                           "type": "string",
                           "description": "ISO 8601 timestamp"
+                        },
+                        "archivedAt": {
+                          "nullable": true,
+                          "description": "When it was archived (spec 0508): read-only, out of lists",
+                          "type": "string"
+                        },
+                        "archivedBy": {
+                          "nullable": true,
+                          "type": "string",
+                          "description": "uuid"
                         }
                       },
                       "required": [
@@ -39433,7 +40197,9 @@
                         "resolution",
                         "resolvedAt",
                         "createdAt",
-                        "updatedAt"
+                        "updatedAt",
+                        "archivedAt",
+                        "archivedBy"
                       ],
                       "additionalProperties": false
                     },
@@ -50093,6 +50859,16 @@
                             "type": "string",
                             "description": "ISO 8601 timestamp"
                           },
+                          "archivedAt": {
+                            "nullable": true,
+                            "description": "When it was archived (spec 0508): read-only, out of lists",
+                            "type": "string"
+                          },
+                          "archivedBy": {
+                            "nullable": true,
+                            "type": "string",
+                            "description": "uuid"
+                          },
                           "lane": {
                             "type": "string",
                             "description": "The swimlane query it falls in (\"\" for none)"
@@ -50142,6 +50918,8 @@
                           "resolvedAt",
                           "createdAt",
                           "updatedAt",
+                          "archivedAt",
+                          "archivedBy",
                           "lane",
                           "color",
                           "projectKey"
@@ -60266,6 +61044,16 @@
                         "updatedAt": {
                           "type": "string",
                           "description": "ISO 8601 timestamp"
+                        },
+                        "archivedAt": {
+                          "nullable": true,
+                          "description": "When it was archived (spec 0508): read-only, out of lists",
+                          "type": "string"
+                        },
+                        "archivedBy": {
+                          "nullable": true,
+                          "type": "string",
+                          "description": "uuid"
                         }
                       },
                       "required": [
@@ -60304,7 +61092,9 @@
                         "resolution",
                         "resolvedAt",
                         "createdAt",
-                        "updatedAt"
+                        "updatedAt",
+                        "archivedAt",
+                        "archivedBy"
                       ],
                       "additionalProperties": false
                     }
@@ -66287,6 +67077,798 @@
           "Screens"
         ],
         "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/issues/{key}/remote-links": {
+      "get": {
+        "summary": "An item’s web links, newest first",
+        "tags": [
+          "Links & watchers"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "key",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "description": "uuid"
+                      },
+                      "issueId": {
+                        "type": "string",
+                        "description": "uuid"
+                      },
+                      "globalId": {
+                        "nullable": true,
+                        "type": "string"
+                      },
+                      "url": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      },
+                      "summary": {
+                        "nullable": true,
+                        "type": "string"
+                      },
+                      "relationship": {
+                        "nullable": true,
+                        "type": "string"
+                      },
+                      "application": {
+                        "nullable": true,
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      "icon": {
+                        "nullable": true,
+                        "type": "object",
+                        "additionalProperties": {
+                          "type": "string"
+                        }
+                      },
+                      "status": {
+                        "nullable": true,
+                        "type": "object",
+                        "properties": {
+                          "resolved": {
+                            "type": "boolean"
+                          }
+                        },
+                        "additionalProperties": {}
+                      },
+                      "createdBy": {
+                        "nullable": true,
+                        "type": "string",
+                        "description": "uuid"
+                      },
+                      "createdAt": {
+                        "type": "string",
+                        "description": "ISO 8601 timestamp"
+                      },
+                      "updatedAt": {
+                        "type": "string",
+                        "description": "ISO 8601 timestamp"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "issueId",
+                      "globalId",
+                      "url",
+                      "title",
+                      "summary",
+                      "relationship",
+                      "application",
+                      "icon",
+                      "status",
+                      "createdBy",
+                      "createdAt",
+                      "updatedAt"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Add a web link (a URL and its text); a global id already on the item updates that link",
+        "tags": [
+          "Links & watchers"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "maxLength": 2000
+                  },
+                  "title": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 255
+                  },
+                  "globalId": {
+                    "type": "string",
+                    "maxLength": 255
+                  },
+                  "relationship": {
+                    "type": "string",
+                    "maxLength": 255
+                  },
+                  "summary": {
+                    "type": "string",
+                    "maxLength": 2000
+                  }
+                },
+                "required": [
+                  "url",
+                  "title"
+                ]
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "key",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "issueId": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "globalId": {
+                      "nullable": true,
+                      "type": "string"
+                    },
+                    "url": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "summary": {
+                      "nullable": true,
+                      "type": "string"
+                    },
+                    "relationship": {
+                      "nullable": true,
+                      "type": "string"
+                    },
+                    "application": {
+                      "nullable": true,
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "icon": {
+                      "nullable": true,
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    },
+                    "status": {
+                      "nullable": true,
+                      "type": "object",
+                      "properties": {
+                        "resolved": {
+                          "type": "boolean"
+                        }
+                      },
+                      "additionalProperties": {}
+                    },
+                    "createdBy": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "description": "ISO 8601 timestamp"
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "description": "ISO 8601 timestamp"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "issueId",
+                    "globalId",
+                    "url",
+                    "title",
+                    "summary",
+                    "relationship",
+                    "application",
+                    "icon",
+                    "status",
+                    "createdBy",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/issues/{key}/remote-links/{id}": {
+      "put": {
+        "summary": "Change a web link",
+        "tags": [
+          "Links & watchers"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "maxLength": 2000
+                  },
+                  "title": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 255
+                  },
+                  "globalId": {
+                    "type": "string",
+                    "maxLength": 255
+                  },
+                  "relationship": {
+                    "type": "string",
+                    "maxLength": 255
+                  },
+                  "summary": {
+                    "type": "string",
+                    "maxLength": 2000
+                  }
+                },
+                "required": [
+                  "url",
+                  "title"
+                ]
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "key",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "issueId": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "globalId": {
+                      "nullable": true,
+                      "type": "string"
+                    },
+                    "url": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "summary": {
+                      "nullable": true,
+                      "type": "string"
+                    },
+                    "relationship": {
+                      "nullable": true,
+                      "type": "string"
+                    },
+                    "application": {
+                      "nullable": true,
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "icon": {
+                      "nullable": true,
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    },
+                    "status": {
+                      "nullable": true,
+                      "type": "object",
+                      "properties": {
+                        "resolved": {
+                          "type": "boolean"
+                        }
+                      },
+                      "additionalProperties": {}
+                    },
+                    "createdBy": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "description": "ISO 8601 timestamp"
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "description": "ISO 8601 timestamp"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "issueId",
+                    "globalId",
+                    "url",
+                    "title",
+                    "summary",
+                    "relationship",
+                    "application",
+                    "icon",
+                    "status",
+                    "createdBy",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Remove a web link",
+        "tags": [
+          "Links & watchers"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "key",
+            "required": true
+          },
           {
             "schema": {
               "type": "string",

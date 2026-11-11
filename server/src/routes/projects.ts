@@ -247,7 +247,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
               case when p.avatar_hash is not null then '/project-avatars/' || p.id || '/' || p.avatar_hash end as avatar,
             (s.user_id is not null) as starred,
             (select count(*) from issues i join statuses st on st.id = i.status_id
-              where i.project_id = p.id and i.deleted_at is null and st.category <> 'done') as open_count`
+              where i.project_id = p.id and i.deleted_at is null and i.archived_at is null and st.category <> 'done') as open_count`
   // First 1000 only: use /projects/search for more. Archived projects are hidden unless asked for.
   app.get('/projects', { schema: { tags: T.projects, summary: 'List the active projects I can see, with star flag and open-issue count (first 1000 by name; use /projects/search for more)' } }, async req => {
     const args: unknown[] = [req.me.workspaceId, req.me.id]

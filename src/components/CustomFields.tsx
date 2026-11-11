@@ -169,7 +169,7 @@ export function FieldsPanel({ project }: { project: Project }) {
   const [editing, setEditing] = useState<FieldDef | null>(null)
   const [deleting, setDeleting] = useState<FieldDef | null>(null)
   const setFields = (fields: FieldDef[]) => dispatch({ type: 'updateProject', id: project.id, patch: { fields } })
-  const usage = (id: string) => state.issues.filter(i => i.projectId === project.id && i.custom[id] !== undefined).length
+  const usage = (id: string) => state.issues.filter(i => !i.archivedAt && i.projectId === project.id && i.custom[id] !== undefined).length
 
   return (
     <section className="panel">
@@ -212,7 +212,7 @@ export function FieldsPanel({ project }: { project: Project }) {
             const before = project.fields.find(x => x.id === f.id)
             if (!apiEnabled && before?.options) {
               const next = new Map((f.options ?? []).map(o => [o.id, o.name]))
-              for (const i of state.issues.filter(i => i.projectId === project.id && typeof i.custom[f.id] === 'string')) {
+              for (const i of state.issues.filter(i => !i.archivedAt && i.projectId === project.id && typeof i.custom[f.id] === 'string')) {
                 const was = before.options.find(o => o.name === i.custom[f.id])
                 if (!was || next.get(was.id) === was.name) continue
                 const custom = { ...i.custom }
@@ -230,7 +230,7 @@ export function FieldsPanel({ project }: { project: Project }) {
           footer={<>
             <button className="btn btn-secondary" onClick={() => setDeleting(null)}>Cancel</button>
             <button className="btn btn-danger" onClick={() => {
-              const ids = state.issues.filter(i => i.projectId === project.id && i.custom[deleting.id] !== undefined)
+              const ids = state.issues.filter(i => !i.archivedAt && i.projectId === project.id && i.custom[deleting.id] !== undefined)
               for (const i of ids) { const custom = { ...i.custom }; delete custom[deleting.id]; dispatch({ type: 'updateIssues', ids: [i.id], patch: { custom } }) }
               setFields(project.fields.filter(x => x.id !== deleting.id)); setDeleting(null)
             }}>Delete field</button>
@@ -254,7 +254,7 @@ function FieldDialog({ field, isNew, onClose, onSave }: { field: FieldDef; isNew
   useEffect(() => {
     if (isNew || !hasOptions(field.kind)) return
     if (apiEnabled && project) api<{ options: Record<string, number> }>('GET', `/api/projects/${encodeURIComponent(project.key)}/fields/${field.id}/usage`).then(r => setCounts(r.options), () => setCounts({}))
-    else setCounts(Object.fromEntries((field.options ?? []).map(o => [o.id, state.issues.filter(i => i.projectId === project?.id && i.custom[field.id] === o.name).length])))
+    else setCounts(Object.fromEntries((field.options ?? []).map(o => [o.id, state.issues.filter(i => !i.archivedAt && i.projectId === project?.id && i.custom[field.id] === o.name).length])))
   }, [field.id])   // eslint-disable-line react-hooks/exhaustive-deps
   const taken = (name: string, except?: string, parentId?: string) => options.some(o => o.id !== except && (o.parentId ?? undefined) === parentId && o.name.trim().toLowerCase() === name.trim().toLowerCase())
   const names = options.map(o => o.name.trim())

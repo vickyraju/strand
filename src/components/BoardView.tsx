@@ -150,7 +150,7 @@ function BoardScreen({ project, board, switcher, quick: asked, onChanged }: {
   // the board's card colour for each card (spec 0409)
   const stripeOf = (i: Issue) => cardColor(board.cardColors, i, { typeColor: typeMeta(i.type, projectOf(i)).color, priorityColor: priorityOf(i.priority).color, match: found.colors.get(i.id) })
   const boardItems = (local
-    ? state.issues.filter(i => i.projectId === project.id && (!sprint || i.sprintId === sprint.id))
+    ? state.issues.filter(i => !i.archivedAt && i.projectId === project.id && (!sprint || i.sprintId === sprint.id))
     : [
         ...found.ids.map(id => byId.get(id)).filter((i): i is Issue => !!i),
         // made here since the board loaded: shown until the next load, which asks the board's filter

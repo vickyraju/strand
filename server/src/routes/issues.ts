@@ -1,7 +1,7 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
 import { db, tx, pick, type Db } from '../db.ts'
-import { HttpError, type Me } from '../auth.ts'
+import { HttpError, requireAdmin, type Me } from '../auth.ts'
 import { canJoinWork, commentShown, minFor, need, roleOf, visible, visibleAs, type ProjectRole, ARCHIVED, READS, accessTo, notArchived, type Permission, canSee } from '../access.ts'
 import { publish } from '../events.ts'
 import { audit } from '../audit.ts'
@@ -29,7 +29,7 @@ export const ISSUE_ROW = `
   select i.id, p.key || '-' || i.number as key, i.project_id, i.number, i.type, i.title, i.description,
          i.status_id, i.priority, i.flagged, i.epic_color, i.epic_status, i.assignee_id, i.reporter_id, i.labels, i.estimate, i.time_estimate, i.time_remaining, i.component_ids, i.affects_release_ids, i.test_spec, i.test_folder_id, i.test_environments, i.revision,
          i.due_date, i.start_date, i.sprint_id, i.fix_release_ids, live_par.id as parent_id, i.custom, i.rank, i.version,
-         i.resolution, i.resolved_at, i.created_at, i.updated_at
+         i.resolution, i.resolved_at, i.created_at, i.updated_at, i.archived_at, i.archived_by
     from issues i join projects p on p.id = i.project_id
     left join issues live_par on live_par.id = i.parent_id and live_par.deleted_at is null`   // a deleted parent (an epic) is no parent until restored (spec 0202)
 
@@ -83,6 +83,8 @@ export async function issueByKey(d: Db, req: { me: Me; method: string }, ref: st
   if (!i || !a) throw new HttpError(404, 'Issue not found')
   // an archived project's items open by their key, read-only (spec 0102); opening one may still record the view
   if (a.archived && !READS.has(req.method) && !o.archivedOk) throw new HttpError(403, ARCHIVED)
+  // an archived item is read-only until a system administrator restores it (spec 0508)
+  if (i.archivedAt && !READS.has(req.method) && !o.archivedOk) throw new HttpError(403, `${i.key} is archived: a system administrator restores it to change it`)
   need(a.role, min ?? minFor(req.method), i.key.split('-')[0])
   return i
 }
@@ -522,21 +524,21 @@ const plugin: FastifyPluginAsyncZod = async app => {
   app.get('/projects/:key/report-data', { schema: { tags: TAG, summary: 'All live items of a project and the full history of their status changes, for reports', params: projKeyP } }, async req => {
     const p = await projectByKey(db, req, req.params.key)
     const [issues, statusChanges] = await Promise.all([
-      db.query(`${ISSUE_ROW} where i.project_id = $1 and i.deleted_at is null order by i.rank, i.id`, [p.id]),
+      db.query(`${ISSUE_ROW} where i.project_id = $1 and i.deleted_at is null and i.archived_at is null order by i.rank, i.id`, [p.id]),
       db.query(`select a.issue_id, a.from_value as from_id, a.to_value as to_id, a.created_at as at
                   from activity a join issues i on i.id = a.issue_id
-                 where i.project_id = $1 and i.deleted_at is null and a.field = 'statusId' and a.to_value is not null
+                 where i.project_id = $1 and i.deleted_at is null and i.archived_at is null and a.field = 'statusId' and a.to_value is not null
                  order by a.created_at, a.id`, [p.id]),
     ])
     // when items were put into an epic or a version (spec 0411 R6)
     const joins = await db.query(`select a.issue_id, a.field, a.to_value as value, a.created_at as at
         from activity a join issues i on i.id = a.issue_id
-       where i.project_id = $1 and i.deleted_at is null and a.field in ('parentId', 'fixReleaseIds') and a.to_value is not null
+       where i.project_id = $1 and i.deleted_at is null and i.archived_at is null and a.field in ('parentId', 'fixReleaseIds') and a.to_value is not null
        order by a.created_at, a.id`, [p.id])
     // estimate changes: reports count an item's estimate as it stood at each moment, as Jira's do (spec 0411 R5)
     const estimateChanges = await db.query(`select a.issue_id, a.field, a.from_value as from, a.to_value as to, a.created_at as at
         from activity a join issues i on i.id = a.issue_id
-       where i.project_id = $1 and i.deleted_at is null and a.field in ('estimate', 'timeEstimate')
+       where i.project_id = $1 and i.deleted_at is null and i.archived_at is null and a.field in ('estimate', 'timeEstimate')
        order by a.created_at, a.id`, [p.id])
     return { issues, statusChanges, joins, estimateChanges }
   })
@@ -545,7 +547,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     const q = req.query
     const p = await projectByKey(db, req, req.params.key)
     const args: unknown[] = [p.id]
-    const where = ['i.project_id = $1', 'i.deleted_at is null']
+    const where = ['i.project_id = $1', 'i.deleted_at is null', 'i.archived_at is null']
     const add = (sql: string, v: unknown) => { args.push(v); where.push(sql.replace('?', `$${args.length}`)) }
     if (q.status) add('i.status_id = ?', q.status)
     if (q.assignee) add('i.assignee_id = ?', q.assignee)
@@ -831,6 +833,54 @@ const plugin: FastifyPluginAsyncZod = async app => {
     })
     reply.code(204).send()
   })
+  // Archiving single items (spec 0508), as Jira DC's: system administrators; sub-items go with their parent (an epic's items don't)
+  const archive = async (d: Db, req: any, ids: string[], on: boolean) => {
+    const rows = await d.query<{ id: string; key: string; projectId: string }>(
+      `with recursive t as (select i.id from issues i where i.id = any($1::uuid[])
+         union select c.id from issues c join t on c.parent_id = t.id join issues par on par.id = c.parent_id where par.type <> 'epic' and c.deleted_at is null)
+       update issues i set archived_at = case when $3 then now() end, archived_by = case when $3 then $2::uuid end, version = version + 1
+         from projects p where i.id in (select id from t) and p.id = i.project_id and (i.archived_at is null) = $3
+       returning i.id, p.key || '-' || i.number as key, i.project_id`, [ids, req.me.id, on])
+    for (const r of rows) {
+      await d.query('insert into activity (issue_id, actor_id, text) values ($1, $2, $3)', [r.id, req.me.id, on ? 'Archived this work item' : 'Restored this work item from the archive'])
+      await audit(d, req, { action: on ? 'issue.archived' : 'issue.unarchived', type: 'issue', id: r.id, name: r.key, project: { id: r.projectId, key: r.key.split('-')[0]! } })
+    }
+    for (const p of new Set(rows.map(r => r.projectId))) await publish(d, p, { type: on ? 'issue.deleted' : 'issue.created', id: ids[0] })
+    return rows.map(r => r.key)
+  }
+  app.post('/issues/:key/archive', { schema: { tags: TAG, summary: 'Archive a work item and its sub-items: read-only, out of lists, boards and search; it still opens by its key (system administrators)', params: keyP } }, async req => {
+    requireAdmin(req)
+    return tx(async d => ({ archived: await archive(d, req, [(await issueByKey(d, req, req.params.key, false, 'browse')).id], true) }))
+  })
+  app.post('/issues/:key/unarchive', { schema: { tags: TAG, summary: 'Restore an archived work item with its sub-items (system administrators)', params: keyP } }, async req => {
+    requireAdmin(req)
+    return tx(async d => ({ restored: await archive(d, req, [(await issueByKey(d, req, req.params.key, false, 'browse', { archivedOk: true })).id], false) }))
+  })
+  app.post('/issues/bulk/archive', { schema: { tags: ['Issues: bulk'], summary: 'Archive many work items with their sub-items (system administrators)', body: z.object({ issues: z.array(z.string()).min(1).max(5000) }) } }, async req => {
+    requireAdmin(req)
+    const { bulkMaxItems } = await getSetting(req.me.workspaceId, 'searchAndBulk')
+    if (req.body.issues.length > bulkMaxItems) throw new HttpError(400, `At most ${bulkMaxItems} items in one bulk change (System settings)`, { issues: 'Too many' })
+    return tx(async d => {
+      const ids: string[] = []
+      for (const k of [...new Set(req.body.issues)]) ids.push((await issueByKey(d, req, k, false, 'browse')).id)
+      return { archived: await archive(d, req, ids, true) }
+    })
+  })
+  app.get('/admin/archived-items', { schema: { tags: TAG, summary: 'Archived work items, most recently archived first, a page at a time (system administrators)',
+    querystring: z.object({ query: z.string().max(200).default(''), cursor: z.string().max(100).optional(), limit: z.coerce.number().int().min(1).max(200).default(50) }) } }, async req => {
+    requireAdmin(req)
+    const { query, cursor, limit } = req.query
+    const args: unknown[] = [req.me.workspaceId]
+    const q = query.trim() ? `and (i.title ilike $${args.push(`%${query.trim().replace(/[%_\\]/g, '\\$&')}%`)} or p.key || '-' || i.number = upper($${args.push(query.trim())}))` : ''
+    const after = cursor ? `and (i.archived_at, i.id) < ($${args.push(cursor.split('|')[0])}::timestamptz, $${args.push(cursor.split('|')[1])}::uuid)` : ''
+    args.push(limit + 1)
+    const rows = await db.query<any>(`select i.id, p.key || '-' || i.number as key, i.title, i.type, p.name as project, i.archived_at, u.name as archived_by
+        from issues i join projects p on p.id = i.project_id left join users u on u.id = i.archived_by
+       where i.workspace_id = $1 and i.archived_at is not null and i.deleted_at is null ${q} ${after} order by i.archived_at desc, i.id desc limit $${args.length}`, args)
+    const items = rows.slice(0, limit)
+    return { items, next: rows.length > limit ? `${new Date(items.at(-1)!.archivedAt).toISOString()}|${items.at(-1)!.id}` : null }
+  })
+
   // Voting (spec 0506), as Jira's: once per person, not the reporter, not once resolved; the workspace's switch
   const voteFor = async (req: any) => {
     const i = await issueByKey(db, req, req.params.key, false, 'viewer')

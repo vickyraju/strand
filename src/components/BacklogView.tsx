@@ -72,7 +72,7 @@ function Backlog({ project, board, switcher }: { project: Project; board?: Board
   const items = (board
     ? [...found.ids.map(id => byId.get(id)).filter((i): i is Issue => !!i),
         ...state.issues.filter(i => i.createdAt > loadedAt && i.projectId === board.projectId && !onBoard.has(i.id))]   // made here since it loaded
-    : state.issues.filter(i => i.projectId === project.id)).filter(i => i.type !== 'epic')
+    : state.issues.filter(i => !i.archivedAt && i.projectId === project.id)).filter(i => i.type !== 'epic')
   useEnsureProjects([...new Set(items.map(i => i.key.split('-')[0]!))])
   const projectOf = (i: Issue) => state.projects.find(p => p.id === i.projectId) ?? project
   const people = [...new Set(items.map(i => i.assigneeId).filter((x): x is string => !!x))].map(id => userOf(state, id)!).filter(Boolean)

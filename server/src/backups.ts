@@ -51,6 +51,7 @@ const TABLES: [table: string, where: string][] = [
   ['test_items', 'container_id in (select id from issues where project_id = $1) or member_id in (select id from issues where project_id = $1)'],
   ['test_runs', 'execution_id in (select id from issues where project_id = $1) or test_id in (select id from issues where project_id = $1)'],
   ['issue_watchers', 'issue_id in (select id from issues where project_id = $1)'],
+  ['remote_links', 'issue_id in (select id from issues where project_id = $1)'],
   ['comments', 'issue_id in (select id from issues where project_id = $1)'],
   ['activity', 'issue_id in (select id from issues where project_id = $1)'],
   ['worklogs', 'issue_id in (select id from issues where project_id = $1)'],

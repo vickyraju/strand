@@ -20,6 +20,8 @@ import { useProjectIssues } from './api/useProjectIssues'
 import { useProjectOnDemand } from './api/useProjectOnDemand'
 import { rememberProject } from './api/recent'
 import { api, apiEnabled } from './api/client'
+import { mapIssue } from './api/map'
+import { issueSync } from './api/sync'
 import { useIssueSync } from './api/useIssueSync'
 import { useKnownPeople } from './api/users'
 import TransitionDialog, { makeTransition, planMove, type Pending } from './components/TransitionDialog'
@@ -117,8 +119,10 @@ function Shell() {
   useEffect(() => {
     if (!apiEnabled || !askedMissing || !askedKey) return
     let live = true
-    api<{ key: string }>('GET', `/api/issues/${encodeURIComponent(askedKey)}`).then(i => {
-      if (!live || i.key === askedKey) return
+    api<any>('GET', `/api/issues/${encodeURIComponent(askedKey)}`).then(i => {
+      if (!live) return
+      // an archived item isn't in the project's lists: it opens on its own, read-only (spec 0508)
+      if (i.key === askedKey) { if (i.archivedAt) { issueSync.merge([{ ...mapIssue(i), version: i.version }]); dispatch({ type: 'mergeIssues', issues: [mapIssue(i)] }) } return }
       navigate(route.name === 'issue' ? href({ name: 'issue', key: i.key }) : href(route, i.key), { replace: true })
     }, () => {})
     return () => { live = false }

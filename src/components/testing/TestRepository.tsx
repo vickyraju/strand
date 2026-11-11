@@ -26,7 +26,7 @@ export default function TestRepository({ project }: { project: Project }) {
   const load = () => api<TestFolder[]>('GET', base).then(setFolders, e => toast(errorMessage(e), { tone: 'warn' }))
   useEffect(() => { void load() }, [project.key])   // eslint-disable-line react-hooks/exhaustive-deps
 
-  const tests = state.issues.filter(i => i.projectId === project.id && i.type === 'test')
+  const tests = state.issues.filter(i => !i.archivedAt && i.projectId === project.id && i.type === 'test')
   const shown = current === null ? tests : tests.filter(t => (t.testFolderId ?? '') === current)
   const statusName = (id: string) => project.statuses.find(s => s.id === id)?.name ?? ''
   const children = (parent: string | null) => folders.filter(f => f.parentId === parent)
@@ -47,7 +47,7 @@ export default function TestRepository({ project }: { project: Project }) {
     try {
       await api('DELETE', `${base}/${f.id}`)
       // the server moved its tests up: do the same here so the list is right without a reload
-      dispatch({ type: 'loadIssues', projectId: project.id, issues: state.issues.filter(i => i.projectId === project.id)
+      dispatch({ type: 'loadIssues', projectId: project.id, issues: state.issues.filter(i => !i.archivedAt && i.projectId === project.id)
         .map(i => (i.testFolderId === f.id ? { ...i, testFolderId: f.parentId ?? undefined } : i)) })
       setCurrent(f.parentId ?? null); await load()
     } catch (e) { toast(errorMessage(e), { tone: 'warn' }) }

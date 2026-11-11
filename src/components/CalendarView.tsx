@@ -15,7 +15,7 @@ export default function CalendarView({ project }: { project: Project }) {
   const [month, setMonth] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1) })
   const [expanded, setExpanded] = useState<string | null>(null)
 
-  const all = state.issues.filter(i => i.projectId === project.id)
+  const all = state.issues.filter(i => !i.archivedAt && i.projectId === project.id)
   const people = [...new Set(all.map(i => i.assigneeId).filter((x): x is string => !!x))].map(id => userOf(state, id)!).filter(Boolean)
   const filters = useFilters(people, project)
   const items = filters.apply(all).filter(i => i.dueDate).sort((a, b) => a.rank - b.rank)
