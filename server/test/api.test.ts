@@ -6215,7 +6215,7 @@ test('[0607.R1][0607.R2][0607.R3][0607.R4][0607.R5][0607.R7][0607.R8] incoming m
   assert.equal((await call('POST', '/api/v1/admin/mail-handlers', { name: 'Bad', serverId: srv.id, kind: 'create_or_comment', params: { project: 'MLB', splitRegex: '/x/' } })).status, 400)   // not this handler's
   assert.equal((await call('POST', '/api/v1/admin/mail-handlers', { name: 'Bad', serverId: srv.id, kind: 'create_or_comment', params: {} })).status, 400)                        // no project
   const h = (await call('POST', '/api/v1/admin/mail-handlers', { name: 'Support', serverId: srv.id, kind: 'create_or_comment', delayMinutes: 5, enabled: false,   // Run now only, below
-    params: { project: 'MLB', issueType: 'bug', stripQuotes: true, defaultReporter: 'ml.bob@x.com', ccWatchers: true, bulk: 'ignore' } })).body
+    params: { project: 'MLB', issueType: 'bug', stripQuotes: true, defaultReporter: 'ml.bob@x.com', ccWatchers: true, bulk: 'ignore', verifiedSenders: false } })).body
   const run = async () => { await call('POST', `/api/v1/admin/mail-handlers/${h.id}/run`); await runJobs(); return (await call('GET', '/api/v1/admin/mail-handlers')).body.find((x: any) => x.id === h.id).lastResult }
   // R2, R3: a person's email makes a bug, Cc'd people watch; an unknown sender's goes in as the default reporter
   mail({ From: 'Ann <ml.ann@x.com>', Cc: 'ml.bob@x.com', Subject: 'Printer on fire', 'X-Priority': '1' }, 'It is very hot.\n> earlier text')
@@ -6237,13 +6237,13 @@ test('[0607.R1][0607.R2][0607.R3][0607.R4][0607.R5][0607.R7][0607.R8] incoming m
   const comments = (await call('GET', `/api/v1/issues/${fire.key}`)).body.comments.map((c: any) => c.body)
   assert.deepEqual(comments.sort(), ['Fire is out.', 'Thanks!'])
   // R3, R7: no default reporter and an unknown sender: it fails and stays for next time
-  await call('PUT', `/api/v1/admin/mail-handlers/${h.id}`, { name: 'Support', serverId: srv.id, kind: 'create_or_comment', delayMinutes: 5, enabled: false, params: { project: 'MLB' } })
+  await call('PUT', `/api/v1/admin/mail-handlers/${h.id}`, { name: 'Support', serverId: srv.id, kind: 'create_or_comment', delayMinutes: 5, enabled: false, params: { project: 'MLB', verifiedSenders: false } })
   mail({ From: 'nobody@nowhere.com', Subject: 'Lost' }, 'Hm')
   r = await run()
   assert.deepEqual([r.counts.failed, r.messages[0].reason], [1, 'Nobody in Strand has the address nobody@nowhere.com'])
   assert.equal(readdirSync(dir).length, 1)
   // R4: Jira's other handlers: before a marker; comment-only refuses a new item
-  const marker = (await call('POST', '/api/v1/admin/mail-handlers', { name: 'Marker', serverId: srv.id, kind: 'comment_before_marker', enabled: false, params: { splitRegex: '/-{4}\\s*Original Message/' } })).body
+  const marker = (await call('POST', '/api/v1/admin/mail-handlers', { name: 'Marker', serverId: srv.id, kind: 'comment_before_marker', enabled: false, params: { verifiedSenders: false, splitRegex: '/-{4}\\s*Original Message/' } })).body
   for (const x of readdirSync(dir)) (await import('node:fs')).unlinkSync(`${dir}/${x}`)
   mail({ From: 'ml.ann@x.com', Subject: `${fire.key}` }, 'Above the line\n---- Original Message ----\nbelow')
   mail({ From: 'ml.ann@x.com', Subject: 'No key here' }, 'Nothing to comment on')
@@ -6251,6 +6251,18 @@ test('[0607.R1][0607.R2][0607.R3][0607.R4][0607.R5][0607.R7][0607.R8] incoming m
   const mr = (await call('GET', '/api/v1/admin/mail-handlers')).body.find((x: any) => x.id === marker.id).lastResult
   assert.deepEqual([mr.counts.commented, mr.counts.failed], [1, 1])
   assert.ok((await call('GET', `/api/v1/issues/${fire.key}`)).body.comments.some((c: any) => c.body === 'Above the line'))
+  // R3: the spoofing guard (on unless turned off): only a sender the receiving server verified; a forged header below it doesn't count
+  const guard = (await call('POST', '/api/v1/admin/mail-handlers', { name: 'Guarded', serverId: srv.id, kind: 'create_each', enabled: false, params: { project: 'MLB' } })).body
+  for (const x of readdirSync(dir)) (await import('node:fs')).unlinkSync(`${dir}/${x}`)
+  mail({ 'Authentication-Results': 'mx.x.com; spf=pass; dkim=pass header.d=x.com; dmarc=pass header.from=x.com', From: 'ml.ann@x.com', Subject: 'Verified' }, 'ok')
+  mail({ From: 'ml.ann@x.com', Subject: 'Not verified' }, 'who knows')
+  mail({ 'Authentication-Results': 'mx.x.com; dmarc=fail header.from=x.com', From: 'ml.ann@x.com', Subject: 'Forged' }, 'Pretending to be Ann')   // a forged header further down: the unit test
+  await call('POST', `/api/v1/admin/mail-handlers/${guard.id}/run`); await runJobs()
+  const gr = (await call('GET', '/api/v1/admin/mail-handlers')).body.find((x: any) => x.id === guard.id).lastResult
+  assert.deepEqual(gr.messages.map((x: any) => [x.subject, x.result]), [['Verified', 'created'], ['Not verified', 'failed'], ['Forged', 'failed']])
+  assert.equal(gr.messages[1].reason, 'The mail server didn’t verify the sender ml.ann@x.com')
+  await call('DELETE', `/api/v1/admin/mail-handlers/${guard.id}`)
+  for (const x of readdirSync(dir)) (await import('node:fs')).unlinkSync(`${dir}/${x}`)
   // R8: permissions and records
   assert.equal((await call('GET', '/api/v1/admin/mail-servers', undefined, 'ml.ann@x.com')).status, 403)
   assert.equal((await call('DELETE', `/api/v1/admin/mail-servers/${srv.id}`)).status, 409)          // handlers read it
@@ -6260,8 +6272,16 @@ test('[0607.R1][0607.R2][0607.R3][0607.R4][0607.R5][0607.R7][0607.R8] incoming m
   delete process.env.STRAND_MAIL_DIR
 })
 
-test('[0607.R4] mail: what a handler keeps of an email\'s text', async () => {
-  const { bodyFor } = await import('../src/mail.ts')
+test('[0607.R3][0607.R4] mail: who is verified, and what a handler keeps of an email\'s text', async () => {
+  const { bodyFor, senderVerified } = await import('../src/mail.ts')
+  const v = (lines: [string, string][], from: string, kind: 'imap' | 'graph' | 'files' = 'imap') => senderVerified({ headerLines: lines.map(([key, line]) => ({ key, line })) } as any, from, kind)
+  assert.equal(v([['authentication-results', 'Authentication-Results: mx; dmarc=pass']], 'a@x.com'), true)
+  assert.equal(v([['authentication-results', 'Authentication-Results: mx; dkim=pass header.d=x.com']], 'a@mail.x.com'), true)
+  assert.equal(v([['authentication-results', 'Authentication-Results: mx; dkim=pass header.d=other.com']], 'a@x.com'), false)
+  assert.equal(v([['authentication-results', 'Authentication-Results: mx; dmarc=fail'], ['authentication-results', 'Authentication-Results: evil; dmarc=pass']], 'a@x.com'), false)
+  assert.equal(v([['x-ms-exchange-organization-authas', 'X-MS-Exchange-Organization-AuthAs: Internal']], 'a@x.com', 'graph'), true)
+  assert.equal(v([['x-ms-exchange-organization-authas', 'X-MS-Exchange-Organization-AuthAs: Internal']], 'a@x.com', 'imap'), false)
+  assert.equal(v([], 'a@x.com'), false)
   assert.equal(bodyFor('comment_non_quoted', {}, 'Mine\n> theirs\n| also theirs\nMine too'), 'Mine\nMine too')
   assert.equal(bodyFor('comment_entire', {}, 'All\n> of it'), 'All\n> of it')
   assert.equal(bodyFor('create_or_comment', { stripQuotes: true }, 'A\n>b'), 'A')

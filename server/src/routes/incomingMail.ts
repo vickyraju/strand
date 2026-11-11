@@ -31,14 +31,15 @@ const params = z.object({
   bulk: z.enum(['ignore', 'forward', 'delete', 'accept']).optional().describe('Automatic mail (Precedence: bulk, Auto-Submitted)'), forwardEmail: z.string().email().optional(),
   defaultReporter: z.string().max(255).optional().describe('Email or username of the person used when the sender isn’t in Strand'),
   ccAssignee: z.boolean().optional(), ccWatchers: z.boolean().optional(), splitRegex: z.string().max(500).optional().describe('/regex/: the comment is what comes before it'),
+  verifiedSenders: z.boolean().optional().describe('Trust a sender only when the receiving mail server verified them (DMARC or DKIM); on unless false'),
 }).strict()
 const KINDS = ['create_or_comment', 'comment_non_quoted', 'comment_entire', 'create_each', 'comment_before_marker'] as const
 /** The parameters each of Jira's handlers takes (the rest are refused). */
 const TAKES: Record<typeof KINDS[number], string[]> = {
-  create_or_comment: ['project', 'issueType', 'stripQuotes', 'catchEmail', 'bulk', 'forwardEmail', 'defaultReporter', 'ccAssignee', 'ccWatchers'],
-  comment_non_quoted: ['catchEmail', 'bulk', 'forwardEmail', 'defaultReporter'], comment_entire: ['catchEmail', 'bulk', 'forwardEmail', 'defaultReporter'],
-  create_each: ['project', 'issueType', 'catchEmail', 'bulk', 'forwardEmail', 'defaultReporter', 'ccAssignee', 'ccWatchers'],
-  comment_before_marker: ['splitRegex', 'catchEmail', 'bulk', 'forwardEmail', 'defaultReporter'],
+  create_or_comment: ['project', 'issueType', 'stripQuotes', 'catchEmail', 'bulk', 'forwardEmail', 'defaultReporter', 'ccAssignee', 'ccWatchers', 'verifiedSenders'],
+  comment_non_quoted: ['catchEmail', 'bulk', 'forwardEmail', 'defaultReporter', 'verifiedSenders'], comment_entire: ['catchEmail', 'bulk', 'forwardEmail', 'defaultReporter', 'verifiedSenders'],
+  create_each: ['project', 'issueType', 'catchEmail', 'bulk', 'forwardEmail', 'defaultReporter', 'ccAssignee', 'ccWatchers', 'verifiedSenders'],
+  comment_before_marker: ['splitRegex', 'catchEmail', 'bulk', 'forwardEmail', 'defaultReporter', 'verifiedSenders'],
 }
 
 const plugin: FastifyPluginAsyncZod = async app => {

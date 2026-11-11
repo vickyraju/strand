@@ -21,10 +21,10 @@ const HANDLERS: [string, string][] = [
 const KINDS: Record<Kind, string> = { imap: 'IMAP', graph: 'Microsoft 365 (Graph)', files: 'Message files' }
 /** Which of Jira's parameters each handler takes (the server checks the same). */
 const TAKES: Record<string, string[]> = {
-  create_or_comment: ['project', 'issueType', 'stripQuotes', 'catchEmail', 'bulk', 'forwardEmail', 'defaultReporter', 'ccAssignee', 'ccWatchers'],
-  comment_non_quoted: ['catchEmail', 'bulk', 'forwardEmail', 'defaultReporter'], comment_entire: ['catchEmail', 'bulk', 'forwardEmail', 'defaultReporter'],
-  create_each: ['project', 'issueType', 'catchEmail', 'bulk', 'forwardEmail', 'defaultReporter', 'ccAssignee', 'ccWatchers'],
-  comment_before_marker: ['splitRegex', 'catchEmail', 'bulk', 'forwardEmail', 'defaultReporter'],
+  create_or_comment: ['project', 'issueType', 'stripQuotes', 'catchEmail', 'bulk', 'forwardEmail', 'defaultReporter', 'ccAssignee', 'ccWatchers', 'verifiedSenders'],
+  comment_non_quoted: ['catchEmail', 'bulk', 'forwardEmail', 'defaultReporter', 'verifiedSenders'], comment_entire: ['catchEmail', 'bulk', 'forwardEmail', 'defaultReporter', 'verifiedSenders'],
+  create_each: ['project', 'issueType', 'catchEmail', 'bulk', 'forwardEmail', 'defaultReporter', 'ccAssignee', 'ccWatchers', 'verifiedSenders'],
+  comment_before_marker: ['splitRegex', 'catchEmail', 'bulk', 'forwardEmail', 'defaultReporter', 'verifiedSenders'],
 }
 const TEXT_PARAMS: [string, string, string][] = [
   ['project', 'Project key', 'Where new work items go'], ['issueType', 'Work type', 'Key of the work type, such as bug'],
@@ -61,7 +61,7 @@ export default function IncomingMail() {
   }
   const saveHandler = async () => {
     const h = handler!
-    const params = Object.fromEntries(Object.entries(h.params ?? {}).filter(([k, v]) => TAKES[h.kind!]!.includes(k) && v !== '' && v !== undefined && v !== false))
+    const params = Object.fromEntries(Object.entries(h.params ?? {}).filter(([k, v]) => TAKES[h.kind!]!.includes(k) && v !== '' && v !== undefined && (v !== false || k === 'verifiedSenders')))
     const body = { name: h.name, serverId: h.serverId, kind: h.kind, enabled: h.enabled ?? true, delayMinutes: Number(h.delayMinutes ?? 1), params }
     try { await api(h.id ? 'PUT' : 'POST', h.id ? `/api/admin/mail-handlers/${h.id}` : '/api/admin/mail-handlers', body); setHandler(null); load() } catch (e) { fail(e) }
   }
@@ -187,6 +187,8 @@ export default function IncomingMail() {
           <div style={{ marginTop: 10 }}>{BOOL_PARAMS.filter(([k]) => TAKES[handler.kind!]!.includes(k)).map(([k, l]) => (
             <label key={k} className="sm" style={{ marginRight: 14 }}><input type="checkbox" checked={!!handler.params?.[k]} onChange={e => setPar(k, e.target.checked)} /> {l}</label>
           ))}<label className="sm"><input type="checkbox" checked={handler.enabled ?? true} onChange={e => setHandler({ ...handler, enabled: e.target.checked })} /> On</label></div>
+          <label className="sm" style={{ display: 'block', marginTop: 8 }}><input type="checkbox" checked={handler.params?.verifiedSenders !== false} onChange={e => setPar('verifiedSenders', e.target.checked)} /> Only trust senders the mail server verified (DMARC or DKIM)</label>
+          <p className="hint">Off: anyone who can email this mailbox can act as anyone in Strand by writing their address, as in Jira.</p>
         </Modal>
       )}
 
