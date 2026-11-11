@@ -137,7 +137,7 @@ export default function IncomingMail() {
             {Object.entries(KINDS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
           </select>
           {server.kind === 'imap' && <>
-            {[['host', 'Host'], ['port', 'Port'], ['username', 'Username'], ['folder', 'Folder']].map(([k, l]) => (
+            {[['host', 'Host'], ['port', 'Port'], ['username', 'Username'], ['folder', 'Folder'], ['authservId', 'Trusted Authentication-Results host (authserv-id)']].map(([k, l]) => (
               <div key={k}><label className="label" htmlFor={`ms-${k}`} style={{ marginTop: 10 }}>{l}</label>
                 <input id={`ms-${k}`} className="input" value={server.config?.[k!] ?? ''} onChange={e => setCfg(k!, k === 'port' ? Number(e.target.value) || '' : e.target.value)} /></div>
             ))}
@@ -148,7 +148,10 @@ export default function IncomingMail() {
               <input id={`ms-${k}`} className="input" value={server.config?.[k!] ?? ''} onChange={e => setCfg(k!, e.target.value)} /></div>
           ))}
           {server.kind === 'files' && <><label className="label" htmlFor="ms-folder" style={{ marginTop: 10 }}>Folder (inside the server’s mail folder)</label>
-            <input id="ms-folder" className="input" value={server.config?.folder ?? ''} onChange={e => setCfg('folder', e.target.value)} /></>}
+            <input id="ms-folder" className="input" value={server.config?.folder ?? ''} onChange={e => setCfg('folder', e.target.value)} />
+            <label className="label" htmlFor="ms-authservId" style={{ marginTop: 10 }}>Trusted Authentication-Results host (authserv-id)</label>
+            <input id="ms-authservId" className="input" value={server.config?.authservId ?? ''} onChange={e => setCfg('authservId', e.target.value)} /></>}
+          {server.kind !== 'graph' && <p className="hint">Senders are verified only by this host’s Authentication-Results (your mail server’s name in that header). Empty: nobody is verified, so handlers that check senders use the default reporter.</p>}
           {server.kind !== 'files' && <>
             <label className="label" htmlFor="ms-secret" style={{ marginTop: 10 }}>{server.kind === 'imap' ? 'Password' : 'Client secret'}</label>
             <input id="ms-secret" className="input" type="password" autoComplete="new-password" placeholder={server.hasSecret ? 'Unchanged' : ''} value={server.secret ?? ''} onChange={e => setServer({ ...server, secret: e.target.value })} />

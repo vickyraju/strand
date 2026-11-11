@@ -72473,6 +72473,12 @@
                             "default": "INBOX",
                             "type": "string",
                             "maxLength": 255
+                          },
+                          "authservId": {
+                            "default": "",
+                            "type": "string",
+                            "maxLength": 255,
+                            "pattern": "^[A-Za-z0-9.-]*$"
                           }
                         },
                         "required": [
@@ -72532,6 +72538,12 @@
                             "default": "",
                             "type": "string",
                             "maxLength": 255
+                          },
+                          "authservId": {
+                            "default": "",
+                            "type": "string",
+                            "maxLength": 255,
+                            "pattern": "^[A-Za-z0-9.-]*$"
                           }
                         },
                         "required": [
@@ -72745,6 +72757,12 @@
                             "default": "INBOX",
                             "type": "string",
                             "maxLength": 255
+                          },
+                          "authservId": {
+                            "default": "",
+                            "type": "string",
+                            "maxLength": 255,
+                            "pattern": "^[A-Za-z0-9.-]*$"
                           }
                         },
                         "required": [
@@ -72804,6 +72822,12 @@
                             "default": "",
                             "type": "string",
                             "maxLength": 255
+                          },
+                          "authservId": {
+                            "default": "",
+                            "type": "string",
+                            "maxLength": 255,
+                            "pattern": "^[A-Za-z0-9.-]*$"
                           }
                         },
                         "required": [
@@ -73131,6 +73155,12 @@
                             "default": "INBOX",
                             "type": "string",
                             "maxLength": 255
+                          },
+                          "authservId": {
+                            "default": "",
+                            "type": "string",
+                            "maxLength": 255,
+                            "pattern": "^[A-Za-z0-9.-]*$"
                           }
                         },
                         "required": [
@@ -73190,6 +73220,12 @@
                             "default": "",
                             "type": "string",
                             "maxLength": 255
+                          },
+                          "authservId": {
+                            "default": "",
+                            "type": "string",
+                            "maxLength": 255,
+                            "pattern": "^[A-Za-z0-9.-]*$"
                           }
                         },
                         "required": [

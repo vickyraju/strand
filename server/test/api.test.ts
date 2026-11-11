@@ -6265,7 +6265,7 @@ test('[0607.R1][0607.R2][0607.R3][0607.R4][0607.R5][0607.R7][0607.R8] incoming m
   // R1: a server (message files) and a handler; the secret rules for IMAP
   assert.equal((await call('POST', '/api/v1/admin/mail-servers', { name: 'Inbox', config: { kind: 'imap', host: 'mail.x.com', username: 'support' } })).status, 400)   // no password
   assert.equal((await call('POST', '/api/v1/admin/mail-servers', { name: 'Escape', config: { kind: 'files', folder: '../..' } })).status, 400)
-  const srv = (await call('POST', '/api/v1/admin/mail-servers', { name: 'Support box', config: { kind: 'files', folder: '' } })).body
+  const srv = (await call('POST', '/api/v1/admin/mail-servers', { name: 'Support box', config: { kind: 'files', folder: '', authservId: 'mx.x.com' } })).body
   assert.deepEqual((await call('POST', '/api/v1/admin/mail-servers/test', { config: { kind: 'files', folder: '' } })).body, { ok: true, unread: 0 })
   assert.equal((await call('POST', '/api/v1/admin/mail-handlers', { name: 'Bad', serverId: srv.id, kind: 'create_or_comment', params: { project: 'MLB', splitRegex: '/x/' } })).status, 400)   // not this handler's
   assert.equal((await call('POST', '/api/v1/admin/mail-handlers', { name: 'Bad', serverId: srv.id, kind: 'create_or_comment', params: {} })).status, 400)                        // no project
@@ -6311,7 +6311,7 @@ test('[0607.R1][0607.R2][0607.R3][0607.R4][0607.R5][0607.R7][0607.R8] incoming m
   for (const x of readdirSync(dir)) (await import('node:fs')).unlinkSync(`${dir}/${x}`)
   mail({ 'Authentication-Results': 'mx.x.com; spf=pass; dkim=pass header.d=x.com; dmarc=pass header.from=x.com', From: 'ml.ann@x.com', Subject: 'Verified' }, 'ok')
   mail({ From: 'ml.ann@x.com', Subject: 'Not verified' }, 'who knows')
-  mail({ 'Authentication-Results': 'mx.x.com; dmarc=fail header.from=x.com', From: 'ml.ann@x.com', Subject: 'Forged' }, 'Pretending to be Ann')   // a forged header further down: the unit test
+  mail({ 'Authentication-Results': 'evil.example; dmarc=pass header.from=x.com', From: 'ml.ann@x.com', Subject: 'Forged' }, 'Pretending to be Ann')   // not our server's verdict
   await call('POST', `/api/v1/admin/mail-handlers/${guard.id}/run`); await runJobs()
   const gr = (await call('GET', '/api/v1/admin/mail-handlers')).body.find((x: any) => x.id === guard.id).lastResult
   assert.deepEqual(gr.messages.map((x: any) => [x.subject, x.result]), [['Verified', 'created'], ['Not verified', 'failed'], ['Forged', 'failed']])
@@ -6329,11 +6329,18 @@ test('[0607.R1][0607.R2][0607.R3][0607.R4][0607.R5][0607.R7][0607.R8] incoming m
 
 test('[0607.R3][0607.R4] mail: who is verified, and what a handler keeps of an email\'s text', async () => {
   const { bodyFor, senderVerified } = await import('../src/mail.ts')
-  const v = (lines: [string, string][], from: string, kind: 'imap' | 'graph' | 'files' = 'imap') => senderVerified({ headerLines: lines.map(([key, line]) => ({ key, line })) } as any, from, kind)
-  assert.equal(v([['authentication-results', 'Authentication-Results: mx; dmarc=pass']], 'a@x.com'), true)
-  assert.equal(v([['authentication-results', 'Authentication-Results: mx; dkim=pass header.d=x.com']], 'a@mail.x.com'), true)
-  assert.equal(v([['authentication-results', 'Authentication-Results: mx; dkim=pass header.d=other.com']], 'a@x.com'), false)
-  assert.equal(v([['authentication-results', 'Authentication-Results: mx; dmarc=fail'], ['authentication-results', 'Authentication-Results: evil; dmarc=pass']], 'a@x.com'), false)
+  const ar = (line: string): [string, string] => ['authentication-results', `Authentication-Results: ${line}`]
+  const v = (lines: [string, string][], from: string, kind: 'imap' | 'graph' | 'files' = 'imap', authservId = 'mx.x.com') =>
+    senderVerified({ headerLines: lines.map(([key, line]) => ({ key, line })) } as any, from, { kind, config: { authservId } })
+  assert.equal(v([ar('mx.x.com; dmarc=pass header.from=x.com')], 'a@x.com'), true)
+  assert.equal(v([ar('mx.x.com; dkim=pass header.d=x.com')], 'a@mail.x.com'), true)
+  assert.equal(v([ar('mx.x.com; dkim=pass header.d=other.com')], 'a@x.com'), false)
+  assert.equal(v([ar('mx.x.com; dmarc=pass header.from=other.com')], 'a@x.com'), false)                  // DMARC for another domain
+  assert.equal(v([ar('mx.x.com; dmarc=fail (dmarc=pass) header.from=x.com')], 'a@x.com'), false)       // a comment doesn't count
+  assert.equal(v([ar('evil.example; dmarc=pass header.from=x.com')], 'a@x.com'), false)                // not our server's verdict
+  assert.equal(v([ar('evil.example; dmarc=pass header.from=x.com'), ar('mx.x.com; dmarc=pass header.from=x.com')], 'a@x.com'), true)
+  assert.equal(v([ar('mx.x.com; dmarc=pass header.from=x.com')], 'a@x.com', 'imap', ''), false)        // no trusted host set: nobody is verified
+  assert.equal(v([ar('spf=pass smtp.mailfrom=x.com; dkim=pass header.d=x.com; dmarc=pass action=none header.from=x.com')], 'a@x.com', 'graph'), true)   // Exchange's own, topmost
   assert.equal(v([['x-ms-exchange-organization-authas', 'X-MS-Exchange-Organization-AuthAs: Internal']], 'a@x.com', 'graph'), true)
   assert.equal(v([['x-ms-exchange-organization-authas', 'X-MS-Exchange-Organization-AuthAs: Internal']], 'a@x.com', 'imap'), false)
   assert.equal(v([], 'a@x.com'), false)
