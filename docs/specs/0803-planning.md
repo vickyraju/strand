@@ -1,6 +1,6 @@
 # 0803 Planning like Advanced Roadmaps (decision)
 
-Status: Approved (PO, 11 Nov 2026: "let's go with B for now")
+Status: Ported (aws-jira `85ac7b6`, strand `c792443`), approved by the PO on 10 Nov 2026; awaiting verification
 Parity rows: AG-14
 
 ## Context and Jira reference
