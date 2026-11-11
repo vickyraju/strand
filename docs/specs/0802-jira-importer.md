@@ -15,7 +15,7 @@ Not applicable: Strand's own way out of Jira. What Atlassian's Jira-to-Jira proj
 
 ## Rules
 
-- **R1: Connection.** Administration › Jira import: the Jira's address and a personal access token (sealed, write-only, as user directories' passwords), **Test** (the Jira's version and who the token is). Only GET requests reach Jira.
+- **R1: Connection.** Administration › Jira import: the Jira's address and a personal access token (sealed, write-only, as user directories' passwords), **Test** (the Jira's version and who the token is). Only GET requests reach Jira, and only the configured Jira: an address in Jira's answers on another origin isn't followed, redirects aren't followed, and a cloud metadata address is refused (a company's Jira is usually on its private network, so private addresses are allowed).
 - **R2: Dry run.** For the chosen project keys, read everything that would be written and report it without writing: per project its work items, versions, components and sprints; issue types, statuses, priorities, resolutions, link types and custom fields, each as **existing** in Strand (by name), **new**, or **left out** (a custom field type Strand lacks, spec 0801's mapping); people referenced, each **matched** to a Strand person by email or **new** (made as deactivated people); and what stops it (a project key Strand already uses for another project).
 - **R3: What it makes.**
   - A project with the same key, name, description and lead; Jira's project roles become members (Administrators: admin; other roles: member), people and groups (groups by name).
@@ -56,7 +56,7 @@ A job per run; 100 work items a page; each item's watchers, votes, web links and
 
 | Rule | Proved by |
 |---|---|
-| R1, R2 | Server test (a made-up Jira): Test; the dry run's report (existing, new, left out, matched and new people) and that it writes nothing |
+| R1, R2 | Server test (a made-up Jira): Test; a metadata address refused; an answer pointing elsewhere not followed; the dry run's report (existing, new, left out, matched and new people) and that it writes nothing |
 | R3, R4, R5, R7 | Server test: an import makes the project, workflow, types, versions, components, sprint, custom field, people (matched and new) and items with their fields, history, comments (with visibility), work logs, watchers, votes, web links and links; the reconciliation matches |
 | R6 | Server test: run again imports nothing twice; a link to an item in a later project is made when that project comes |
 | R1 | Browser journey: an admin runs a dry run against the made-up Jira and sees its report |

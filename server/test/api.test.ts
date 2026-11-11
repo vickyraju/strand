@@ -6475,7 +6475,8 @@ test('[0802.R1][0802.R2][0802.R3][0802.R4][0802.R5][0802.R6][0802.R7] the Jira i
       if (rest === '/statuses') return [{ statuses: [st('10', 'Backlog', 'new'), st('11', 'Doing it', 'indeterminate'), st('12', 'Shipped', 'done')] }]
       if (rest === '/versions') return k === 'MIG' ? [{ id: '100', name: '1.0', released: true, releaseDate: '2026-01-10' }] : []
       if (rest === '/components') return k === 'MIG' ? [{ id: '200', name: 'API', lead: bob }] : []
-      if (rest === '/role') return { Administrators: `${base}/rest/api/2/project/${k}/role/1`, Developers: `${base}/rest/api/2/project/${k}/role/2` }
+      if (rest === '/role') return k === 'NXT' ? { Elsewhere: 'http://169.254.169.254/latest/meta-data/' }   // an answer pointing elsewhere: not followed
+        : { Administrators: `${base}/rest/api/2/project/${k}/role/1`, Developers: `${base}/rest/api/2/project/${k}/role/2` }
       if (rest === '/role/1') return { actors: [{ type: 'atlassian-user-role-actor', name: 'ann', displayName: 'Ann Jira' }] }
       if (rest === '/role/2') return { actors: [{ type: 'atlassian-user-role-actor', name: 'bob', displayName: 'Bob Jira' }] }
     }
@@ -6508,8 +6509,10 @@ test('[0802.R1][0802.R2][0802.R3][0802.R4][0802.R5][0802.R6][0802.R7] the Jira i
   base = `http://127.0.0.1:${(jiraServer.address() as any).port}`
   try {
     await call('GET', '/api/v1/me'); await call('GET', '/api/v1/me', undefined, 'mig.ann@x.com')   // Ann is in Strand already; Bob isn't
-    // R1: Test
+    // R1: Test; a cloud metadata address is never a Jira
     assert.deepEqual((await call('POST', '/api/v1/admin/jira-import/test', { url: base, token: 'pat-123' })).body, { ok: true, version: '9.12.4', title: 'Made-up Jira', user: 'Importer' })
+    assert.deepEqual((await call('POST', '/api/v1/admin/jira-import/test', { url: 'http://169.254.169.254', token: 'pat-123' })).body, { ok: false, error: 'That address isn’t a Jira' })
+    assert.equal((await call('POST', '/api/v1/admin/jira-imports', { url: 'http://169.254.169.254', token: 'pat-123', projectKeys: ['X'], dryRun: true })).status, 400)
     assert.equal((await call('POST', '/api/v1/admin/jira-import/test', { url: base, token: 'x' }, 'mig.ann@x.com')).status, 403)
     let token: string | undefined = 'pat-123'                                   // given once; later runs reuse it
     const start = async (keys: string[], dryRun: boolean) => {
