@@ -3,8 +3,8 @@ import { useSyncExternalStore } from 'react'
 /** `boards`: a board's settings (Configure board), or the list of the project's boards; not a tab of its own */
 export type ProjectTab = 'summary' | 'board' | 'boards' | 'backlog' | 'list' | 'timeline' | 'calendar' | 'releases' | 'reports' | 'tests' | 'settings'
 
-export type AdminSection = 'people' | 'groups' | 'auth-methods' | 'directories' | 'project-categories' | 'webhooks' | 'development' | 'automation' | 'custom-fields' | 'field-configurations' | 'screens' | 'notification-schemes' | 'incoming-mail' | 'archived-items' | 'workflows' | 'link-types' | 'priorities' | 'resolutions' | 'test-statuses' | 'settings' | 'audit' | 'archived' | 'backups' | 'views'
-const ADMIN: AdminSection[] = ['people', 'groups', 'auth-methods', 'directories', 'workflows', 'project-categories', 'webhooks', 'development', 'automation', 'custom-fields', 'field-configurations', 'screens', 'notification-schemes', 'incoming-mail', 'archived-items', 'link-types', 'priorities', 'resolutions', 'test-statuses', 'settings', 'audit', 'archived', 'backups', 'views']
+export type AdminSection = 'people' | 'groups' | 'auth-methods' | 'directories' | 'project-categories' | 'webhooks' | 'development' | 'automation' | 'custom-fields' | 'field-configurations' | 'screens' | 'notification-schemes' | 'incoming-mail' | 'jira-import' | 'archived-items' | 'workflows' | 'link-types' | 'priorities' | 'resolutions' | 'test-statuses' | 'settings' | 'audit' | 'archived' | 'backups' | 'views'
+const ADMIN: AdminSection[] = ['people', 'groups', 'auth-methods', 'directories', 'workflows', 'project-categories', 'webhooks', 'development', 'automation', 'custom-fields', 'field-configurations', 'screens', 'notification-schemes', 'incoming-mail', 'jira-import', 'archived-items', 'link-types', 'priorities', 'resolutions', 'test-statuses', 'settings', 'audit', 'archived', 'backups', 'views']
 
 export type Route =
   | { name: 'home' }

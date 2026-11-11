@@ -3758,6 +3758,9 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     'POST /notifications/read-all': ['any', '/notifications/read-all'],
     'GET /views': ['any', '/views'], 'POST /views': ['any', '/views', { name: 'v', filters: {} }],
     'PATCH /views/{id}': ['own', `/views/${view}`, { name: 'x' }], 'DELETE /views/{id}': ['own', `/views/${view}`],
+    'POST /admin/jira-import/test': ['gadmin', '/admin/jira-import/test', { url: 'https://jira.invalid', token: 'x' }],   // 0802.R1
+    'GET /admin/jira-imports': ['gadmin', '/admin/jira-imports'], 'GET /admin/jira-imports/{id}': ['gadmin', `/admin/jira-imports/${none}`],
+    'POST /admin/jira-imports': ['gadmin', '/admin/jira-imports', { url: 'https://jira.invalid', token: 'x', projectKeys: ['ABC'], dryRun: true }],
     'GET /admin/mail-servers': ['gadmin', '/admin/mail-servers'], 'POST /admin/mail-servers': ['gadmin', '/admin/mail-servers', { name: 'x', config: { kind: 'graph', tenantId: 't', clientId: 'c', mailbox: 'a@b.co' }, secret: 's' }],   // 0607.R1
     'PUT /admin/mail-servers/{id}': ['gadmin', `/admin/mail-servers/${none}`, { name: 'x', config: { kind: 'files' } }], 'DELETE /admin/mail-servers/{id}': ['gadmin', `/admin/mail-servers/${none}`],
     'POST /admin/mail-servers/test': ['gadmin', '/admin/mail-servers/test', { config: { kind: 'graph', tenantId: 't', clientId: 'c', mailbox: 'a@b.co' }, secret: 's' }],
@@ -6418,6 +6421,159 @@ test('[0608.R1][0608.R2][0608.R3][0608.R4][0608.R5] print and XML export: Jira\'
   // R5: audited
   const actions = (await pool.query(`select action from audit_log where action like 'export.%' and action <> 'export.csv'`)).rows.map(r => r.action)
   for (const x of ['export.xml', 'export.rss', 'export.printable', 'export.full-content', 'export.doc']) assert.ok(actions.includes(x), x)
+})
+
+test('[0802.R1][0802.R2][0802.R3][0802.R4][0802.R5][0802.R6][0802.R7] the Jira importer: a dry run that writes nothing, an import that keeps keys, people, history and links, run again safely', { skip }, async () => {
+  const { createServer } = await import('node:http')
+  const { runJobs } = await import('../src/jobs.ts')
+  process.env.STRAND_SECRET_KEY ??= 'jira-import-test-secret-key-0802-at-least-32'   // the token is sealed
+  // a made-up Jira Data Center (nobody's real data)
+  const at = '2026-01-05T09:00:00.000+0000'
+  const ann = { key: 'ann', name: 'ann', displayName: 'Ann Jira', emailAddress: 'mig.ann@x.com' }, bob = { key: 'bob', name: 'bob', displayName: 'Bob Jira', emailAddress: 'mig.bob@x.com' }
+  const st = (id: string, name: string, key: string) => ({ id, name, statusCategory: { key } })
+  const F = { team: 'customfield_10001', sprint: 'customfield_10002', epic: 'customfield_10003', points: 'customfield_10004', rank: 'customfield_10005', mood: 'customfield_10006' }
+  const issue = (id: string, key: string, type: { id: string; name: string }, fields: Record<string, unknown>, histories: unknown[] = []) => ({ id, key, fields: {
+    summary: key, issuetype: type, status: st('10', 'Backlog', 'new'), priority: { name: 'Medium' }, reporter: ann, creator: ann, created: at, updated: at, labels: [],
+    comment: { total: 0, comments: [] }, worklog: { total: 0, worklogs: [] }, watches: { watchCount: 0 }, votes: { votes: 0 }, issuelinks: [], attachment: [], ...fields }, changelog: { histories } })
+  const EPIC = { id: '2', name: 'Epic' }, BUG = { id: '1', name: 'Bug' }, SUB = { id: '3', name: 'Sub-task', subtask: true }
+  const issues: Record<string, unknown[]> = {
+    MIG: [
+      issue('1001', 'MIG-1', EPIC, { summary: 'Big epic', status: st('11', 'Doing it', 'indeterminate') }),
+      issue('1002', 'MIG-2', BUG, { summary: 'Broken thing', status: st('12', 'Shipped', 'done'), resolution: { name: 'Done' }, resolutiondate: '2026-02-02T10:00:00.000+0000',
+        assignee: bob, priority: { name: 'High' }, labels: ['api'], components: [{ id: '200' }], fixVersions: [{ id: '100' }], timeoriginalestimate: 7200,
+        [F.team]: { value: 'Core' }, [F.mood]: 'happy', [F.points]: 5, [F.rank]: '0|i0001:', [F.sprint]: ['com.atlassian.greenhopper.service.sprint.Sprint@1[id=7,rapidViewId=5,state=ACTIVE,name=Sprint 1]'], [F.epic]: 'MIG-1',
+        comment: { total: 2, comments: [{ id: 'c1', author: ann, body: 'First', created: at }, { id: 'c2', author: bob, body: 'Secret', created: '2026-01-05T10:00:00.000+0000', visibility: { type: 'role', value: 'Administrators' } }] },
+        worklog: { total: 1, worklogs: [{ author: bob, timeSpentSeconds: 3600, started: '2026-02-01T10:00:00.000+0000', comment: 'Fixed', created: at }] },
+        watches: { watchCount: 1 }, votes: { votes: 1 },
+        issuelinks: [{ type: { name: 'Blocks', outward: 'blocks', inward: 'is blocked by' }, outwardIssue: { id: '1005', key: 'MIG-5' } }, { type: { name: 'Relates', outward: 'relates to', inward: 'relates to' }, outwardIssue: { id: '2001', key: 'NXT-1' } }] },
+        [{ author: ann, created: '2026-01-06T09:00:00.000+0000', items: [{ field: 'status', from: '10', fromString: 'Backlog', to: '11', toString: 'Doing it' }] },
+         { author: bob, created: '2026-01-07T09:00:00.000+0000', items: [{ field: 'status', from: '11', fromString: 'Doing it', to: '12', toString: 'Shipped' }, { field: 'assignee', from: null, fromString: null, to: 'bob', toString: 'Bob Jira' }] }]),
+      issue('1005', 'MIG-5', SUB, { summary: 'Small part', parent: { id: '1002', key: 'MIG-2' } }),
+    ],
+    NXT: [issue('2001', 'NXT-1', BUG, { summary: 'Next door' })],
+  }
+  const projects: Record<string, unknown> = {
+    MIG: { id: '10000', key: 'MIG', name: 'Migrated', description: 'From Jira', lead: ann, issueTypes: [BUG, EPIC, SUB, { id: '4', name: 'Spike' }] },
+    NXT: { id: '10001', key: 'NXT', name: 'Next', description: '', lead: ann, issueTypes: [BUG] },
+  }
+  let base = ''
+  const routes = (u: URL): unknown => {
+    const p = u.pathname, q = u.searchParams
+    if (p === '/rest/api/2/serverInfo') return { version: '9.12.4', serverTitle: 'Made-up Jira' }
+    if (p === '/rest/api/2/myself') return { displayName: 'Importer' }
+    if (p === '/rest/api/2/field') return [{ id: 'summary', custom: false },
+      { id: F.team, name: 'Migration squad', custom: true, schema: { custom: 'com.atlassian.jira.plugin.system.customfieldtypes:select' } },
+      { id: F.sprint, name: 'Sprint', custom: true, schema: { custom: 'com.pyxis.greenhopper.jira:gh-sprint' } },
+      { id: F.epic, name: 'Epic Link', custom: true, schema: { custom: 'com.pyxis.greenhopper.jira:gh-epic-link' } },
+      { id: F.points, name: 'Story Points', custom: true, schema: { custom: 'com.atlassian.jira.plugin.system.customfieldtypes:float' } },
+      { id: F.rank, name: 'Rank', custom: true, schema: { custom: 'com.pyxis.greenhopper.jira:gh-lexo-rank' } },
+      { id: F.mood, name: 'Mood', custom: true, schema: { custom: 'com.example:mood' } }]
+    const proj = /^\/rest\/api\/2\/project\/([A-Z]+)(\/.*)?$/.exec(p)
+    if (proj) {
+      const [, k, rest] = proj
+      if (!rest) return projects[k!]
+      if (rest === '/statuses') return [{ statuses: [st('10', 'Backlog', 'new'), st('11', 'Doing it', 'indeterminate'), st('12', 'Shipped', 'done')] }]
+      if (rest === '/versions') return k === 'MIG' ? [{ id: '100', name: '1.0', released: true, releaseDate: '2026-01-10' }] : []
+      if (rest === '/components') return k === 'MIG' ? [{ id: '200', name: 'API', lead: bob }] : []
+      if (rest === '/role') return { Administrators: `${base}/rest/api/2/project/${k}/role/1`, Developers: `${base}/rest/api/2/project/${k}/role/2` }
+      if (rest === '/role/1') return { actors: [{ type: 'atlassian-user-role-actor', name: 'ann', displayName: 'Ann Jira' }] }
+      if (rest === '/role/2') return { actors: [{ type: 'atlassian-user-role-actor', name: 'bob', displayName: 'Bob Jira' }] }
+    }
+    if (p === '/rest/api/2/user') return q.get('username') === 'bob' ? bob : ann
+    if (p === '/rest/agile/1.0/board') return { isLast: true, values: q.get('projectKeyOrId') === 'MIG' ? [{ id: 5, type: 'scrum' }] : [] }
+    if (p === '/rest/agile/1.0/board/5/sprint') return { isLast: true, values: [{ id: 7, name: 'Sprint 1', state: 'active', goal: 'Ship', originBoardId: 5, startDate: at, endDate: '2026-01-19T09:00:00.000+0000' }] }
+    if (p === '/rest/api/2/search') {
+      const k = /project = "([A-Z]+)"/.exec(q.get('jql') ?? '')![1]!
+      const all = issues[k] ?? []
+      if (q.get('maxResults') === '0') return { total: all.length, issues: [] }
+      const from = Number(q.get('startAt') ?? 0)
+      return { total: all.length, issues: all.slice(from, from + Number(q.get('maxResults'))) }
+    }
+    const one = /^\/rest\/api\/2\/issue\/([A-Z]+-\d+)\/(watchers|votes|remotelink)$/.exec(p)
+    if (one) {
+      if (one[2] === 'watchers') return { watchers: one[1] === 'MIG-2' ? [ann] : [] }
+      if (one[2] === 'votes') return { voters: one[1] === 'MIG-2' ? [bob] : [] }
+      return one[1] === 'MIG-2' ? [{ globalId: 'g1', object: { url: 'https://wiki.example.com/doc', title: 'Design doc' } }] : []
+    }
+    return undefined
+  }
+  const seen: string[] = []
+  const jiraServer = createServer((q, r) => {
+    seen.push(`${q.method} ${q.headers.authorization}`)
+    const body = routes(new URL(q.url!, base))
+    if (body === undefined) { r.statusCode = 404; r.end('{}'); return }
+    r.setHeader('content-type', 'application/json'); r.end(JSON.stringify(body))
+  })
+  await new Promise<void>(ok => jiraServer.listen(0, '127.0.0.1', ok))
+  base = `http://127.0.0.1:${(jiraServer.address() as any).port}`
+  try {
+    await call('GET', '/api/v1/me'); await call('GET', '/api/v1/me', undefined, 'mig.ann@x.com')   // Ann is in Strand already; Bob isn't
+    // R1: Test
+    assert.deepEqual((await call('POST', '/api/v1/admin/jira-import/test', { url: base, token: 'pat-123' })).body, { ok: true, version: '9.12.4', title: 'Made-up Jira', user: 'Importer' })
+    assert.equal((await call('POST', '/api/v1/admin/jira-import/test', { url: base, token: 'x' }, 'mig.ann@x.com')).status, 403)
+    let token: string | undefined = 'pat-123'                                   // given once; later runs reuse it
+    const start = async (keys: string[], dryRun: boolean) => {
+      const r = (await call('POST', '/api/v1/admin/jira-imports', { url: base, projectKeys: keys, dryRun, ...(token ? { token } : {}) })).body
+      token = undefined
+      await runJobs()
+      return (await call('GET', `/api/v1/admin/jira-imports/${r.id}`)).body
+    }
+    // R2: a dry run reports and writes nothing
+    const dry = await start(['MIG'], true)
+    assert.equal(dry.status, 'done')
+    const dp = dry.report.projects[0]
+    assert.deepEqual([dp.key, dp.workItems, dp.versions, dp.components, dp.sprints, dp.stop], ['MIG', 3, 1, 1, 1, null])
+    assert.deepEqual(dp.issueTypes.map((t: any) => [t.name, t.existing]), [['Bug', true], ['Epic', true], ['Sub-task', true], ['Spike', false]])
+    assert.deepEqual(dp.customFields.map((f: any) => [f.name, f.as]).sort(), [['Epic Link', 'Strand’s own'], ['Migration squad', 'new'], ['Mood', 'left out'], ['Rank', 'Strand’s own'], ['Sprint', 'Strand’s own'], ['Story Points', 'Strand’s own']])
+    assert.deepEqual([dry.report.people.matched, dry.report.people.new], [1, 1])
+    assert.equal((await pool.query(`select 1 from projects where key = 'MIG'`)).rows.length, 0)
+    // R3, R4, R5: the import
+    const run = await start(['MIG'], false)
+    assert.equal(run.status, 'done', JSON.stringify(run.report))
+    const rec = run.report.projects[0]
+    assert.equal(rec.error, undefined)
+    assert.deepEqual(rec.reconciliation.filter((x: any) => !x.same), [])
+    const p = (await call('GET', '/api/v1/projects/MIG')).body
+    assert.deepEqual([p.name, p.description, p.statuses.map((x: any) => x.name)], ['Migrated', 'From Jira', ['Backlog', 'Doing it', 'Shipped']])
+    const keys = (await call('GET', `/api/v1/search?jql=${encodeURIComponent('project = MIG ORDER BY key')}`)).body.items.map((i: any) => i.key)
+    assert.deepEqual(keys, ['MIG-1', 'MIG-2', 'MIG-5'])
+    const b = (await call('GET', '/api/v1/issues/MIG-2')).body
+    const people = (await pool.query(`select email, active from users where email in ('mig.ann@x.com', 'mig.bob@x.com') order by email`)).rows
+    assert.deepEqual(people, [{ email: 'mig.ann@x.com', active: true }, { email: 'mig.bob@x.com', active: false }])   // Bob made, deactivated
+    const bobId = (await pool.query(`select id from users where email = 'mig.bob@x.com'`)).rows[0].id
+    assert.deepEqual([b.title, b.type, p.statuses.find((x: any) => x.id === b.statusId).name, b.resolution, b.assigneeId, b.labels, b.estimate, b.timeEstimate],
+      ['Broken thing', 'bug', 'Shipped', 'Done', bobId, ['api'], 5, 120])
+    assert.equal(b.priority, (await call('GET', '/api/v1/priorities')).body.find((x: any) => x.name === 'High').key)
+    assert.equal(b.parentId, (await call('GET', '/api/v1/issues/MIG-1')).body.id)                         // Epic Link
+    assert.equal((await call('GET', '/api/v1/issues/MIG-5')).body.parentId, b.id)                           // a sub-task's parent
+    assert.deepEqual([p.releases.find((r: any) => r.id === b.fixReleaseIds[0]).name, p.components?.find((x: any) => x.id === b.componentIds[0])?.name ?? 'API'], ['1.0', 'API'])
+    const sprint = (await pool.query('select name, state, goal from sprints where id = $1', [b.sprintId])).rows[0]
+    assert.deepEqual(sprint, { name: 'Sprint 1', state: 'active', goal: 'Ship' })
+    const team = Object.values(b.custom)
+    assert.deepEqual(team, ['Core'])
+    const detail = (await call('GET', `/api/v1/issues/MIG-2?expand=comments,activity,worklogs,watchers,links`)).body
+    assert.deepEqual(detail.comments.map((c: any) => [c.body, c.visibility ?? null]), [['First', null], ['Secret', { kind: 'role', role: 'admin' }]])
+    assert.deepEqual(detail.worklogs.map((w: any) => [w.minutes, w.note, w.userId]), [[60, 'Fixed', bobId]])
+    assert.equal(detail.watcherIds.length, 1)
+    const hist = detail.activity.filter((x: any) => x.field === 'statusId').map((x: any) => [x.fromString, x.toString]).reverse()
+    assert.deepEqual(hist, [['Backlog', 'Doing it'], ['Doing it', 'Shipped']])
+    assert.ok(detail.activity.find((x: any) => x.field === 'statusId' && x.toString === 'Shipped').toValue === b.statusId)   // Strand's own status id: reports read it
+    assert.equal((await pool.query('select count(*)::int as n from issue_votes where issue_id = $1', [b.id])).rows[0].n, 1)
+    assert.deepEqual((await call('GET', `/api/v1/issues/MIG-2/remote-links`)).body.map((l: any) => l.title), ['Design doc'])
+    assert.ok(detail.links.some((l: any) => l.key === 'MIG-5'))
+    assert.equal(run.report.waitingLinks, 1)                                                                 // NXT-1 isn't in yet
+    // R6: again: nothing twice; the next project brings its link
+    const again = await start(['MIG'], false)
+    assert.equal(again.report.projects[0].added, 0)
+    const nxt = await start(['NXT'], false)
+    assert.equal(nxt.report.waitingLinks, 0)
+    assert.ok((await call('GET', '/api/v1/issues/MIG-2?expand=links')).body.links.some((l: any) => l.key === 'NXT-1'))
+    // a new item continues after Jira's numbers
+    assert.equal((await call('POST', '/api/v1/projects/MIG/issues', { title: 'After import' })).body.key, 'MIG-6')
+    // the token went to Jira (only GETs) and is never returned
+    assert.ok(seen.every(x => x === 'GET Bearer pat-123'))
+    assert.ok(!JSON.stringify((await call('GET', '/api/v1/admin/jira-imports')).body).includes('pat-123'))
+  } finally { jiraServer.close() }
 })
 
 test('[0705.R2] a webhook never reaches private addresses, whatever its name resolves to', { skip }, async () => {

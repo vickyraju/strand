@@ -80,6 +80,8 @@ export const NotificationScheme = z.object({ id, name: z.string(), description: 
 export const MailServer = z.object({ id, name: z.string(), kind: z.enum(['imap', 'graph', 'files']), config: z.record(z.string(), z.unknown()), hasSecret: z.boolean(), createdAt: ts, handlers: z.number() })
 export const MailHandler = z.object({ id, name: z.string(), kind: z.string(), enabled: z.boolean(), delayMinutes: z.number(), params: z.record(z.string(), z.unknown()),
   serverId: id, serverName: z.string(), lastRunAt: nullable(ts), lastResult: nullable(z.record(z.string(), z.unknown())).describe('When it last ran: counts, and each message’s outcome') })
+export const JiraImportRun = z.object({ id, url: z.string(), projectKeys: z.array(z.string()), dryRun: z.boolean(), status: z.enum(['queued', 'running', 'done', 'failed']),
+  report: nullable(z.record(z.string(), z.unknown())), createdAt: ts, finishedAt: nullable(ts), createdByName: nullable(z.string()), progress: nullable(z.record(z.string(), z.unknown())) })
 export const Subscription = z.object({ id, viewId: id, createdBy: id, createdByName: z.string(), groupId: nullable(id), groupName: nullable(z.string()),
   cron: z.string().describe('Quartz cron, as Jira stores schedules'), emailWhenEmpty: z.boolean(), nextRunAt: nullable(ts), lastRunAt: nullable(ts), createdAt: ts })
 export const Release = z.object({ id, workspaceId: id, projectId: id, name: z.string(), description: z.string(), startDate: nullable(day), releaseDate: nullable(day), released: z.boolean(), releasedAt: nullable(ts), archived: z.boolean().describe('Hidden from pickers; items keep it') })
@@ -334,6 +336,8 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'GET /admin/mail-servers': z.array(MailServer), 'POST /admin/mail-servers': MailServer, 'PUT /admin/mail-servers/:id': MailServer,
   'POST /admin/mail-servers/test': z.object({ ok: z.boolean(), unread: z.number().optional(), error: z.string().optional() }),
   'GET /admin/mail-handlers': z.array(MailHandler), 'POST /admin/mail-handlers': MailHandler, 'PUT /admin/mail-handlers/:id': MailHandler, 'POST /admin/mail-handlers/:id/run': z.object({ jobId: id }),
+  'POST /admin/jira-import/test': z.object({ ok: z.boolean(), version: z.string().optional(), title: z.string().optional(), user: z.string().optional(), error: z.string().optional() }),
+  'GET /admin/jira-imports': z.array(JiraImportRun), 'GET /admin/jira-imports/:id': JiraImportRun, 'POST /admin/jira-imports': JiraImportRun,
   'GET /views/:id/subscriptions': z.array(Subscription), 'POST /views/:id/subscriptions': Subscription, 'PATCH /subscriptions/:id': Subscription,
   'POST /subscriptions/:id/run': z.object({ jobId: id }),
   'GET /issues/:key/votes': z.object({ votes: z.number(), hasVoted: z.boolean(), voters: z.array(z.object({ id, name: z.string() })).describe('Empty without View voters and watchers') }),

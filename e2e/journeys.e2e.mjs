@@ -2180,3 +2180,42 @@ test('[0608.R1][0608.R3] a search is exported as XML; an item\'s Printable opens
   assert.deepEqual(o.problems, [])
 })
 
+test('[0802.R1][0802.R2] an admin tests a Jira and runs a dry run: its report shows what would come over', { skip, timeout: 120_000 }, async () => {
+  // a made-up Jira (nobody's real data)
+  const st = (id, name, key) => ({ id, name, statusCategory: { key } })
+  const answers = {
+    '/rest/api/2/serverInfo': { version: '9.12.4', serverTitle: 'Journey Jira' }, '/rest/api/2/myself': { displayName: 'Journey importer' },
+    '/rest/api/2/field': [{ id: 'customfield_1', name: 'Team', custom: true, schema: { custom: 'com.atlassian.jira.plugin.system.customfieldtypes:select' } }],
+    '/rest/api/2/project/JRN': { id: '1', key: 'JRN', name: 'Journey', issueTypes: [{ id: '1', name: 'Bug' }, { id: '2', name: 'Spike' }] },
+    '/rest/api/2/project/JRN/statuses': [{ statuses: [st('1', 'Open', 'new'), st('2', 'Closed', 'done')] }],
+    '/rest/api/2/project/JRN/versions': [{ id: '1', name: '1.0' }], '/rest/api/2/project/JRN/components': [], '/rest/api/2/project/JRN/role': {},
+    '/rest/agile/1.0/board': { isLast: true, values: [] },
+  }
+  const jiraServer = createServer((q, r) => {
+    const u = new URL(q.url, 'http://x')
+    let body = answers[u.pathname]
+    if (u.pathname === '/rest/api/2/search') body = u.searchParams.get('maxResults') === '0' ? { total: 2, issues: [] }
+      : { total: 2, issues: [1, 2].map(n => ({ id: String(n), key: `JRN-${n}`, fields: { summary: `Item ${n}`, issuetype: { id: '1', name: 'Bug' }, status: st('1', 'Open', 'new'), priority: { name: 'High' }, reporter: { key: 'zed', name: 'zed', displayName: 'Zed New', emailAddress: 'zed@nowhere.test' }, comment: { comments: [] } } })) }
+    if (!body) { r.statusCode = 404; r.end('{}'); return }
+    r.setHeader('content-type', 'application/json'); r.end(JSON.stringify(body))
+  })
+  await new Promise(ok => jiraServer.listen(0, '127.0.0.1', ok))
+  try {
+    const o = await signIn('owner@e2e.test')
+    await o.goto(url('/admin/jira-import'))
+    await o.fill('#ji-url', `http://127.0.0.1:${jiraServer.address().port}`)
+    await o.fill('#ji-token', 'journey-token')
+    await o.click('button:has-text("Test")')
+    await o.waitForSelector('[role="status"]:has-text("Connected to Journey Jira 9.12.4 as Journey importer")')
+    await o.fill('#ji-keys', 'JRN')
+    await o.click('button:has-text("Dry run")')
+    await o.waitForSelector('td:has-text("Done")', { timeout: 30_000 })
+    await o.click('tr:has-text("Dry run")')
+    await o.waitForSelector('.modal li:has-text("2 work items, 1 version, 0 components")')
+    await o.waitForSelector('.modal li:has-text("Spike (new)")')
+    await o.waitForSelector('.modal:has-text("1 new (made deactivated): Zed New")')
+    assert.equal((await owner('GET', '/projects/JRN')).status, 404)                  // a dry run writes nothing
+    assert.deepEqual(o.problems, [])
+  } finally { jiraServer.close() }
+})
+
