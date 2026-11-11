@@ -1,7 +1,9 @@
 import { useState } from 'react'
+import { missingRequired, type FieldRule } from '../../server/src/shared/fieldRules.ts'
+import { isMulti } from '../../server/src/shared/customFields.ts'
 import { splitLabels } from '../../server/src/shared/labels.ts'
 import { ChevronRight, Maximize2, Minimize2, X, CalendarDays, Tag, Zap, IterationCcw, Hash, FileText } from 'lucide-react'
-import { useStore, uid, userOf, statusesFor, type NewIssue, type IssueType, type Priority } from '../data/store'
+import { useStore, uid, userOf, statusesFor, type FieldDef, type FieldValue, type NewIssue, type IssueType, type Priority } from '../data/store'
 import { useApp } from '../appContext'
 import { canEdit } from '../data/access'
 import {
@@ -32,6 +34,7 @@ export default function CreateIssueModal({ defaults, onClose }: {
   const [estimate, setEstimate]       = useState('')
   const [dueDate, setDueDate]         = useState(defaults.dueDate ?? '')
   const [labels, setLabels]           = useState('')
+  const [custom, setCustom]           = useState<Record<string, FieldValue>>({})
   const [createMore, setCreateMore]   = useState(false)
   const [expanded, setExpanded]       = useState(false)
 
@@ -50,8 +53,16 @@ export default function CreateIssueModal({ defaults, onClose }: {
     setAssigneeId(undefined)   // they may not be in the new project
   }
 
+  // field configurations (spec 0504): hidden fields are left out, required ones are marked and must be filled in
+  const rules = project.fieldRules?.[type] ?? {}
+  const rule = (k: string): FieldRule => rules[k] ?? {}
+  const shown = (k: string) => !rule(k).hidden
+  const star = (k: string) => (rule(k).required && !rule(k).hidden ? ' *' : '')
+  const values = { description, assigneeId, priority, parentId, sprintId, estimate: estimate === '' ? undefined : estimate, dueDate, labels: splitLabels(labels), custom, reporterId: state.me?.id }
+  const missing = missingRequired(rules, values)
+  const requiredFields = project.fields.filter(f => rule(`custom.${f.id}`).required && !rule(`custom.${f.id}`).hidden && (!f.typeKeys || f.typeKeys.includes(type)))
   const submit = () => {
-    if (!title.trim()) return
+    if (!title.trim() || missing.length) return
     const id = uid()
     const key = `${project.key}-${project.nextNumber}`
     dispatch({
@@ -61,6 +72,7 @@ export default function CreateIssueModal({ defaults, onClose }: {
         dueDate: dueDate || undefined, startDate: defaults.startDate, sprintId, parentId: type === 'epic' ? undefined : parentId,
         estimate: estimate === '' ? undefined : Math.max(0, Number(estimate)),
         labels: splitLabels(labels),
+        ...(Object.keys(custom).length ? { custom } : {}),
         ...(type === 'test' && defaults.testFolderId ? { testFolderId: defaults.testFolderId } : {}),
       },
     })
@@ -112,8 +124,14 @@ export default function CreateIssueModal({ defaults, onClose }: {
 
         <div className="compose-body">
           <input className="compose-title" value={title} onChange={e => setTitle(e.target.value)} placeholder="Work item title" aria-label="Title" autoFocus />
-          <textarea className="compose-desc" value={description} onChange={e => setDescription(e.target.value)}
-            placeholder="Add a description… Markdown is supported." aria-label="Description" />
+          {shown('description') && <textarea className="compose-desc" value={description} onChange={e => setDescription(e.target.value)}
+            placeholder={`Add a description…${star('description') ? ' (required)' : ' Markdown is supported.'}`} aria-label={`Description${star('description')}`} />}
+          {requiredFields.length > 0 && (
+            <div className="compose-required" aria-label="Required fields">
+              {requiredFields.map(f => <RequiredField key={f.id} field={f} value={custom[f.id]} rule={rule(`custom.${f.id}`)} projectId={projectId}
+                onChange={v => setCustom(c => { const n = { ...c }; if (v === undefined || v === '' || (Array.isArray(v) && !v.length)) delete n[f.id]; else n[f.id] = v; return n })} />)}
+            </div>
+          )}
         </div>
 
         <div className="compose-chips">
@@ -121,34 +139,34 @@ export default function CreateIssueModal({ defaults, onClose }: {
             trigger={<><TypeIcon type={type} size={13} project={project} />{typeMeta(type, project).label}</>} />
           <Picker value={statusObj?.id ?? status} options={statusOptions(project, undefined, undefined, type)} onChange={setStatus} title="Status"
             trigger={<><span className="status-dot" style={{ background: statusObj?.color }} />{statusObj?.name}</>} />
-          <Picker value={priority} options={priorityOptions()} onChange={setPriority} title="Priority"
-            trigger={<><PriorityIcon priority={priority} />{priorityLabel(priority)}</>} />
-          <UserPicker value={assigneeId} onChange={setAssigneeId} projectId={projectId} title="Assignee"
-            trigger={<><Avatar user={assignee} size={16} />{assignee?.name ?? 'Assignee'}</>} />
-          {type !== 'epic' && parentOptions.length > 0 && (
+          {shown('priority') && <Picker value={priority} options={priorityOptions()} onChange={setPriority} title={`Priority${star('priority')}`}
+            trigger={<><PriorityIcon priority={priority} />{priorityLabel(priority)}</>} />}
+          {shown('assigneeId') && <UserPicker value={assigneeId} onChange={setAssigneeId} projectId={projectId} title={`Assignee${star('assigneeId')}`}
+            trigger={<><Avatar user={assignee} size={16} />{assignee?.name ?? `Assignee${star('assigneeId')}`}</>} />}
+          {shown('parentId') && type !== 'epic' && parentOptions.length > 0 && (
             <Picker value={parentId} title="Epic or parent" search
               options={[{ value: undefined, label: 'None' }, ...parentOptions.map(i => ({ value: i.id as string | undefined, label: `${i.key} ${i.title}`, icon: <TypeIcon type={i.type} size={12} /> }))]}
               onChange={setParentId}
               trigger={<><Zap size={13} className="muted" />{parent ? parent.key : 'Epic'}</>} />
           )}
-          {project.template === 'scrum' && type !== 'epic' && (
+          {shown('sprintId') && project.template === 'scrum' && type !== 'epic' && (
             <Picker value={sprintId} title="Sprint"
               options={[{ value: undefined, label: 'Backlog' }, ...sprints.map(s => ({ value: s.id as string | undefined, label: s.name, hint: s.state === 'active' ? 'Active' : undefined }))]}
               onChange={setSprintId}
               trigger={<><IterationCcw size={13} className="muted" />{sprint?.name ?? 'Backlog'}</>} />
           )}
-          <label className="chip" title="Estimate (story points)">
+          {shown('estimate') && <label className="chip" title={`Estimate (story points)${star('estimate')}`}>
             <Hash size={13} className="muted" />
-            <input type="number" min={0} className="chip-input" style={{ width: 52 }} value={estimate} onChange={e => setEstimate(e.target.value)} placeholder="Points" aria-label="Estimate" />
-          </label>
-          <label className="chip" title="Due date">
+            <input type="number" min={0} className="chip-input" style={{ width: 52 }} value={estimate} onChange={e => setEstimate(e.target.value)} placeholder={`Points${star('estimate')}`} aria-label="Estimate" />
+          </label>}
+          {shown('dueDate') && <label className="chip" title={`Due date${star('dueDate')}`}>
             <CalendarDays size={13} className="muted" />
             <input type="date" className="chip-input" value={dueDate} onChange={e => setDueDate(e.target.value)} aria-label="Due date" />
-          </label>
-          <label className="chip" title="Labels, separated by commas">
+          </label>}
+          {shown('labels') && <label className="chip" title={`Labels, separated by spaces${star('labels')}`}>
             <Tag size={13} className="muted" />
-            <input className="chip-input" value={labels} onChange={e => setLabels(e.target.value)} placeholder="Labels, separated by spaces" aria-label="Labels" />
-          </label>
+            <input className="chip-input" value={labels} onChange={e => setLabels(e.target.value)} placeholder={`Labels${star('labels')}`} aria-label="Labels" />
+          </label>}
         </div>
 
         <div className="compose-ftr">
@@ -157,10 +175,30 @@ export default function CreateIssueModal({ defaults, onClose }: {
             Create more
           </label>
           <div style={{ flex: 1 }} />
+          {missing.length > 0 && <span className="muted sm" role="status">Required: {missing.map(k => k.startsWith('custom.') ? project.fields.find(f => f.id === k.slice(7))?.name ?? 'a field' : ({ description: 'Description', assigneeId: 'Assignee', priority: 'Priority', estimate: 'Story Points', dueDate: 'Due Date', labels: 'Labels', sprintId: 'Sprint', parentId: 'Parent' } as Record<string, string>)[k] ?? k).join(', ')}</span>}
           <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
-          <button type="submit" className="btn btn-primary" disabled={!title.trim()} title="Create (⌘↵)">Create</button>
+          <button type="submit" className="btn btn-primary" disabled={!title.trim() || missing.length > 0} title="Create (⌘↵)">Create</button>
         </div>
       </form>
     </div>
   )
 }
+
+/** A required custom field in the create dialog (spec 0504): a simple editor for its type, with its description. */
+function RequiredField({ field, value, rule, projectId, onChange }: { field: FieldDef; value: FieldValue | undefined; rule: FieldRule; projectId: string; onChange: (v: FieldValue | undefined) => void }) {
+  const { state } = useStore()
+  const project = state.projects.find(p => p.id === projectId)
+  const opts = (field.options ?? []).filter(o => !o.disabled && !o.parentId)
+  const list = Array.isArray(value) ? value : []
+  const id = `req-${field.id}`
+  let input: React.ReactNode
+  if (field.kind === 'select' || field.kind === 'radio') input = <select id={id} className="input input-sm" value={String(value ?? '')} onChange={e => onChange(e.target.value || undefined)}><option value="">Choose…</option>{opts.map(o => <option key={o.id}>{o.name}</option>)}</select>
+  else if (field.kind === 'multiselect' || field.kind === 'checkboxes') input = <span className="field-choices">{opts.map(o => <label key={o.id} className="check-row"><input type="checkbox" checked={list.includes(o.name)} onChange={e => onChange(e.target.checked ? [...list, o.name] : list.filter(x => x !== o.name))} />{o.name}</label>)}</span>
+  else if (field.kind === 'user' || field.kind === 'users') input = <select id={id} className="input input-sm" value={String(list[0] ?? value ?? '')} onChange={e => onChange(e.target.value ? (field.kind === 'users' ? [e.target.value] : e.target.value) : undefined)}><option value="">Choose…</option>{state.users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</select>
+  else if (field.kind === 'version' || field.kind === 'versions') input = <select id={id} className="input input-sm" value={String(list[0] ?? value ?? '')} onChange={e => onChange(e.target.value ? (field.kind === 'versions' ? [e.target.value] : e.target.value) : undefined)}><option value="">Choose…</option>{(project?.releases ?? []).filter(r => !r.archived).map(r => <option key={r.id} value={r.id}>{r.name}</option>)}</select>
+  else input = <input id={id} className="input input-sm" type={field.kind === 'number' ? 'number' : field.kind === 'date' ? 'date' : 'text'} value={Array.isArray(value) ? value.join(field.kind === 'cascading' ? ' > ' : ' ') : String(value ?? '')}
+    placeholder={field.kind === 'cascading' ? 'Option > Child' : isMulti(field.kind) ? 'Separate with spaces' : ''}
+    onChange={e => { const t = e.target.value; onChange(!t ? undefined : field.kind === 'number' ? Number(t) : field.kind === 'cascading' ? t.split(/\s*>\s*/) : isMulti(field.kind) ? t.split(/\s+/).filter(Boolean) : t) }} />
+  return <label className="compose-req" htmlFor={id}><span className="label">{field.name} *</span>{input}{rule.description && <span className="hint">{rule.description}</span>}</label>
+}
+

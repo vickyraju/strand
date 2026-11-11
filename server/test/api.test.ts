@@ -3583,6 +3583,12 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     'POST /admin/custom-fields/{id}/contexts': ['gadmin', `/admin/custom-fields/${none}/contexts`, { name: 'x', projectKeys: null }],
     'PATCH /admin/custom-fields/{id}/contexts/{contextId}': ['gadmin', `/admin/custom-fields/${none}/contexts/${none}`, { name: 'x' }],
     'DELETE /admin/custom-fields/{id}/contexts/{contextId}': ['gadmin', `/admin/custom-fields/${none}/contexts/${none}`],
+    'GET /admin/field-configurations': ['gadmin', '/admin/field-configurations'], 'GET /admin/field-configurations/{id}': ['gadmin', `/admin/field-configurations/${none}`],   // 0504.R1
+    'POST /admin/field-configurations': ['gadmin', '/admin/field-configurations', { name: 'Matrix config' }],
+    'PATCH /admin/field-configurations/{id}': ['gadmin', `/admin/field-configurations/${none}`, { name: 'x' }], 'DELETE /admin/field-configurations/{id}': ['gadmin', `/admin/field-configurations/${none}`],
+    'GET /admin/field-config-schemes': ['gadmin', '/admin/field-config-schemes'], 'GET /admin/field-config-schemes/{id}': ['gadmin', `/admin/field-config-schemes/${none}`],
+    'POST /admin/field-config-schemes': ['gadmin', '/admin/field-config-schemes', { name: 'Matrix scheme', defaultConfigId: none }],
+    'PATCH /admin/field-config-schemes/{id}': ['gadmin', `/admin/field-config-schemes/${none}`, { name: 'x' }], 'DELETE /admin/field-config-schemes/{id}': ['gadmin', `/admin/field-config-schemes/${none}`],
     'GET /admin/automation/rules': ['gadmin', '/admin/automation/rules'], 'GET /admin/automation/runs': ['gadmin', '/admin/automation/runs'],   // 0709.R3
     'POST /admin/automation/rules': ['gadmin', '/admin/automation/rules', { name: 'Matrix rule', scope: { kind: 'all' }, trigger: { kind: 'created' }, actions: [{ kind: 'label', value: 'matrix' }] }],
     'PUT /admin/automation/rules/{id}': ['gadmin', `/admin/automation/rules/${none}`, { name: 'x', scope: { kind: 'all' }, trigger: { kind: 'created' }, actions: [{ kind: 'label', value: 'x' }] }],
@@ -5570,6 +5576,58 @@ test('[0503.R1][0503.R2][0503.R3][0503.R4][0503.R5][0503.R6][0503.R8] global cus
   const { db } = await import('../src/db.ts')
   await db.query(`delete from projects where key = 'CXC'`)
   assert.equal((await pool.query('select count(*)::int as n from custom_fields where id = $1', [bugsOnly.id])).rows[0].n, 0)
+})
+
+test('[0504.R1][0504.R2][0504.R3][0504.R4] field configurations: hidden and required per work type through a scheme; create, edit, bulk and move checked; the default can’t go', { skip, timeout: 60_000 }, async () => {
+  for (const [name, key] of [['Configured', 'FCA'], ['Configured to', 'FCB']]) await call('POST', '/api/v1/projects', { name, key, template: 'kanban' })
+  const team = (await call('POST', '/api/v1/admin/custom-fields', { name: 'Owning team', kind: 'text', context: { projectKeys: ['FCA', 'FCB'], defaultValue: 'Core' } })).body
+  const configs = (await call('GET', '/api/v1/admin/field-configurations')).body
+  const def = configs.find((c: any) => c.isDefault)
+  assert.equal(def.name, 'Default Field Configuration')
+  // R1, R2: a configuration; a hidden field can't be required; unknown fields refused
+  assert.equal((await call('POST', '/api/v1/admin/field-configurations', { name: 'Bad', items: { dueDate: { hidden: true, required: true } } })).status, 400)
+  assert.equal((await call('POST', '/api/v1/admin/field-configurations', { name: 'Bad', items: { nonsense: { hidden: true } } })).status, 400)
+  const strict = (await call('POST', '/api/v1/admin/field-configurations', { name: 'Strict bugs', items: {
+    dueDate: { required: true, description: 'When it must be fixed by' }, labels: { hidden: true }, [`custom.${team.id}`]: { hidden: true } } })).body
+  // R3: a scheme gives bugs the strict configuration; FCA uses it
+  const scheme = (await call('POST', '/api/v1/admin/field-config-schemes', { name: 'Bug discipline', defaultConfigId: def.id, mappings: { bug: strict.id } })).body
+  assert.equal((await call('PATCH', '/api/v1/projects/FCA', { fieldConfigSchemeId: scheme.id })).status, 200)
+  const rules = (await call('GET', '/api/v1/projects/FCA')).body.fieldRules
+  assert.deepEqual([rules.bug.dueDate.required, rules.task.dueDate], [true, undefined])
+  // R4: create: a bug needs a due date; a task doesn't; a hidden field can't be set and gets no default
+  const noDue = await call('POST', '/api/v1/projects/FCA/issues', { title: 'Crash', type: 'bug' })
+  assert.deepEqual([noDue.status, noDue.body.errors?.dueDate], [400, 'Due Date is required'])
+  assert.equal((await call('POST', '/api/v1/projects/FCA/issues', { title: 'Crash', type: 'bug', dueDate: '2026-12-01', labels: ['x'] })).status, 400)
+  const bug = (await call('POST', '/api/v1/projects/FCA/issues', { title: 'Crash', type: 'bug', dueDate: '2026-12-01' })).body
+  assert.equal(bug.custom[team.id], undefined)
+  const task = (await call('POST', '/api/v1/projects/FCA/issues', { title: 'Chore', type: 'task' })).body
+  assert.equal(task.custom[team.id], 'Core')
+  // edit: clearing a required field is refused; other edits of an item that already lacks a value still work
+  assert.equal((await call('PATCH', `/api/v1/issues/${bug.key}`, { dueDate: null })).status, 400)
+  assert.equal((await call('PATCH', `/api/v1/issues/${bug.key}`, { title: 'Crash on start' })).status, 200)
+  const retyped = await call('PATCH', `/api/v1/issues/${task.key}`, { type: 'bug' })
+  assert.equal(retyped.status, 200)                                                     // it lacks a due date: left as it is
+  assert.equal((await call('PATCH', `/api/v1/issues/${task.key}`, { labels: ['now-hidden'] })).status, 400)
+  // bulk edits are checked the same way
+  assert.equal((await call('POST', '/api/v1/issues/bulk/edit', { issues: [bug.key], patch: { dueDate: null } })).status, 400)
+  // moving into a project whose configuration requires something it lacks is refused
+  await call('PATCH', '/api/v1/projects/FCB', { fieldConfigSchemeId: scheme.id })
+  const plain = (await call('POST', '/api/v1/projects/FCB/issues', { title: 'Loose', type: 'task' })).body
+  await call('PATCH', '/api/v1/projects/FCA', { fieldConfigSchemeId: null })
+  const looseBug = (await call('POST', '/api/v1/projects/FCA/issues', { title: 'No date', type: 'bug' })).body
+  assert.equal(looseBug.status ?? 201, 201)
+  const moved = await call('POST', `/api/v1/issues/${looseBug.key}/move`, { projectKey: 'FCB' })
+  assert.deepEqual([moved.status, moved.body.errors?.dueDate], [400, 'Due Date is required'])
+  assert.ok(plain.key)
+  // R1: the default can't be deleted; a configuration a scheme uses can't be either; a scheme can
+  assert.equal((await call('DELETE', `/api/v1/admin/field-configurations/${def.id}`)).status, 400)
+  assert.equal((await call('DELETE', `/api/v1/admin/field-configurations/${strict.id}`)).status, 409)
+  assert.equal((await call('DELETE', `/api/v1/admin/field-config-schemes/${scheme.id}`)).status, 204)
+  assert.equal((await call('GET', '/api/v1/projects/FCB')).body.fieldConfigScheme, null)
+  assert.equal((await call('DELETE', `/api/v1/admin/field-configurations/${strict.id}`)).status, 204)
+  // only system admins choose a project's scheme
+  await join('FCA', 'fc.admin@x.com', 'admin')
+  assert.equal((await call('PATCH', '/api/v1/projects/FCA', { fieldConfigSchemeId: null }, 'fc.admin@x.com')).status, 403)
 })
 
 test('[0705.R2] a webhook never reaches private addresses, whatever its name resolves to', { skip }, async () => {

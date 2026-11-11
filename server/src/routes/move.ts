@@ -11,6 +11,7 @@ import { emit } from '../webhooks.ts'
 import { getSetting } from '../settings.ts'
 import { ISSUE_ROW, checkLevels, checkType, issueByKey } from './issues.ts'
 import { projectByKey } from './projects.ts'
+import { enforceRules, rulesFor } from '../fields.ts'
 
 const uuid = z.string().uuid()
 const target = {
@@ -122,6 +123,14 @@ export async function moveItem(d: Db, me: Me, item: any, o: z.infer<typeof one> 
   const [{ next }] = await d.query<{ next: number }>('select next_number as next from projects where id = $1', [tgt.id]) as any
   const t = { id: tgt.id, key: tgt.key, nextNumber: next }
   const plans = [await planFor(d, item, t, o, type, next, false)]
+  // the target's field configuration (spec 0504 R4): what it requires, the item must have once moved
+  const pa = plans[0]!.patch
+  const after = { ...item, type, statusId: pa.status_id, fixReleaseIds: pa.fix_release_ids, affectsReleaseIds: pa.affects_release_ids, componentIds: pa.component_ids,
+    sprintId: 'sprint_id' in pa ? pa.sprint_id : item.sprintId, assigneeId: 'assignee_id' in pa ? pa.assignee_id : item.assigneeId,
+    resolution: 'resolution' in pa ? pa.resolution : item.resolution, custom: typeof pa.custom === 'string' ? JSON.parse(pa.custom) : item.custom }
+  const rules = (await rulesFor(d, tgt.id))[type] ?? {}
+  const missing = Object.entries(rules).filter(([, r]) => r.required && !r.hidden).map(([k]) => k)
+  if (missing.length) await enforceRules(d, tgt.id, type, after, missing)
   for (const [k, s] of subs.entries()) plans.push(await planFor(d, s, t, o, s.type, next + 1 + k, true))
   if (o.dryRun) return { dryRun: true, items: plans.map(({ patch, ...p }) => p) }
 

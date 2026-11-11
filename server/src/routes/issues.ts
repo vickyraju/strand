@@ -7,7 +7,7 @@ import { publish } from '../events.ts'
 import { audit } from '../audit.ts'
 import { emit, triggerWebhook } from '../webhooks.ts'
 import { REF_KINDS, valueProblem, type FieldKind, type FieldValue, type Option } from '../shared/customFields.ts'
-import { defaultsFor } from '../fields.ts'
+import { defaultsFor, enforceRules, rulesFor } from '../fields.ts'
 import { getSetting } from '../settings.ts'
 import { runRules, moveAllowed } from '../rules.ts'
 import { available, ruleContext, transitionById, transitionTo, type TransitionRow } from '../transitions.ts'
@@ -295,6 +295,9 @@ async function applyPatch(d: Db, me: Me, cur: any, patch: z.infer<typeof patchBo
   }
 
   const changed = Object.keys(patch).filter(k => k !== 'rank' && JSON.stringify((patch as any)[k]) !== JSON.stringify(cur[k]))
+  // field configurations (spec 0504 R4): only what this edit sets is checked, so items that already lack a value are left as they are
+  const customChanged = patch.custom ? [...new Set([...Object.keys(patch.custom), ...Object.keys(cur.custom ?? {})])].filter(k => JSON.stringify(patch.custom![k]) !== JSON.stringify(cur.custom?.[k])).map(k => `custom.${k}`) : []
+  if (changed.length) await enforceRules(d, cur.projectId, patch.type ?? cur.type, { ...cur, ...patch }, [...changed.filter(k => k !== 'custom'), ...customChanged])
   const w = pick(patch, FIELDS, ['custom', 'testSpec'])
   if (!w.keys.length && !t) return cur
   if (w.keys.length) {
@@ -468,8 +471,9 @@ export async function insertIssue(d: Db, me: Me, projectId: string, b: Record<st
   const [pr] = await d.query<{ leadId: string | null }>('select lead_id from projects where id = $1', [projectId])
   if (b.assigneeId && !(await canJoinWork(d, projectId, b.assigneeId))) throw new HttpError(400, 'The assignee must be a member of this project')
   if (b.custom) await checkCustom(d, projectId, b.type ?? 'task', b.custom)
-  // default values of the fields that apply to it (spec 0503 R3)
-  const defaults = await defaultsFor(d, projectId, b.type ?? 'task', b.custom ?? {})
+  // default values of the fields that apply to it (spec 0503 R3), but not of a hidden field (spec 0504 R4)
+  const hiddenNow = Object.entries((await rulesFor(d, projectId))[b.type ?? 'task'] ?? {}).filter(([, r]) => r.hidden).map(([k]) => k)
+  const defaults = Object.fromEntries(Object.entries(await defaultsFor(d, projectId, b.type ?? 'task', b.custom ?? {})).filter(([k]) => !hiddenNow.includes(`custom.${k}`)))
   if (Object.keys(defaults).length) b = { ...b, custom: { ...(b.custom ?? {}), ...defaults } }
   await checkType(d, projectId, b.type)
   checkSpec(b.type ?? 'task', b.testSpec)
@@ -485,6 +489,8 @@ export async function insertIssue(d: Db, me: Me, projectId: string, b: Record<st
   const allowed = await statusesFor(d, projectId, b.type ?? 'task')
   const statusId = b.statusId ?? allowed[0]
   if (!allowed.includes(statusId)) throw new HttpError(400, 'That status isn’t in the workflow for this work type', { statusId: 'Not in this type’s workflow' })
+  // field configurations (spec 0504 R4): hidden fields can't be set, required fields need a value
+  await enforceRules(d, projectId, b.type ?? 'task', { ...b, reporterId: me.id, statusId }, null)
   const [{ number }] = await d.query<{ number: number }>('select next_issue_number($1) as number', [projectId]) as any
   // a new item goes last, after every item in the workspace (spec 0302 R2): a rank sent with it is not used
   const [{ rank }] = await d.query<{ rank: number }>(

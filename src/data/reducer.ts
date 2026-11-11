@@ -4,6 +4,7 @@ import { RULE_FIELDS, actionChanges, allows, problems, type Item, type RuleCtx, 
 import { can } from './access.ts'
 import { adjustRemaining, type Adjust } from '../../server/src/shared/estimates.ts'
 import type { FieldKind, FieldValue } from '../../server/src/shared/customFields.ts'
+import type { FieldRules } from '../../server/src/shared/fieldRules.ts'
 export type { FieldKind, FieldValue }
 
 // ── Types ──────────────────────────────────────────────────
@@ -130,6 +131,9 @@ export interface Project {
    *  new work starting in the first (from the server; unset for a local workspace, where every type uses every status) */
   workflowSchemeId?: string
   workflows?:  { typeKey: string; workflowId: string; workflow: string; statusIds: string[]; resolutionOnDone?: boolean }[]
+  /** Field configurations (spec 0504): per work type, each configured field's description, hidden and required */
+  fieldRules?: Record<string, FieldRules>
+  fieldConfigScheme?: { id: string; name: string } | null
   /** Its boards (from the server; a local workspace has the one built from its statuses) */
   boards?:     BoardRef[]
   /** Archived (spec 0102): read-only for everyone, hidden from lists; its items open by their key */

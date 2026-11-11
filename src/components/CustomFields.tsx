@@ -177,6 +177,7 @@ export function FieldsPanel({ project }: { project: Project }) {
         <div>
           <h2 className="panel-title">Fields</h2>
           <p className="muted">Extra fields on work items in {project.name}. A field you add here is for this project alone; shared fields come from Administration › Custom fields.</p>
+          <FieldScheme project={project} />
         </div>
         <button className="btn btn-secondary" onClick={() => setEditing({ id: uid(), name: '', kind: 'text' })}><Plus size={14} />Add field</button>
       </div>
@@ -332,3 +333,30 @@ function FieldDialog({ field, isNew, onClose, onSave }: { field: FieldDef; isNew
     </Modal>
   )
 }
+
+/** Which field configuration scheme the project uses (spec 0504), and the hidden and required fields per work type;
+ *  system administrators choose the scheme. */
+function FieldScheme({ project }: { project: Project }) {
+  const { state, dispatch } = useStore()
+  const { toast } = useApp()
+  const [schemes, setSchemes] = useState<{ id: string; name: string }[] | null>(null)
+  const admin = state.isAdmin === true
+  useEffect(() => { if (apiEnabled && admin) api<{ id: string; name: string }[]>('GET', '/api/admin/field-config-schemes').then(setSchemes, () => {}) }, [admin])
+  if (!apiEnabled) return null
+  const choose = (id: string) => api('PATCH', `/api/projects/${encodeURIComponent(project.key)}`, { fieldConfigSchemeId: id || null })
+    .then(() => api<any>('GET', `/api/projects/${encodeURIComponent(project.key)}`)).then(p => {
+      dispatch({ type: 'loadProject', project: { ...project, fieldRules: p.fieldRules, fieldConfigScheme: p.fieldConfigScheme }, sprints: state.sprints.filter(s => s.projectId === project.id) }); toast('Field configuration scheme changed')
+    }, () => toast('Couldn’t change the scheme', { tone: 'warn' }))
+  const counts = Object.entries(project.fieldRules ?? {}).map(([t, r]) => [t, Object.values(r).filter(x => x.required && !x.hidden).length, Object.values(r).filter(x => x.hidden).length] as const).filter(([, a, b]) => a || b)
+  return (
+    <div className="sm" style={{ marginTop: 6 }}>
+      Field configuration: {admin && schemes
+        ? <select className="input input-sm" aria-label="Field configuration scheme" value={project.fieldConfigScheme?.id ?? ''} onChange={e => void choose(e.target.value)}>
+            <option value="">Default Field Configuration</option>{schemes.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+        : <b>{project.fieldConfigScheme?.name ?? 'Default Field Configuration'}</b>}
+      {counts.map(([t, req, hid]) => <span key={t} className="muted"> · {t}: {req} required, {hid} hidden</span>)}
+    </div>
+  )
+}
+

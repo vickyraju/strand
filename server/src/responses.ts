@@ -130,6 +130,9 @@ export const ProjectDetail = z.object({
   statuses: z.array(Status), transitions: z.array(Transition), types: z.array(WorkType), components: z.array(Component), fields: z.array(Field), templates: z.array(Template),
   rules: z.array(Rule), releases: z.array(Release), sprints: z.array(Sprint),
   workflowSchemeId: id.describe('Its workflow scheme'), workflows: z.array(TypeWorkflow),
+  fieldRules: z.record(z.string(), z.record(z.string(), z.object({ description: z.string().optional(), hidden: z.boolean().optional(), required: z.boolean().optional() })))
+    .describe('Per work type, each configured field’s description, hidden and required (spec 0504)'),
+  fieldConfigScheme: nullable(z.object({ id, name: z.string() })).describe('Its field configuration scheme (null: the Default Field Configuration)'),
   boards: z.array(z.object({ id, name: z.string(), type: z.enum(['kanban', 'scrum']), jql: z.string(), position: z.number(), hasBacklog: z.boolean() })).describe('Its boards, in order'),
 })
 
@@ -275,6 +278,15 @@ export const RESPONSES: Record<string, z.ZodType> = {
       'GET /admin/custom-fields': z.object({ items: z.array(CustomField), next: nullable(z.string()) }),
       'GET /admin/custom-fields/:id': CustomField, 'POST /admin/custom-fields': CustomField, 'PATCH /admin/custom-fields/:id': CustomField,
       'POST /admin/custom-fields/:id/contexts': CustomField, 'PATCH /admin/custom-fields/:id/contexts/:contextId': CustomField,
+    }
+  })(),
+  ...(() => {
+    const Rule = z.object({ description: z.string().optional(), hidden: z.boolean().optional(), required: z.boolean().optional() })
+    const Config = z.object({ id, name: z.string(), description: z.string(), items: z.record(z.string(), Rule), isDefault: z.boolean(), schemes: z.array(z.string()) })
+    const Scheme = z.object({ id, name: z.string(), description: z.string(), defaultConfigId: id, mappings: z.record(z.string(), id), projectKeys: z.array(z.string()), projects: z.number() })
+    return {
+      'GET /admin/field-configurations': z.array(Config), 'GET /admin/field-configurations/:id': Config, 'POST /admin/field-configurations': Config, 'PATCH /admin/field-configurations/:id': Config,
+      'GET /admin/field-config-schemes': z.array(Scheme), 'GET /admin/field-config-schemes/:id': Scheme, 'POST /admin/field-config-schemes': Scheme, 'PATCH /admin/field-config-schemes/:id': Scheme,
     }
   })(),
   'POST /issues/:key/move': z.union([
