@@ -1,6 +1,6 @@
 # 0508 Archive single items
 
-Status: Approved (PO, 10 Nov 2026: "yes go ahead and build complete everything whatever is pending")
+Status: Ported (aws-jira `5909d04`, strand `9232fd6`), approved by the PO on 10 Nov 2026; awaiting verification
 Parity rows: ISS-13
 
 ## Context and Jira reference
