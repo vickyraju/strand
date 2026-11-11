@@ -78,7 +78,7 @@ The roadmap, in order. Bugs come first, then the permission model, then the data
 | [0504](0504-field-configurations.md) | Field configurations: required and hidden | 5 | Ported |
 | [0505](0505-screens.md) | Screens | 5 | Ported |
 | [0506](0506-voting.md) | Voting | 5 | Ported |
-| 0507 | Remote links | 5 | Planned |
+| [0507](0507-remote-links.md) | Remote links | 5 | Approved |
 | 0508 | Archive single items | 5 | Planned |
 | 0509 | Convert to and from sub-items | 5 | Planned |
 | 0601 | Field change history, indexed | 6 | Planned |
