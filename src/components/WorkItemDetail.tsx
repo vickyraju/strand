@@ -303,9 +303,9 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
               </>
             ) : (
               <div className={`desc-view${issue.description ? '' : ' is-empty'}`} {...(readOnly || fr('description').readOnly ? {} : { role: 'button', tabIndex: 0, 'aria-label': 'Edit description' })}
-                onClick={e => { if (!readOnly && !fr('description').readOnly && !(e.target as HTMLElement).closest('a')) setEditing(true) }}
+                onClick={e => { if (!readOnly && !fr('description').readOnly && !(e.target as HTMLElement).closest('a, button')) setEditing(true) }}
                 onKeyDown={e => !readOnly && !fr('description').readOnly && e.key === 'Enter' && setEditing(true)}>
-                {issue.description ? <Markdown text={issue.description} users={state.users} /> : readOnly || fr('description').readOnly ? 'No description' : 'Add a description…'}
+                {issue.description ? <Markdown text={issue.description} users={state.users} attachments={issue.attachments} /> : readOnly || fr('description').readOnly ? 'No description' : 'Add a description…'}
               </div>
             )}
           </section>}
@@ -440,7 +440,7 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
                             <button className="btn btn-ghost btn-sm" onClick={() => setEditComment(null)}>Cancel</button>
                           </div>
                         </>
-                      ) : <Markdown text={t.text} users={state.users} />}
+                      ) : <Markdown text={t.text} users={state.users} attachments={issue.attachments} />}
                       {!editing && !archived && (mine || can(project, 'editAllComments') || can(project, 'deleteAllComments')) && (
                         <div className="comment-actions">
                           {/* my own comment, or anyone's for a project admin (Edit/Delete all comments, spec 0203 R3) */}

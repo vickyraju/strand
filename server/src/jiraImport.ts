@@ -16,6 +16,7 @@ import { applyScheme } from './workflows.ts'
 import { firstBoard } from './boards.ts'
 import { withOptionIds } from './fields.ts'
 import { ipv6Groups } from './webhooks.ts'
+import { wikiToMarkdown } from './shared/jiraWiki.ts'
 
 export interface Conn { url: string; token: string }
 type J = any
@@ -179,6 +180,18 @@ async function personFor(d: Db, ws: string, u: J | null | undefined, make = true
   await d.query(`insert into memberships (workspace_id, user_id, role) values ($1, $2, 'member') on conflict do nothing`, [ws, made!.id])
   await remember(d, ws, 'user', jid, made!.id)
   return made!.id
+}
+
+/** Jira's wiki markup as Strand's Markdown (spec 0805), a mention [~username] named after the person as imported. */
+async function markdownOf(d: Db, ws: string, wiki: string): Promise<string> {
+  if (!wiki) return ''
+  const names = [...new Set([...wiki.matchAll(/\[~([^\]|]+)\]/g)].map(m => m[1]!))]
+  const people = names.length ? await d.query<{ u: string; name: string }>(
+    `select x.u, coalesce((select u.name from jira_import_map m join users u on u.id::text = m.strand_id where m.workspace_id = $1 and m.kind = 'user' and m.jira_id = x.u),
+                          (select u.name from users u where lower(u.username) = lower(x.u) limit 1)) as name
+       from unnest($2::text[]) x(u)`, [ws, names]) : []
+  const known = new Map(people.filter(p => p.name).map(p => [p.u, p.name]))
+  return wikiToMarkdown(wiki, { person: u => known.get(u) })
 }
 
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 30) || 'type'
@@ -374,7 +387,8 @@ async function importIssue(c: Ctx, key: string, pid: string, i: J, ranks: [strin
   const custom: Record<string, unknown> = {}
   for (const fld of c.fields.filter(x => x.kind && f[x.id] != null && !x.software)) {
     const id = await fieldFor(c, fld, pid, [f[fld.id]])
-    const v = await valueFor(c, fld.kind!, f[fld.id])
+    const raw = await valueFor(c, fld.kind!, f[fld.id])
+    const v = fld.kind === 'textarea' && typeof raw === 'string' ? await markdownOf(d, ws, raw) : raw      // Jira's wiki markup (spec 0805)
     if (v != null && !(Array.isArray(v) && !v.length)) {
       custom[id] = v
       // an option seen for the first time joins the field's options
@@ -387,7 +401,7 @@ async function importIssue(c: Ctx, key: string, pid: string, i: J, ranks: [strin
   const [row] = await d.query<{ id: string }>(`insert into issues (workspace_id, project_id, number, type, title, description, status_id, priority, resolution, resolved_at, assignee_id, reporter_id,
       labels, estimate, time_estimate, time_remaining, due_date, sprint_id, component_ids, fix_release_ids, affects_release_ids, custom, flagged, epic_status, epic_color, rank, created_at, updated_at, start_date)
     values ($1, $2, $3, $4, $5, $6, $7, coalesce($8, (select key from priorities where workspace_id = $1 and is_default)), $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, 0, $26, $27, $28) returning id`, [
-    ws, pid, num, typeKey, String(f.summary ?? '').slice(0, 500), f.description ?? '', first!.id, priority, resolution, resolution ? f.resolutiondate ?? null : null,
+    ws, pid, num, typeKey, String(f.summary ?? '').slice(0, 500), await markdownOf(d, ws, f.description ?? ''), first!.id, priority, resolution, resolution ? f.resolutiondate ?? null : null,
     await personFor(d, ws, f.assignee), await personFor(d, ws, f.reporter ?? f.creator), f.labels ?? [], sp ? Number(f[sp.id]) : null,
     f.timeoriginalestimate != null ? Math.round(f.timeoriginalestimate / 60) : null, f.timeestimate != null ? Math.round(f.timeestimate / 60) : null, ymd(f.duedate) ?? (tEnd ? ymd(f[tEnd.id]) : null), sprint,
     (await Promise.all((f.components ?? []).map((x: J) => mapped(d, ws, 'component', x.id)))).filter(Boolean),
@@ -433,7 +447,7 @@ async function importIssue(c: Ctx, key: string, pid: string, i: J, ranks: [strin
       ? (async () => { const [g] = await d.query<{ id: string }>('select id from groups where lower(display_name) = lower($1)', [cm.visibility.value]); return g ? { kind: 'group', id: g.id } : { kind: 'role', role: 'admin' } })()
       : { kind: 'role', role: /administrator/i.test(cm.visibility.value) ? 'admin' : 'member' }) : null
     const [cr] = await d.query<{ id: string }>('insert into comments (issue_id, author_id, body, created_at, edited_at, visibility) values ($1, $2, $3, $4, $5, $6) returning id',
-      [id, await personFor(d, ws, cm.author), cm.body ?? '', cm.created, cm.updated && cm.updated !== cm.created ? cm.updated : null, vis ? JSON.stringify(await vis) : null])
+      [id, await personFor(d, ws, cm.author), await markdownOf(d, ws, cm.body ?? ''), cm.created, cm.updated && cm.updated !== cm.created ? cm.updated : null, vis ? JSON.stringify(await vis) : null])
     await remember(d, ws, 'comment', cm.id, cr!.id)
   }
   const worklogs = f.worklog && f.worklog.total > (f.worklog.worklogs ?? []).length ? (await c.j.get(`/rest/api/2/issue/${i.key}/worklog`)).worklogs : f.worklog?.worklogs ?? []

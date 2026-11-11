@@ -79,3 +79,4 @@ None.
 ## Changelog
 
 - 12 Nov 2026: with parallel sprints on (spec 0414), every active sprint of a board stays active.
+- 12 Nov 2026: descriptions, comments and multi-line text fields arrive as Strand's Markdown, converted from Jira's wiki markup (spec 0805).

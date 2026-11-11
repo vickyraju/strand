@@ -2436,3 +2436,16 @@ test('[0713.R2][0713.R4] an admin runs a Full synchronisation from the directory
   await o.waitForSelector(`tr:has-text("${dir.name}") >> text=/· Full/`)
   assert.deepEqual(o.problems, [])
 })
+
+test('[0805.R2] imported text shows as Strand’s Markdown: a table, strikethrough, a rule, and a missing picture by its name', { skip, timeout: 60_000 }, async () => {
+  await owner('POST', '/projects', { name: 'Formatted', key: 'FMT', template: 'kanban' })
+  const item = (await owner('POST', '/projects/FMT/issues', { title: 'From Jira',
+    description: '## Steps\n| Step | Result |\n| --- | --- |\n| Open | ~~Crash~~ |\n---\n![screen.png](attachment:screen.png)' })).body
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url(`/i/${item.key}`))
+  await o.waitForSelector('.md-table th:has-text("Step")')
+  assert.equal(await o.locator('.md-table td del:has-text("Crash")').count(), 1)
+  assert.equal(await o.locator('.desc-view .md hr').count(), 1)
+  await o.waitForSelector('.desc-view .md >> text=screen.png')
+  assert.deepEqual(o.problems, [])
+})

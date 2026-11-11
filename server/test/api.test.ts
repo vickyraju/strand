@@ -6390,10 +6390,10 @@ test('[0802.R1][0802.R2][0802.R3][0802.R4][0802.R5][0802.R6][0802.R7] the Jira i
   const issues: Record<string, unknown[]> = {
     MIG: [
       issue('1001', 'MIG-1', EPIC, { summary: 'Big epic', status: st('11', 'Doing it', 'indeterminate'), [F.plink]: { data: { id: 1009, key: 'MIG-9' } }, [F.tstart]: '2026-03-01', [F.tend]: '2026-05-31' }),
-      issue('1002', 'MIG-2', BUG, { summary: 'Broken thing', status: st('12', 'Shipped', 'done'), resolution: { name: 'Done' }, resolutiondate: '2026-02-02T10:00:00.000+0000',
+      issue('1002', 'MIG-2', BUG, { summary: 'Broken thing', description: 'h2. Steps\n* *Open* the page for [~ann]\n||A||B||\n|1|2|', status: st('12', 'Shipped', 'done'), resolution: { name: 'Done' }, resolutiondate: '2026-02-02T10:00:00.000+0000',
         assignee: bob, priority: { name: 'High' }, labels: ['api'], components: [{ id: '200' }], fixVersions: [{ id: '100' }], timeoriginalestimate: 7200,
         [F.team]: { value: 'Core' }, [F.mood]: 'happy', [F.points]: 5, [F.rank]: '0|i0001:', [F.sprint]: ['com.atlassian.greenhopper.service.sprint.Sprint@1[id=7,rapidViewId=5,state=ACTIVE,name=Sprint 1]'], [F.epic]: 'MIG-1',
-        comment: { total: 2, comments: [{ id: 'c1', author: ann, body: 'First', created: at }, { id: 'c2', author: bob, body: 'Secret', created: '2026-01-05T10:00:00.000+0000', visibility: { type: 'role', value: 'Administrators' } }] },
+        comment: { total: 2, comments: [{ id: 'c1', author: ann, body: '*First*', created: at }, { id: 'c2', author: bob, body: 'Secret', created: '2026-01-05T10:00:00.000+0000', visibility: { type: 'role', value: 'Administrators' } }] },
         worklog: { total: 1, worklogs: [{ author: bob, timeSpentSeconds: 3600, started: '2026-02-01T10:00:00.000+0000', comment: 'Fixed', created: at }] },
         watches: { watchCount: 1 }, votes: { votes: 1 },
         issuelinks: [{ type: { name: 'Blocks', outward: 'blocks', inward: 'is blocked by' }, outwardIssue: { id: '1005', key: 'MIG-5' } }, { type: { name: 'Relates', outward: 'relates to', inward: 'relates to' }, outwardIssue: { id: '2001', key: 'NXT-1' } }] },
@@ -6518,7 +6518,9 @@ test('[0802.R1][0802.R2][0802.R3][0802.R4][0802.R5][0802.R6][0802.R7] the Jira i
     const team = Object.values(b.custom)
     assert.deepEqual(team, ['Core'])
     const detail = (await call('GET', `/api/v1/issues/MIG-2?expand=comments,activity,worklogs,watchers,links`)).body
-    assert.deepEqual(detail.comments.map((c: any) => [c.body, c.visibility ?? null]), [['First', null], ['Secret', { kind: 'role', role: 'admin' }]])
+    assert.deepEqual(detail.comments.map((c: any) => [c.body, c.visibility ?? null]), [['**First**', null], ['Secret', { kind: 'role', role: 'admin' }]])   // Jira's markup as Markdown (spec 0805)
+    const annName = (await pool.query(`select name from users where email = 'mig.ann@x.com'`)).rows[0].name
+    assert.equal(detail.description, `## Steps\n- **Open** the page for @${annName}\n| A | B |\n| --- | --- |\n| 1 | 2 |`)   // [0805.R1]
     assert.deepEqual(detail.worklogs.map((w: any) => [w.minutes, w.note, w.userId]), [[60, 'Fixed', bobId]])
     assert.equal(detail.watcherIds.length, 1)
     const hist = detail.activity.filter((x: any) => x.field === 'statusId').map((x: any) => [x.fromString, x.toString]).reverse()
