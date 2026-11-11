@@ -1,6 +1,6 @@
 # 0713 Incremental directory synchronisation
 
-Status: Approved (pending work, 12 Nov 2026)
+Status: Ported (aws-jira `aa1c82a`, strand `9f3c769`), pending work the PO asked to complete on 11 Nov 2026; awaiting verification
 Parity rows: DIR-04
 
 ## Context and Jira reference
