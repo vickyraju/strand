@@ -75,7 +75,7 @@ The roadmap, in order. Bugs come first, then the permission model, then the data
 | [0501](0501-move-items-between-projects.md) | Move items between projects; old keys redirect | 5 | Ported |
 | [0502](0502-more-custom-field-types.md) | More custom field types | 5 | Ported |
 | [0503](0503-global-custom-fields-contexts.md) | Global custom fields with contexts | 5 | Approved |
-| 0504 | Field configurations: required and hidden | 5 | Planned |
+| [0504](0504-field-configurations.md) | Field configurations: required and hidden | 5 | Approved |
 | 0505 | Screens (decision) | 5 | Planned |
 | 0506 | Voting | 5 | Planned |
 | 0507 | Remote links | 5 | Planned |
