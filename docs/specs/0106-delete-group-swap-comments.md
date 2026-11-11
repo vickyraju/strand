@@ -1,6 +1,6 @@
 # 0106 Deleting a group used to restrict comments: move them to another group
 
-Status: Approved (pending work, 11 Nov 2026)
+Status: Ported (aws-jira `70ca8c0`, strand `8eb9030`), pending work the PO asked to complete on 11 Nov 2026; awaiting verification
 Parity rows: PRM-18
 
 ## Context and Jira reference
