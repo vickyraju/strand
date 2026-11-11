@@ -85,7 +85,7 @@ The roadmap, in order. Bugs come first, then the permission model, then the data
 | [0602](0602-jql-history-operators.md) | JQL history operators | 6 | Ported |
 | [0603](0603-jql-functions.md) | Missing JQL functions | 6 | Ported |
 | [0604](0604-filter-subscriptions.md) | Filter subscriptions | 6 | Ported |
-| [0605](0605-notification-schemes.md) | Notification schemes; bulk change without notifying | 6 | Approved |
+| [0605](0605-notification-schemes.md) | Notification schemes; bulk change without notifying | 6 | Ported |
 | 0606 | Batched email, autowatch preference, mentions don't make watchers | 6 | Planned |
 | 0607 | Incoming mail | 6 | Planned |
 | 0608 | Print and XML export | 6 | Planned |

@@ -1,6 +1,6 @@
 # 0605 Notification schemes; bulk change without notifying
 
-Status: Approved (PO, 10 Nov 2026: "yes go ahead and build complete everything whatever is pending")
+Status: Ported (aws-jira `6e6f68b`, strand `c7dc890`), approved by the PO on 10 Nov 2026; awaiting verification
 Parity rows: NT-01, ISS-20
 
 ## Context and Jira reference
