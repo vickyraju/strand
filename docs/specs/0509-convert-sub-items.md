@@ -1,6 +1,6 @@
 # 0509 Convert to and from sub-items
 
-Status: Approved (PO, 10 Nov 2026: "yes go ahead and build complete everything whatever is pending")
+Status: Ported (aws-jira `b104f61`, strand `b513647`), approved by the PO on 10 Nov 2026; awaiting verification
 Parity rows: ISS-14
 
 ## Context and Jira reference
