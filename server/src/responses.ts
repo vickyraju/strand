@@ -266,6 +266,12 @@ export const RESPONSES: Record<string, z.ZodType> = {
       'GET /admin/automation/runs': z.array(Run), 'GET /projects/:key/automation/global': z.array(GlobalRule),
     }
   })(),
+  'POST /issues/:key/move': z.union([
+    z.object({ dryRun: z.literal(true), items: z.array(z.object({ id, key: z.string(), newKey: z.string(),
+      changes: z.array(z.object({ field: z.string(), from: z.unknown(), to: z.unknown() })) })).describe('The item, then its sub-items: their new keys and every change (Jira’s confirmation page)') }),
+    IssueRow,
+  ]),
+  'POST /issues/bulk/move': z.object({ moved: z.array(z.object({ key: z.string(), newKey: z.string() })) }),
   'GET /admin/development': z.object({
     receiverPath: z.string().describe('Where GitHub sends its webhooks, on the API’s address'), secretSet: z.boolean(),
     accounts: z.array(z.object({ id, accountLogin: z.string(), installationId: z.number(), status: z.enum(['pending', 'active', 'suspended']), createdAt: ts,

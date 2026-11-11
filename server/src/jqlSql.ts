@@ -161,7 +161,9 @@ export async function jqlToSql(d: Db, me: Me, q: Query, args: unknown[]): Promis
     switch (c.field) {
       // a project's earlier keys still find it (spec 0703 R2)
       case 'project': { const t = put(text(v, 'project')); return `(p.key = upper(${t}) or lower(p.name) = lower(${t}) or p.id in (select h.project_id from project_key_history h where h.workspace_id = p.workspace_id and h.key = upper(${t})))` }
-      case 'key': { const t = put(text(v, 'key')); return `((p.key || '-' || i.number) = upper(${t}) or exists (select 1 from project_key_history h where h.project_id = i.project_id and h.key || '-' || i.number = upper(${t})))` }
+      case 'key': { const t = put(text(v, 'key')); return `((p.key || '-' || i.number) = upper(${t}) or exists (select 1 from project_key_history h where h.project_id = i.project_id and h.key || '-' || i.number = upper(${t}))
+        or exists (select 1 from moved_issue_keys mk join projects op on op.id = mk.project_id where mk.issue_id = i.id and (op.key || '-' || mk.number = upper(${t})
+          or exists (select 1 from project_key_history oh where oh.project_id = op.id and oh.key || '-' || mk.number = upper(${t})))))` }   // keys it had before a move (spec 0501)
       case 'category': return `p.category_id in (select c.id from project_categories c where c.workspace_id = p.workspace_id and lower(c.name) = lower(${put(text(v, 'category'))}))`
       case 'type': { const t = put(text(v, 'type')); return `(i.type = lower(${t}) or exists (select 1 from work_types wt where wt.project_id = i.project_id and wt.key = i.type and lower(wt.name) = lower(${t})))` }
       case 'status': return `lower(st.name) = lower(${put(text(v, 'status'))})`

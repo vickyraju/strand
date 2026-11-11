@@ -36,7 +36,7 @@ const ISSUE_EVENTS = new Set<string>(['jira:issue_created', 'jira:issue_updated'
   'worklog_created', 'worklog_updated', 'worklog_deleted', 'issuelink_created', 'issuelink_deleted'])
 /** Jira's event behind an issue webhook (spec 0715 R3). */
 export type IssueEventType = 'issue_created' | 'issue_updated' | 'issue_assigned' | 'issue_generic' | 'issue_commented' | 'issue_comment_edited' | 'issue_comment_deleted'
-  | 'issue_worklogged' | 'issue_worklog_updated' | 'issue_worklog_deleted' | 'issue_deleted'
+  | 'issue_worklogged' | 'issue_worklog_updated' | 'issue_worklog_deleted' | 'issue_deleted' | 'issue_moved'
 const ATTEMPTS = 6                                                                   // the first and 5 retries (R6)
 
 /** What an event is about: ids, loaded when the body is built. */

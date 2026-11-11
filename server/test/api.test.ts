@@ -3585,6 +3585,7 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     'GET /admin/directories/internal': ['gadmin', '/admin/directories/internal'],
     'GET /look-and-feel': ['public', '/look-and-feel'],   // 0702.R2
     'GET /project-categories': ['any', '/project-categories'],   // 0703.R5
+    'POST /issues/{key}/move': ['write', `/issues/${I}/move`, { projectKey: K, dryRun: true }], 'POST /issues/bulk/move': ['write', '/issues/bulk/move', { issues: [I], projectKey: K }],   // 0501.R1
     'GET /admin/automation/rules': ['gadmin', '/admin/automation/rules'], 'GET /admin/automation/runs': ['gadmin', '/admin/automation/runs'],   // 0709.R3
     'POST /admin/automation/rules': ['gadmin', '/admin/automation/rules', { name: 'Matrix rule', scope: { kind: 'all' }, trigger: { kind: 'created' }, actions: [{ kind: 'label', value: 'matrix' }] }],
     'PUT /admin/automation/rules/{id}': ['gadmin', `/admin/automation/rules/${none}`, { name: 'x', scope: { kind: 'all' }, trigger: { kind: 'created' }, actions: [{ kind: 'label', value: 'x' }] }],
@@ -5401,6 +5402,74 @@ test('[0715.R1][0715.R2][0715.R3][0715.R4][0715.R5][0715.R6][0715.R7][0715.R8] w
     clearSettingsCache()
     receiver.close()
   }
+})
+
+test('[0501.R1][0501.R2][0501.R3][0501.R4][0501.R5][0501.R6][0501.R7][0501.R8] moving work between projects: the preview, statuses, versions and fields by name, a new key while the old ones keep working', { skip, timeout: 60_000 }, async () => {
+  for (const [name, key, template] of [['Move from', 'MVA', 'scrum'], ['Move to', 'MVB', 'scrum'], ['Kanban dest', 'MVK', 'kanban']]) await call('POST', '/api/v1/projects', { name, key, template })
+  await join('MVA', 'mv.member@x.com', 'member'); await join('MVA', 'mv.viewer@x.com', 'viewer'); await join('MVB', 'mv.viewer@x.com', 'viewer')
+  await join('MVA', 'mv.only.a@x.com', 'member')
+  const a = (await call('GET', '/api/v1/projects/MVA')).body, b = (await call('GET', '/api/v1/projects/MVB')).body
+  const va = (await call('POST', '/api/v1/projects/MVA/releases', { name: '2.0' })).body
+  await call('POST', '/api/v1/projects/MVA/releases', { name: 'Only in A' })
+  const vb = (await call('POST', '/api/v1/projects/MVB/releases', { name: '2.0' })).body
+  const ca = (await call('POST', '/api/v1/projects/MVA/components', { name: 'API' })).body
+  const cb = (await call('POST', '/api/v1/projects/MVB/components', { name: 'api' })).body
+  const fa = (await call('POST', '/api/v1/projects/MVA/fields', { name: 'Team', kind: 'text' })).body
+  const fb = (await call('POST', '/api/v1/projects/MVB/fields', { name: 'Team', kind: 'text' })).body
+  const fOnlyA = (await call('POST', '/api/v1/projects/MVA/fields', { name: 'Budget', kind: 'number' })).body
+  const only = (await call('GET', '/api/v1/me', undefined, 'mv.only.a@x.com')).body
+  const sprint = (await call('POST', '/api/v1/projects/MVA/sprints', { name: 'A1' })).body
+  const prog = a.statuses.find((s: any) => s.category === 'in-progress')
+  const item = (await call('POST', '/api/v1/projects/MVA/issues', { title: 'Travels', type: 'story', fixReleaseIds: [va.id], componentIds: [ca.id], sprintId: sprint.id,
+    assigneeId: only.id, labels: ['keep'], estimate: 3, custom: { [fa.id]: 'Core', [fOnlyA.id]: 9 } })).body
+  await call('PATCH', `/api/v1/issues/${item.key}`, { statusId: prog.id })
+  const sub = (await call('POST', '/api/v1/projects/MVA/issues', { title: 'Its sub-item', type: 'task', parentId: item.id })).body
+  await call('POST', `/api/v1/issues/${item.key}/comments`, { body: 'Comes along' })
+  const move = (key: string, body: object, who?: string) => call('POST', `/api/v1/issues/${key}/move`, body, who)
+  // R1, R2: who and what
+  assert.equal((await move(item.key, { projectKey: 'MVB' }, 'mv.viewer@x.com')).status, 403)          // no Move issues in the source
+  assert.equal((await move(item.key, { projectKey: 'MVB' }, 'mv.member@x.com')).status, 404)          // can't see the target
+  assert.equal((await move(item.key, { projectKey: 'MVA' })).status, 400)                             // same project
+  assert.equal((await move(sub.key, { projectKey: 'MVB' })).status, 400)                              // a sub-item moves with its parent
+  // R6: the preview changes nothing
+  const dry = (await move(item.key, { projectKey: 'MVB', dryRun: true })).body
+  assert.deepEqual(dry.items.map((x: any) => x.key), [item.key, sub.key])
+  const fields = (x: any) => Object.fromEntries(x.changes.map((c: any) => [c.field, [c.from, c.to]]))
+  const pre = fields(dry.items[0])
+  assert.deepEqual([pre.Project, pre.Status, pre['Fix versions'], pre.Components, pre.Sprint, pre.Budget, pre.Assignee[1]], [['MVA', 'MVB'], undefined, undefined, ['API', 'api'], ['A1', null], [9, null], null])   // components match by name, whatever the case
+  assert.equal((await call('GET', `/api/v1/issues/${item.key}`)).body.projectId, a.id)
+  // R3, R4, R5: the move
+  const moved = (await move(item.key, { projectKey: 'MVB' })).body
+  assert.match(moved.key, /^MVB-\d+$/)
+  assert.deepEqual([moved.projectId, moved.statusId, moved.fixReleaseIds, moved.componentIds, moved.sprintId, moved.assigneeId, moved.labels, moved.estimate, moved.custom],
+    [b.id, b.statuses.find((s: any) => s.name === prog.name).id, [vb.id], [cb.id], null, null, ['keep'], 3, { [fb.id]: 'Core' }])
+  assert.equal((await call('GET', `/api/v1/issues/${moved.key}`)).body.comments.length, 1)
+  const movedSub = (await call('GET', `/api/v1/issues/${sub.key}`)).body
+  assert.deepEqual([movedSub.projectId, movedSub.parentId, movedSub.key.startsWith('MVB-')], [b.id, item.id, true])
+  // R5: the old key opens it, and finds it in JQL and search
+  assert.equal((await call('GET', `/api/v1/issues/${item.key}`)).body.key, moved.key)
+  const jql = (await call('GET', `/api/v1/search?jql=${encodeURIComponent(`key = ${item.key}`)}`)).body.items.map((i: any) => i.key)
+  assert.deepEqual(jql, [moved.key])
+  assert.ok((await call('GET', `/api/v1/search?q=${item.key}`)).body.items.some((i: any) => i.key === moved.key))
+  // a new item in MVA never takes the old number; moved again, both earlier keys still open it
+  const fresh = (await call('POST', '/api/v1/projects/MVA/issues', { title: 'New one' })).body
+  assert.notEqual(fresh.key, item.key)
+  const kanbanStatus = (await call('GET', '/api/v1/projects/MVK')).body.statuses[0].id
+  const again = (await move(moved.key, { projectKey: 'MVK', statusId: kanbanStatus })).body
+  for (const k of [item.key, moved.key]) assert.equal((await call('GET', `/api/v1/issues/${k}`)).body.key, again.key)
+  // R8: history and webhook changelog
+  const hist = (await call('GET', `/api/v1/issues/${again.key}`)).body.activity ?? (await pool.query(`select text from activity where issue_id = $1 and field = 'key' order by created_at`, [item.id])).rows
+  assert.ok(JSON.stringify(hist).includes(`Moved from ${moved.key}`))
+  // strand: a security level is the source project's, so a move clears it
+  const lvl = (await call('POST', '/api/v1/projects/MVA/security-levels', { name: 'Secret', members: [{ kind: 'role', role: 'admin' }] })).body
+  assert.ok(lvl.id, JSON.stringify(lvl))
+  const hidden = (await call('POST', '/api/v1/projects/MVA/issues', { title: 'Secret one', securityLevelId: lvl.id })).body
+  assert.equal((await move(hidden.key, { projectKey: 'MVB' })).body.securityLevelId, null)
+  // R7: bulk move
+  const x1 = (await call('POST', '/api/v1/projects/MVA/issues', { title: 'Bulk one' })).body, x2 = (await call('POST', '/api/v1/projects/MVA/issues', { title: 'Bulk two' })).body
+  const bulk = (await call('POST', '/api/v1/issues/bulk/move', { issues: [x1.key, x2.key], projectKey: 'MVB' })).body
+  assert.deepEqual(bulk.moved.map((m: any) => m.key), [x1.key, x2.key])
+  assert.ok(bulk.moved.every((m: any) => m.newKey.startsWith('MVB-')))
 })
 
 test('[0705.R2] a webhook never reaches private addresses, whatever its name resolves to', { skip }, async () => {

@@ -170,7 +170,7 @@ const JIRA_FIELD: Record<string, [string, 'jira' | 'custom']> = {
   title: ['summary', 'jira'], description: ['description', 'jira'], type: ['issuetype', 'jira'], priority: ['priority', 'jira'], statusId: ['status', 'jira'],
   assigneeId: ['assignee', 'jira'], reporterId: ['reporter', 'jira'], labels: ['labels', 'jira'], dueDate: ['duedate', 'jira'], resolution: ['resolution', 'jira'],
   timeEstimate: ['timeoriginalestimate', 'jira'], timeRemaining: ['timeestimate', 'jira'], sprintId: ['Sprint', 'custom'], estimate: ['Story Points', 'custom'],
-  flagged: ['Flagged', 'custom'], epicStatus: ['Epic Status', 'custom'], epicColor: ['Epic Colour', 'custom'], rank: ['Rank', 'custom'], startDate: ['Start date', 'custom'],
+  key: ['Key', 'jira'], projectId: ['project', 'jira'], flagged: ['Flagged', 'custom'], epicStatus: ['Epic Status', 'custom'], epicColor: ['Epic Colour', 'custom'], rank: ['Rank', 'custom'], startDate: ['Start date', 'custom'],
 }
 const LIST_FIELD: Record<string, string> = { fixReleaseIds: 'Fix Version', affectsReleaseIds: 'Version', componentIds: 'Component' }
 
@@ -216,6 +216,7 @@ export async function jiraChangelog(d: Db, L: L, issueId: string, changes: Chang
         case 'timeEstimate': case 'timeRemaining': return [Number(v) * 60, Number(v) * 60]
         case 'resolution': { const r = await L.resolution(i.workspaceId, String(v)); return [r?.id ?? v, r?.name ?? v] }
         case 'flagged': return v ? ['impediment', 'Impediment'] : [null, null]
+        case 'projectId': { const [p] = await d.query<{ name: string }>('select name from projects where id = $1', [v]); return [v, p?.name ?? v] }
         default: return [v, v]
       }
     }

@@ -71,8 +71,11 @@ export async function issueByKey(d: Db, req: { me: Me; method: string }, ref: st
   const ws = req.me.workspaceId
   const [i] = byId
     ? await d.query<any>(`${ISSUE_ROW} where i.workspace_id = $1 and i.id = $2 ${live}`, [ws, ref])
-    : await d.query<any>(`${ISSUE_ROW} where i.workspace_id = $1 and i.number = $3 ${live}
-        and (p.key = $2 or p.id = (select project_id from project_key_history where workspace_id = $1 and key = $2))`, [ws, m![1]!.toUpperCase(), Number(m![2])])   // an old key too (spec 0703)
+    : await d.query<any>(`${ISSUE_ROW} where i.workspace_id = $1 ${live} and (
+          (i.number = $3 and (p.key = $2 or p.id = (select project_id from project_key_history where workspace_id = $1 and key = $2)))
+          or i.id = (select mk.issue_id from moved_issue_keys mk join projects op on op.id = mk.project_id
+                      where mk.workspace_id = $1 and mk.number = $3 and (op.key = $2 or op.id = (select project_id from project_key_history where workspace_id = $1 and key = $2))))
+        order by (p.key = $2 and i.number = $3) desc limit 1`, [ws, m![1]!.toUpperCase(), Number(m![2])])   // an old project key (spec 0703), or a key it had before a move (spec 0501)
   const a = i ? await accessTo(d, req.me, i.projectId) : null
   if (!i || !a) throw new HttpError(404, 'Issue not found')
   // an item whose security level leaves me out doesn't exist, as far as I can tell
@@ -335,7 +338,7 @@ async function applyPatch(d: Db, me: Me, cur: any, patch: z.infer<typeof patchBo
 /** Jira's levels (spec 0303): an epic has no parent; an item's parent is an epic, in any project; a sub-item's parent is an
  *  item of the same project. A parent must be one I can see; an item with sub-items stays an item; an epic with items
  *  stays an epic. `item` is the item being changed (null when it is new). */
-async function checkLevels(d: Db, me: Me, projectId: string, item: { id: string; type: string } | null, type: string, parentId: string | null | undefined) {
+export async function checkLevels(d: Db, me: Me, projectId: string, item: { id: string; type: string } | null, type: string, parentId: string | null | undefined) {
   const has = async (where: string) => !!item && (await d.query(`select 1 from issues where parent_id = $1 and deleted_at is null and ${where} limit 1`, [item.id])).length > 0
   if (item && item.type === 'epic' && type !== 'epic' && await has('true'))
     throw new HttpError(400, 'An epic with work items stays an epic: move its items to another epic first', { type: 'The epic has items' })
@@ -448,7 +451,7 @@ async function checkFolder(d: Db, projectId: string, type: string, folderId: str
 }
 
 /** Is this one of the project's work types? (400 otherwise) */
-async function checkType(d: Db, projectId: string, type: string | undefined) {
+export async function checkType(d: Db, projectId: string, type: string | undefined) {
   if (type === undefined) return
   if (!(await d.query('select 1 from work_types where project_id = $1 and key = $2', [projectId, type])).length)
     throw new HttpError(400, 'That work type isn’t in this project', { type: 'Unknown work type' })

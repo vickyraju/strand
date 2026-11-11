@@ -19,7 +19,7 @@ import { StoreProvider, useStore, moveContext, type NewIssue } from './data/stor
 import { useProjectIssues } from './api/useProjectIssues'
 import { useProjectOnDemand } from './api/useProjectOnDemand'
 import { rememberProject } from './api/recent'
-import { apiEnabled } from './api/client'
+import { api, apiEnabled } from './api/client'
 import { useIssueSync } from './api/useIssueSync'
 import { useKnownPeople } from './api/users'
 import TransitionDialog, { makeTransition, planMove, type Pending } from './components/TransitionDialog'
@@ -111,6 +111,18 @@ function Shell() {
   const peekIssue = peek ? state.issues.find(i => i.key === peek) : undefined
   const fullIssue = route.name === 'issue' ? state.issues.find(i => i.key === route.key) : undefined
   useIssueDetail((fullIssue ?? peekIssue)?.id)
+  // a key the item had before it moved to another project opens it at its new key (spec 0501 R5): the server knows
+  const askedKey = route.name === 'issue' ? route.key : peek
+  const askedMissing = !!askedKey && !(route.name === 'issue' ? fullIssue : peekIssue) && (!wanted || issuesLoad.status === 'ready')
+  useEffect(() => {
+    if (!apiEnabled || !askedMissing || !askedKey) return
+    let live = true
+    api<{ key: string }>('GET', `/api/issues/${encodeURIComponent(askedKey)}`).then(i => {
+      if (!live || i.key === askedKey) return
+      navigate(route.name === 'issue' ? href({ name: 'issue', key: i.key }) : href(route, i.key), { replace: true })
+    }, () => {})
+    return () => { live = false }
+  }, [askedKey, askedMissing])   // eslint-disable-line react-hooks/exhaustive-deps
   const keyOf = (id: string) => state.issues.find(i => i.id === id)?.key
 
   const actions: AppActions = {

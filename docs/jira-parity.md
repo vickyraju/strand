@@ -84,7 +84,7 @@ Checked against Atlassian's Data Center documentation on 5 November 2026 (Jira S
 | ISS-24 | Custom field type and options | The type can't be changed; options have ids: a rename carries to issues, a disabled option stays on issues, a deleted one is cleared ([editing custom fields](https://confluence.atlassian.com/adminjiraserver/editing-or-deleting-custom-fields-1047552719.html)) | Same: type fixed, option ids, rename/disable/delete carry through | match | match | 0105 | |
 | ISS-25 | Version and component names | Unique per project | Unique per project, ignoring case | match | match | 0309 | |
 | ISS-09 | Screens and screen schemes | Create, edit and view screens | Absent (transition screens exist) | absent | open | 0505 | Proposed: deliberately diverge. |
-| ISS-10 | Move between projects | Yes; the old key redirects | Absent | absent | match | 0501 | |
+| ISS-10 | Move between projects | Yes; the old key redirects | Move… with Jira's preview: type, status, versions and components by name, custom fields by name and kind; sub-items move along; every earlier key keeps opening it (address, API, JQL, search) | match | match | 0501 | The sprint is cleared (Strand's sprints belong to a board) |
 | ISS-11 | Voting | Yes | Absent | absent | match | 0506 | |
 | ISS-12 | Remote links | Yes | Absent | absent | match | 0507 | |
 | ISS-13 | Archive single issues | DC 8.1+ ([dc]) | Absent | absent | match | 0508 | |
@@ -94,7 +94,7 @@ Checked against Atlassian's Data Center documentation on 5 November 2026 (Jira S
 | ISS-17 | Time tracking settings | Hours per day and days per week; `w` unit ([time](https://confluence.atlassian.com/adminjiraserver/configuring-time-tracking-938847808.html)) | System settings › Time tracking: hours per day, days per week, `w`, display format, default unit | match | match | 0306 | A bare number is now minutes (Jira's default); an admin can choose hours. |
 | ISS-18 | Log work: remaining-estimate modes | Auto, leave, set, reduce ([log work](https://confluence.atlassian.com/jirasoftwareserver111/logging-work-on-issues-1652921625.html)) | Same four (`server/src/shared/estimates.ts`) | match | match | — | |
 | ISS-19 | Clone | With links, sub-tasks, attachments | Children, links, sprint | match | match | — | |
-| ISS-20 | Bulk change | Edit, move, transition, delete, watch; "send notification" option | Edit, delete, restore; always notifies | partial | match | 0605 | |
+| ISS-20 | Bulk change | Edit, move, transition, delete, watch; "send notification" option | Edit, move, delete, restore; always notifies | partial | match | 0501, 0605 | |
 | ISS-21 | Flagging (impediment) | Yes | Add/remove flag (with a comment) from card and item menus; yellow card, flag icon; flagged = Impediment | match | match | 0408 | |
 | ISS-22 | Edit presence | No | Who has the item open | better | diverge | — | Keep. |
 | ISS-23 | Link types | Admin-configurable | Admin-configurable; delete moves or removes links | match | match | — | |

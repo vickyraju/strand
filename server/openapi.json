@@ -59623,6 +59623,654 @@
           }
         }
       }
+    },
+    "/api/v1/issues/{key}/move": {
+      "post": {
+        "summary": "Move an item (with its sub-items) to another project, as Jira’s Move: a new key, the old one still works. dryRun: only say what would change",
+        "tags": [
+          "Issues"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "projectKey": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 255,
+                    "description": "The project it moves to"
+                  },
+                  "type": {
+                    "description": "A work type of the target (default: the same one, when the target has it)",
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "statusId": {
+                    "description": "A status of the target’s workflow for the type (needed when the item’s status isn’t in it)",
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  "assigneeId": {
+                    "description": "Who it goes to when its assignee can’t be assigned in the target (default: nobody)",
+                    "nullable": true,
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  "fixReleaseIds": {
+                    "description": "The target’s versions (default: those with the same names)",
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                    }
+                  },
+                  "affectsReleaseIds": {
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                    }
+                  },
+                  "componentIds": {
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                    }
+                  },
+                  "dryRun": {
+                    "default": false,
+                    "description": "Only say what would change (Jira’s confirmation page)",
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "projectKey"
+                ]
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "key",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "dryRun": {
+                          "type": "boolean",
+                          "enum": [
+                            true
+                          ]
+                        },
+                        "items": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string",
+                                "description": "uuid"
+                              },
+                              "key": {
+                                "type": "string"
+                              },
+                              "newKey": {
+                                "type": "string"
+                              },
+                              "changes": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "field": {
+                                      "type": "string"
+                                    },
+                                    "from": {},
+                                    "to": {}
+                                  },
+                                  "required": [
+                                    "field",
+                                    "from",
+                                    "to"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "key",
+                              "newKey",
+                              "changes"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "description": "The item, then its sub-items: their new keys and every change (Jira’s confirmation page)"
+                        }
+                      },
+                      "required": [
+                        "dryRun",
+                        "items"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "description": "uuid"
+                        },
+                        "key": {
+                          "type": "string",
+                          "description": "e.g. PAY-12"
+                        },
+                        "projectId": {
+                          "type": "string",
+                          "description": "uuid"
+                        },
+                        "number": {
+                          "type": "number"
+                        },
+                        "type": {
+                          "type": "string",
+                          "description": "Work type key"
+                        },
+                        "title": {
+                          "type": "string"
+                        },
+                        "description": {
+                          "type": "string"
+                        },
+                        "statusId": {
+                          "type": "string",
+                          "description": "uuid"
+                        },
+                        "priority": {
+                          "type": "string",
+                          "description": "A priority key (GET /priorities)"
+                        },
+                        "flagged": {
+                          "type": "boolean",
+                          "description": "Flagged as an impediment (spec 0408)"
+                        },
+                        "epicColor": {
+                          "nullable": true,
+                          "description": "Epics: Jira’s Epic Colour, ghx-label-1 … 14 (spec 0407)",
+                          "type": "string"
+                        },
+                        "epicStatus": {
+                          "nullable": true,
+                          "description": "Epics: Jira’s Epic Status (spec 0716)",
+                          "type": "string",
+                          "enum": [
+                            "To Do",
+                            "In Progress",
+                            "Done"
+                          ]
+                        },
+                        "assigneeId": {
+                          "nullable": true,
+                          "type": "string",
+                          "description": "uuid"
+                        },
+                        "reporterId": {
+                          "nullable": true,
+                          "type": "string",
+                          "description": "uuid"
+                        },
+                        "labels": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "estimate": {
+                          "nullable": true,
+                          "type": "number"
+                        },
+                        "timeEstimate": {
+                          "nullable": true,
+                          "type": "number"
+                        },
+                        "timeRemaining": {
+                          "nullable": true,
+                          "type": "number"
+                        },
+                        "componentIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "description": "uuid"
+                          }
+                        },
+                        "affectsReleaseIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "description": "uuid"
+                          }
+                        },
+                        "securityLevelId": {
+                          "nullable": true,
+                          "type": "string",
+                          "description": "uuid"
+                        },
+                        "testSpec": {
+                          "nullable": true,
+                          "description": "Test steps, Gherkin or definition (Tests and Pre-Conditions)"
+                        },
+                        "testFolderId": {
+                          "nullable": true,
+                          "description": "Test repository folder",
+                          "type": "string"
+                        },
+                        "testEnvironments": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "description": "Test Executions: what it ran against"
+                        },
+                        "revision": {
+                          "type": "string",
+                          "description": "Test Executions: build or revision"
+                        },
+                        "dueDate": {
+                          "nullable": true,
+                          "type": "string",
+                          "description": "YYYY-MM-DD"
+                        },
+                        "startDate": {
+                          "nullable": true,
+                          "type": "string",
+                          "description": "YYYY-MM-DD"
+                        },
+                        "sprintId": {
+                          "nullable": true,
+                          "type": "string",
+                          "description": "uuid"
+                        },
+                        "fixReleaseIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "description": "uuid"
+                          }
+                        },
+                        "parentId": {
+                          "nullable": true,
+                          "type": "string",
+                          "description": "uuid"
+                        },
+                        "custom": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "number"
+                              }
+                            ]
+                          }
+                        },
+                        "rank": {
+                          "type": "number"
+                        },
+                        "version": {
+                          "type": "number",
+                          "description": "Send as If-Match to reject stale edits"
+                        },
+                        "resolution": {
+                          "nullable": true,
+                          "description": "A resolution name (GET /resolutions), set while the item is in a Done status",
+                          "type": "string"
+                        },
+                        "resolvedAt": {
+                          "nullable": true,
+                          "description": "When the item last reached a Done status",
+                          "type": "string"
+                        },
+                        "createdAt": {
+                          "type": "string",
+                          "description": "ISO 8601 timestamp"
+                        },
+                        "updatedAt": {
+                          "type": "string",
+                          "description": "ISO 8601 timestamp"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "key",
+                        "projectId",
+                        "number",
+                        "type",
+                        "title",
+                        "description",
+                        "statusId",
+                        "priority",
+                        "flagged",
+                        "epicColor",
+                        "epicStatus",
+                        "assigneeId",
+                        "reporterId",
+                        "labels",
+                        "estimate",
+                        "timeEstimate",
+                        "timeRemaining",
+                        "componentIds",
+                        "affectsReleaseIds",
+                        "securityLevelId",
+                        "testSpec",
+                        "testFolderId",
+                        "testEnvironments",
+                        "revision",
+                        "dueDate",
+                        "startDate",
+                        "sprintId",
+                        "fixReleaseIds",
+                        "parentId",
+                        "custom",
+                        "rank",
+                        "version",
+                        "resolution",
+                        "resolvedAt",
+                        "createdAt",
+                        "updatedAt"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/issues/bulk/move": {
+      "post": {
+        "summary": "Move many items to one project (Jira’s bulk Move); statuses map as for one item, or by statusMap",
+        "tags": [
+          "Issues: bulk"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "issues": {
+                    "minItems": 1,
+                    "maxItems": 5000,
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "projectKey": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 255,
+                    "description": "The project it moves to"
+                  },
+                  "type": {
+                    "description": "A work type of the target (default: the same one, when the target has it)",
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "statusMap": {
+                    "description": "Source status id → target status id",
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string",
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                    }
+                  }
+                },
+                "required": [
+                  "issues",
+                  "projectKey"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "moved": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "key": {
+                            "type": "string"
+                          },
+                          "newKey": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "key",
+                          "newKey"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "moved"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "security": [
