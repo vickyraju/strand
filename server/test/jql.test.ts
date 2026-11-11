@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { parseJql, relative, filtersToJql, filterProjects, JqlError } from '../src/shared/jql.ts'
+import { parseJql, relative, filtersToJql, filterProjects, periodBound, JqlError } from '../src/shared/jql.ts'
 
 test('jql: clauses, AND binds tighter than OR, parentheses, NOT, lists, functions, sorting', () => {
   const q = parseJql('project = PAY AND (status = "In progress" OR priority in (high, urgent)) AND NOT assignee = currentUser() ORDER BY created DESC, priority')
@@ -82,5 +82,24 @@ test('[0602.R1][0602.R3] jql: WAS, WAS IN, WAS NOT, WAS NOT IN and CHANGED with 
   assert.match(err('status WAS Done DURING ("2026-01-01")')!, /DURING takes two dates/)
   assert.match(err('status WAS Done FROM x')!, /join clauses with AND or OR/)   // FROM and TO only follow CHANGED
   assert.match(err('status WAS IN Done')!, /Expected “\(”/)
+})
+
+test('[0603.R1] jql: the start and end of a day, week, month or year, moved by Jira\'s increment', () => {
+  const now = new Date(2026, 10, 11, 15, 30)                     // Wednesday 11 Nov 2026, 15:30 local
+  const at = (name: string, inc?: string) => { const d = periodBound(name, inc, now)!; return [d.getFullYear(), d.getMonth() + 1, d.getDate(), d.getHours(), d.getMinutes()] }
+  assert.deepEqual(at('startOfDay'), [2026, 11, 11, 0, 0])
+  assert.deepEqual(at('startOfDay', '-1'), [2026, 11, 10, 0, 0])
+  assert.deepEqual(at('startOfDay', '+8h'), [2026, 11, 11, 8, 0])
+  assert.deepEqual(at('endOfDay'), [2026, 11, 11, 23, 59])
+  assert.deepEqual(at('startOfWeek'), [2026, 11, 9, 0, 0])        // Monday
+  assert.deepEqual(at('endOfWeek', '1'), [2026, 11, 22, 23, 59])
+  assert.deepEqual(at('startOfMonth', '-1'), [2026, 10, 1, 0, 0])
+  assert.deepEqual(at('endOfMonth', '-1M'), [2026, 10, 31, 23, 59])
+  assert.deepEqual(at('endOfMonth', '+3'), [2027, 2, 28, 23, 59])
+  assert.deepEqual(at('startOfYear', '-1y'), [2025, 1, 1, 0, 0])
+  assert.deepEqual(at('endOfYear'), [2026, 12, 31, 23, 59])
+  assert.deepEqual(at('startOfMonth', '2w'), [2026, 11, 15, 0, 0])
+  assert.equal(periodBound('now', undefined, now), null)
+  assert.throws(() => periodBound('startOfDay', 'soon', now), /isn’t an increment/)
 })
 

@@ -2047,3 +2047,19 @@ test('[0602.R1] JQL: status WAS finds an item that has moved on', { skip, timeou
   assert.deepEqual(o.problems, [])
 })
 
+test('[0603.R3] JQL: watchedIssues() finds the items you watch', { skip, timeout: 120_000 }, async () => {
+  await owner('POST', '/projects', { name: 'Watch journey', key: 'WTJ', template: 'kanban' })
+  const watched = (await owner('POST', '/projects/WTJ/issues', { title: 'Watched' })).body
+  const unwatched = (await owner('POST', '/projects/WTJ/issues', { title: 'Not watched' })).body
+  await owner('DELETE', `/issues/${unwatched.key}/watch`)
+  await owner('PUT', `/issues/${watched.key}/watch`)
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url('/search?q='))
+  await o.click('button:has-text("Switch to JQL")')
+  await o.fill('textarea[aria-label="JQL query"]', 'project = WTJ AND issue in watchedIssues()')
+  await o.press('textarea[aria-label="JQL query"]', 'Enter')
+  await o.waitForSelector(`text=${watched.key}`)
+  await o.waitForSelector('text=1 result')
+  assert.deepEqual(o.problems, [])
+})
+

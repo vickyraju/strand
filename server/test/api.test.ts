@@ -5932,6 +5932,82 @@ test('[0602.R1][0602.R2][0602.R3][0602.R4] JQL history search: WAS, WAS IN, WAS 
   for (const q of ['labels WAS x', 'type CHANGED']) assert.equal((await call('GET', `/api/v1/search?jql=${encodeURIComponent(q)}`)).status, 400)
 })
 
+test('[0603.R1][0603.R2][0603.R3][0603.R4][0603.R5][0603.R6] the rest of Jira\'s JQL functions, and the voter and watcher fields', { skip }, async () => {
+  await call('POST', '/api/v1/projects', { name: 'Functions', key: 'FNQ', template: 'scrum' })
+  await call('POST', '/api/v1/projects', { name: 'Functions two', key: 'FNR', template: 'kanban' })
+  await join('FNQ', 'fnq.bea@x.com')
+  const me = (await call('GET', '/api/v1/me')).body, bea = (await call('GET', '/api/v1/me', undefined, 'fnq.bea@x.com')).body
+  const mk = async (b: object, key = 'FNQ') => (await call('POST', `/api/v1/projects/${key}/issues`, { title: 'Item', ...b })).body
+  const r = async (name: string, b: object = {}) => (await call('POST', '/api/v1/projects/FNQ/releases', { name, ...b })).body
+  const v1 = await r('1.0', { releaseDate: '2026-01-01' }), v2 = await r('2.0', { releaseDate: '2026-03-01' }), v3 = await r('3.0', { releaseDate: '2026-06-01' })
+  await call('POST', `/api/v1/projects/FNQ/releases/${v1.id}/release`, {})
+  await call('POST', `/api/v1/projects/FNQ/releases/${v2.id}/release`, {})
+  const comp = (await call('POST', '/api/v1/projects/FNQ/components', { name: 'Core', leadId: bea.id })).body
+  const a = await mk({ fixReleaseIds: [v1.id] }), b = await mk({ fixReleaseIds: [v2.id], componentIds: [comp.id] }), c = await mk({ fixReleaseIds: [v3.id] })
+  const sub = await mk({ parentId: a.id }), other = await mk({}, 'FNR')
+  const fut = (await call('POST', '/api/v1/projects/FNQ/sprints', { name: 'Later' })).body
+  await call('PATCH', `/api/v1/issues/${c.key}`, { sprintId: fut.id })
+  await call('POST', `/api/v1/issues/${a.key}/links`, { type: 'blocks', targetKey: b.key })
+  await call('POST', `/api/v1/issues/${c.key}/links`, { type: 'relates', targetKey: a.key })
+  await call('PUT', `/api/v1/issues/${b.key}/watch`, undefined, 'fnq.bea@x.com')
+  await call('PUT', `/api/v1/issues/${c.key}/vote`, undefined, 'fnq.bea@x.com')
+  await call('POST', `/api/v1/issues/${b.key}/view`)
+  await call('POST', `/api/v1/issues/${b.key}/comments`, { body: 'Seen' }, 'fnq.bea@x.com')
+  const keys = async (jql: string) => {
+    const res = await call('GET', `/api/v1/search?jql=${encodeURIComponent(jql)}&limit=50`)
+    assert.equal(res.status, 200, `${jql}: ${JSON.stringify(res.body)}`)
+    return res.body.items.map((i: any) => i.key).filter((k: string) => /^FN[QR]-/.test(k)).sort()
+  }
+  const K = (...xs: any[]) => xs.map(x => x.key).sort()
+  const Q = 'project in (FNQ, FNR) AND '
+  // R1: dates
+  assert.deepEqual(await keys(`${Q}created >= startOfMonth() AND created <= endOfYear() AND created > startOfYear(-1)`), K(a, b, c, sub, other))
+  assert.deepEqual(await keys(`${Q}created < startOfDay(-1)`), [])
+  await call('POST', '/api/v1/me/sign-in')
+  await pool.query(`update users set last_sign_in_at = now() - interval '1 hour' where id = $1`, [me.id])
+  await call('POST', '/api/v1/me/sign-in')                       // a new sign-in: the one an hour ago is lastLogin()
+  assert.deepEqual(await keys(`${Q}created > lastLogin()`), K(a, b, c, sub, other))
+  assert.deepEqual(await keys(`${Q}created > currentLogin()`), [])
+  // R2: versions
+  assert.deepEqual(await keys(`${Q}fixVersion in releasedVersions()`), K(a, b))
+  assert.deepEqual(await keys(`${Q}fixVersion in unreleasedVersions(FNQ)`), K(c))
+  assert.deepEqual(await keys(`${Q}fixVersion not in releasedVersions(FNQ)`), K(c))
+  assert.deepEqual(await keys(`${Q}fixVersion = earliestUnreleasedVersion(FNQ)`), K(c))
+  assert.deepEqual(await keys(`${Q}fixVersion = latestReleasedVersion(FNQ)`), K(b))
+  // R3: sprints and items
+  assert.deepEqual(await keys(`${Q}sprint in futureSprints()`), K(c))
+  assert.deepEqual(await keys(`${Q}issue in linkedIssues(${a.key})`), K(b, c))
+  assert.deepEqual(await keys(`${Q}issue in linkedIssues(${a.key}, "blocks")`), K(b))
+  assert.deepEqual(await keys(`${Q}issue in linkedIssues(${b.key}, "is blocked by")`), K(a))
+  assert.deepEqual(await keys(`${Q}issue in linkedIssues(${b.key}, "blocks")`), K(a))
+  assert.deepEqual(await keys(`${Q}issue in issueHistory()`), K(b))
+  assert.deepEqual(await keys(`${Q}issue in updatedBy("fnq.bea@x.com")`), K(b))
+  assert.deepEqual(await keys(`${Q}issue in updatedBy("fnq.bea@x.com", "-1d", "+1d")`), K(b))
+  assert.deepEqual(await keys(`${Q}issue in updatedBy("fnq.bea@x.com", "2020/01/01", "2020/12/31")`), [])
+  assert.deepEqual(await keys(`${Q}issue in updatedBy("${me.email}")`), K(a, b, c, sub, other))
+  // R4: people and projects
+  assert.deepEqual(await keys(`${Q}component in componentsLeadByUser("fnq.bea@x.com")`), K(b))
+  assert.deepEqual(await keys(`${Q}project in projectsLeadByUser()`), K(a, b, c, sub, other))
+  assert.deepEqual(await keys(`${Q}project in projectsWhereUserHasPermission("Edit issues")`), K(a, b, c, sub, other))
+  assert.deepEqual(await keys(`${Q}project in projectsWhereUserHasRole(Administrators)`), K(a, b, c, sub, other))
+  const beaKeys = async (jql: string) => (await call('GET', `/api/v1/search?jql=${encodeURIComponent(jql)}&limit=50`, undefined, 'fnq.bea@x.com')).body.items.map((i: any) => i.key).sort()
+  assert.deepEqual(await beaKeys('project in projectsWhereUserHasRole(Administrators)'), [])
+  assert.deepEqual(await beaKeys('issue in watchedIssues()'), K(b))
+  assert.deepEqual(await beaKeys('project in projectsWhereUserHasPermission(EDIT_ISSUES)'), K(a, b, c, sub))
+  // R5: types and fields
+  assert.deepEqual(await keys(`${Q}type in subtaskIssueTypes()`), K(sub))
+  assert.deepEqual(await keys(`${Q}type in standardIssueTypes()`), K(a, b, c, other))
+  assert.deepEqual(await keys(`${Q}voter = "fnq.bea@x.com"`), K(c))
+  assert.deepEqual(await keys(`${Q}watcher = "fnq.bea@x.com"`), K(b))
+  assert.deepEqual(await keys(`${Q}watcher in membersOf("missing group")`), [])
+  assert.deepEqual(await keys(`${Q}watchers >= 1 AND watcher = "fnq.bea@x.com"`), K(b))
+  assert.deepEqual(await keys(`${Q}voter is empty`), K(a, b, sub, other))
+  // R6: mistakes
+  for (const q of ['issue in linkedIssues(NOPE-1)', 'issue in linkedIssues(FNQ-1, "eats")', 'issue in updatedBy("nobody@x.com")', 'project in projectsWhereUserHasRole(Owners)',
+    'project in projectsWhereUserHasPermission("Fly")', 'fixVersion = latestReleasedVersion()', 'priority = releasedVersions()', 'created > startOfDay("soon")',
+    `issue in issuesWithRemoteLinksByGlobalId()`]) assert.equal((await call('GET', `/api/v1/search?jql=${encodeURIComponent(q)}`)).status, 400, q)
+})
+
 test('[0705.R2] a webhook never reaches private addresses, whatever its name resolves to', { skip }, async () => {
   const { privateAddress, urlProblem, fillUrl } = await import('../src/webhooks.ts')
   for (const a of ['127.0.0.1', '10.1.2.3', '172.20.0.1', '192.168.1.1', '169.254.169.254', '100.64.0.1', '0.0.0.0', '::1', 'fd00::1', 'fe80::1', '::ffff:127.0.0.1',

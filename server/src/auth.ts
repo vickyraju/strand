@@ -216,7 +216,8 @@ export const joinSystemGroup = (d: Db, userId: string, role: 'default-users' | '
 export async function signedIn(d: Db, me: Me) {
   await joinSystemGroup(d, me.id, 'default-users')
   if (me.adminClaim) await joinSystemGroup(d, me.id, 'system-admins')
-  await d.query('update users set last_sign_in_at = now() where id = $1', [me.id])
+  // an app opened again within five minutes is the same sign-in; the one before is lastLogin() (spec 0603 R1)
+  await d.query(`update users set previous_sign_in_at = last_sign_in_at, last_sign_in_at = now() where id = $1 and (last_sign_in_at is null or last_sign_in_at < now() - interval '5 minutes')`, [me.id])
 }
 
 /** Managing tokens needs a real sign-in: a token (possibly leaked) must not be able to mint more of itself,
