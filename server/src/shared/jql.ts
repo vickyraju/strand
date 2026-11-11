@@ -4,11 +4,16 @@
 // Values: words, "quoted text", numbers, dates (2026-10-01), relative dates (-7d, 2w, 1h), and functions: currentUser(),
 // now(), startOfDay(), endOfDay(), startOfWeek(), openSprints(), closedSprints(), membersOf("group"), and Xray's test functions:
 // issue in requirementTests("PAY-1"), testRequirements(…), testSetTests(…), testPlanTests("PAY-9", "FAIL"), testExecutionTests(…).
+// History (spec 0602): status WAS "In Progress", WAS IN (…), WAS NOT, WAS NOT IN, assignee CHANGED, each followed by
+// AFTER d, BEFORE d, ON d, DURING (d1, d2), BY person or BY (p1, p2); CHANGED also takes FROM v and TO v.
 // Combine with AND, OR, NOT and parentheses; sort with ORDER BY field [ASC|DESC], …  Pure: parsed here, run elsewhere.
 
 export type Op = '=' | '!=' | 'in' | 'not in' | '~' | '!~' | '>' | '>=' | '<' | '<=' | 'is empty' | 'is not empty'
+  | 'was' | 'was in' | 'was not' | 'was not in' | 'changed'
 export type Value = { kind: 'text'; text: string } | { kind: 'fn'; name: string; arg?: string; args?: string[] }
-export interface Clause { kind: 'clause'; field: string; op: Op; values: Value[] }
+/** The predicates after WAS… and CHANGED (spec 0602 R3). */
+export interface History { after?: Value; before?: Value; on?: Value; during?: [Value, Value]; by?: Value[]; from?: Value; to?: Value }
+export interface Clause { kind: 'clause'; field: string; op: Op; values: Value[]; history?: History }
 export interface Not { kind: 'not'; item: Node }
 export interface Group { kind: 'and' | 'or'; items: Node[] }
 export type Node = Clause | Not | Group
@@ -96,6 +101,29 @@ export function parseJql(src: string): Query {
     }
     return { kind: 'text', text: t.v }
   }
+  /** ( value, value, … ) */
+  const list = (): Value[] => {
+    if (peek()?.t !== '(') fail('Expected “(” and a list, such as (high, urgent)')
+    p++
+    const values = [value()]
+    while (peek()?.t === ',') { p++; values.push(value()) }
+    if (peek()?.t !== ')') fail('Expected “)” to close the list')
+    p++
+    return values
+  }
+  const predicates = (changed: boolean): History => {
+    const h: History = {}
+    for (;;) {
+      if (kw('after') || kw('before') || kw('on') || changed && (kw('from') || kw('to'))) { const k = toks[p++]!.v.toLowerCase() as 'after'; h[k] = value() }
+      else if (kw('during')) {
+        p++
+        const d = list()
+        if (d.length !== 2) fail('DURING takes two dates, such as DURING ("2026-01-01", "2026-02-01")', toks[p - 1])
+        h.during = [d[0]!, d[1]!]
+      } else if (kw('by')) { p++; h.by = peek()?.t === '(' ? list() : [value()] }
+      else return h
+    }
+  }
   const clause = (): Node => {
     if (kw('not')) { p++; return { kind: 'not', item: clause() } }
     if (peek()?.t === '(') {
@@ -113,23 +141,25 @@ export function parseJql(src: string): Query {
     const known = FIELDS[field.toLowerCase()]
     field = known ?? (/^cf\[.+\]$/i.test(field) ? `cf:${field.slice(3, -1)}` : `custom:${field}`)
     let op: Op
+    if (kw('was')) {
+      p++
+      op = kw('not') ? (kw('in', 1) ? 'was not in' : 'was not') : kw('in') ? 'was in' : 'was'
+      p += op === 'was' ? 0 : op === 'was not in' ? 2 : 1
+      const values = op.endsWith(' in') ? list() : [value()]
+      return { kind: 'clause', field, op, values, history: predicates(false) }
+    }
+    if (kw('changed')) { p++; return { kind: 'clause', field, op: 'changed', values: [], history: predicates(true) } }
     if (peek()?.t === 'op') op = toks[p++]!.v as Op
     else if (kw('in')) { p++; op = 'in' }
     else if (kw('not') && kw('in', 1)) { p += 2; op = 'not in' }
     else if (kw('is') && kw('empty', 1)) { p += 2; return { kind: 'clause', field, op: 'is empty', values: [] } }
     else if (kw('is') && kw('not', 1) && kw('empty', 2)) { p += 3; return { kind: 'clause', field, op: 'is not empty', values: [] } }
     else if (kw('is') && (kw('null', 1) || kw('not', 1) && kw('null', 2))) { const neg = kw('not', 1); p += neg ? 3 : 2; return { kind: 'clause', field, op: neg ? 'is not empty' : 'is empty', values: [] } }
-    else return fail(`Expected an operator after ${f.v}: =, !=, in, ~, >, <, is empty…`)
+    else return fail(`Expected an operator after ${f.v}: =, !=, in, ~, >, <, is empty, was, changed…`)
     if (op === 'in' || op === 'not in') {
       // a function that stands for a list, as in Jira: issue in testPlanTests("PAY-9"), sprint in openSprints()
       if (peek()?.t === 'word' && peek(1)?.t === '(') return { kind: 'clause', field, op, values: [value()] }
-      if (peek()?.t !== '(') fail('Expected “(” and a list, such as (high, urgent)')
-      p++
-      const values = [value()]
-      while (peek()?.t === ',') { p++; values.push(value()) }
-      if (peek()?.t !== ')') fail('Expected “)” to close the list')
-      p++
-      return { kind: 'clause', field, op, values }
+      return { kind: 'clause', field, op, values: list() }
     }
     return { kind: 'clause', field, op, values: [value()] }
   }

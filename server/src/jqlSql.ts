@@ -24,6 +24,15 @@ const EMPTY: Record<string, string> = {
   due: 'i.due_date is null', start: 'i.start_date is null', resolved: 'i.resolved_at is null',
   estimate: 'i.estimate is null', timeEstimate: 'i.time_estimate is null', timeRemaining: 'i.time_remaining is null',
 }
+/** History search (spec 0602): the six fields Jira searches by history, as the history names them (spec 0601), and each's value now. */
+const HISTORY: Record<string, { field: string; now: string }> = {
+  status: { field: 'statusId', now: 'select i.status_id::text as v, st.name as s' },
+  assignee: { field: 'assigneeId', now: 'select i.assignee_id::text as v, (select u.name from users u where u.id = i.assignee_id) as s' },
+  reporter: { field: 'reporterId', now: 'select i.reporter_id::text as v, (select u.name from users u where u.id = i.reporter_id) as s' },
+  priority: { field: 'priority', now: 'select i.priority as v, (select pr.name from priorities pr where pr.workspace_id = i.workspace_id and pr.key = i.priority) as s' },
+  resolution: { field: 'resolution', now: 'select i.resolution as v, i.resolution as s' },
+  fixVersion: { field: 'fixReleaseIds', now: 'select r.id::text as v, r.name as s from releases r where r.id = any(i.fix_release_ids)' },
+}
 export const ORDER: Record<string, string> = {
   created: 'i.created_at', updated: 'i.updated_at', priority: PRIORITY_RANK, due: 'i.due_date', key: 'p.key, i.number', rank: 'i.rank',
   status: `case st.category when 'todo' then 0 when 'in-progress' then 1 else 2 end, st.position`, resolved: 'i.resolved_at', summary: 'lower(i.title)', estimate: 'i.estimate',
@@ -275,11 +284,80 @@ export async function jqlToSql(d: Db, me: Me, q: Query, args: unknown[]): Promis
       }
       throw new HttpError(400, `JQL: ${c.op} compares dates, numbers and priority, not ${c.field}`, { jql: `${c.op} not allowed with ${c.field}` })
     }
+    if (c.op.startsWith('was') || c.op === 'changed') return history(c)
     const any = c.values.map(v => eq(c, v))
     const cond = any.length === 1 ? any[0]! : `(${any.join(' or ')})`
     if (c.op === '=' || c.op === 'in') return cond
     // as in Jira, an empty field matches neither = nor != (a list field, such as fix versions, is empty when it has none)
     return `(not ${cond.startsWith('(') ? cond : `(${cond})`}${EMPTY[c.field] ? ` and not (${EMPTY[c.field]})` : ''})`
+  }
+  /** WAS, WAS IN, WAS NOT, WAS NOT IN and CHANGED (spec 0602), over the history of spec 0601. A single-valued field's
+   *  periods: each change starts one (its new value, set by whoever changed it), the first change's old value runs from
+   *  creation (set by the reporter), and a field never changed has its value now since creation. A fix version's: from when
+   *  it was put on to when it was taken off; "no fix version" while none was on. */
+  const history = (c: Clause): string => {
+    const h = HISTORY[c.field]
+    if (!h) throw new HttpError(400, 'JQL: WAS and CHANGED search the history of assignee, fixVersion, priority, reporter, resolution and status', { jql: `No history search on ${c.field}` })
+    if (c.values.length > 3000) throw new HttpError(400, 'JQL: WAS IN and WAS NOT IN take at most 3,000 values', { jql: 'Too many values' })
+    const F = put(h.field), list = c.field === 'fixVersion', p0 = c.history ?? {}
+    const isEmpty = (v: Value) => v.kind === 'text' && ['empty', 'null'].includes(v.text.toLowerCase())
+    /** Does a value (its id or key `id`, its name then `s`) match v? */
+    const match = (v: Value, id: string, s: string): string => {
+      if (isEmpty(v)) return `${id} is null`
+      if (c.field === 'assignee' || c.field === 'reporter') {
+        if (v.kind === 'fn' && v.name === 'currentuser') return `${id} = ${put(me.id)}::text`
+        if (v.kind === 'fn' && v.name === 'membersof' && v.arg) return `${id} in (select gm.user_id::text from group_members gm join groups g on g.id = gm.group_id where lower(g.display_name) = lower(${put(v.arg)}))`
+        const t = put(text(v, c.field))
+        return `(lower(${s}) = lower(${t}) or ${id} in (select u.id::text from users u where lower(u.email) = lower(${t}) or lower(u.name) = lower(${t}) or u.id::text = ${t}))`
+      }
+      const t = put(text(v, c.field))
+      return c.field === 'resolution' ? `lower(${id}) = lower(${t})` : `(lower(${s}) = lower(${t}) or ${id} = ${c.field === 'priority' ? `lower(${t})` : t})`
+    }
+    const anyOf = (vs: Value[], id: string, s: string) => `(${vs.map(v => match(v, id, s)).join(' or ')})`
+    const by = (col: string) => p0.by ? `(${p0.by.map(v => person(col, v)).join(' or ')})` : 'true'
+    const day = (v: Value) => `(${when(v)})::timestamptz::date`
+    if (c.op === 'changed') {
+      const at = 'a.created_at'
+      const same = (side: 'from' | 'to', v: Value) =>   // in the same change (a list's change is one row per value)
+        `exists (select 1 from activity b where b.issue_id = a.issue_id and b.field = ${F} and b.created_at = a.created_at and ${match(v, `b.${side}_value`, `b.${side}_string`)})`
+      const conds = [`a.issue_id = i.id`, `a.field = ${F}`,
+        p0.after ? `${at} > (${when(p0.after)})::timestamptz` : '', p0.before ? `${at} < (${when(p0.before)})::timestamptz` : '',
+        p0.on ? `${at}::date = ${day(p0.on)}` : '', p0.during ? `${at} between (${when(p0.during[0])})::timestamptz and (${when(p0.during[1])})::timestamptz` : '',
+        p0.by ? by('a.actor_id') : '', p0.from ? same('from', p0.from) : '', p0.to ? same('to', p0.to) : ''].filter(Boolean)
+      return `exists (select 1 from activity a where ${conds.join(' and ')})`
+    }
+    const neg = c.op === 'was not' || c.op === 'was not in'
+    const plain = !p0.after && !p0.before && !p0.on && !p0.during && !p0.by
+    let found: string
+    if (plain && !(list && c.values.some(isEmpty))) {
+      // no predicates: any value it had is its value now or one side of a change (the indexes of spec 0601)
+      found = `(exists (select 1 from (${h.now}) n where ${anyOf(c.values, 'n.v', 'n.s')})
+        or i.id in (select a.issue_id from activity a where a.field = ${F} and (${anyOf(c.values, 'a.to_value', 'a.to_string')} or ${anyOf(c.values, 'a.from_value', 'a.from_string')})))`
+    } else {
+      // a list's changes are one value each; a single value's change takes one value off and puts another on
+      const ev = `select a.to_value as v, a.to_string as s, true as added, a.created_at as at, a.id, a.actor_id as by from activity a where a.issue_id = i.id and a.field = ${F}${list ? ' and a.to_value is not null' : ''}
+        union all select a.from_value, a.from_string, false, a.created_at, a.id, a.actor_id from activity a where a.issue_id = i.id and a.field = ${F}${list ? ' and a.from_value is not null' : ''}`
+      const w = `select ev.*, lead(at) over (partition by v order by at, added, id) as next_at, row_number() over (partition by v order by at, added, id) as n from ev`
+      let periods = `select v, s, at as start, next_at as stop, by from w where added
+        union all select v, s, i.created_at, at, i.reporter_id from w where n = 1 and not added
+        union all select nw.v, nw.s, i.created_at, null, i.reporter_id from (${h.now}) nw where not exists (select 1 from ev where ev.v is not distinct from nw.v)`
+      if (list) {   // no fix version: before the first one went on, and after each change that left none
+        const k = `select ev.*, cardinality(i.fix_release_ids) - (select coalesce(sum(case when added then 1 else -1 end), 0) from ev)
+            + sum(case when added then 1 else -1 end) over (order by at, added, id) as left_on, lead(at) over (order by at, added, id) as next_at from ev`
+        periods += `
+        union all select null, null, i.created_at, (select min(at) from ev), i.reporter_id
+          where cardinality(i.fix_release_ids) - (select coalesce(sum(case when added then 1 else -1 end), 0) from ev) = 0
+        union all select null, null, at, next_at, by from k where left_on = 0 and next_at is distinct from at`   // not the instant one version replaced another
+        periods = `with ev as (${ev}), w as (${w}), k as (${k}) ${periods}`
+      } else periods = `with ev as (${ev}), w as (${w}) ${periods}`
+      const conds = [anyOf(c.values, 'h.v', 'h.s'),
+        p0.after ? `(h.stop is null or h.stop > (${when(p0.after)})::timestamptz)` : '', p0.before ? `h.start < (${when(p0.before)})::timestamptz` : '',
+        p0.on ? `h.start < ${day(p0.on)} + 1 and (h.stop is null or h.stop > ${day(p0.on)})` : '',
+        p0.during ? `h.start <= (${when(p0.during[1])})::timestamptz and (h.stop is null or h.stop >= (${when(p0.during[0])})::timestamptz)` : '',
+        p0.by ? by('h.by') : ''].filter(Boolean)
+      found = `exists (select 1 from (${periods}) h where ${conds.join(' and ')})`
+    }
+    return neg ? `not ${found}` : found
   }
   /** Xray's test functions (issue in testPlanTests("PAY-9", "FAIL")…), each worked out here into the items it means. */
   const testFn = (v: Extract<Value, { kind: 'fn' }>): string => {
