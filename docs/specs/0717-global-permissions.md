@@ -1,6 +1,6 @@
 # 0717 Global permissions
 
-Status: Approved (pending work, 12 Nov 2026)
+Status: Ported (aws-jira `d11592d`, strand `a657fd9`), pending work the PO asked to complete on 11 Nov 2026; awaiting verification
 Parity rows: PRM-10
 
 ## Context and Jira reference
