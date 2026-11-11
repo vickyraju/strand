@@ -97,7 +97,10 @@ const plugin: FastifyPluginAsyncZod = async app => {
     const args: unknown[] = [req.params.id]
     const projects = await db.query(`select p.key, p.name, pg.role from project_group_roles pg join projects p on p.id = pg.project_id
                                       where pg.group_id = $1 and ${visible(req.me, 'p.id', args)} order by p.key`, args)
-    return { ...shape(req.me)(row), people: members.items, morePeople: members.next, projects }
+    const g = shape(req.me)(row)
+    // spec 0106: how many comments a delete would have to move (for those who may delete it)
+    const restrictedComments = g.canManage ? (await db.query<{ n: number }>(`select count(*)::int as n from comments where visibility->>'kind' = 'group' and visibility->>'id' = $1`, [req.params.id]))[0]!.n : null
+    return { ...g, people: members.items, morePeople: members.next, projects, restrictedComments }
   })
 
   app.get('/groups/:id/members', { schema: { tags: T, summary: 'A group’s members by name, a page at a time; with query, those whose name or email contains it', params: idP,
@@ -139,13 +142,26 @@ const plugin: FastifyPluginAsyncZod = async app => {
     })
   })
 
-  app.delete('/groups/:id', { schema: { tags: T, summary: 'Delete a group made here (its owners and system administrators): everyone loses the project roles it gave them', params: idP } }, async (req, reply) => {
+  app.delete('/groups/:id', { schema: { tags: T, summary: 'Delete a group made here (its owners and system administrators): everyone loses the project roles it gave them; comments restricted to it move to `swapGroupId`, as in Jira', params: idP,
+    querystring: z.object({ swapGroupId: uuid.optional().describe('The group that comments restricted to this one move to: required when there are any (spec 0106)') }) } }, async (req, reply) => {
     await tx(async d => {
       const g = await groupFor(d, req.me, req.params.id, true, true)
       if (g.systemRole) throw new HttpError(409, `${g.displayName} is a system group and can’t be deleted`)
       await guardProjectAdmins(d, g.id, null)
+      // spec 0106 R1: comments restricted to it move to another group, or the delete is refused
+      const { swapGroupId } = req.query
+      const [{ n }] = await d.query<{ n: number }>(`select count(*)::int as n from comments where visibility->>'kind' = 'group' and visibility->>'id' = $1`, [g.id]) as [{ n: number }]
+      let swap: { id: string; displayName: string } | undefined
+      if (n && !swapGroupId) throw new HttpError(409, `${n === 1 ? '1 comment is' : `${n} comments are`} restricted to ${g.displayName}: choose a group to move ${n === 1 ? 'it' : 'them'} to`, { swapGroupId: 'Choose a group' })
+      if (n) {
+        ;[swap] = await d.query<{ id: string; displayName: string }>('select id, display_name from groups where id = $1 and id <> $2', [swapGroupId, g.id])
+        if (!swap) throw new HttpError(400, 'No such group to move the comments to', { swapGroupId: 'Unknown group' })
+        await d.query(`update comments set visibility = jsonb_build_object('kind', 'group', 'id', $2::text) where visibility->>'kind' = 'group' and visibility->>'id' = $1`, [g.id, swap.id])
+      }
+      // R2: it leaves every notification scheme, as in Jira
+      await d.query(`delete from notification_scheme_entries where recipient = 'group' and value = $1`, [g.id])
       await d.query('delete from groups where id = $1', [g.id])
-      await audit(d, req, { action: 'group.deleted', type: 'group', id: g.id, name: g.displayName })
+      await audit(d, req, { action: 'group.deleted', type: 'group', id: g.id, name: g.displayName, ...(swap ? { after: { commentsMovedTo: swap.displayName, comments: n } } : {}) })
     })
     reply.code(204).send()
   })

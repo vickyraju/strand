@@ -6801,3 +6801,37 @@ test('[0706.R1][0706.R2][0706.R3] rate limiting counts every request but the web
   }
 })
 
+
+test('[0106.R1][0106.R2][0106.R3] deleting a group its comments are restricted to: they move to the group chosen, or the delete is refused; the group leaves notification schemes', { skip }, async () => {
+  await call('POST', '/api/v1/projects', { name: 'Swapped', key: 'SWP', template: 'kanban' })
+  await join('SWP', 'swp.ann@x.com'); await join('SWP', 'swp.bob@x.com')
+  const bob = (await call('GET', '/api/v1/me', undefined, 'swp.bob@x.com')).body.id
+  const old = (await call('POST', '/api/v1/groups', { name: 'swp-old' }, 'swp.ann@x.com')).body
+  const next = (await call('POST', '/api/v1/groups', { name: 'swp-next' })).body
+  await call('POST', `/api/v1/groups/${next.id}/members`, { userIds: [bob] })
+  const item = (await call('POST', '/api/v1/projects/SWP/issues', { title: 'Hush' })).body
+  await call('POST', `/api/v1/issues/${item.key}/comments`, { body: 'old group only', visibility: { kind: 'group', id: old.id } }, 'swp.ann@x.com')
+  const scheme = (await call('GET', '/api/v1/admin/notification-schemes')).body.find((s: any) => s.isDefault)
+  await call('POST', `/api/v1/admin/notification-schemes/${scheme.id}/entries`, { event: 'issue_commented', recipient: 'group', value: old.id })
+  // R1: the count, for its owner; others don't get it
+  assert.equal((await call('GET', `/api/v1/groups/${old.id}`, undefined, 'swp.ann@x.com')).body.restrictedComments, 1)
+  assert.equal((await call('GET', `/api/v1/groups/${old.id}`, undefined, 'swp.bob@x.com')).body.restrictedComments, null)
+  const bodies = async (w: string) => (await call('GET', `/api/v1/issues/${item.key}/comments`, undefined, w)).body.items.map((c: any) => c.body)
+  assert.deepEqual(await bodies('swp.bob@x.com'), [])
+  // without a group to move them to, or to itself, it's refused
+  const refused = await call('DELETE', `/api/v1/groups/${old.id}`, undefined, 'swp.ann@x.com')
+  assert.deepEqual([refused.status, refused.body.error], [409, '1 comment is restricted to swp-old: choose a group to move it to'])
+  assert.equal((await call('DELETE', `/api/v1/groups/${old.id}?swapGroupId=${old.id}`, undefined, 'swp.ann@x.com')).status, 400)
+  // moved: swp-next's people read it now
+  assert.equal((await call('DELETE', `/api/v1/groups/${old.id}?swapGroupId=${next.id}`, undefined, 'swp.ann@x.com')).status, 204)
+  assert.deepEqual(await bodies('swp.bob@x.com'), ['old group only'])
+  assert.equal((await call('GET', `/api/v1/groups/${next.id}`)).body.restrictedComments, 1)
+  // R2: gone from the notification scheme
+  assert.equal((await call('GET', `/api/v1/admin/notification-schemes/${scheme.id}`)).body.entries.some((e: any) => e.value === old.id), false)
+  // R3: the audit entry says where they went
+  const [entry] = (await call('GET', '/api/v1/audit?action=group.deleted')).body.items.filter((e: any) => e.targetId === old.id)
+  assert.deepEqual(entry.after, { commentsMovedTo: 'swp-next', comments: 1 })
+  // a group nobody restricted comments to deletes as before
+  const empty = (await call('POST', '/api/v1/groups', { name: 'swp-empty' })).body
+  assert.equal((await call('DELETE', `/api/v1/groups/${empty.id}`)).status, 204)
+})

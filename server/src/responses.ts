@@ -455,6 +455,7 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'GET /groups/:id': GroupSummary.extend({
     people: z.array(GroupMember).describe('The first members by name (GET /groups/:id/members for the rest)'), morePeople: nullable(z.string()).describe('Cursor for the next page of members'),
     projects: z.array(z.object({ key: z.string(), name: z.string(), role: z.string() })).describe('Projects you can see where the group has a role'),
+    restrictedComments: nullable(z.number().int()).describe('Comments restricted to the group, which a delete moves to another group (spec 0106); null unless you may delete it'),
   }),
   'GET /groups/:id/members': z.object({ items: z.array(GroupMember), next: nullable(z.string()) }),
   'POST /groups': GroupSummary,
