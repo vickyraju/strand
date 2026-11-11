@@ -106,4 +106,4 @@ The roadmap, in order. Bugs come first, then the permission model, then the data
 | [0716](0716-epic-status.md) | Epic Status (Mark as Done) | 7 | Ported |
 | [0801](0801-jira-inventory.md) | Jira inventory tool, run by the product owner | 8 | Ported |
 | [0802](0802-jira-importer.md) | Jira DC importer with dry run and reconciliation | 8 | Ported |
-| [0803](0803-planning.md) | Planning like Advanced Roadmaps (decision after 0802) | 8 | In review |
+| [0803](0803-planning.md) | Planning like Advanced Roadmaps: initiatives and plans | 8 | Approved |
