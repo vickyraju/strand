@@ -53,6 +53,7 @@ export async function notifyEvent(d: Db, event: SchemeEvent, issueId: string, ac
      select distinct u.id, $3, $1, $4, case when $2 = 'issue_assigned' and u.id = i.assignee_id then 'assigned you a work item' else $5 end from r join users u on u.id = r.id, i
       where u.active and u.id is distinct from $3 and not (u.id = any($6::uuid[]))
         and (exists (select 1 from project_access pa where pa.project_id = i.project_id and pa.user_id = u.id) or is_system_admin(u.id))
+        and issue_visible(i.security_level_id, i.reporter_id, i.assignee_id, i.project_id, u.id, is_system_admin(u.id))   -- its security level, as note() checks
         and ($7::text is null
           or $7 = 'group' and exists (select 1 from group_members gm where gm.group_id::text = $8 and gm.user_id = u.id)
           or $7 = 'role' and (exists (select 1 from project_access pa where pa.project_id = i.project_id and pa.user_id = u.id and pa.role = $9) or ($9 = 'admin' and is_system_admin(u.id))))`,

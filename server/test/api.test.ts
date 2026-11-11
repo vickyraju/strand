@@ -6171,6 +6171,21 @@ test('[0605.R1][0605.R2][0605.R3][0605.R4][0605.R5][0605.R6] notification scheme
   assert.ok((await pool.query(`select 1 from audit_log where action = 'project.notification_scheme_changed'`)).rows.length >= 3)
 })
 
+test('[0605.R3] a notification scheme never tells someone outside an item\'s security level', { skip }, async () => {
+  await call('POST', '/api/v1/projects', { name: 'Scheme levels', key: 'NSL', template: 'kanban' })
+  await join('NSL', 'nsl.ann@x.com'); await join('NSL', 'nsl.bob@x.com')
+  const ann = (await call('GET', '/api/v1/me', undefined, 'nsl.ann@x.com')).body.id
+  const scheme = (await call('POST', '/api/v1/admin/notification-schemes', { name: 'Members hear everything' })).body
+  await call('POST', `/api/v1/admin/notification-schemes/${scheme.id}/entries`, { event: 'issue_created', recipient: 'project_role', value: 'member' })
+  await call('PUT', '/api/v1/projects/NSL/notification-scheme', { schemeId: scheme.id })
+  const lvl = (await call('POST', '/api/v1/projects/NSL/security-levels', { name: 'Ann and admins', members: [{ kind: 'role', role: 'admin' }, { kind: 'user', id: ann }] })).body
+  const hidden = (await call('POST', '/api/v1/projects/NSL/issues', { title: 'Hidden', securityLevelId: lvl.id })).body
+  const open = (await call('POST', '/api/v1/projects/NSL/issues', { title: 'Open' })).body
+  const heard = async (who: string) => (await inbox(`${who}@x.com`)).map(n => n.issueKey).filter(k => k.startsWith('NSL-')).sort()
+  assert.deepEqual(await heard('nsl.ann'), [hidden.key, open.key].sort())   // a member in the level
+  assert.deepEqual(await heard('nsl.bob'), [open.key])
+})
+
 test('[0705.R2] a webhook never reaches private addresses, whatever its name resolves to', { skip }, async () => {
   const { privateAddress, urlProblem, fillUrl } = await import('../src/webhooks.ts')
   for (const a of ['127.0.0.1', '10.1.2.3', '172.20.0.1', '192.168.1.1', '169.254.169.254', '100.64.0.1', '0.0.0.0', '::1', 'fd00::1', 'fe80::1', '::ffff:127.0.0.1',
