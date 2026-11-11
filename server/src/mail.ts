@@ -24,6 +24,8 @@ export type Kind = 'create_or_comment' | 'comment_non_quoted' | 'comment_entire'
 export interface Params {
   project?: string; issueType?: string; stripQuotes?: boolean; catchEmail?: string; bulk?: 'ignore' | 'forward' | 'delete' | 'accept'
   forwardEmail?: string; defaultReporter?: string; ccAssignee?: boolean; ccWatchers?: boolean; splitRegex?: string
+  /** Trust a sender only when the receiving mail server verified them (on unless turned off) */
+  verifiedSenders?: boolean
 }
 /** A message from a source, and how to say it was dealt with (marked read, or removed). */
 interface Raw { id: string; raw: Buffer; done: () => Promise<void> }
@@ -107,16 +109,30 @@ export function bodyFor(kind: Kind, p: Params, text: string) {
   return t
 }
 
+/** Spoofing guard (spec 0607 R3): does the receiving mail server vouch for the From address? Its verdict is the topmost
+ *  Authentication-Results header (added last, by our own server): DMARC pass, or DKIM pass for the sender's domain. In a
+ *  Microsoft 365 mailbox, Exchange marks mail from inside the organisation as internal (and strips that mark from outside mail). */
+export function senderVerified(m: Pick<ParsedMail, 'headerLines'>, from: string, kind: MailServer['kind']) {
+  const first = (k: string) => (m.headerLines ?? []).find(l => l.key === k)?.line ?? ''
+  if (kind === 'graph' && /:\s*internal\s*$/i.test(first('x-ms-exchange-organization-authas'))) return true
+  const ar = first('authentication-results').toLowerCase()
+  if (/\bdmarc=pass\b/.test(ar)) return true
+  const domain = from.split('@')[1] ?? '', signed = /\bdkim=pass\b[^;]*header\.d=([a-z0-9.-]+)/.exec(ar)?.[1]
+  return !!signed && !!domain && (domain === signed || domain.endsWith(`.${signed}`))
+}
+
 type Outcome = { messageId: string; subject: string; from: string; result: 'created' | 'commented' | 'ignored' | 'forwarded' | 'failed'; key?: string; reason?: string }
 
+/** A person of the workspace by address or username. Never with system administrator rights: email acts only with the
+ *  sender's project roles (spec 0607 R3). */
 async function meFor(d: Db, ws: string, email: string): Promise<Me | null> {
   const [u] = await d.query<any>(`select u.id, u.email, u.name, m.workspace_id, m.role, is_system_admin(u.id) as admin from users u join memberships m on m.user_id = u.id and m.workspace_id = $2
     where u.active and (lower(u.email) = lower($1) or lower(u.username) = lower($1))`, [email, ws])
-  return u ? { id: u.id, email: u.email, name: u.name, workspaceId: u.workspaceId, role: u.role, admin: u.admin, via: 'entra' } as Me : null
+  return u ? { id: u.id, email: u.email, name: u.name, workspaceId: u.workspaceId, role: u.role, admin: false, via: 'entra' } as Me : null
 }
 
 /** R2–R6: one message through one handler. Throws to leave it unread (it's tried again next run). */
-export async function handleMessage(h: MailHandler, raw: Buffer): Promise<Outcome> {
+export async function handleMessage(h: MailHandler, raw: Buffer, kind: MailServer['kind']): Promise<Outcome> {
   const m: ParsedMail = await simpleParser(raw)
   const subject = (m.subject ?? '').trim(), from = addresses(m.from)[0] ?? ''
   const out = (result: Outcome['result'], extra: Partial<Outcome> = {}): Outcome => ({ messageId: m.messageId ?? '', subject, from, result, ...extra })
@@ -131,13 +147,15 @@ export async function handleMessage(h: MailHandler, raw: Buffer): Promise<Outcom
     return out('ignored', { reason: p.bulk === 'delete' ? 'Automatic mail (bulk), deleted' : 'Automatic mail (bulk)' })
   }
   return tx(async d => {
-    // R3: the sender is a person of the workspace with that address; else the default reporter
-    let me = await meFor(d, h.workspaceId, from)
+    // R3: the sender is a person of the workspace with that address (when the mail server verified it); else the default reporter
+    const verified = p.verifiedSenders === false || senderVerified(m, from, kind)
+    let me = verified ? await meFor(d, h.workspaceId, from) : null
     let viaDefault = false
     if (!me && p.defaultReporter) { me = await meFor(d, h.workspaceId, p.defaultReporter); viaDefault = !!me }
-    if (!me) return p.forwardEmail ? forward(h, m, `Nobody in Strand has the address ${from}`) : out('failed', { reason: `Nobody in Strand has the address ${from}` })
+    const who = verified ? `Nobody in Strand has the address ${from}` : `The mail server didn’t verify the sender ${from}`
+    if (!me) return p.forwardEmail ? forward(h, m, who) : out('failed', { reason: who })
     const req = { me, method: 'POST' }
-    const text = bodyFor(h.kind, p, m.text ?? '') + (viaDefault ? `\n\n(Sent by ${from})` : '')
+    const text = bodyFor(h.kind, p, m.text ?? '') + (viaDefault ? `\n\n(Sent by ${from}${verified ? '' : ', not verified'})` : '')
     // R4: which item a comment goes to: the first key in the subject (earlier keys too), else the item the replied-to email made
     const target = async () => {
       for (const k of subject.toUpperCase().match(KEY) ?? []) {
@@ -239,7 +257,7 @@ export async function runHandler(id: string) {
         try {
           for (const msg of box.messages) {
             // as Jira's: a message that failed stays in the mailbox (unread) and is tried again next run
-            try { const o = await handleMessage(h, msg.raw); outcomes.push(o); if (o.result !== 'failed') await msg.done() }
+            try { const o = await handleMessage(h, msg.raw, s!.kind); outcomes.push(o); if (o.result !== 'failed') await msg.done() }
             catch (e) { outcomes.push({ messageId: msg.id, subject: '', from: '', result: 'failed', reason: `Left for next time: ${e instanceof Error ? e.message : e}` }) }
           }
         } finally { await box.close() }

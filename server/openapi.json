@@ -73539,6 +73539,10 @@
                         "description": "/regex/: the comment is what comes before it",
                         "type": "string",
                         "maxLength": 500
+                      },
+                      "verifiedSenders": {
+                        "description": "Trust a sender only when the receiving mail server verified them (DMARC or DKIM); on unless false",
+                        "type": "boolean"
                       }
                     },
                     "additionalProperties": false
@@ -73799,6 +73803,10 @@
                         "description": "/regex/: the comment is what comes before it",
                         "type": "string",
                         "maxLength": 500
+                      },
+                      "verifiedSenders": {
+                        "description": "Trust a sender only when the receiving mail server verified them (DMARC or DKIM); on unless false",
+                        "type": "boolean"
                       }
                     },
                     "additionalProperties": false

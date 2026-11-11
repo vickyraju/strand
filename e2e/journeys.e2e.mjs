@@ -2149,7 +2149,7 @@ test('[0607.R1][0607.R2] an admin sets up incoming mail; an email becomes a work
   await o.click('.modal button:has-text("Save")')
   await o.waitForSelector('td:has-text("Support desk")')
   const { writeFileSync } = await import('node:fs')
-  writeFileSync(`${mailDir}/1.eml`, ['From: Olive <owner@e2e.test>', 'To: support@e2e.test', 'Subject: Kettle is broken', 'Message-ID: <k1@e2e.test>', 'Content-Type: text/plain', '', 'It will not boil.'].join('\r\n'))
+  writeFileSync(`${mailDir}/1.eml`, ['Authentication-Results: mx.e2e.test; dmarc=pass header.from=e2e.test', 'From: Olive <owner@e2e.test>', 'To: support@e2e.test', 'Subject: Kettle is broken', 'Message-ID: <k1@e2e.test>', 'Content-Type: text/plain', '', 'It will not boil.'].join('\r\n'))
   await o.click('[aria-label="Run Support desk now"]')
   let items = []
   for (let i = 0; i < 40 && !items.length; i++) {
