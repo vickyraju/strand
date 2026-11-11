@@ -4,7 +4,7 @@ import { usePresence } from '../api/presence'
 import { recordView } from '../api/work'
 import {
   Maximize2, Minimize2, X, Link2, Trash2, Plus, Eye, EyeOff, ChevronUp, ChevronDown, MoreHorizontal, RefreshCw, CopyPlus, Lock,
-  Ban, Unlink, Pencil, UserCheck, Copy, Paperclip, FileText, Archive, Flag, ArrowRightLeft, ThumbsUp } from 'lucide-react'
+  Ban, Unlink, Pencil, UserCheck, Copy, Paperclip, FileText, Archive, Flag, ArrowRightLeft, ThumbsUp, CornerDownRight, CornerUpLeft } from 'lucide-react'
 import {
   useStore, userOf, projectOf, timeAgo, transitionsFrom, loopsFrom, moveContext, linkWords, DEFAULT_LINK_TYPES,
   type Issue, type IssuePatch,
@@ -37,6 +37,8 @@ import { TimeField } from './TimeTracking'
 import { TemplateDialog, blankTemplate } from './TemplatesImport'
 import DevelopmentPanel from './DevelopmentPanel'
 import MoveDialog from './MoveDialog'
+import { issueSync } from '../api/sync'
+import { mapIssue } from '../api/map'
 import { usePublicSettings } from '../api/settings-public'
 import type { FieldRule } from '../../server/src/shared/fieldRules.ts'
 
@@ -80,7 +82,16 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
   const [linking, setLinking]     = useState(false)
   const [cloning, setCloning]     = useState(false)
   const [moving, setMoving]       = useState(false)
+  const [converting, setConverting] = useState(false)
   const voting = usePublicSettings().voting
+  const convert = async (parentKey: string | null) => {
+    try {
+      await issueSync.idle()
+      const row = await api<any>('POST', `/api/issues/${encodeURIComponent(issue!.key)}/convert`, { parentKey })
+      issueSync.merge([{ ...mapIssue(row), version: row.version }]); dispatch({ type: 'mergeIssues', issues: [mapIssue(row)] })
+      toast(parentKey ? `${issue!.key} is now a sub-item of ${parentKey}` : `${issue!.key} is now an item`)
+    } catch (e) { toast(errorMessage(e), { tone: 'warn' }) }
+  }
   const archiveItem = async (on: boolean) => {
     try {
       const r = await api<{ archived?: string[]; restored?: string[] }>('POST', `/api/issues/${encodeURIComponent(issue!.key)}/${on ? 'archive' : 'unarchive'}`)
@@ -217,6 +228,11 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
           ...(readOnly ? [] : [{ label: 'Save as template', icon: <FileText size={14} />, onClick: () => setTemplating(true) }]),
           ...(!readOnly && issue.type !== 'epic' && !issue.parentId ? [{ label: 'Add sub-item', icon: <Plus size={14} />, onClick: () => createIssue({ projectId: project.id, parentId: issue.id, sprintId: issue.sprintId }) }] : []),
           ...flag.items,
+          // Jira's Convert to sub-task / Convert to issue (spec 0509)
+          ...(apiEnabled && !readOnly && issue.type !== 'epic' && !issue.parentId || (apiEnabled && !readOnly && issue.parentId && state.issues.find(i => i.id === issue.parentId)?.type === 'epic' && !children.length)
+            ? [{ label: 'Convert to sub-item…', icon: <CornerDownRight size={14} />, onClick: () => setConverting(true) }] : []),
+          ...(apiEnabled && !readOnly && issue.parentId && state.issues.find(i => i.id === issue.parentId)?.type !== 'epic'
+            ? [{ label: 'Convert to item', icon: <CornerUpLeft size={14} />, onClick: () => void convert(null) }] : []),
           // Jira DC's Archive (spec 0508): system administrators
           ...(apiEnabled && state.isAdmin === true && !issue.archivedAt && !archived ? [{ label: 'Archive', icon: <Archive size={14} />, onClick: () => void archiveItem(true) }] : []),
           ...(can(project, 'deleteIssues') && !project?.archivedAt ? [{ label: 'Delete', icon: <Trash2 size={14} />, danger: true, divider: true, onClick: () => setConfirmDel(true) }] : []),
@@ -566,6 +582,15 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
       {linking && <LinkDialog issue={issue} onClose={() => setLinking(false)} />}
       {cloning && <CloneDialog issue={issue} onClose={() => setCloning(false)} />}
       {moving && <MoveDialog issue={issue} onClose={() => setMoving(false)} />}
+      {converting && (
+        <Modal title={`Convert ${issue.key} to a sub-item`} onClose={() => setConverting(false)}>
+          <p className="hint" style={{ marginTop: 0 }}>Its parent: an item of {project.key} that isn’t an epic or a sub-item.</p>
+          <Picker value={undefined as string | undefined} search title="Parent" className="btn btn-secondary"
+            options={state.issues.filter(i => !i.archivedAt && i.projectId === project.id && i.id !== issue.id && i.type !== 'epic'
+              && (!i.parentId || state.issues.find(x => x.id === i.parentId)?.type === 'epic')).map(i => ({ value: i.key as string | undefined, label: `${i.key} ${i.title}`, icon: <TypeIcon type={i.type} size={12} /> }))}
+            onChange={k => { if (k) { setConverting(false); void convert(k) } }} trigger={<>Choose the parent…</>} />
+        </Modal>
+      )}
       {templating && (
         <TemplateDialog project={project}
           template={{ ...blankTemplate(), name: issue.title, type: issue.type, description: issue.description, priority: issue.priority, labels: issue.labels, estimate: issue.estimate }}

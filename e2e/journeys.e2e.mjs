@@ -1968,3 +1968,22 @@ test('[0508.R2][0508.R3] an admin archives an item: it leaves the project’s li
   assert.deepEqual(o.problems, [])
 })
 
+test('[0509.R1][0509.R2] an item is converted to a sub-item from its menu, then back to an item', { skip, timeout: 120_000 }, async () => {
+  await owner('POST', '/projects', { name: 'Convert journey', key: 'CVJ', template: 'kanban' })
+  const parent = (await owner('POST', '/projects/CVJ/issues', { title: 'The parent' })).body
+  const item = (await owner('POST', '/projects/CVJ/issues', { title: 'Will be a sub-item' })).body
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url(`/i/${item.key}`))
+  await o.click('[aria-label="More actions"]')
+  await o.click('[role="menu"] button:has-text("Convert to sub-item")')
+  await o.click('.modal button:has-text("Choose the parent")')
+  await o.click(`.picker-menu .picker-item:has-text("${parent.key}")`)
+  await o.waitForSelector(`text=${item.key} is now a sub-item of ${parent.key}`)
+  assert.equal((await owner('GET', `/issues/${item.key}`)).body.parentId, parent.id)
+  await o.click('[aria-label="More actions"]')
+  await o.click('[role="menu"] button:has-text("Convert to item")')
+  await o.waitForSelector(`text=${item.key} is now an item`)
+  assert.equal((await owner('GET', `/issues/${item.key}`)).body.parentId, null)
+  assert.deepEqual(o.problems, [])
+})
+

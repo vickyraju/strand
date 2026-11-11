@@ -881,6 +881,27 @@ const plugin: FastifyPluginAsyncZod = async app => {
     return { items, next: rows.length > limit ? `${new Date(items.at(-1)!.archivedAt).toISOString()}|${items.at(-1)!.id}` : null }
   })
 
+  // Convert to and from sub-items (spec 0509), as Jira's Convert to sub-task / Convert to issue: the parent decides it
+  app.post('/issues/:key/convert', { schema: { tags: TAG, summary: 'Convert an item to a sub-item of another item (parentKey), or a sub-item to an item (parentKey: null); optionally its work type',
+    params: keyP, body: z.object({ parentKey: z.string().min(1).nullable(), type: type.optional() }) } }, async req => tx(async d => {
+    const cur = await issueByKey(d, req, req.params.key, false, 'editIssues')
+    const [par] = cur.parentId ? await d.query<{ type: string }>('select type from issues where id = $1', [cur.parentId]) : []
+    const isSub = !!par && par.type !== 'epic'
+    if (req.body.parentKey === null) {
+      if (!isSub) throw new HttpError(400, `${cur.key} isn’t a sub-item`)
+      const out = await applyPatch(d, req.me, cur, { parentId: null, ...(req.body.type ? { type: req.body.type } : {}) }, { ifMatch: null, override: false, ip: req.ip })
+      await d.query('insert into activity (issue_id, actor_id, text) values ($1, $2, $3)', [cur.id, req.me.id, 'Converted to an item'])
+      return out
+    }
+    if (isSub) throw new HttpError(400, `${cur.key} is already a sub-item`)
+    if (cur.type === 'epic') throw new HttpError(400, 'An epic can’t become a sub-item')
+    const parent = await issueByKey(d, req, req.body.parentKey, false, 'browse')
+    if (parent.type === 'epic') throw new HttpError(400, 'A sub-item’s parent is an item, not an epic', { parentKey: 'An epic' })
+    const out = await applyPatch(d, req.me, cur, { parentId: parent.id, ...(req.body.type ? { type: req.body.type } : {}) }, { ifMatch: null, override: false, ip: req.ip })
+    await d.query('insert into activity (issue_id, actor_id, text) values ($1, $2, $3)', [cur.id, req.me.id, `Converted to a sub-item of ${parent.key}`])
+    return out
+  }))
+
   // Voting (spec 0506), as Jira's: once per person, not the reporter, not once resolved; the workspace's switch
   const voteFor = async (req: any) => {
     const i = await issueByKey(db, req, req.params.key, false, 'viewer')
