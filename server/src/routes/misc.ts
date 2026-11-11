@@ -67,6 +67,17 @@ export async function searchWhere(me: Me, q: SearchFilters, args: unknown[]): Pr
 
 
 
+/** SQL: does a share entry `e` (jsonb) include me? */
+const includesMe = (me: Me, n: number) => `(
+    (e->>'kind' = 'user' and e->>'id' = $${n}::text)
+ or (e->>'kind' = 'group' and (e->>'id')::uuid in (select group_id from group_members where user_id = $${n}))
+ or (e->>'kind' = 'project' and ${me.admin ? 'true' : `(e->>'id')::uuid in (select project_id from project_access where user_id = $${n})`}))`
+/** SQL: can I see saved view v? (my own, shared with the workspace, or with a project, group or person I am part of) */
+const canSee = (me: Me) => `(v.owner_id = $2 or v.shared or exists (select 1 from jsonb_array_elements(v.share) e where ${includesMe(me, 2)}))`
+/** Can this person see this saved view? (filter subscriptions, spec 0604) */
+export const viewSeenBy = async (d: Db, me: Me, id: string) =>
+  (await d.query(`select 1 from saved_views v where v.workspace_id = $1 and v.id = $3 and ${canSee(me)}`, [me.workspaceId, me.id, id])).length > 0
+
 const idP = z.object({ id: uuid })
 const pageQ = { cursor: z.string().optional().describe('`next` from the previous page') }
 
@@ -297,15 +308,9 @@ const plugin: FastifyPluginAsyncZod = async app => {
   // person I am part of. Shared people can view or edit; only the owner (or a workspace admin) changes who can. ──
   const shareEntry = z.object({ kind: z.enum(['project', 'group', 'user']), id: uuid, can: z.enum(['view', 'edit']).default('view') })
   const share = z.array(shareEntry).max(50).describe('Who else can see it (view) or change it (edit): projects, groups, people')
-  /** SQL: does a share entry `e` (jsonb) include me? */
-  const includesMe = (me: Me, n: number) => `(
-      (e->>'kind' = 'user' and e->>'id' = $${n}::text)
-   or (e->>'kind' = 'group' and (e->>'id')::uuid in (select group_id from group_members where user_id = $${n}))
-   or (e->>'kind' = 'project' and ${me.admin ? 'true' : `(e->>'id')::uuid in (select project_id from project_access where user_id = $${n})`}))`
   const VIEW = (me: Me) => `select v.*, u.name as owner_name, u.active as owner_active,
       (v.owner_id = $2 or $3 or exists (select 1 from jsonb_array_elements(v.share) e where e->>'can' = 'edit' and ${includesMe(me, 2)})) as can_edit
     from saved_views v join users u on u.id = v.owner_id`
-  const canSee = (me: Me) => `(v.owner_id = $2 or v.shared or exists (select 1 from jsonb_array_elements(v.share) e where ${includesMe(me, 2)}))`
   const viewArgs = (req: { me: Me }) => [req.me.workspaceId, req.me.id, req.me.admin]
   /** The view, if I can see it (404 otherwise), with whether I can change it. */
   const viewFor = async (d: Db, req: { me: Me }, id: string) => {

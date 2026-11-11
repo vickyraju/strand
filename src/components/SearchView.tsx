@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import ShareViewDialog from './ShareViewDialog'
+import SubscriptionsDialog from './SubscriptionsDialog'
 import JqlBox from './JqlBox'
 import { filtersToJql } from '../../server/src/shared/jql.ts'
-import { Search as SearchIcon, X, ChevronDown, Bookmark, MoreHorizontal, Pencil, Trash2, Users, Lock, Save, Download } from 'lucide-react'
+import { Search as SearchIcon, X, ChevronDown, Bookmark, MoreHorizontal, Pencil, Trash2, Users, Lock, Save, Download, Mail } from 'lucide-react'
 import { useStore, projectOf, uid, type Issue, type IssueType, type Priority, type ViewFilters, type ViewResolution } from '../data/store'
 import { applyFilters, filtersActive, EMPTY_FILTERS } from '../data/views'
 import { useApp } from '../appContext'
@@ -47,6 +48,7 @@ export default function SearchView({ query, viewId }: { query: string; viewId?: 
   /** Only its owner (or a workspace admin) decides who can see it, deletes it, or gives it away. */
   const governs = !!view && (view.ownerId === state.me?.id || (apiEnabled && !!state.isAdmin))
   const [sharing, setSharing] = useState(false)
+  const [subscribing, setSubscribing] = useState(false)
   const any = <T,>(l: string, opts: PickerOption<T>[]) => [{ value: undefined as T, label: l }, ...opts]
   const projectRow = projects.byId(f.projectId)
   const project = projectOf(state, f.projectId) ?? (projectRow ? { name: projectRow.name, color: projectRow.color } : undefined)
@@ -105,6 +107,8 @@ export default function SearchView({ query, viewId }: { query: string; viewId?: 
         {(!view || dirty) && filtersActive(f) && (
           <button className={`btn ${view ? 'btn-secondary' : 'btn-primary'}`} onClick={() => setNaming('new')}><Bookmark size={15} />{view ? 'Save as new view' : 'Save as view'}</button>
         )}
+        {view && apiEnabled && <button className="btn btn-secondary" onClick={() => setSubscribing(true)}><Mail size={15} />Subscribe</button>}
+        {subscribing && view && <SubscriptionsDialog view={view} onClose={() => setSubscribing(false)} />}
         {view && canEdit && (
           <Menu title="View actions" className="icon-btn" trigger={<MoreHorizontal size={17} />} items={[
             { label: 'Rename', icon: <Pencil size={14} />, onClick: () => setNaming('rename') },

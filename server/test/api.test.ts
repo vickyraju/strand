@@ -3556,6 +3556,7 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
   const group = (await pool.query(`insert into groups (display_name) values ('Matrix team') returning id`)).rows[0].id
   await call('POST', '/api/v1/projects/MTX/groups', { groupId: group, role: 'viewer' })
   const view = (await call('POST', '/api/v1/views', { name: 'Matrix view', filters: {} })).body.id
+  const subscription = (await call('POST', `/api/v1/views/${view}/subscriptions`, { cron: '0 0 7 ? * *' })).body.id
   const token = (await call('POST', '/api/v1/me/tokens', { name: 'mine' })).body.id
   const notification = (await pool.query(
     `insert into notifications (user_id, issue_id, kind, text) select $1, i.id, 'assigned', 'matrix' from issues i join projects p on p.id = i.project_id where p.key = 'MTX' limit 1 returning id`, [ownerId])).rows[0].id
@@ -3751,6 +3752,9 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     'POST /notifications/read-all': ['any', '/notifications/read-all'],
     'GET /views': ['any', '/views'], 'POST /views': ['any', '/views', { name: 'v', filters: {} }],
     'PATCH /views/{id}': ['own', `/views/${view}`, { name: 'x' }], 'DELETE /views/{id}': ['own', `/views/${view}`],
+    'GET /views/{id}/subscriptions': ['own', `/views/${view}/subscriptions`], 'POST /views/{id}/subscriptions': ['own', `/views/${view}/subscriptions`, { cron: '0 0 7 ? * *' }],   // 0604.R1
+    'PATCH /subscriptions/{id}': ['own', `/subscriptions/${subscription}`, { emailWhenEmpty: true }], 'DELETE /subscriptions/{id}': ['own', `/subscriptions/${subscription}`],
+    'POST /subscriptions/{id}/run': ['own', `/subscriptions/${subscription}/run`],
     'POST /issues/{key}/attachments': ['write', `/issues/${I}/attachments`, { name: 'b.txt', size: 1, type: 'text/plain' }],
     'POST /attachments/{id}/complete': ['write', `/attachments/${ticket.id}/complete`],
     'GET /attachments/{id}/url': ['read', `/attachments/${ticket.id}/url`], 'DELETE /attachments/{id}': ['write', `/attachments/${ticket.id}`],
@@ -3935,7 +3939,7 @@ test('system settings: admins change policies at runtime (validated, audited); e
   const { clearSettingsCache } = await import('../src/settings.ts')
   const put = (key: string, value: object, who = 'owner@x.com') => call('PUT', `/api/v1/admin/settings/${key}`, value, who)
   const all = (await call('GET', '/api/v1/admin/settings')).body
-  assert.deepEqual(all.map((s: any) => s.key), ['rateLimiting', 'announcement', 'attachments', 'accessTokens', 'searchAndBulk', 'signIn', 'groups', 'voting', 'webhooks', 'automation', 'testing', 'dueReminders', 'email', 'deletedItems', 'projectKeys', 'timeTracking'])
+  assert.deepEqual(all.map((s: any) => s.key), ['rateLimiting', 'announcement', 'attachments', 'accessTokens', 'searchAndBulk', 'filterSubscriptions', 'signIn', 'groups', 'voting', 'webhooks', 'automation', 'testing', 'dueReminders', 'email', 'deletedItems', 'projectKeys', 'timeTracking'])
   assert.equal(all.find((s: any) => s.key === 'rateLimiting').value.enabled, false)                  // no limit unless an admin sets one
   assert.equal((await call('GET', '/api/v1/admin/settings', undefined, 'set.member@x.com')).status, 403)
   assert.equal((await put('attachments', { enabled: true, maxSizeMb: 5 }, 'set.member@x.com')).status, 403)
@@ -3945,7 +3949,7 @@ test('system settings: admins change policies at runtime (validated, audited); e
 
   // public settings: what the web app needs, for anyone signed in (not rate limiting)
   const pub = (await call('GET', '/api/v1/settings/public', undefined, 'set.member@x.com')).body
-  assert.deepEqual(Object.keys(pub).sort(), ['accessTokens', 'announcement', 'attachments', 'dueReminders', 'groups', 'priorities', 'projectKeys', 'resolutions', 'searchAndBulk', 'testing', 'timeTracking', 'voting'])
+  assert.deepEqual(Object.keys(pub).sort(), ['accessTokens', 'announcement', 'attachments', 'dueReminders', 'filterSubscriptions', 'groups', 'priorities', 'projectKeys', 'resolutions', 'searchAndBulk', 'testing', 'timeTracking', 'voting'])
 
   // attachments: size limit and the switch
   await call('POST', '/api/v1/projects', { name: 'Settings', key: 'SET', template: 'kanban' })
@@ -6006,6 +6010,78 @@ test('[0603.R1][0603.R2][0603.R3][0603.R4][0603.R5][0603.R6] the rest of Jira\'s
   for (const q of ['issue in linkedIssues(NOPE-1)', 'issue in linkedIssues(FNQ-1, "eats")', 'issue in updatedBy("nobody@x.com")', 'project in projectsWhereUserHasRole(Owners)',
     'project in projectsWhereUserHasPermission("Fly")', 'fixVersion = latestReleasedVersion()', 'priority = releasedVersions()', 'created > startOfDay("soon")',
     `issue in issuesWithRemoteLinksByGlobalId()`]) assert.equal((await call('GET', `/api/v1/search?jql=${encodeURIComponent(q)}`)).status, 400, q)
+})
+
+test('[0604.R1][0604.R2][0604.R3][0604.R4][0604.R5][0604.R6] filter subscriptions: yourself or a group, on a schedule, each recipient sees what they may', { skip }, async () => {
+  process.env.EMAIL_TRANSPORT = 'memory'
+  const { sentEmails } = await import('../src/email.ts')
+  const { runJobs } = await import('../src/jobs.ts')
+  await call('PUT', '/api/v1/admin/settings/email', { enabled: true, from: 'Strand <strand@example.com>', appUrl: 'https://strand.example.com' })
+  await call('POST', '/api/v1/projects', { name: 'Subscribed', key: 'SBA', template: 'kanban' })
+  await call('POST', '/api/v1/projects', { name: 'Subscribed secret', key: 'SBB', template: 'kanban' })
+  await join('SBA', 'sb.ann@x.com'); await join('SBA', 'sb.bob@x.com'); await join('SBA', 'sb.gone@x.com')
+  const id = async (e: string) => (await call('GET', '/api/v1/me', undefined, e)).body.id
+  const [ann, bob, gone] = [await id('sb.ann@x.com'), await id('sb.bob@x.com'), await id('sb.gone@x.com')]
+  await call('POST', '/api/v1/projects/SBA/issues', { title: 'Open to all' })
+  const secret = (await call('POST', '/api/v1/projects/SBB/issues', { title: 'Only the owner sees this' })).body
+  const team = (await call('POST', '/api/v1/groups', { name: 'sb-team' })).body
+  await call('POST', `/api/v1/groups/${team.id}/members`, { userIds: [ann, bob, gone] })
+  await pool.query('delete from group_members where group_id = $1 and user_id = $2', [team.id, (await call('GET', '/api/v1/me')).body.id])   // its creator joined it
+  const view = (await call('POST', '/api/v1/views', { name: 'Both projects', shared: true, filters: { q: '', resolution: 'open', jql: 'project in (SBA, SBB) ORDER BY key' } })).body
+  const hidden = (await call('POST', '/api/v1/views', { name: 'Private', filters: { q: '', resolution: 'open', jql: 'project = SBA AND summary ~ nothing' } })).body
+  await pool.query('update users set active = false where id = $1', [gone])
+  const mails = () => sentEmails.filter(m => m.subject.startsWith('[Strand] Subscription:'))
+  const before = mails().length
+  // R2: Jira's cron, checked
+  assert.equal((await call('POST', `/api/v1/views/${view.id}/subscriptions`, { cron: '0 0 7 * *' })).status, 400)
+  assert.equal((await call('POST', `/api/v1/views/${view.id}/subscriptions`, { cron: '0 0 9 31 2 ?' })).status, 400)
+  // R1, R5: personal, Run now
+  const mine = (await call('POST', `/api/v1/views/${view.id}/subscriptions`, { cron: '0 0 7 ? * MON-FRI' })).body
+  assert.equal(mine.groupId, null); assert.ok(Date.parse(mine.nextRunAt) > Date.now())
+  assert.equal((await call('POST', `/api/v1/subscriptions/${mine.id}/run`)).status, 202)
+  await runJobs(); await runJobs()
+  const m1 = mails().slice(before)
+  assert.equal(m1.length, 1)
+  assert.match(m1[0]!.text, new RegExp(`2 work items in “Both projects”[\\s\\S]*${secret.key}`))
+  assert.equal((await call('GET', `/api/v1/views/${view.id}/subscriptions`)).body[0].lastRunAt !== null, true)
+  // R3: a group: each active member, as they see it (not the other project); not the deactivated one
+  const grp = (await call('POST', `/api/v1/views/${view.id}/subscriptions`, { cron: '0 0 8 ? * *', groupId: team.id }, 'sb.ann@x.com')).body
+  await call('POST', `/api/v1/subscriptions/${grp.id}/run`, undefined, 'sb.ann@x.com'); await runJobs(); await runJobs()
+  const m2 = mails().slice(before + 1)
+  assert.deepEqual(m2.map(m => m.to).sort(), ['sb.ann@x.com', 'sb.bob@x.com'])
+  assert.ok(m2.every(m => /1 work item in/.test(m.text) && !m.text.includes(secret.key)))
+  // R4: nothing found: no email unless asked; the item limit
+  const empty = (await call('POST', `/api/v1/views/${hidden.id}/subscriptions`, { cron: '0 0 8 ? * *' })).body
+  await call('POST', `/api/v1/subscriptions/${empty.id}/run`); await runJobs(); await runJobs()
+  assert.equal(mails().length, before + 3)
+  await call('PATCH', `/api/v1/subscriptions/${empty.id}`, { emailWhenEmpty: true })
+  await call('POST', `/api/v1/subscriptions/${empty.id}/run`); await runJobs(); await runJobs()
+  assert.equal(mails().length, before + 4)
+  await call('PUT', '/api/v1/admin/settings/filterSubscriptions', { groupSubscribers: 'everyone', maxItems: 1 })
+  await call('POST', `/api/v1/subscriptions/${mine.id}/run`); await runJobs(); await runJobs()
+  assert.match(mails().at(-1)!.text, /… and 1 more/)
+  // R1: who may subscribe groups, change and delete; a hidden view is not found
+  await call('PUT', '/api/v1/admin/settings/filterSubscriptions', { groupSubscribers: 'admins', maxItems: 200 })
+  assert.equal((await call('POST', `/api/v1/views/${view.id}/subscriptions`, { cron: '0 0 8 ? * *', groupId: team.id }, 'sb.bob@x.com')).status, 403)
+  assert.equal((await call('POST', `/api/v1/views/${view.id}/subscriptions`, { cron: '0 0 8 ? * *' }, 'sb.bob@x.com')).status, 201)
+  assert.equal((await call('POST', `/api/v1/views/${hidden.id}/subscriptions`, { cron: '0 0 8 ? * *' }, 'sb.bob@x.com')).status, 404)
+  assert.equal((await call('PATCH', `/api/v1/subscriptions/${grp.id}`, { cron: '0 0 9 ? * *' }, 'sb.bob@x.com')).status, 404)
+  assert.equal((await call('GET', `/api/v1/views/${view.id}/subscriptions`, undefined, 'sb.bob@x.com')).body.length, 1)
+  assert.equal((await call('GET', `/api/v1/views/${view.id}/subscriptions`)).body.length, 3)   // a system administrator sees all
+  assert.equal((await call('PATCH', `/api/v1/subscriptions/${grp.id}`, { cron: '0 0 9 ? * *' })).status, 200)
+  // R6: audited; deleting the view deletes its subscriptions
+  assert.ok((await pool.query(`select 1 from audit_log where action in ('subscription.group_added', 'subscription.changed')`)).rows.length >= 2)
+  await call('DELETE', `/api/v1/views/${hidden.id}`)
+  assert.equal((await pool.query('select count(*)::int as n from filter_subscriptions where view_id = $1', [hidden.id])).rows[0].n, 0)
+  // a scheduled run: due now, it sends and queues the next
+  await pool.query(`update filter_subscriptions set next_run_at = now() - interval '1 minute' where id = $1`, [mine.id])
+  await pool.query(`insert into jobs (kind, payload, workspace_id) select 'filter-subscription.run', jsonb_build_object('id', id, 'at', next_run_at::text), workspace_id from filter_subscriptions where id = $1`, [mine.id])
+  const n = mails().length
+  await runJobs(); await runJobs()
+  assert.equal(mails().length, n + 1)
+  assert.ok((await pool.query('select next_run_at > now() as later from filter_subscriptions where id = $1', [mine.id])).rows[0].later)
+  await call('PUT', '/api/v1/admin/settings/filterSubscriptions', { groupSubscribers: 'everyone', maxItems: 200 })
+  await call('PUT', '/api/v1/admin/settings/email', { enabled: false, from: '', appUrl: '' })
 })
 
 test('[0705.R2] a webhook never reaches private addresses, whatever its name resolves to', { skip }, async () => {
