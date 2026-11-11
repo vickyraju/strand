@@ -1,6 +1,6 @@
 # 0803 Planning like Advanced Roadmaps (decision)
 
-Status: In review (with the product owner: the index has said "decision after 0802" since the roadmap was set)
+Status: Approved (PO, 11 Nov 2026: "let's go with B for now")
 Parity rows: AG-14
 
 ## Context and Jira reference
@@ -83,15 +83,98 @@ Checked 11 Nov 2026 on [jira.atlassian.com](https://jira.atlassian.com/issues/?j
 - The sandbox and scenarios exist only in Jira, and Jira's own users find changes that look saved but aren't confusing. They would stay a recorded divergence.
 - Jira's Parent Link and Target dates migrate directly under B, as the parity principle requires.
 
+**Chosen: B** (the product owner, 11 Nov 2026). B+ waits for the inventory.
+
 ## Rules
 
-To be written once an option is chosen.
+- **R1: Initiatives.**
+  - A project admin turns on **Initiatives** in the project's settings, which adds the built-in **Initiative** work type. Many teams keep their initiatives in one project of their own, as in Jira.
+  - It can be turned off again while the project has no initiatives.
+  - An initiative has no parent and is no item's parent. An epic joins one through its **Parent Link** (Jira's field), which can point to any project's initiative the person can see. Only epics have a Parent Link.
+  - An epic in an initiative stays an epic until it's taken out; an initiative with epics stays an initiative.
+  - Parent Link changes go into the history and webhooks, and JQL has `"Parent Link" = KEY` and `"Parent Link" is empty`.
+  - An epic's details show its initiative. An initiative's details show its epics, with their progress.
+- **R2: Plans.**
+  - Anyone in the workspace makes a **plan**: a name, and its source, which is either some projects or a saved view.
+  - Finished work leaves the plan after 30 days by default (Jira's "exclude resolved issues older than").
+  - Everyone in the workspace sees the list of plans. A plan's owner, or a system administrator, changes or deletes it.
+- **R3: The plan's timeline.**
+  - **Rows:** the initiatives, epics and items from its source (sub-items aren't shown), plus the initiatives its epics belong to, nested as initiative › epic › item. Rows expand and collapse.
+  - **Bars:** each runs from the item's **Start date** to its **Due date**. An undated epic or initiative spans its children's dates. An undated item in a sprint spans the sprint, as the project timeline does.
+  - **Zoom:** weeks, months or quarters.
+  - **Lanes:** the source projects' releases (by release date) and sprints.
+  - **Limits:** only what the person can see, and at most the System settings limit of 5,000 work items (Jira's default for plans). A plan with more says so.
+- **R4: Dependencies.** "Blocks" links between the plan's work items are drawn from the blocker's end to the blocked item's start, in red when the blocker ends after the blocked item starts.
+- **R5: Progress and health.**
+  - An initiative or epic shows how many of its work items are done out of how many.
+  - Its health is **Off track** when its due date has passed unfinished, **At risk** when one of its work items ends after it or a dependency inside it is broken, and **On track** otherwise. Without dates it shows no health.
+- **R6: Live edits.**
+  - Dragging a bar, or either of its ends, changes the item's Start and Due dates straight away. That needs the Edit issues permission, and it records history and sends webhooks and notifications like any edit.
+  - Opening a row opens the item. There's no sandbox: what the plan shows is what everyone sees.
+- **R7: From Jira.**
+  - The importer (spec 0802) brings Advanced Roadmaps' **Parent Link** into the Parent Link, and **Target start** and **Target end** into Start and Due date when the item has none.
+  - A Jira issue type named Initiative becomes the Initiative type.
+  - The inventory (spec 0801) reports these as coming over, and teams as not.
+
+## Permissions
+
+- **Initiatives:** project admins turn them on.
+- **Parent Link:** Edit issues on the epic, and seeing the initiative.
+- **Plans:** everyone in the workspace sees them and makes them; their owner or a system administrator changes and deletes them; their contents are only what each person can see.
+
+## Data model and migration
+
+- `issues.parent_link_id`, which history names like a parent.
+- `projects.initiatives`; the work type key `initiative`.
+- `plans`: workspace, name, owner, project ids or saved view, days finished work stays.
+- The `plans` System setting: the most work items in a plan.
+- `strand` gets the same migration in `supabase/migrations`.
+
+## API
+
+- `PUT /projects/:key/initiatives` (`enabled`).
+- `parentLinkId` on work items.
+- `GET /initiatives?query=` (initiatives I can see, for the Parent Link picker).
+- `GET`, `POST /plans`; `GET`, `PATCH`, `DELETE /plans/:id`; `GET /plans/:id/timeline`.
+
+## Screens
+
+- **Plans** in the main navigation: the list, a new plan dialog, and a plan's timeline.
+- Project settings: an **Initiatives** panel.
+- An epic's details: **Initiative**. An initiative's details: its epics.
+
+## Scale
+
+- A plan's timeline reads its items in one query, capped by the setting, with indexes on the project, the parent and the Parent Link.
+- Dates, progress and health are worked out in the browser.
+
+## Acceptance
+
+| Rule | Proved by |
+|---|---|
+| R1 | Server test: turning on and off; only epics take a Parent Link, to an initiative in another project; an initiative can't be a parent or have one; history and JQL |
+| R2, R3, R4, R6 | Server test: plans from projects and from a saved view; the timeline's items (with the initiatives their epics belong to, without sub-items or long-finished work), dependencies, releases and sprints; the limit; only what the person can see; owner-only changes |
+| R3, R4, R5 | Unit test: bars from dates, roll-ups and sprints; broken dependencies; progress and health |
+| R7 | Server test: the importer brings Parent Link, Target dates and the Initiative type |
+| R1, R2, R6 | Browser journey: link an epic to an initiative, make a plan, see them nested, drag a bar and the item's dates change |
+
+## Strand branch
+
+Same rules. Security levels also apply to what a plan shows.
+
+## Out of scope and deliberate divergences
+
+- **Sandbox and scenarios:** edits are live (R6), as in Linear, Plane, ClickUp and monday.com.
+- **Target start and Target end:** Strand plans with its ordinary Start and Due dates; the importer brings Jira's target dates into them (R7).
+- **Levels above Initiative**, **sub-items in plans**, **auto-scheduling**: proposals.
+- **Teams and capacity:** option B+, after the inventory.
 
 ## Open questions
 
-1. A, B or C? (B recommended.)
-2. Does the inventory show teams and capacity in use in your Jira (Advanced Roadmaps' Team field on work items)? If yes, B+ follows B.
+None.
 
 ## Changelog
+
+- 11 Nov 2026: B chosen by the product owner; rules written.
 
 - 11 Nov 2026: how Jira Cloud, Linear, Plane, ClickUp and monday.com handle cross-project planning added; options revised (B now initiatives and a live cross-project timeline; B+ for capacity).
