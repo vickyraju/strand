@@ -395,7 +395,7 @@ function ProjectSettings({ project }: { project: Project }) {
           </div>
           <div>
             <span className="label">Template</span>
-            <div className="static-field">{project.template === 'scrum' ? 'Scrum' : 'Kanban'}</div>
+            <div className="static-field">{TEMPLATES[project.template]?.name ?? 'Kanban'}</div>
           </div>
         </div>
       </section>
