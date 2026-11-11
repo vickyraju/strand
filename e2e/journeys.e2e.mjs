@@ -1795,3 +1795,26 @@ test('[0716.R3][0716.R5] Mark as Done: the epic leaves the Epics panel and keeps
   assert.deepEqual(o.problems, [])
 })
 
+test('[0501.R5][0501.R6] Move: an item goes to another project from its actions, after a preview; its old address opens the new key', { skip, timeout: 120_000 }, async () => {
+  await owner('POST', '/projects', { name: 'Moving from', key: 'MFR', template: 'kanban' })
+  await owner('POST', '/projects', { name: 'Moving to', key: 'MTO', template: 'kanban' })
+  const item = (await owner('POST', '/projects/MFR/issues', { title: 'Packed and ready' })).body
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url(`/i/${item.key}`))
+  await o.waitForSelector('text=Packed and ready')
+  await o.click('[aria-label="More actions"]')
+  await o.click('[role="menu"] button:has-text("Move")')
+  await o.fill('#mv-project', 'MTO')
+  await o.waitForSelector('[aria-label="What changes"] >> text=MFR')
+  assert.match(await o.locator('[aria-label="What changes"]').innerText(), new RegExp(`${item.key} → MTO-\\d+`))
+  await o.click('.modal button:text-is("Move")')
+  await o.waitForURL(/MTO-\d+/)
+  const moved = (await owner('GET', `/issues/${item.key}`)).body
+  assert.match(moved.key, /^MTO-\d+$/)
+  // the old address opens it at its new key
+  await o.goto(url(`/i/${item.key}`))
+  await o.waitForURL(new RegExp(`/i/${moved.key}$`))
+  await o.waitForSelector('text=Packed and ready')
+  assert.deepEqual(o.problems, [])
+})
+

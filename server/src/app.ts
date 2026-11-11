@@ -35,6 +35,7 @@ import lookAndFeel, { publicLook } from './routes/lookAndFeel.ts'
 import projectExtras, { publicAvatars } from './routes/projectExtras.ts'
 import webhookRoutes, { jiraRest as jiraWebhooks } from './routes/webhooks.ts'
 import automationRoutes from './routes/automation.ts'
+import moveRoutes from './routes/move.ts'
 import { startDirectories } from './directories.ts'
 import { startAuth } from './authConfig.ts'
 import { githubWebhook } from './routes/github.ts'
@@ -166,6 +167,7 @@ export async function build() {
       await v1.register(projectExtras)
       await v1.register(webhookRoutes)
       await v1.register(automationRoutes)
+      await v1.register(moveRoutes)
     }, { prefix: '/api/v1' })
     // Xray's addresses for importing CI results: same sign-in and rate limits as the API
     await api.register(raven, { prefix: '/rest/raven/1.0' })

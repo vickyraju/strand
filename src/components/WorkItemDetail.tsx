@@ -4,7 +4,7 @@ import { usePresence } from '../api/presence'
 import { recordView } from '../api/work'
 import {
   Maximize2, Minimize2, X, Link2, Trash2, Plus, Eye, EyeOff, ChevronUp, ChevronDown, MoreHorizontal, RefreshCw, CopyPlus, Lock,
-  Ban, Unlink, Pencil, UserCheck, Copy, Paperclip, FileText, Archive, Flag } from 'lucide-react'
+  Ban, Unlink, Pencil, UserCheck, Copy, Paperclip, FileText, Archive, Flag, ArrowRightLeft } from 'lucide-react'
 import {
   useStore, userOf, projectOf, timeAgo, transitionsFrom, loopsFrom, moveContext, linkWords, DEFAULT_LINK_TYPES,
   type Issue, type IssuePatch,
@@ -36,6 +36,7 @@ import { CustomFieldInput } from './CustomFields'
 import { TimeField } from './TimeTracking'
 import { TemplateDialog, blankTemplate } from './TemplatesImport'
 import DevelopmentPanel from './DevelopmentPanel'
+import MoveDialog from './MoveDialog'
 
 function AutoText(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
   const ref = useRef<HTMLTextAreaElement>(null)
@@ -70,6 +71,7 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
   const [editComment, setEditComment] = useState<{ id: string; body: string } | null>(null)
   const [linking, setLinking]     = useState(false)
   const [cloning, setCloning]     = useState(false)
+  const [moving, setMoving]       = useState(false)
   const [confirmDel, setConfirmDel] = useState(false)
   const attachRef = useRef<HTMLInputElement>(null)
   const [templating, setTemplating] = useState(false)
@@ -180,6 +182,9 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
           ...(readOnly ? [] : loops.map(t => ({ label: t.name, icon: <RefreshCw size={14} />, onClick: () => runTransition(issue.id, t.id) }))),
           { label: 'Copy key', divider: !readOnly && loops.length > 0, icon: <Copy size={14} />, onClick: () => { navigator.clipboard?.writeText(issue.key); toast(`Copied ${issue.key}`) } },
           ...(readOnly ? [] : [{ label: 'Clone', icon: <CopyPlus size={14} />, onClick: () => setCloning(true) }]),
+          // Jira's Move (spec 0501): an item or epic with its sub-items; a sub-item moves with its parent
+          ...(apiEnabled && can(project, 'moveIssues') && !archived && !(issue.parentId && state.issues.find(i => i.id === issue.parentId)?.type !== 'epic')
+            ? [{ label: 'Move', icon: <ArrowRightLeft size={14} />, onClick: () => setMoving(true) }] : []),
           ...(readOnly ? [] : [{ label: 'Link work item', icon: <Link2 size={14} />, onClick: () => setLinking(true) }]),
           ...(readOnly ? [] : [{ label: 'Save as template', icon: <FileText size={14} />, onClick: () => setTemplating(true) }]),
           ...(!readOnly && issue.type !== 'epic' && !issue.parentId ? [{ label: 'Add sub-item', icon: <Plus size={14} />, onClick: () => createIssue({ projectId: project.id, parentId: issue.id, sprintId: issue.sprintId }) }] : []),
@@ -514,6 +519,7 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
 
       {linking && <LinkDialog issue={issue} onClose={() => setLinking(false)} />}
       {cloning && <CloneDialog issue={issue} onClose={() => setCloning(false)} />}
+      {moving && <MoveDialog issue={issue} onClose={() => setMoving(false)} />}
       {templating && (
         <TemplateDialog project={project}
           template={{ ...blankTemplate(), name: issue.title, type: issue.type, description: issue.description, priority: issue.priority, labels: issue.labels, estimate: issue.estimate }}

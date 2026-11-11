@@ -6,7 +6,7 @@ import { PERMISSIONS, holds, rolesWith } from '../src/shared/permissions.ts'
 const SPEC: Record<string, [jira: string, strand: string | null, spec?: string]> = {
   browse: ['any user with access', 'viewer'], createIssues: ['any user with access', 'member'], editIssues: ['any user with access', 'member'],
   transitionIssues: ['any user with access', 'member'], assignIssues: ['any user with access', 'member'],
-  assignable: ['any user with access', 'member', '0203'], linkIssues: ['any user with access', 'member'], moveIssues: ['any user with access', null, '0501'],
+  assignable: ['any user with access', 'member', '0203'], linkIssues: ['any user with access', 'member'], moveIssues: ['any user with access', 'member', '0501'],
   deleteIssues: ['Administrators', 'admin', '0202'], modifyReporter: ['Administrators', 'admin', '0203'], manageWatchers: ['Administrators', 'admin', '0203'],
   viewWatchers: ['any user with access', 'viewer'], addComments: ['any user with access', 'viewer'],
   editOwnComments: ['any user with access', 'viewer'], deleteOwnComments: ['any user with access', 'viewer'],
@@ -29,7 +29,7 @@ test('[0201.R1][0201.R5] one table of Jira’s project permissions: for each, Ji
 
 test('[0201.R6] permissions Strand doesn’t have yet are held by nobody, each naming the spec that adds it', () => {
   const missing = Object.entries(PERMISSIONS).filter(([, r]) => !r.role)
-  assert.deepEqual(missing.map(([k, r]) => [k, r.spec]).sort(), [['archiveIssues', '0508'], ['moveIssues', '0501']].sort())
+  assert.deepEqual(missing.map(([k, r]) => [k, r.spec]).sort(), [['archiveIssues', '0508']].sort())
   for (const [k] of missing) assert.deepEqual(rolesWith(k as never), [], k)
 })
 
