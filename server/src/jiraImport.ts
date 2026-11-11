@@ -298,8 +298,9 @@ async function importProject(c: Ctx, key: string) {
   }
   const [board] = await d.query<{ id: string }>('select id from boards where project_id = $1 order by created_at limit 1', [pid])
   let active = false
+  const { parallel } = await getSetting(ws, 'sprints')
   for (const s of [...r.sprints].sort((a, b) => (a.state === 'active' ? -1 : 0) - (b.state === 'active' ? -1 : 0))) {
-    const state = s.state === 'active' && !active ? 'active' : s.state === 'future' ? 'planned' : 'closed'   // one active per board, as Strand allows
+    const state = s.state === 'active' && (!active || parallel) ? 'active' : s.state === 'future' ? 'planned' : 'closed'   // one active per board unless parallel sprints are on (spec 0414)
     if (state === 'active') active = true
     const [row] = await d.query<{ id: string }>(`insert into sprints (workspace_id, project_id, board_id, name, goal, state, started_at, ends_at, completed_at) values ($1, $2, $3, $4, $5, $6, $7, $8, $9) returning id`,
       [ws, pid, board?.id ?? null, s.name, s.goal ?? '', state, s.startDate ?? null, s.endDate ?? null, s.completeDate ?? (state === 'closed' && s.state === 'active' ? new Date().toISOString() : null)])

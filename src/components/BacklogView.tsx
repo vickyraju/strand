@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { cardColor } from '../data/reducer'
 import { priorityOf } from '../data/lists'
 import { typeMeta } from './ui'
-import { useDurations } from '../api/settings-public'
+import { useDurations, usePublicSettings } from '../api/settings-public'
 import { DndContext, DragOverlay, useDraggable, useDroppable, type DragEndEvent, type DragOverEvent, type DragStartEvent } from '@dnd-kit/core'
 import { ChevronDown, ChevronRight, Kanban, ListChecks, Plus, MoreHorizontal, ArrowRightLeft, Pencil, Trash2, Play, ArrowUpToLine, ArrowDownToLine } from 'lucide-react'
 import { useStore, statOf, doneColumn, doneOnBoard, userOf, indexOf, uid, plansInBacklog, type Board, type Project, type Sprint, type Issue } from '../data/store'
@@ -81,7 +81,9 @@ function Backlog({ project, board, switcher }: { project: Project; board?: Board
   const sprints = state.sprints
     .filter(s => ofBoard(s) && s.state !== 'closed')
     .sort((a, b) => (a.state === 'active' ? -1 : b.state === 'active' ? 1 : 0))
-  const hasActive = sprints.some(s => s.state === 'active')
+  // another sprint may start while one is active only with parallel sprints on (spec 0414)
+  const { parallel } = usePublicSettings().sprints
+  const hasActive = sprints.some(s => s.state === 'active') && !parallel
   const panels = usePanels()
   const issues = panels.apply(filters.apply(items)).sort((a, b) => a.rank - b.rank)
   const inSprint = (s: Sprint) => issues.filter(i => i.sprintId === s.id)
@@ -244,7 +246,7 @@ function Backlog({ project, board, switcher }: { project: Project; board?: Board
               actions={<>
                 {sprint.state === 'planned' && (
                   <button className="btn btn-secondary btn-sm" disabled={!!cantManage || hasActive || list.length === 0}
-                    title={cantManage || (hasActive ? 'Complete the active sprint first' : list.length === 0 ? 'Add work items to start this sprint' : undefined)}
+                    title={cantManage || (hasActive ? 'Complete the active sprint first (or turn on parallel sprints)' : list.length === 0 ? 'Add work items to start this sprint' : undefined)}
                     onClick={() => setStarting(sprint)}><Play size={13} />Start sprint</button>
                 )}
                 {sprint.state === 'active' && <button className="btn btn-secondary btn-sm" disabled={!!cantManage} title={cantManage || undefined} onClick={() => setCompleting(sprint)}>Complete sprint</button>}
@@ -356,11 +358,12 @@ function SprintDialog({ sprint, mode, onClose }: { sprint: Sprint; mode: 'start'
   const [weeks, setWeeks] = useState(() => sprint.startedAt && sprint.endsAt ? Math.max(1, Math.round((sprint.endsAt - sprint.startedAt) / (7 * DAY))) : 2)
   const count = state.issues.filter(i => i.sprintId === sprint.id).length
   const start = sprint.startedAt ?? Date.now()
+  const { parallel } = usePublicSettings().sprints
 
   const save = () => {
     const endsAt = start + weeks * 7 * DAY
     dispatch({ type: 'updateSprint', id: sprint.id, patch: { name: name.trim() || sprint.name, goal: goal.trim(), ...(mode === 'edit' && sprint.startedAt ? { endsAt } : {}) } })
-    if (mode === 'start') dispatch({ type: 'startSprint', id: sprint.id, endsAt })
+    if (mode === 'start') dispatch({ type: 'startSprint', id: sprint.id, endsAt, parallel })
     onClose()
   }
 

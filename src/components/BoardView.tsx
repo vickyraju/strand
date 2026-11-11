@@ -139,24 +139,28 @@ function BoardScreen({ project, board, switcher, quick: asked, onChanged }: {
   const [cardLimits, setCardLimits] = useState<Record<string, number>>({})
   const cardLimit = (key: string) => cardLimits[key] ?? 50
 
-  const sprint = board.type === 'scrum'
-    ? state.sprints.find(s => (s.boardId ? s.boardId === board.id : s.projectId === board.projectId) && s.state === 'active')
-    : undefined
+  // the board's active sprints: more than one with parallel sprints (spec 0414); the picker shows one, or all of them
+  const actives = board.type === 'scrum'
+    ? state.sprints.filter(s => (s.boardId ? s.boardId === board.id : s.projectId === board.projectId) && s.state === 'active')
+    : []
+  const [picked, setPicked] = useState('')
+  const sprint = actives.find(s => s.id === picked) ?? (actives.length === 1 ? actives[0] : undefined)
+  const shown = (i: Issue) => board.type !== 'scrum' || (sprint ? i.sprintId === sprint.id : actives.some(s => s.id === i.sprintId))
 
   // ── The board's items ───────────────────────────────────
-  const found = useBoardItems(local ? null : board, { quick, version: sprint?.id })
+  const found = useBoardItems(local ? null : board, { quick, version: actives.map(s => s.id).join() })
   const [loadedAt] = useState(() => Date.now())
   const { byId } = indexOf(state)
   const onBoard = new Set(found.ids)
   // the board's card colour for each card (spec 0409)
   const stripeOf = (i: Issue) => cardColor(board.cardColors, i, { typeColor: typeMeta(i.type, projectOf(i)).color, priorityColor: priorityOf(i.priority).color, match: found.colors.get(i.id) })
   const boardItems = (local
-    ? state.issues.filter(i => !i.archivedAt && i.projectId === project.id && (!sprint || i.sprintId === sprint.id))
+    ? state.issues.filter(i => !i.archivedAt && i.projectId === project.id && shown(i))
     : [
         ...found.ids.map(id => byId.get(id)).filter((i): i is Issue => !!i),
         // made here since the board loaded: shown until the next load, which asks the board's filter
-        ...state.issues.filter(i => i.createdAt > loadedAt && i.projectId === board.projectId && !onBoard.has(i.id) && (!sprint || i.sprintId === sprint.id)),
-      ]).filter(i => i.type !== 'epic')
+        ...state.issues.filter(i => i.createdAt > loadedAt && i.projectId === board.projectId && !onBoard.has(i.id) && shown(i)),
+      ].filter(shown)).filter(i => i.type !== 'epic')
   useEnsureProjects([...new Set(boardItems.map(i => i.key.split('-')[0]!))])
   const projectOf = (i: Issue) => state.projects.find(p => p.id === i.projectId)
 
@@ -299,6 +303,11 @@ function BoardScreen({ project, board, switcher, quick: asked, onChanged }: {
         {switcher}
         {filters.toolbar}
         <div style={{ flex: 1 }} />
+        {actives.length > 1 && (
+          <Picker value={sprint?.id ?? ''} title="Sprint" className="btn btn-secondary"
+            options={[{ value: '', label: 'All active sprints' }, ...actives.map(s => ({ value: s.id, label: s.name }))]}
+            onChange={setPicked} trigger={sprint ? sprint.name : 'All active sprints'} />
+        )}
         {sprint && (
           <span className="sprint-meta" title={sprint.goal || undefined}>
             <Timer size={14} />
@@ -370,7 +379,7 @@ function BoardScreen({ project, board, switcher, quick: asked, onChanged }: {
     </>
   )
 
-  if (board.type === 'scrum' && !sprint) {
+  if (board.type === 'scrum' && !actives.length) {
     return (
       <div className="board-wrap">
         {toolbar}
@@ -398,7 +407,7 @@ function BoardScreen({ project, board, switcher, quick: asked, onChanged }: {
             : 'Track, organize and prioritize your team’s work. Get started by creating a work item.'}
           action={board.kanbanBacklog?.length
             ? <button className="btn btn-primary" onClick={() => openProject(project.id, 'backlog', local ? undefined : board.id)}>Go to backlog</button>
-            : <button className="btn btn-primary" onClick={() => createIssue({ projectId: project.id, sprintId: sprint?.id })}><Plus size={15} />Create work item</button>}
+            : <button className="btn btn-primary" onClick={() => createIssue({ projectId: project.id, sprintId: (sprint ?? actives[0])?.id })}><Plus size={15} />Create work item</button>}
         />
       </div>
     )
@@ -438,7 +447,7 @@ function BoardScreen({ project, board, switcher, quick: asked, onChanged }: {
                     </button>
                     {start && (
                       <button className="icon-btn sm" title={`Create in ${col.name}`} aria-label={`Create work item in ${col.name}`}
-                        onClick={() => createIssue({ projectId: project.id, status: start, sprintId: sprint?.id })}>
+                        onClick={() => createIssue({ projectId: project.id, status: start, sprintId: (sprint ?? actives[0])?.id })}>
                         <Plus size={14} />
                       </button>
                     )}
@@ -483,7 +492,7 @@ function BoardScreen({ project, board, switcher, quick: asked, onChanged }: {
                         </button>
                       )}
                       {!col.collapsed && start && (
-                        <button className="cell-create" onClick={() => createIssue({ projectId: project.id, status: start, sprintId: sprint?.id, ...(lane.patch as object) })}>
+                        <button className="cell-create" onClick={() => createIssue({ projectId: project.id, status: start, sprintId: (sprint ?? actives[0])?.id, ...(lane.patch as object) })}>
                           <Plus size={14} />Create
                         </button>
                       )}

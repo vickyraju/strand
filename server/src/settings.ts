@@ -93,6 +93,13 @@ export const SETTINGS = {
     schema: z.object({ maxItems: z.number().int().min(100).max(20_000).describe('Most work items in one plan') }),
     default: { maxItems: 5000 },
   },
+  sprints: {
+    label: 'Sprints',
+    description: 'Parallel sprints (Jira’s Jira Software configuration): a Scrum board can have more than one active sprint, for example two teams working from one backlog. It can’t be turned off while a board has more than one active sprint (spec 0414).',
+    public: true,
+    schema: z.object({ parallel: z.boolean().describe('More than one active sprint on a board') }),
+    default: { parallel: false },
+  },
   search: {
     label: 'Search',
     description: 'The indexing language of text search (~), as Jira’s: words are found in any of their forms (customize finds customized) and common words are left out. Other: exact words, no common words left out. A change re-indexes every work item and comment in the background (spec 0609).',

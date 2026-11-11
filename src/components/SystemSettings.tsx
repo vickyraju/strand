@@ -23,7 +23,7 @@ export const SETTINGS_PAGES = [
   { id: 'rate-limiting', label: 'Rate limiting' }, { id: 'attachments', label: 'Attachments' }, { id: 'access-tokens', label: 'Personal access tokens' },
   { id: 'search-and-bulk', label: 'Search, export and bulk' }, { id: 'text-search', label: 'Text search' }, { id: 'email', label: 'Email notifications' }, { id: 'email-batching', label: 'Batched email' }, { id: 'user-defaults', label: 'Default user preferences' },
   { id: 'filter-subscriptions', label: 'Filter subscriptions' }, { id: 'groups', label: 'Group creation' },
-  { id: 'testing', label: 'Testing' }, { id: 'due-dates', label: 'Due dates' }, { id: 'deleted-items', label: 'Deleted work items' },
+  { id: 'sprints', label: 'Sprints' }, { id: 'testing', label: 'Testing' }, { id: 'due-dates', label: 'Due dates' }, { id: 'deleted-items', label: 'Deleted work items' },
   { id: 'time-tracking', label: 'Time tracking' }, { id: 'project-keys', label: 'Project keys' }, { id: 'sign-in', label: 'Sign-in' },
   { id: 'automation', label: 'Automation' }, { id: 'webhooks', label: 'Webhooks' }, { id: 'voting', label: 'Voting' },
 ] as const
@@ -108,6 +108,9 @@ export default function SystemSettings({ page = SETTINGS_PAGES[0].id }: { page?:
       {page === 'user-defaults' && <SimpleSection setting={of('userDefaults')} save={v => save('userDefaults', v)} fields={[
         { key: 'autowatch', label: 'Watch work you create or comment on (Autowatch)', type: 'toggle' },
         { key: 'notifyOwnChanges', label: 'Notify people about their own changes', type: 'toggle' },
+      ]} />}
+      {page === 'sprints' && <SimpleSection setting={of('sprints')} save={v => save('sprints', v)} fields={[
+        { key: 'parallel', label: 'Parallel sprints', type: 'toggle', hint: 'A Scrum board can have more than one active sprint, for example two teams working from one backlog. It can’t be turned off while a board has more than one active sprint.' },
       ]} />}
       {page === 'text-search' && <SimpleSection setting={of('search')} save={v => save('search', v)} fields={[
         { key: 'indexingLanguage', label: 'Indexing language', type: 'select', hint: 'Words are found in any of their forms in this language (customize finds customized). Other: exact words only. A change re-indexes every work item and comment in the background.',

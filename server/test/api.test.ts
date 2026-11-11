@@ -3966,7 +3966,7 @@ test('system settings: admins change policies at runtime (validated, audited); e
   const { clearSettingsCache } = await import('../src/settings.ts')
   const put = (key: string, value: object, who = 'owner@x.com') => call('PUT', `/api/v1/admin/settings/${key}`, value, who)
   const all = (await call('GET', '/api/v1/admin/settings')).body
-  assert.deepEqual(all.map((s: any) => s.key), ['rateLimiting', 'announcement', 'attachments', 'accessTokens', 'searchAndBulk', 'filterSubscriptions', 'plans', 'search', 'signIn', 'groups', 'voting', 'webhooks', 'automation', 'testing', 'dueReminders', 'email', 'emailBatching', 'userDefaults', 'deletedItems', 'projectKeys', 'timeTracking'])
+  assert.deepEqual(all.map((s: any) => s.key), ['rateLimiting', 'announcement', 'attachments', 'accessTokens', 'searchAndBulk', 'filterSubscriptions', 'plans', 'sprints', 'search', 'signIn', 'groups', 'voting', 'webhooks', 'automation', 'testing', 'dueReminders', 'email', 'emailBatching', 'userDefaults', 'deletedItems', 'projectKeys', 'timeTracking'])
   assert.equal(all.find((s: any) => s.key === 'rateLimiting').value.enabled, false)                  // no limit unless an admin sets one
   assert.equal((await call('GET', '/api/v1/admin/settings', undefined, 'set.member@x.com')).status, 403)
   assert.equal((await put('attachments', { enabled: true, maxSizeMb: 5 }, 'set.member@x.com')).status, 403)
@@ -3976,7 +3976,7 @@ test('system settings: admins change policies at runtime (validated, audited); e
 
   // public settings: what the web app needs, for anyone signed in (not rate limiting)
   const pub = (await call('GET', '/api/v1/settings/public', undefined, 'set.member@x.com')).body
-  assert.deepEqual(Object.keys(pub).sort(), ['accessTokens', 'announcement', 'attachments', 'dueReminders', 'filterSubscriptions', 'groups', 'plans', 'priorities', 'projectKeys', 'resolutions', 'searchAndBulk', 'testing', 'timeTracking', 'userDefaults', 'voting'])
+  assert.deepEqual(Object.keys(pub).sort(), ['accessTokens', 'announcement', 'attachments', 'dueReminders', 'filterSubscriptions', 'groups', 'plans', 'priorities', 'projectKeys', 'resolutions', 'searchAndBulk', 'sprints', 'testing', 'timeTracking', 'userDefaults', 'voting'])
 
   // attachments: size limit and the switch
   await call('POST', '/api/v1/projects', { name: 'Settings', key: 'SET', template: 'kanban' })
@@ -6961,4 +6961,42 @@ test('[0412.R1][0412.R2][0412.R3] a number field as the estimation statistic; re
   await call('PATCH', board, { estimation: 'field', estimationFieldId: value.id })
   await call('DELETE', `/api/v1/admin/custom-fields/${value.id}`)
   assert.equal((await call('GET', board)).body.estimation, 'points')
+})
+
+test('[0414.R1][0414.R2][0414.R3][0414.R4] parallel sprints: off, one active sprint per board; on, two, both on the board and in openSprints(); turning it off waits until one completes', { skip }, async () => {
+  await call('POST', '/api/v1/projects', { name: 'Two teams', key: 'TWO', template: 'scrum' })
+  const ends = new Date(Date.now() + 864e5).toISOString()
+  const sprint = async (name: string, title: string) => {
+    const s = (await call('POST', '/api/v1/projects/TWO/sprints', { name })).body
+    const i = (await call('POST', '/api/v1/projects/TWO/issues', { title, sprintId: s.id })).body
+    return { s, i }
+  }
+  const [a, b] = [await sprint('Team A', 'Alpha work'), await sprint('Team B', 'Beta work')]
+  const start = (id: string) => call('POST', `/api/v1/projects/TWO/sprints/${id}/start`, { endsAt: ends })
+  // R2: off (the default), a second start is refused, naming the active sprint
+  assert.equal((await start(a.s.id)).status, 200)
+  const refused = await start(b.s.id)
+  assert.equal(refused.status, 409)
+  assert.match(refused.body.error, /Team A is active on this board/)
+  // R1: on; then both run
+  const put = (parallel: boolean) => call('PUT', '/api/v1/admin/settings/sprints', { parallel })
+  assert.equal((await put(true)).status, 200)
+  assert.equal((await start(b.s.id)).status, 200)
+  const board = (await call('GET', `/api/v1/boards/${a.s.boardId}/issues`)).body
+  assert.deepEqual((board.items ?? board).map((x: any) => x.title).sort(), ['Alpha work', 'Beta work'])
+  const open = (await call('GET', `/api/v1/search?jql=${encodeURIComponent('project = TWO AND sprint in openSprints() ORDER BY key')}`)).body.items.map((x: any) => x.title)
+  assert.deepEqual(open, ['Alpha work', 'Beta work'])
+  // R1: can't be turned off while the board has two active sprints
+  const off = await put(false)
+  assert.equal(off.status, 409)
+  assert.match(off.body.error, /TWO board \(TWO\)/)
+  // R4: reopening follows the rule too
+  await call('POST', `/api/v1/projects/TWO/sprints/${b.s.id}/complete`, { moveTo: null })
+  assert.equal((await put(false)).status, 200)
+  const reopened = await call('POST', `/api/v1/projects/TWO/sprints/${b.s.id}/reopen`)
+  assert.equal(reopened.status, 409)
+  await put(true)
+  assert.equal((await call('POST', `/api/v1/projects/TWO/sprints/${b.s.id}/reopen`)).status, 200)
+  for (const s of [a.s, b.s]) await call('POST', `/api/v1/projects/TWO/sprints/${s.id}/complete`, { moveTo: null })
+  await put(false)
 })
