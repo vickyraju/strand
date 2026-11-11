@@ -2,7 +2,7 @@
 import { test, before, after } from 'node:test'
 import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
-import { start, stop, skip, signIn, signedOut, as, url, PEOPLE, postRaw, RECOVERY_PASSWORD, github } from './harness.mjs'
+import { start, stop, skip, signIn, signedOut, as, url, PEOPLE, postRaw, RECOVERY_PASSWORD, github, mailDir } from './harness.mjs'
 
 const owner = as('owner@e2e.test'), maya = as('maya@e2e.test'), vic = as('vic@e2e.test')
 const idOf = async email => (await as(email)('GET', '/me')).body.id
@@ -2099,5 +2099,35 @@ test('[0606.R2] with Autowatch turned off in Settings, commenting doesn\'t make 
   assert.equal((await owner('GET', `/issues/${item.key}`)).body.watcherIds.includes(mayaId), false)
   await maya('PUT', '/me/notification-prefs', { autowatch: null })
   assert.deepEqual(m.problems, [])
+})
+
+test('[0607.R1][0607.R2] an admin sets up incoming mail; an email becomes a work item', { skip, timeout: 120_000 }, async () => {
+  await owner('POST', '/projects', { name: 'Mail journey', key: 'MLJ', template: 'kanban' })
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url('/admin/incoming-mail'))
+  await o.click('button:has-text("Add mail server")')
+  await o.fill('#ms-name', 'Drop folder')
+  await o.selectOption('#ms-kind', 'files')
+  await o.click('.modal button:has-text("Test")')
+  await o.waitForSelector('.modal [role="status"]:has-text("Connected: 0 unread")')
+  await o.click('.modal button:has-text("Save")')
+  await o.waitForSelector('td:has-text("Drop folder")')
+  await o.click('button:has-text("Add mail handler")')
+  await o.fill('#mh-name', 'Support desk')
+  await o.fill('#mh-project', 'MLJ')
+  await o.click('.modal button:has-text("Save")')
+  await o.waitForSelector('td:has-text("Support desk")')
+  const { writeFileSync } = await import('node:fs')
+  writeFileSync(`${mailDir}/1.eml`, ['From: Olive <owner@e2e.test>', 'To: support@e2e.test', 'Subject: Kettle is broken', 'Message-ID: <k1@e2e.test>', 'Content-Type: text/plain', '', 'It will not boil.'].join('\r\n'))
+  await o.click('[aria-label="Run Support desk now"]')
+  let items = []
+  for (let i = 0; i < 40 && !items.length; i++) {
+    items = (await owner('GET', `/search?jql=${encodeURIComponent('project = MLJ')}`)).body.items
+    if (!items.length) await new Promise(r => setTimeout(r, 500))
+  }
+  assert.deepEqual(items.map(i => i.title), ['Kettle is broken'])
+  await o.reload()
+  await o.waitForSelector('td:has-text("1 created")')
+  assert.deepEqual(o.problems, [])
 })
 

@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { Users, ScrollText, Archive, SlidersHorizontal, Link2, Bookmark, UsersRound, GitBranch, FlaskConical, ArchiveRestore, Signal, CircleCheck, KeyRound, Network, FolderTree, Webhook, GitPullRequest, Zap, TextCursorInput, ListChecks, LayoutPanelTop, Bell } from 'lucide-react'
+import { Users, ScrollText, Archive, SlidersHorizontal, Link2, Bookmark, UsersRound, GitBranch, FlaskConical, ArchiveRestore, Signal, CircleCheck, KeyRound, Network, FolderTree, Webhook, GitPullRequest, Zap, TextCursorInput, ListChecks, LayoutPanelTop, Bell, Inbox } from 'lucide-react'
 import { href, navigate, type AdminSection } from '../../router'
 
 // Administration's frame, as Jira lays it out: a grouped menu on the left, and each page with its title, what it is
@@ -23,6 +23,7 @@ export const MENU: { title: string; items: MenuItem[] }[] = [
     { id: 'field-configurations', label: 'Field configurations', Icon: ListChecks, intro: 'Which fields are hidden or required, with their descriptions, as Jira’s field configurations. A scheme gives each work type a configuration; a project uses one scheme.' },
     { id: 'screens', label: 'Screens', Icon: LayoutPanelTop, intro: 'Which fields show, on which tabs, when people create, edit and view work, as Jira’s screens. A screen scheme gives Create, Edit and View a screen; an issue type screen scheme gives each work type a screen scheme.' },
     { id: 'notification-schemes', label: 'Notification schemes', Icon: Bell, intro: 'Who hears about each event on work items, as Jira’s notification schemes. Each project uses one, or None; new projects get the default.' },
+    { id: 'incoming-mail', label: 'Incoming mail', Icon: Inbox, intro: 'Mail servers, and the handlers that read them every few minutes and turn email into work items and comments, as Jira’s incoming mail.' },
     { id: 'link-types', label: 'Link types', Icon: Link2, intro: 'The kinds of link people can make between work items, and how each reads from both ends.' },
     { id: 'priorities', label: 'Priorities', Icon: Signal, intro: 'How urgent work is, highest first. New work gets the default when nobody chooses one. Search and sorting by priority follow this order.' },
     { id: 'resolutions', label: 'Resolutions', Icon: CircleCheck, intro: 'How finished work ended. Each workflow says whether reaching Done sets the default on its own, or only its transitions’ rules set one.' },
