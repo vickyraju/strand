@@ -7,7 +7,7 @@ import { HttpError, requireAdmin, type Me } from '../auth.ts'
 import { audit } from '../audit.ts'
 import { enqueue, kickJobs } from '../jobs.ts'
 import { seal, unseal } from '../secrets.ts'
-import { testConnection } from '../jiraImport.ts'
+import { checkJiraUrl, testConnection } from '../jiraImport.ts'
 import { requireNoToken } from './authentication.ts'
 
 const T = ['Jira import']
@@ -46,6 +46,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     guard(req)
     const b = req.body
     const token = await tokenFor(req.me, b.url, b.token)
+    await checkJiraUrl(b.url).catch(e => { throw new HttpError(400, e.message, { url: e.message }) })
     const id = await tx(async d => {
       const [run] = await d.query<{ id: string }>('insert into jira_imports (workspace_id, url, token_enc, project_keys, dry_run, created_by) values ($1, $2, $3, $4, $5, $6) returning id',
         [req.me.workspaceId, b.url, Buffer.alloc(0), [...new Set(b.projectKeys)], b.dryRun, req.me.id])

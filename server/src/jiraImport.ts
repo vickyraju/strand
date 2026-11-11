@@ -15,16 +15,35 @@ import { withOptionIds } from './fields.ts'
 export interface Conn { url: string; token: string }
 type J = any
 
-/** Jira's REST, read-only. */
+/** Cloud metadata services: never a Jira, whatever the address resolves to. (A company's Jira DC is usually on its private
+ *  network, so private addresses are allowed: an administrator chooses the address.) */
+const METADATA = /^(169\.254\.\d+\.\d+|\[?fd00:ec2::254\]?|metadata\.google\.internal)$/i
+export async function checkJiraUrl(url: string) {
+  const u = new URL(url)
+  if (!/^https?:$/.test(u.protocol)) throw new Error('Jira’s address must be http or https')
+  const { lookup } = await import('node:dns/promises')
+  const hosts = METADATA.test(u.hostname) ? [u.hostname] : (await lookup(u.hostname, { all: true }).catch(() => [])).map(a => a.address)
+  if (hosts.some(h => METADATA.test(h))) throw new Error('That address isn’t a Jira')
+}
+
+/** Jira's REST, read-only. Only ever to the configured Jira: a URL in an answer from another origin is refused, and
+ *  redirects aren't followed, so the token goes nowhere else. */
 export function jira(c: Conn, fetchImpl: typeof fetch = fetch) {
-  const base = c.url.replace(/\/+$/, '')
+  const base = c.url.replace(/\/+$/, ''), origin = new URL(base).origin
   const headers = { authorization: `Bearer ${c.token}`, accept: 'application/json' }
-  const get = async (path: string): Promise<J> => {
-    const r = await fetchImpl(path.startsWith('http') ? path : `${base}${path}`, { headers })
-    if (!r.ok) throw new Error(`Jira answered ${r.status} for ${path.split('?')[0]}`)
-    return r.json()
+  const at = (path: string) => {
+    if (!/^https?:\/\//i.test(path)) return `${base}${path}`
+    if (new URL(path).origin !== origin) throw new Error(`Jira pointed to another address (${new URL(path).origin}): not followed`)
+    return path
   }
-  const bytes = async (url: string) => { const r = await fetchImpl(url, { headers: { authorization: headers.authorization } }); if (!r.ok) throw new Error(`Jira answered ${r.status} for a file`); return Buffer.from(await r.arrayBuffer()) }
+  const send = async (path: string, h: Record<string, string>) => {
+    const r = await fetchImpl(at(path), { headers: h, redirect: 'manual' })
+    if (r.status >= 300 && r.status < 400) throw new Error(`Jira redirected ${path.split('?')[0]} elsewhere: not followed`)
+    if (!r.ok) throw new Error(`Jira answered ${r.status} for ${path.split('?')[0]}`)
+    return r
+  }
+  const get = async (path: string): Promise<J> => (await send(path, headers)).json()
+  const bytes = async (url: string) => Buffer.from(await (await send(url, { authorization: headers.authorization })).arrayBuffer())
   /** An issue search, a page at a time. */
   async function* issues(key: string, fields: string, expand = '') {
     for (let at = 0; ; at += 100) {
@@ -38,6 +57,7 @@ export function jira(c: Conn, fetchImpl: typeof fetch = fetch) {
 type Jira = ReturnType<typeof jira>
 
 export async function testConnection(c: Conn, fetchImpl?: typeof fetch) {
+  await checkJiraUrl(c.url)
   const j = jira(c, fetchImpl)
   const [s, me] = await Promise.all([j.get('/rest/api/2/serverInfo'), j.get('/rest/api/2/myself')])
   return { version: s.version as string, title: (s.serverTitle ?? '') as string, user: (me.displayName ?? me.name) as string }
@@ -473,6 +493,7 @@ export async function runImport(runId: string, progress: (s: string) => Promise<
   await db.query(`update jira_imports set status = 'running' where id = $1`, [runId])
   const j = jira({ url: run.url, token: unseal(run.tokenEnc, run.id) })
   try {
+    await checkJiraUrl(run.url)
     let report: J
     if (run.dryRun) report = await dryRun(db, run.workspaceId, j, run.projectKeys)
     else {
