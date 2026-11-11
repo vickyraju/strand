@@ -71,6 +71,7 @@ export function mapProject(p: Row): Project {
     ...(p.role ? { role: p.role } : {}),
     ...(p.workflowSchemeId ? { workflowSchemeId: p.workflowSchemeId, workflows: p.workflows ?? [] } : {}),
     ...(p.fieldRules ? { fieldRules: p.fieldRules, fieldConfigScheme: p.fieldConfigScheme ?? null } : {}),
+    ...(p.screens ? { screens: p.screens, issueTypeScreenScheme: p.issueTypeScreenScheme ?? null } : {}),
     ...(p.archivedAt ? { archivedAt: ms(p.archivedAt) } : {}),
     ...(p.boards ? { boards: p.boards.map((b: Row) => ({ id: b.id, name: b.name, type: b.type, jql: b.jql, position: b.position, hasBacklog: !!b.hasBacklog })) } : {}),
   }

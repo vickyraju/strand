@@ -170,3 +170,55 @@ export async function enforceRules(d: Db, projectId: string, type: string, item:
   }
   if (Object.keys(errors).length) throw new HttpError(400, Object.values(errors).join('; '), errors)
 }
+
+// ── Screens (spec 0505) ──
+
+export interface Tab { name: string; fields: string[] }
+/** Per work type, the tabs of its Create, Edit and View screens (null: every field, the Default Screen as it comes). */
+export type ProjectScreens = Record<string, { create: Tab[] | null; edit: Tab[] | null; view: Tab[] | null }>
+/** Fields the screens decide on: agile actions (rank, sprint, epic and versions from the panels, flag) aren't checked, as Jira's boards aren't. */
+export const SCREEN_CHECKED = (k: string) => k.startsWith('custom.') || (k in SYSTEM_FIELDS && !['sprintId', 'parentId', 'fixReleaseIds'].includes(k))
+
+/** The workspace's Default Screen and Default Screen Scheme (made when first needed). */
+export async function defaultScreenScheme(d: Db, ws: string) {
+  const [s] = await d.query<{ id: string }>('select id from screen_schemes where workspace_id = $1 and is_default', [ws])
+  if (s) return s.id
+  const [screen] = await d.query<{ id: string }>(
+    `insert into screens (workspace_id, name, description, is_default) values ($1, 'Default Screen', 'Every field, until it is given tabs', true)
+     on conflict (workspace_id) where is_default do update set name = screens.name returning id`, [ws])
+  const [n] = await d.query<{ id: string }>(
+    `insert into screen_schemes (workspace_id, name, description, default_screen_id, is_default) values ($1, 'Default Screen Scheme', 'The Default Screen for every operation', $2, true)
+     on conflict (workspace_id) where is_default do update set name = screen_schemes.name returning id`, [ws, screen!.id])
+  return n!.id
+}
+
+/** Each work type's Create, Edit and View screens in a project. */
+export async function screensFor(d: Db, projectId: string): Promise<ProjectScreens> {
+  const [p] = await d.query<{ workspaceId: string; schemeId: string | null }>('select workspace_id, issue_type_screen_scheme_id as scheme_id from projects where id = $1', [projectId])
+  if (!p) return {}
+  const types = (await d.query<{ key: string }>('select key from work_types where project_id = $1', [projectId])).map(t => t.key)
+  const def = await defaultScreenScheme(d, p.workspaceId)
+  const [its] = p.schemeId ? await d.query<{ defaultSchemeId: string; mappings: Record<string, string> }>('select default_scheme_id, mappings from issue_type_screen_schemes where id = $1', [p.schemeId]) : []
+  const schemeOf = (t: string) => its?.mappings?.[t] ?? its?.defaultSchemeId ?? def
+  const schemes = new Map((await d.query<{ id: string; defaultScreenId: string; createScreenId: string | null; editScreenId: string | null; viewScreenId: string | null }>(
+    'select id, default_screen_id, create_screen_id, edit_screen_id, view_screen_id from screen_schemes where id = any($1::uuid[])', [[...new Set(types.map(schemeOf))]])).map(s => [s.id, s]))
+  const screenIds = [...new Set([...schemes.values()].flatMap(s => [s.defaultScreenId, s.createScreenId, s.editScreenId, s.viewScreenId]).filter(Boolean))] as string[]
+  const tabs = new Map((await d.query<{ id: string; tabs: Tab[] | null }>('select id, tabs from screens where id = any($1::uuid[])', [screenIds])).map(s => [s.id, s.tabs]))
+  return Object.fromEntries(types.map(t => {
+    const s = schemes.get(schemeOf(t))
+    const of = (id: string | null | undefined) => tabs.get(id ?? s?.defaultScreenId ?? '') ?? null
+    return [t, { create: of(s?.createScreenId), edit: of(s?.editScreenId), view: of(s?.viewScreenId) }]
+  }))
+}
+
+/** Fields set that aren't on the operation's screen (spec 0505 R4): a 400 naming each. */
+export async function enforceScreen(d: Db, projectId: string, type: string, op: 'create' | 'edit', keys: string[]) {
+  const tabs = (await screensFor(d, projectId))[type]?.[op]
+  if (!tabs) return
+  const on = new Set(tabs.flatMap(t => t.fields))
+  const off = keys.filter(k => SCREEN_CHECKED(k) && !on.has(k))
+  if (!off.length) return
+  const defs = await d.query<{ id: string; name: string }>('select id, name from field_defs where project_id = $1', [projectId])
+  const nameOf = (k: string) => (k.startsWith('custom.') ? defs.find(f => f.id === k.slice(7))?.name ?? 'A custom field' : SYSTEM_FIELDS[k] ?? k)
+  throw new HttpError(400, `${off.map(nameOf).join(', ')} can’t be set: not on the ${op} screen`, Object.fromEntries(off.map(k => [k, `Not on the ${op} screen`])))
+}

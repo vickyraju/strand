@@ -3604,6 +3604,14 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     'GET /admin/field-config-schemes': ['gadmin', '/admin/field-config-schemes'], 'GET /admin/field-config-schemes/{id}': ['gadmin', `/admin/field-config-schemes/${none}`],
     'POST /admin/field-config-schemes': ['gadmin', '/admin/field-config-schemes', { name: 'Matrix scheme', defaultConfigId: none }],
     'PATCH /admin/field-config-schemes/{id}': ['gadmin', `/admin/field-config-schemes/${none}`, { name: 'x' }], 'DELETE /admin/field-config-schemes/{id}': ['gadmin', `/admin/field-config-schemes/${none}`],
+    'GET /admin/screens': ['gadmin', '/admin/screens'], 'GET /admin/screens/{id}': ['gadmin', `/admin/screens/${none}`], 'POST /admin/screens': ['gadmin', '/admin/screens', { name: 'Matrix screen' }],   // 0505.R1
+    'PATCH /admin/screens/{id}': ['gadmin', `/admin/screens/${none}`, { name: 'x' }], 'DELETE /admin/screens/{id}': ['gadmin', `/admin/screens/${none}`],
+    'GET /admin/screen-schemes': ['gadmin', '/admin/screen-schemes'], 'GET /admin/screen-schemes/{id}': ['gadmin', `/admin/screen-schemes/${none}`],
+    'POST /admin/screen-schemes': ['gadmin', '/admin/screen-schemes', { name: 'Matrix ss', defaultScreenId: none }],
+    'PATCH /admin/screen-schemes/{id}': ['gadmin', `/admin/screen-schemes/${none}`, { name: 'x' }], 'DELETE /admin/screen-schemes/{id}': ['gadmin', `/admin/screen-schemes/${none}`],
+    'GET /admin/issue-type-screen-schemes': ['gadmin', '/admin/issue-type-screen-schemes'], 'GET /admin/issue-type-screen-schemes/{id}': ['gadmin', `/admin/issue-type-screen-schemes/${none}`],
+    'POST /admin/issue-type-screen-schemes': ['gadmin', '/admin/issue-type-screen-schemes', { name: 'Matrix its', defaultSchemeId: none }],
+    'PATCH /admin/issue-type-screen-schemes/{id}': ['gadmin', `/admin/issue-type-screen-schemes/${none}`, { name: 'x' }], 'DELETE /admin/issue-type-screen-schemes/{id}': ['gadmin', `/admin/issue-type-screen-schemes/${none}`],
     'GET /admin/automation/rules': ['gadmin', '/admin/automation/rules'], 'GET /admin/automation/runs': ['gadmin', '/admin/automation/runs'],   // 0709.R3
     'POST /admin/automation/rules': ['gadmin', '/admin/automation/rules', { name: 'Matrix rule', scope: { kind: 'all' }, trigger: { kind: 'created' }, actions: [{ kind: 'label', value: 'matrix' }] }],
     'PUT /admin/automation/rules/{id}': ['gadmin', `/admin/automation/rules/${none}`, { name: 'x', scope: { kind: 'all' }, trigger: { kind: 'created' }, actions: [{ kind: 'label', value: 'x' }] }],
@@ -5668,6 +5676,47 @@ test('[0504.R1][0504.R2][0504.R3][0504.R4] field configurations: hidden and requ
   // only system admins choose a project's scheme
   await join('FCA', 'fc.admin@x.com', 'admin')
   assert.equal((await call('PATCH', '/api/v1/projects/FCA', { fieldConfigSchemeId: null }, 'fc.admin@x.com')).status, 403)
+})
+
+test('[0505.R1][0505.R2][0505.R3][0505.R4] screens: create, edit and view screens per work type through schemes; fields off a screen refused; agile actions unaffected', { skip, timeout: 60_000 }, async () => {
+  await call('POST', '/api/v1/projects', { name: 'Screened', key: 'SCR', template: 'scrum' })
+  const env = (await call('POST', '/api/v1/admin/custom-fields', { name: 'Environment', kind: 'text', context: { projectKeys: ['SCR'] } })).body
+  const screens = (await call('GET', '/api/v1/admin/screens')).body
+  const def = screens.find((s: any) => s.isDefault)
+  assert.deepEqual([def.name, def.tabs], ['Default Screen', null])
+  // R1: screens with tabs; unknown or repeated fields refused
+  assert.equal((await call('POST', '/api/v1/admin/screens', { name: 'Bad', tabs: [{ name: 'Main', fields: ['nonsense'] }] })).status, 400)
+  assert.equal((await call('POST', '/api/v1/admin/screens', { name: 'Bad', tabs: [{ name: 'A', fields: ['labels'] }, { name: 'B', fields: ['labels'] }] })).status, 400)
+  const create = (await call('POST', '/api/v1/admin/screens', { name: 'Quick create', tabs: [{ name: 'Field tab', fields: ['description', 'assigneeId', 'priority'] }] })).body
+  const edit = (await call('POST', '/api/v1/admin/screens', { name: 'Edit without priority', tabs: [{ name: 'Main', fields: ['description', 'assigneeId', 'labels', `custom.${env.id}`] }, { name: 'Dates', fields: ['dueDate'] }] })).body
+  // R2, R3: a screen scheme for bugs; the project uses it through its issue type screen scheme
+  const defScheme = (await call('GET', '/api/v1/admin/screen-schemes')).body.find((s: any) => s.isDefault)
+  const bugScreens = (await call('POST', '/api/v1/admin/screen-schemes', { name: 'Bug screens', defaultScreenId: def.id, createScreenId: create.id, editScreenId: edit.id })).body
+  const its = (await call('POST', '/api/v1/admin/issue-type-screen-schemes', { name: 'SCR screens', defaultSchemeId: defScheme.id, mappings: { bug: bugScreens.id } })).body
+  assert.equal((await call('PATCH', '/api/v1/projects/SCR', { issueTypeScreenSchemeId: its.id })).status, 200)
+  const proj = (await call('GET', '/api/v1/projects/SCR')).body
+  assert.deepEqual([proj.screens.bug.create[0].fields, proj.screens.bug.view, proj.screens.task.edit, proj.issueTypeScreenScheme.name], [['description', 'assigneeId', 'priority'], null, null, 'SCR screens'])
+  // R4: create: a field off the create screen is refused; a task (Default Screen) takes anything
+  const off = await call('POST', '/api/v1/projects/SCR/issues', { title: 'Bug', type: 'bug', labels: ['ui'] })
+  assert.deepEqual([off.status, off.body.errors?.labels], [400, 'Not on the create screen'])
+  const bug = (await call('POST', '/api/v1/projects/SCR/issues', { title: 'Bug', type: 'bug', priority: 'high' })).body
+  assert.equal((await call('POST', '/api/v1/projects/SCR/issues', { title: 'Task', type: 'task', labels: ['ui'] })).status, 201)
+  // edit: priority isn't on the edit screen; labels and the custom field are
+  const pr = await call('PATCH', `/api/v1/issues/${bug.key}`, { priority: 'low' })
+  assert.deepEqual([pr.status, pr.body.errors?.priority], [400, 'Not on the edit screen'])
+  assert.equal((await call('PATCH', `/api/v1/issues/${bug.key}`, { labels: ['ok'], custom: { [env.id]: 'staging' } })).status, 200)
+  // agile actions aren't checked against screens: rank, sprint, flag, a move through the workflow
+  const sprint = (await call('POST', '/api/v1/projects/SCR/sprints', { name: 'S1' })).body
+  assert.equal((await call('PATCH', `/api/v1/issues/${bug.key}`, { sprintId: sprint.id, rank: 5, flagged: true })).status, 200)
+  assert.equal((await call('PATCH', `/api/v1/issues/${bug.key}`, { statusId: proj.statuses.find((s: any) => s.category === 'in-progress').id })).status, 200)
+  // R1: the default screen can't go; a used screen can't go; an unused one can
+  assert.equal((await call('DELETE', `/api/v1/admin/screens/${def.id}`)).status, 400)
+  assert.equal((await call('DELETE', `/api/v1/admin/screens/${edit.id}`)).status, 409)
+  assert.equal((await call('DELETE', `/api/v1/admin/screen-schemes/${bugScreens.id}`)).status, 409)
+  assert.equal((await call('DELETE', `/api/v1/admin/issue-type-screen-schemes/${its.id}`)).status, 204)
+  assert.equal((await call('PATCH', `/api/v1/issues/${bug.key}`, { priority: 'low' })).status, 200)          // back to the Default Screen
+  assert.equal((await call('DELETE', `/api/v1/admin/screen-schemes/${bugScreens.id}`)).status, 204)
+  assert.equal((await call('DELETE', `/api/v1/admin/screens/${edit.id}`)).status, 204)
 })
 
 test('[0705.R2] a webhook never reaches private addresses, whatever its name resolves to', { skip }, async () => {

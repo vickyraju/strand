@@ -25,6 +25,7 @@ import DevelopmentTools from './DevelopmentTools'
 import GlobalAutomation from './GlobalAutomation'
 import CustomFieldsAdmin from './CustomFieldsAdmin'
 import FieldConfigsAdmin from './FieldConfigsAdmin'
+import ScreensAdmin from './ScreensAdmin'
 import SharedViewsAdmin from './SharedViewsAdmin'
 import ArchivedProjects from './admin/ArchivedProjects'
 
@@ -57,6 +58,7 @@ export default function AdminView({ section = 'people', item }: { section?: Admi
       {section === 'automation' && <GlobalAutomation />}
       {section === 'custom-fields' && <CustomFieldsAdmin />}
       {section === 'field-configurations' && <FieldConfigsAdmin />}
+      {section === 'screens' && <ScreensAdmin />}
       {section === 'workflows' && <WorkflowsAdmin tab={item === 'statuses' || item === 'schemes' ? item : 'workflows'} />}
       {section === 'link-types' && <LinkTypesAdmin />}
       {(section === 'priorities' || section === 'resolutions') && <ListsAdmin kind={section} />}

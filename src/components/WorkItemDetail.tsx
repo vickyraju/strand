@@ -48,10 +48,14 @@ function AutoText(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
   return <textarea ref={ref} rows={1} {...props} />
 }
 
-/** One field of the details; a field configuration (spec 0504) may hide it, require it (*) or describe it. */
-function Field({ label, children, rule }: { label: string; children: React.ReactNode; rule?: FieldRule }) {
+/** One field of the details; a field configuration (spec 0504) may hide it, require it (*) or describe it; screens
+ *  (spec 0505) leave out what the view screen lacks and make read-only what the edit screen lacks. */
+function Field({ label, children, rule }: { label: string; children: React.ReactNode; rule?: FieldRule & { readOnly?: boolean } }) {
   if (rule?.hidden) return null
-  return <div className="field" title={rule?.description}><span className="field-label">{label}{rule?.required ? ' *' : ''}</span><div className="field-val">{children}</div></div>
+  return (
+    <div className="field" title={rule?.description}><span className="field-label">{label}{rule?.required ? ' *' : ''}</span>
+      <div className="field-val">{rule?.readOnly ? <fieldset className="plain-fieldset" disabled title="Not on the edit screen">{children}</fieldset> : children}</div></div>
+  )
 }
 
 export default function WorkItemDetail({ issueId, mode, navList }: { issueId: string; mode: 'peek' | 'full'; navList: string[] }) {
@@ -75,7 +79,16 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
   const [linking, setLinking]     = useState(false)
   const [cloning, setCloning]     = useState(false)
   const [moving, setMoving]       = useState(false)
-  const fr = (k: string): FieldRule => project?.fieldRules?.[issue?.type ?? '']?.[k] ?? {}   // field configuration (spec 0504)
+  // the field configuration (spec 0504) and the screens (spec 0505) of the item's type: what shows, on which tab, and what can change
+  const screens = project?.screens?.[issue?.type ?? '']
+  const viewTabs = screens?.view ?? null
+  const [viewTab, setViewTab] = useState(0)
+  const onView = (k: string) => !viewTabs || !!viewTabs[Math.min(viewTab, viewTabs.length - 1)]?.fields.includes(k)
+  const onEdit = (k: string) => !screens?.edit || screens.edit.some(t => t.fields.includes(k))
+  const fr = (k: string): FieldRule & { readOnly?: boolean } => {
+    const r = project?.fieldRules?.[issue?.type ?? '']?.[k] ?? {}
+    return { ...r, hidden: r.hidden || !onView(k), readOnly: !onEdit(k) }
+  }
   const [confirmDel, setConfirmDel] = useState(false)
   const attachRef = useRef<HTMLInputElement>(null)
   const [templating, setTemplating] = useState(false)
@@ -246,10 +259,10 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
                 </div>
               </>
             ) : (
-              <div className={`desc-view${issue.description ? '' : ' is-empty'}`} {...(readOnly ? {} : { role: 'button', tabIndex: 0, 'aria-label': 'Edit description' })}
-                onClick={e => { if (!readOnly && !(e.target as HTMLElement).closest('a')) setEditing(true) }}
-                onKeyDown={e => !readOnly && e.key === 'Enter' && setEditing(true)}>
-                {issue.description ? <Markdown text={issue.description} users={state.users} /> : readOnly ? 'No description' : 'Add a description…'}
+              <div className={`desc-view${issue.description ? '' : ' is-empty'}`} {...(readOnly || fr('description').readOnly ? {} : { role: 'button', tabIndex: 0, 'aria-label': 'Edit description' })}
+                onClick={e => { if (!readOnly && !fr('description').readOnly && !(e.target as HTMLElement).closest('a')) setEditing(true) }}
+                onKeyDown={e => !readOnly && !fr('description').readOnly && e.key === 'Enter' && setEditing(true)}>
+                {issue.description ? <Markdown text={issue.description} users={state.users} /> : readOnly || fr('description').readOnly ? 'No description' : 'Add a description…'}
               </div>
             )}
           </section>}
@@ -417,6 +430,11 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
 
           <div className="side-card">
             <h2 className="side-title">Details</h2>
+            {viewTabs && viewTabs.length > 1 && (   // the view screen's tabs (spec 0505)
+              <div className="tabs side-tabs" role="tablist" aria-label="Field tabs">
+                {viewTabs.map((t, n) => <button key={n} role="tab" aria-selected={n === Math.min(viewTab, viewTabs.length - 1)} className={`tab${n === Math.min(viewTab, viewTabs.length - 1) ? ' active' : ''}`} onClick={() => setViewTab(n)}>{t.name}</button>)}
+              </div>
+            )}
             <Field label="Assignee" rule={fr('assigneeId')}>
               <UserPicker value={issue.assigneeId} onChange={assigneeId => set({ assigneeId })} projectId={issue.projectId} className="field-btn" title="Assignee"
                 trigger={<><Avatar user={assignee} size={22} />{assignee?.name ?? 'Unassigned'}</>} />
@@ -513,7 +531,10 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
             <Field label="Due date" rule={fr('dueDate')}>
               <input className="field-input" type="date" value={issue.dueDate ?? ''} min={issue.startDate} aria-label="Due date" onChange={e => set({ dueDate: e.target.value || undefined })} />
             </Field>
-            {project.fields.filter(f => !f.typeKeys || f.typeKeys.includes(issue.type)).map(f => (   // a field applies to its context's work types (spec 0503)
+            {project.fields.filter(f => !f.typeKeys || f.typeKeys.includes(issue.type))
+              // in the view screen's order when it lists them (spec 0505)
+              .sort((a, b) => !viewTabs ? 0 : viewTabs.flatMap(t => t.fields).indexOf(`custom.${a.id}`) - viewTabs.flatMap(t => t.fields).indexOf(`custom.${b.id}`))
+              .map(f => (   // a field applies to its context's work types (spec 0503)
               <Field key={f.id} label={f.name} rule={fr(`custom.${f.id}`)}><CustomFieldInput key={issue.id} field={f} issue={issue} /></Field>
             ))}
             <Field label="Watchers">

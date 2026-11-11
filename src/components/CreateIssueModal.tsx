@@ -56,11 +56,16 @@ export default function CreateIssueModal({ defaults, onClose }: {
   // field configurations (spec 0504): hidden fields are left out, required ones are marked and must be filled in
   const rules = project.fieldRules?.[type] ?? {}
   const rule = (k: string): FieldRule => rules[k] ?? {}
-  const shown = (k: string) => !rule(k).hidden
+  // the create screen (spec 0505): only its fields are offered
+  const createTabs = project.screens?.[type]?.create ?? null
+  const onCreate = (k: string) => !createTabs || createTabs.some(t => t.fields.includes(k))
+  const shown = (k: string) => !rule(k).hidden && onCreate(k)
   const star = (k: string) => (rule(k).required && !rule(k).hidden ? ' *' : '')
   const values = { description, assigneeId, priority, parentId, sprintId, estimate: estimate === '' ? undefined : estimate, dueDate, labels: splitLabels(labels), custom, reporterId: state.me?.id }
   const missing = missingRequired(rules, values)
-  const requiredFields = project.fields.filter(f => rule(`custom.${f.id}`).required && !rule(`custom.${f.id}`).hidden && (!f.typeKeys || f.typeKeys.includes(type)))
+  // custom fields asked for here: a create screen's own (in its order), else the required ones
+  const requiredFields = project.fields.filter(f => shown(`custom.${f.id}`) && (!f.typeKeys || f.typeKeys.includes(type)) && (createTabs ? true : rule(`custom.${f.id}`).required))
+    .sort((a, b) => !createTabs ? 0 : createTabs.flatMap(t => t.fields).indexOf(`custom.${a.id}`) - createTabs.flatMap(t => t.fields).indexOf(`custom.${b.id}`))
   const submit = () => {
     if (!title.trim() || missing.length) return
     const id = uid()
@@ -68,10 +73,13 @@ export default function CreateIssueModal({ defaults, onClose }: {
     dispatch({
       type: 'createIssue', id,
       issue: {
-        projectId, title: title.trim(), description: description.trim(), type, status: statusObj?.id ?? status, priority, assigneeId,
-        dueDate: dueDate || undefined, startDate: defaults.startDate, sprintId, parentId: type === 'epic' ? undefined : parentId,
-        estimate: estimate === '' ? undefined : Math.max(0, Number(estimate)),
-        labels: splitLabels(labels),
+        // only what the create screen offers (spec 0505): the rest stays as a new item starts
+        projectId, title: title.trim(), description: shown('description') ? description.trim() : '', type, status: statusObj?.id ?? status,
+        ...(shown('priority') ? { priority } : {}), assigneeId: shown('assigneeId') ? assigneeId : undefined,
+        dueDate: shown('dueDate') ? dueDate || undefined : undefined, startDate: defaults.startDate, sprintId: shown('sprintId') ? sprintId : undefined,
+        parentId: type === 'epic' ? undefined : parentId,
+        estimate: estimate === '' || !shown('estimate') ? undefined : Math.max(0, Number(estimate)),
+        labels: shown('labels') ? splitLabels(labels) : [],
         ...(Object.keys(custom).length ? { custom } : {}),
         ...(type === 'test' && defaults.testFolderId ? { testFolderId: defaults.testFolderId } : {}),
       },
@@ -199,6 +207,6 @@ function RequiredField({ field, value, rule, projectId, onChange }: { field: Fie
   else input = <input id={id} className="input input-sm" type={field.kind === 'number' ? 'number' : field.kind === 'date' ? 'date' : 'text'} value={Array.isArray(value) ? value.join(field.kind === 'cascading' ? ' > ' : ' ') : String(value ?? '')}
     placeholder={field.kind === 'cascading' ? 'Option > Child' : isMulti(field.kind) ? 'Separate with spaces' : ''}
     onChange={e => { const t = e.target.value; onChange(!t ? undefined : field.kind === 'number' ? Number(t) : field.kind === 'cascading' ? t.split(/\s*>\s*/) : isMulti(field.kind) ? t.split(/\s+/).filter(Boolean) : t) }} />
-  return <label className="compose-req" htmlFor={id}><span className="label">{field.name} *</span>{input}{rule.description && <span className="hint">{rule.description}</span>}</label>
+  return <label className="compose-req" htmlFor={id}><span className="label">{field.name}{rule.required ? " *" : ""}</span>{input}{rule.description && <span className="hint">{rule.description}</span>}</label>
 }
 
