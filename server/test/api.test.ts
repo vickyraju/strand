@@ -6188,6 +6188,19 @@ test('[0605.R1][0605.R2][0605.R3][0605.R4][0605.R5][0605.R6] notification scheme
   assert.ok((await pool.query(`select 1 from audit_log where action = 'project.notification_scheme_changed'`)).rows.length >= 3)
 })
 
+test('[0501.R1] a move is refused when a sub-item is behind a security level the mover isn\'t in', { skip }, async () => {
+  await call('POST', '/api/v1/projects', { name: 'Move levels', key: 'MVL', template: 'kanban' })
+  await call('POST', '/api/v1/projects', { name: 'Move target', key: 'MVT', template: 'kanban' })
+  await join('MVL', 'mvl.bob@x.com', 'admin'); await join('MVT', 'mvl.bob@x.com', 'admin')
+  const lvl = (await call('POST', '/api/v1/projects/MVL/security-levels', { name: 'Owner only', members: [{ kind: 'user', id: (await call('GET', '/api/v1/me')).body.id }] })).body
+  const parent = (await call('POST', '/api/v1/projects/MVL/issues', { title: 'Parent' })).body
+  await call('POST', '/api/v1/projects/MVL/issues', { title: 'Hidden sub-item', parentId: parent.id, securityLevelId: lvl.id })
+  const r = await call('POST', `/api/v1/issues/${parent.key}/move`, { projectKey: 'MVT' }, 'mvl.bob@x.com')
+  assert.equal(r.status, 403)
+  assert.match(r.body.error, /1 of its sub-items is behind a security level/)
+  assert.equal((await call('GET', `/api/v1/issues/${parent.key}`)).body.key, parent.key)   // nothing moved
+})
+
 test('projects list: the open count leaves out items behind a security level I\'m not in', { skip }, async () => {
   await call('POST', '/api/v1/projects', { name: 'Counted', key: 'CNT', template: 'kanban' })
   await join('CNT', 'cnt.bob@x.com')

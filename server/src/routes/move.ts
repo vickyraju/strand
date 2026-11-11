@@ -4,7 +4,7 @@ import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
 import { db, tx, type Db } from '../db.ts'
 import { HttpError, type Me } from '../auth.ts'
-import { canJoinWork, need, roleOf } from '../access.ts'
+import { canJoinWork, levelOk, need, roleOf } from '../access.ts'
 import { statusesFor } from '../workflows.ts'
 import { publish } from '../events.ts'
 import { emit } from '../webhooks.ts'
@@ -122,6 +122,9 @@ export async function moveItem(d: Db, me: Me, item: any, o: z.infer<typeof one> 
   await checkType(d, tgt.id, type)
   await checkLevels(d, me, tgt.id, item, type, item.parentId)
   const subs = await d.query<any>(`${ISSUE_ROW} where i.parent_id = $1 and i.deleted_at is null order by i.rank`, [item.id])
+  // sub-items move with their parent: one behind a security level the mover isn't in would be moved (and its level cleared) unseen
+  const [{ hidden }] = await d.query<{ hidden: number }>(`select count(*)::int as hidden from issues i where i.parent_id = $1 and i.deleted_at is null and not ${levelOk(me, 2)}`, [item.id, me.id]) as any
+  if (hidden) throw new HttpError(403, `${hidden} of its sub-items ${hidden === 1 ? 'is' : 'are'} behind a security level you aren’t in: someone who can see ${hidden === 1 ? 'it' : 'them'} must move this item`)
   const [{ next }] = await d.query<{ next: number }>('select next_number as next from projects where id = $1', [tgt.id]) as any
   const t = { id: tgt.id, key: tgt.key, nextNumber: next }
   const plans = [await planFor(d, item, t, o, type, next, false)]
