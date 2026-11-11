@@ -1,6 +1,6 @@
 # 0608 Print and XML export
 
-Status: Approved (PO, 10 Nov 2026: "yes go ahead and build complete everything whatever is pending")
+Status: Ported (aws-jira `1d48871`, strand `8b9d3ff`), approved by the PO on 10 Nov 2026; awaiting verification
 Parity rows: SR-06
 
 ## Context and Jira reference
