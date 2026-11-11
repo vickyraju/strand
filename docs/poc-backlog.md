@@ -13,7 +13,7 @@ There are 65 specs: 63 are built and ported to both branches, 0101 is verified, 
 | 5 | 0717 | Global permissions (Browse users, Create shared objects, Bulk change…) | PRM-10 | Done (ported 12 Nov) |
 | 6 | 0718 | Workflow triggers from development tools (a merged pull request moves an item) | WF-06 | Done (ported 12 Nov) |
 | 7 | 0713 | Incremental directory sync (LDAP uSNChanged), "manage user status locally" | DIR-04 | Done (ported 12 Nov); manage user status locally not built |
-| 8 | 0804 | Xray test data import (steps, runs, results) | — | Queued |
+| 8 | 0804 | Xray test data import (steps, runs, results) | — | Parked (12 Nov): built on the PO's system that has Jira with Xray, then ported here |
 
 ## B. Making the Jira DC import complete (needed to move real data)
 
@@ -40,6 +40,7 @@ Today's importer (0802) brings projects, people, statuses, types, priorities, re
 - Compare Strand with the real Jira, screen by screen.
 - Verify the 63 specs marked "awaiting verification".
 - Review the 71 proposals (P1…) written into the specs and choose which to build.
+- Build 0804 (Xray test data import) on the PO's system with Jira and Xray installed, then port it here.
 
 ## D. To develop later
 
