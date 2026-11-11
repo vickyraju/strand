@@ -6,6 +6,7 @@
 // A project admin gives a group a role in their project (members.ts); a group's owners then decide who has that role,
 // which is why everyone can see who owns a group.
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
+import { hasGlobal } from './globalPermissions.ts'
 import { z } from 'zod'
 import { db, tx, type Db } from '../db.ts'
 import { HttpError, type Me } from '../auth.ts'
@@ -79,7 +80,8 @@ const plugin: FastifyPluginAsyncZod = async app => {
       try { c = JSON.parse(Buffer.from(req.query.cursor, 'base64url').toString()) } catch { throw new HttpError(400, 'Invalid cursor') }
       args.push(c[0], c[1], c[2]); after = `and (g.system_role is null, lower(g.display_name), g.id) > ($3::boolean, $4, $5::uuid)`
     }
-    const mine = req.query.mine ? `and (exists (select 1 from group_members gm where gm.group_id = g.id and gm.user_id = $1)
+    // without Browse users and groups, only those I'm in or own (spec 0717)
+    const mine = req.query.mine || !(await hasGlobal(req.me, 'browse-users')) ? `and (exists (select 1 from group_members gm where gm.group_id = g.id and gm.user_id = $1)
       or exists (select 1 from group_owners o where o.group_id = g.id and o.user_id = $1))` : ''
     args.push(req.query.limit + 1)
     const rows = await db.query<any>(`${ROW} where g.display_name ilike $2 ${mine} ${after}

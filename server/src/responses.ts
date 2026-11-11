@@ -12,7 +12,7 @@ const day = z.string().describe('YYYY-MM-DD')
 const nullable = <T extends z.ZodType>(t: T) => t.nullable()
 
 export const User = z.object({ id, name: z.string(), initials: z.string(), color: z.string(), title: nullable(z.string()), email: z.string(), role: z.string() })
-export const Me = z.object({ id, email: z.string(), name: z.string(), workspaceId: id, role: z.enum(['owner', 'admin', 'member']), admin: z.boolean(), groupIds: z.array(id).describe('Groups I am in (transition rules can name groups)'),
+export const Me = z.object({ id, email: z.string(), name: z.string(), workspaceId: id, role: z.enum(['owner', 'admin', 'member']), admin: z.boolean(), groupIds: z.array(id).describe('Groups I am in (transition rules can name groups)'), globalPermissions: z.array(z.string()).describe('My global permissions (spec 0717)'),
   via: z.enum(['entra', 'password', 'recovery', 'pat']).describe('How this request signed in'),
   recovery: z.boolean().describe('System admins: Strand is running in recovery mode (spec 0711)'),
   hasPassword: z.boolean().describe('Keeps a password in Strand (spec 0714)'), directory: nullable(z.string()).describe('The user directory they come from; null for the internal directory') })

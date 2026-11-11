@@ -1,5 +1,6 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
+import { hasGlobal } from './globalPermissions.ts'
 import { db, tx, type Db } from '../db.ts'
 import { HttpError } from '../auth.ts'
 import { need } from '../access.ts'
@@ -108,7 +109,9 @@ const plugin: FastifyPluginAsyncZod = async app => {
     db.query(`select g.id, g.display_name as name, (select count(*)::int from group_members gm join users u on u.id = gm.user_id where gm.group_id = g.id and u.active) as members,
                      case when g.system_role is not null then 'system' when g.external_id is not null then 'directory' else 'strand' end as kind,
                      coalesce((select jsonb_agg(u.name order by lower(u.name)) from group_owners o join users u on u.id = o.user_id where o.group_id = g.id), '[]') as owners
-                from groups g where g.display_name ilike '%' || $1 || '%' order by lower(g.display_name), g.id limit 30`, [req.query.query.replace(/[%_\\]/g, '\\$&')]))
+                from groups g where g.display_name ilike '%' || $1 || '%'
+                  ${await hasGlobal(req.me, 'browse-users') ? 'and $2::uuid is not null' : 'and (exists (select 1 from group_members x where x.group_id = g.id and x.user_id = $2) or exists (select 1 from group_owners x where x.group_id = g.id and x.user_id = $2))'}
+                order by lower(g.display_name), g.id limit 30`, [req.query.query.replace(/[%_\\]/g, '\\$&'), req.me.id]))   // without Browse users and groups, mine only (spec 0717)
 
   app.get('/projects/:key/groups', { schema: { tags: TAG, summary: 'Groups given a role in the project', params: keyP } }, async req => {
     const p = await projectByKey(db, req, req.params.key)

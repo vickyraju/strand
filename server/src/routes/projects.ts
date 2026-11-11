@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { recoveryPassword } from '../authConfig.ts'
+import { globalPermissions, hasGlobal } from './globalPermissions.ts'
 import { checkPriority } from '../lists.ts'
 import { label, labels } from '../shared/labels.ts'
 import type { FastifyRequest } from 'fastify'
@@ -205,6 +206,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
   })
   app.get('/me', { schema: { tags: T.me, summary: 'Current user and role' } }, async req => ({
     ...req.me, groupIds: (await db.query<{ groupId: string }>('select group_id from group_members where user_id = $1', [req.me.id])).map(g => g.groupId),
+    globalPermissions: await globalPermissions(req.me),                 // spec 0717
     recovery: req.me.admin && !!recoveryPassword(),          // admins see a banner while recovery mode is on (spec 0711 R10)
     // where their password lives (spec 0714): Settings › Password shows for the internal directory's people who have one
     ...(await db.query<{ hasPassword: boolean; directory: string | null }>(
@@ -230,10 +232,14 @@ const plugin: FastifyPluginAsyncZod = async app => {
   app.get('/users', { schema: { tags: T.me, summary: 'People in the workspace: those named in `ids` (also deactivated ones, so old work keeps its names), or the first 1000 active people by name',
     querystring: z.object({ ids: z.string().max(200 * 37).optional().describe('Comma-separated user ids, up to 200') }) } }, async req => {
     const ids = req.query.ids ? req.query.ids.split(',').filter(x => UUID.test(x)).slice(0, 200) : null
+    // without Browse users and groups (spec 0717): the people who share a project with me, and me
+    const browse = ids || await hasGlobal(req.me, 'browse-users')
     return db.query(
       `select u.id, u.name, u.initials, u.color, u.title, u.email, m.role from users u
-       join memberships m on m.user_id = u.id and m.workspace_id = $1 where ${ids ? 'u.id = any($2::uuid[])' : 'u.active'} order by lower(u.name), u.id limit 1000`,
-      ids ? [req.me.workspaceId, ids] : [req.me.workspaceId])
+       join memberships m on m.user_id = u.id and m.workspace_id = $1 where ${ids ? 'u.id = any($2::uuid[])' : 'u.active'}
+       ${browse ? '' : `and (u.id = $2 or exists (select 1 from project_access mine join project_access theirs on theirs.project_id = mine.project_id where mine.user_id = $2 and theirs.user_id = u.id))`}
+       order by lower(u.name), u.id limit 1000`,
+      ids ? [req.me.workspaceId, ids] : [req.me.workspaceId, ...(browse ? [] : [req.me.id])])
   })
 
   app.get('/users/search', { schema: { tags: T.me, summary: 'Find users by name or e-mail, in name order (keyset-paginated). With `project`, only people who can work in that project', querystring: searchQ.extend({ project: z.string().optional().describe('Project key or id: only its members (and workspace admins)') }) } }, async req => {
@@ -245,7 +251,10 @@ const plugin: FastifyPluginAsyncZod = async app => {
       args.push(p.id)
       where.push(`(is_system_admin(u.id) or exists (select 1 from project_access pa where pa.project_id = $${args.length} and pa.user_id = u.id))`)
     }
-    if (query) { args.push(like(query)); where.push(`(u.name ilike $${args.length} or u.email ilike $${args.length})`) }
+    // a project's people are its pickers' (Jira's Assignable and Browse project); anyone else only by exact email without
+    // Browse users and groups (spec 0717)
+    if (!req.query.project && !(await hasGlobal(req.me, 'browse-users'))) { args.push(query ?? ''); where.push(`lower(u.email) = lower($${args.length})`) }
+    else if (query) { args.push(like(query)); where.push(`(u.name ilike $${args.length} or u.email ilike $${args.length})`) }
     if (cur) { args.push(cur[0].toLowerCase(), cur[1]); where.push(`(lower(u.name), u.id) > ($${args.length - 1}, $${args.length}::uuid)`) }
     args.push(limit + 1)
     const rows = await db.query<any>(

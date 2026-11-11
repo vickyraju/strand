@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Play, Pencil, Trash2 } from 'lucide-react'
-import { useStore, type SavedView } from '../data/store'
+import { holds, useStore, type SavedView } from '../data/store'
 import { api } from '../api/client'
-import { usePublicSettings } from '../api/settings-public'
 import { useApp } from '../appContext'
 import { Modal } from './ui'
 
@@ -29,12 +28,11 @@ export function cronOf(f: Form): string {
 export default function SubscriptionsDialog({ view, onClose }: { view: SavedView; onClose: () => void }) {
   const { state } = useStore()
   const { toast } = useApp()
-  const settings = usePublicSettings()
   const [subs, setSubs] = useState<Sub[] | null>(null)
   const [editing, setEditing] = useState<{ id?: string; form: Form } | null>(null)
   const [groups, setGroups] = useState<{ id: string; name: string }[]>([])
   const [error, setError] = useState('')
-  const canGroup = settings.filterSubscriptions.groupSubscribers === 'everyone' || !!state.isAdmin
+  const canGroup = holds(state, 'group-subscriptions')                   // Manage group filter subscriptions (spec 0717)
   const load = () => api<Sub[]>('GET', `/api/views/${view.id}/subscriptions`).then(setSubs, e => setError(e.message))
   useEffect(() => { load() }, [])   // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (editing && canGroup && !groups.length) api<{ id: string; name: string }[]>('GET', '/api/groups/search').then(setGroups, () => {}) }, [editing])   // eslint-disable-line react-hooks/exhaustive-deps

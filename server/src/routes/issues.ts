@@ -1,5 +1,6 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
+import { needGlobal } from './globalPermissions.ts'
 import { db, tx, pick, type Db } from '../db.ts'
 import { HttpError, requireAdmin, type Me } from '../auth.ts'
 import { canJoinWork, commentShown, levelOk, minFor, need, roleOf, visible, visibleAs, type ProjectRole, ARCHIVED, READS, accessTo, notArchived, type Permission, canSee } from '../access.ts'
@@ -820,6 +821,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
   const refs = z.array(z.string()).min(1).max(5000).describe('Issue keys (PAY-12) or ids; at most the bulk limit in System settings')
   const bulkResult = (n: number) => ({ count: n })
   const checkBulk = async (req: { me: Me; body: { issues: string[] } }) => {
+    await needGlobal(req.me, 'bulk-change')                                   // Jira's Bulk change global permission (spec 0717)
     const max = (await getSetting(req.me.workspaceId, 'searchAndBulk')).bulkMaxItems
     const n = new Set(req.body.issues).size
     if (n > max) throw new HttpError(400, `A bulk change can include at most ${max} work items (you sent ${n})`, { issues: `At most ${max}` })

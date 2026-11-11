@@ -94,3 +94,5 @@ Same rules.
 None.
 
 ## Changelog
+
+- 12 Nov 2026: "Who may subscribe a group" became the Manage group filter subscriptions global permission (spec 0717). A workspace that had chosen system administrators only keeps that, through no grant.

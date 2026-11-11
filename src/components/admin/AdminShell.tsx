@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { Users, ScrollText, Archive, SlidersHorizontal, Link2, Bookmark, UsersRound, GitBranch, FlaskConical, ArchiveRestore, Signal, CircleCheck, KeyRound, Network, FolderTree, Webhook, GitPullRequest, Zap, TextCursorInput, ListChecks, LayoutPanelTop, Bell, Inbox, DownloadCloud } from 'lucide-react'
+import { ShieldCheck, Users, ScrollText, Archive, SlidersHorizontal, Link2, Bookmark, UsersRound, GitBranch, FlaskConical, ArchiveRestore, Signal, CircleCheck, KeyRound, Network, FolderTree, Webhook, GitPullRequest, Zap, TextCursorInput, ListChecks, LayoutPanelTop, Bell, Inbox, DownloadCloud } from 'lucide-react'
 import { href, navigate, type AdminSection } from '../../router'
 
 // Administration's frame, as Jira lays it out: a grouped menu on the left, and each page with its title, what it is
@@ -11,6 +11,7 @@ export const MENU: { title: string; items: MenuItem[] }[] = [
   { title: 'People & access', items: [
     { id: 'people', label: 'People', Icon: Users, intro: 'Everyone who has signed in. Accounts come from your organisation’s sign-in (Microsoft Entra): see who is active, filter, and change many people at once. Admin rights come from the system-administrators group.' },
     { id: 'groups', label: 'Groups', Icon: UsersRound, intro: 'A group gives a whole team a role in a project at once. Its owners decide who is in it; project admins decide what it may do in their project.' },
+    { id: 'global-permissions', label: 'Global permissions', Icon: ShieldCheck, intro: 'Who may administer Strand, browse people and groups, share views, subscribe groups and change work in bulk, as Jira’s global permissions. Each is granted to groups.' },
     { id: 'auth-methods', label: 'Authentication methods', Icon: KeyRound, intro: 'How people sign in: Microsoft Entra single sign-on, the username and password login form, or both. At least one stays on; every change is recorded in the Audit log.' },
     { id: 'directories', label: 'User directories', Icon: Network, intro: 'Your company’s Active Directory or LDAP servers, read only: people sign in on the login form with their corp id and password, and people, groups and memberships are copied in on a schedule. Nobody is ever deleted: people missing from a directory are deactivated.' },
   ] },

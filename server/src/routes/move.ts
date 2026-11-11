@@ -1,6 +1,7 @@
 // Moving work between projects (spec 0501), as Jira's Move: the target's type and status, versions and components by name,
 // custom fields by name and kind, a new key while the old one keeps working, sub-items moving with their parent.
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
+import { needGlobal } from './globalPermissions.ts'
 import { z } from 'zod'
 import { db, tx, type Db } from '../db.ts'
 import { HttpError, type Me } from '../auth.ts'
@@ -169,6 +170,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     tags: ['Issues: bulk'], summary: 'Move many items to one project (Jira’s bulk Move); statuses map as for one item, or by statusMap',
     body: z.object({ issues: z.array(z.string()).min(1).max(5000), ...target, statusMap: z.record(uuid, uuid).optional().describe('Source status id → target status id'), sendNotifications }),
   } }, async req => {
+    await needGlobal(req.me, 'bulk-change')                                   // spec 0717
     const { bulkMaxItems } = await getSetting(req.me.workspaceId, 'searchAndBulk')
     const refs = [...new Set(req.body.issues)]
     if (refs.length > bulkMaxItems) throw new HttpError(400, `At most ${bulkMaxItems} items in one bulk change (System settings)`, { issues: 'Too many' })

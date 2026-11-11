@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Trash2 } from 'lucide-react'
 import { isGlobalAdmin } from '../data/access'
-import { useStore, type SavedView, type ViewShare } from '../data/store'
+import { holds, useStore, type SavedView, type ViewShare } from '../data/store'
 import { api, apiEnabled } from '../api/client'
 import { UserSelect } from './UserPicker'
 import { Modal, Toggle } from './ui'
@@ -27,6 +27,7 @@ export default function ShareViewDialog({ view, onClose, onSave }: { view: Saved
       <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
       <button className="btn btn-primary" onClick={() => onSave(shared, share)}>Save</button>
     </>}>
+      {!holds(state, 'shared-objects') && <p className="hint" role="note">Sharing views needs the Create shared objects global permission. Ask a system administrator.</p>}
       <label className="toggle-row">
         <span>Everyone in the workspace can view it</span>
         <Toggle on={shared} onChange={setShared} label="Everyone in the workspace can view it" />

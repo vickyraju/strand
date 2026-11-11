@@ -1,5 +1,6 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
+import { hasGlobal } from './globalPermissions.ts'
 import { db, tx, type Db } from '../db.ts'
 import { HttpError, requireAdmin, type Me } from '../auth.ts'
 import { levelOk, visible, visibleAs } from '../access.ts'
@@ -341,8 +342,11 @@ const plugin: FastifyPluginAsyncZod = async app => {
   /** As in Jira, a view is shared only with groups I belong to and projects I can see (people: anyone in the workspace);
    *  global admins may share with any. Entries the view already has stay, so an owner who left a group can still save it
    *  (spec 0203 R5). */
-  const checkShare = async (d: Db, me: Me, entries: z.infer<typeof share>, already: z.infer<typeof share> = []) => {
+  const checkShare = async (d: Db, me: Me, entries: z.infer<typeof share>, already: z.infer<typeof share> = [], shared = false) => {
     const ws = me.workspaceId
+    // Jira's Create shared objects (spec 0717): sharing at all needs it; what a view already shares may stay
+    const adding = entries.filter(e => !already.some(x => x.kind === e.kind && x.id === e.id))
+    if ((adding.length || shared) && !(await hasGlobal(me, 'shared-objects', d))) throw new HttpError(403, 'You need the Create shared objects global permission to share a view (Administration › Global permissions)', { share: 'Not allowed to share' })
     for (const e of entries) {
       const sql = e.kind === 'project' ? 'select 1 from projects where id = $1 and workspace_id = $2'
         : e.kind === 'group' ? 'select 1 from groups where id = $1 and $2::uuid is not null'
@@ -361,7 +365,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
   }) } }, async (req, reply) => {
     const b = req.body
     return tx(async d => {
-      await checkShare(d, req.me, b.share)
+      await checkShare(d, req.me, b.share, [], b.shared)
       const [row] = await d.query<{ id: string }>('insert into saved_views (id, workspace_id, owner_id, name, shared, share, filters) values (coalesce($7::uuid, uuid_v7()), $1, $2, $3, $4, $5, $6) returning id',
         [req.me.workspaceId, req.me.id, b.name, b.shared, JSON.stringify(b.share), JSON.stringify(b.filters), b.id ?? null])
       reply.code(201)
@@ -376,7 +380,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
       if (!v.canEdit) throw new HttpError(403, 'Only its owner, or someone it is shared with to edit, can change this view')
       const governs = v.ownerId === req.me.id || req.me.admin
       if ((b.shared !== undefined || b.share !== undefined || b.ownerId !== undefined) && !governs) throw new HttpError(403, 'Only its owner or a workspace admin changes who can see it')
-      if (b.share) await checkShare(d, req.me, b.share, (v as { share?: z.infer<typeof share> }).share ?? [])
+      if (b.share || b.shared && !(v as { shared?: boolean }).shared) await checkShare(d, req.me, b.share ?? [], (v as { share?: z.infer<typeof share> }).share ?? [], !!b.shared && !(v as { shared?: boolean }).shared)
       if (b.ownerId && !(await d.query('select 1 from memberships m join users u on u.id = m.user_id where m.user_id = $1 and m.workspace_id = $2 and u.active', [b.ownerId, req.me.workspaceId])).length)
         throw new HttpError(400, 'The new owner must be an active person in the workspace', { ownerId: 'Not an active person here' })
       // Jira: the new owner must be able to see the filter (spec 0309 R3); a name they already use is refused by the index

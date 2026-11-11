@@ -5,7 +5,7 @@ import { issueSync, patchOf } from '../api/sync'
 import { mapIssue } from '../api/map'
 import { sprintDeps } from '../api/sprints'
 import { searchProjects, type ProjectOption } from '../api/work'
-import { useStore, type Issue, type IssuePatch, type Priority } from '../data/store'
+import { holds, useStore, type Issue, type IssuePatch, type Priority } from '../data/store'
 import { usePublicSettings } from '../api/settings-public'
 import { planMove } from './TransitionDialog'
 import { useApp } from '../appContext'
@@ -101,6 +101,8 @@ export default function BulkBar({ ids, onClear }: { ids: string[]; onClear: () =
         <span className="bulk-count">{ids.length} selected</span>
         <button className="icon-btn sm" onClick={onClear} aria-label="Clear selection" title="Clear selection (Esc)"><X size={14} /></button>
         <span className="bulk-sep" />
+        {!holds(state, 'bulk-change') && <span className="muted sm" role="note">Bulk changes need the Bulk change global permission</span>}
+        {holds(state, 'bulk-change') && <>
         {project && !apiEnabled && (
           <Picker value="" options={statusOptions(project)} onChange={s => apply({ status: s }, 'status')} className="btn btn-ghost btn-sm" title="Change status" trigger="Status" />
         )}
@@ -129,6 +131,7 @@ export default function BulkBar({ ids, onClear }: { ids: string[]; onClear: () =
         {mayDelete && <>
           <span className="bulk-sep" />
           <button className="btn btn-ghost btn-sm text-danger" onClick={() => setConfirm(true)}><Trash2 size={14} />Delete</button>
+        </>}
         </>}
       </div>
 
