@@ -87,7 +87,7 @@ The roadmap, in order. Bugs come first, then the permission model, then the data
 | [0604](0604-filter-subscriptions.md) | Filter subscriptions | 6 | Ported |
 | [0605](0605-notification-schemes.md) | Notification schemes; bulk change without notifying | 6 | Ported |
 | [0606](0606-batched-email-autowatch.md) | Batched email, autowatch preference, mentions don't make watchers | 6 | Ported |
-| [0607](0607-incoming-mail.md) | Incoming mail | 6 | Approved |
+| [0607](0607-incoming-mail.md) | Incoming mail | 6 | Ported |
 | 0608 | Print and XML export | 6 | Planned |
 | [0701](0701-announcement-banner.md) | Announcement banner | 7 | Ported |
 | [0702](0702-look-and-feel.md) | Look and feel | 7 | Ported |
