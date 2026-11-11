@@ -2033,6 +2033,13 @@
                     "format": "uuid",
                     "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                   },
+                  "issueTypeScreenSchemeId": {
+                    "nullable": true,
+                    "description": "Its issue type screen scheme (system administrators), or null for the Default Screen Scheme (spec 0505)",
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
                   "boardPrefs": {
                     "type": "object",
                     "additionalProperties": {}
@@ -2867,6 +2874,109 @@
                       ],
                       "additionalProperties": false
                     },
+                    "screens": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "object",
+                        "properties": {
+                          "create": {
+                            "nullable": true,
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "name": {
+                                  "type": "string"
+                                },
+                                "fields": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              "required": [
+                                "name",
+                                "fields"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "edit": {
+                            "nullable": true,
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "name": {
+                                  "type": "string"
+                                },
+                                "fields": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              "required": [
+                                "name",
+                                "fields"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "view": {
+                            "nullable": true,
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "name": {
+                                  "type": "string"
+                                },
+                                "fields": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              "required": [
+                                "name",
+                                "fields"
+                              ],
+                              "additionalProperties": false
+                            }
+                          }
+                        },
+                        "required": [
+                          "create",
+                          "edit",
+                          "view"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "description": "Per work type, the tabs of its Create, Edit and View screens (null: every field; spec 0505)"
+                    },
+                    "issueTypeScreenScheme": {
+                      "nullable": true,
+                      "description": "Its issue type screen scheme (null: the Default Screen Scheme)",
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "description": "uuid"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name"
+                      ],
+                      "additionalProperties": false
+                    },
                     "boards": {
                       "type": "array",
                       "items": {
@@ -2944,6 +3054,8 @@
                     "workflows",
                     "fieldRules",
                     "fieldConfigScheme",
+                    "screens",
+                    "issueTypeScreenScheme",
                     "boards"
                   ],
                   "additionalProperties": false
@@ -4122,6 +4234,109 @@
                       ],
                       "additionalProperties": false
                     },
+                    "screens": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "object",
+                        "properties": {
+                          "create": {
+                            "nullable": true,
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "name": {
+                                  "type": "string"
+                                },
+                                "fields": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              "required": [
+                                "name",
+                                "fields"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "edit": {
+                            "nullable": true,
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "name": {
+                                  "type": "string"
+                                },
+                                "fields": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              "required": [
+                                "name",
+                                "fields"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "view": {
+                            "nullable": true,
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "name": {
+                                  "type": "string"
+                                },
+                                "fields": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              "required": [
+                                "name",
+                                "fields"
+                              ],
+                              "additionalProperties": false
+                            }
+                          }
+                        },
+                        "required": [
+                          "create",
+                          "edit",
+                          "view"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "description": "Per work type, the tabs of its Create, Edit and View screens (null: every field; spec 0505)"
+                    },
+                    "issueTypeScreenScheme": {
+                      "nullable": true,
+                      "description": "Its issue type screen scheme (null: the Default Screen Scheme)",
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "description": "uuid"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name"
+                      ],
+                      "additionalProperties": false
+                    },
                     "boards": {
                       "type": "array",
                       "items": {
@@ -4199,6 +4414,8 @@
                     "workflows",
                     "fieldRules",
                     "fieldConfigScheme",
+                    "screens",
+                    "issueTypeScreenScheme",
                     "boards"
                   ],
                   "additionalProperties": false
@@ -5111,6 +5328,109 @@
                       ],
                       "additionalProperties": false
                     },
+                    "screens": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "object",
+                        "properties": {
+                          "create": {
+                            "nullable": true,
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "name": {
+                                  "type": "string"
+                                },
+                                "fields": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              "required": [
+                                "name",
+                                "fields"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "edit": {
+                            "nullable": true,
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "name": {
+                                  "type": "string"
+                                },
+                                "fields": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              "required": [
+                                "name",
+                                "fields"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "view": {
+                            "nullable": true,
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "name": {
+                                  "type": "string"
+                                },
+                                "fields": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              "required": [
+                                "name",
+                                "fields"
+                              ],
+                              "additionalProperties": false
+                            }
+                          }
+                        },
+                        "required": [
+                          "create",
+                          "edit",
+                          "view"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "description": "Per work type, the tabs of its Create, Edit and View screens (null: every field; spec 0505)"
+                    },
+                    "issueTypeScreenScheme": {
+                      "nullable": true,
+                      "description": "Its issue type screen scheme (null: the Default Screen Scheme)",
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "description": "uuid"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name"
+                      ],
+                      "additionalProperties": false
+                    },
                     "boards": {
                       "type": "array",
                       "items": {
@@ -5188,6 +5508,8 @@
                     "workflows",
                     "fieldRules",
                     "fieldConfigScheme",
+                    "screens",
+                    "issueTypeScreenScheme",
                     "boards"
                   ],
                   "additionalProperties": false
@@ -6279,6 +6601,109 @@
                       ],
                       "additionalProperties": false
                     },
+                    "screens": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "object",
+                        "properties": {
+                          "create": {
+                            "nullable": true,
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "name": {
+                                  "type": "string"
+                                },
+                                "fields": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              "required": [
+                                "name",
+                                "fields"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "edit": {
+                            "nullable": true,
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "name": {
+                                  "type": "string"
+                                },
+                                "fields": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              "required": [
+                                "name",
+                                "fields"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "view": {
+                            "nullable": true,
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "name": {
+                                  "type": "string"
+                                },
+                                "fields": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              "required": [
+                                "name",
+                                "fields"
+                              ],
+                              "additionalProperties": false
+                            }
+                          }
+                        },
+                        "required": [
+                          "create",
+                          "edit",
+                          "view"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "description": "Per work type, the tabs of its Create, Edit and View screens (null: every field; spec 0505)"
+                    },
+                    "issueTypeScreenScheme": {
+                      "nullable": true,
+                      "description": "Its issue type screen scheme (null: the Default Screen Scheme)",
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "description": "uuid"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name"
+                      ],
+                      "additionalProperties": false
+                    },
                     "boards": {
                       "type": "array",
                       "items": {
@@ -6356,6 +6781,8 @@
                     "workflows",
                     "fieldRules",
                     "fieldConfigScheme",
+                    "screens",
+                    "issueTypeScreenScheme",
                     "boards"
                   ],
                   "additionalProperties": false
@@ -6493,6 +6920,13 @@
                   "fieldConfigSchemeId": {
                     "nullable": true,
                     "description": "Its field configuration scheme (system administrators), or null for the Default Field Configuration (spec 0504)",
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  "issueTypeScreenSchemeId": {
+                    "nullable": true,
+                    "description": "Its issue type screen scheme (system administrators), or null for the Default Screen Scheme (spec 0505)",
                     "type": "string",
                     "format": "uuid",
                     "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
@@ -7324,6 +7758,109 @@
                       ],
                       "additionalProperties": false
                     },
+                    "screens": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "object",
+                        "properties": {
+                          "create": {
+                            "nullable": true,
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "name": {
+                                  "type": "string"
+                                },
+                                "fields": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              "required": [
+                                "name",
+                                "fields"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "edit": {
+                            "nullable": true,
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "name": {
+                                  "type": "string"
+                                },
+                                "fields": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              "required": [
+                                "name",
+                                "fields"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "view": {
+                            "nullable": true,
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "name": {
+                                  "type": "string"
+                                },
+                                "fields": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              "required": [
+                                "name",
+                                "fields"
+                              ],
+                              "additionalProperties": false
+                            }
+                          }
+                        },
+                        "required": [
+                          "create",
+                          "edit",
+                          "view"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "description": "Per work type, the tabs of its Create, Edit and View screens (null: every field; spec 0505)"
+                    },
+                    "issueTypeScreenScheme": {
+                      "nullable": true,
+                      "description": "Its issue type screen scheme (null: the Default Screen Scheme)",
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "description": "uuid"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name"
+                      ],
+                      "additionalProperties": false
+                    },
                     "boards": {
                       "type": "array",
                       "items": {
@@ -7401,6 +7938,8 @@
                     "workflows",
                     "fieldRules",
                     "fieldConfigScheme",
+                    "screens",
+                    "issueTypeScreenScheme",
                     "boards"
                   ],
                   "additionalProperties": false
@@ -63045,6 +63584,2355 @@
         "summary": "Delete a field configuration scheme; its projects go back to the Default Field Configuration",
         "tags": [
           "Field configurations"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/screens": {
+      "get": {
+        "summary": "Screens, the default first, with the screen schemes using each",
+        "tags": [
+          "Screens"
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "description": "uuid"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "type": "string"
+                      },
+                      "tabs": {
+                        "nullable": true,
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "name": {
+                              "type": "string"
+                            },
+                            "fields": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            }
+                          },
+                          "required": [
+                            "name",
+                            "fields"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "isDefault": {
+                        "type": "boolean"
+                      },
+                      "schemes": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name",
+                      "description",
+                      "tabs",
+                      "isDefault",
+                      "schemes"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Add a screen",
+        "tags": [
+          "Screens"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 255
+                  },
+                  "description": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  "tabs": {
+                    "default": null,
+                    "description": "Tabs with their fields in order; null: every field (the Default Screen as it comes)",
+                    "nullable": true,
+                    "minItems": 1,
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 100
+                        },
+                        "fields": {
+                          "maxItems": 500,
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "pattern": "^([a-zA-Z]+|custom\\.[0-9a-f-]{36})$"
+                          }
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "fields"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "tabs": {
+                      "nullable": true,
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "fields": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        "required": [
+                          "name",
+                          "fields"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "isDefault": {
+                      "type": "boolean"
+                    },
+                    "schemes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "description",
+                    "tabs",
+                    "isDefault",
+                    "schemes"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/screens/{id}": {
+      "get": {
+        "summary": "A screen",
+        "tags": [
+          "Screens"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "tabs": {
+                      "nullable": true,
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "fields": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        "required": [
+                          "name",
+                          "fields"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "isDefault": {
+                      "type": "boolean"
+                    },
+                    "schemes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "description",
+                    "tabs",
+                    "isDefault",
+                    "schemes"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "Change a screen: its tabs and their fields",
+        "tags": [
+          "Screens"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 255
+                  },
+                  "description": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  "tabs": {
+                    "default": null,
+                    "description": "Tabs with their fields in order; null: every field (the Default Screen as it comes)",
+                    "nullable": true,
+                    "minItems": 1,
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 100
+                        },
+                        "fields": {
+                          "maxItems": 500,
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "pattern": "^([a-zA-Z]+|custom\\.[0-9a-f-]{36})$"
+                          }
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "fields"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "tabs": {
+                      "nullable": true,
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "fields": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        "required": [
+                          "name",
+                          "fields"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "isDefault": {
+                      "type": "boolean"
+                    },
+                    "schemes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "description",
+                    "tabs",
+                    "isDefault",
+                    "schemes"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete a screen no scheme uses (not the default)",
+        "tags": [
+          "Screens"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/screen-schemes": {
+      "get": {
+        "summary": "Screen schemes",
+        "tags": [
+          "Screens"
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "description": "uuid"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "type": "string"
+                      },
+                      "defaultScreenId": {
+                        "type": "string",
+                        "description": "uuid"
+                      },
+                      "createScreenId": {
+                        "nullable": true,
+                        "type": "string",
+                        "description": "uuid"
+                      },
+                      "editScreenId": {
+                        "nullable": true,
+                        "type": "string",
+                        "description": "uuid"
+                      },
+                      "viewScreenId": {
+                        "nullable": true,
+                        "type": "string",
+                        "description": "uuid"
+                      },
+                      "isDefault": {
+                        "type": "boolean"
+                      },
+                      "usedBy": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name",
+                      "description",
+                      "defaultScreenId",
+                      "createScreenId",
+                      "editScreenId",
+                      "viewScreenId",
+                      "isDefault",
+                      "usedBy"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Add a screen scheme",
+        "tags": [
+          "Screens"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 255
+                  },
+                  "description": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  "defaultScreenId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  "createScreenId": {
+                    "default": null,
+                    "nullable": true,
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  "editScreenId": {
+                    "default": null,
+                    "nullable": true,
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  "viewScreenId": {
+                    "default": null,
+                    "nullable": true,
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  }
+                },
+                "required": [
+                  "name",
+                  "defaultScreenId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "defaultScreenId": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "createScreenId": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "editScreenId": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "viewScreenId": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "isDefault": {
+                      "type": "boolean"
+                    },
+                    "usedBy": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "description",
+                    "defaultScreenId",
+                    "createScreenId",
+                    "editScreenId",
+                    "viewScreenId",
+                    "isDefault",
+                    "usedBy"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/screen-schemes/{id}": {
+      "get": {
+        "summary": "A screen scheme",
+        "tags": [
+          "Screens"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "defaultScreenId": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "createScreenId": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "editScreenId": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "viewScreenId": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "isDefault": {
+                      "type": "boolean"
+                    },
+                    "usedBy": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "description",
+                    "defaultScreenId",
+                    "createScreenId",
+                    "editScreenId",
+                    "viewScreenId",
+                    "isDefault",
+                    "usedBy"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "Change a screen scheme",
+        "tags": [
+          "Screens"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 255
+                  },
+                  "description": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  "defaultScreenId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  "createScreenId": {
+                    "default": null,
+                    "nullable": true,
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  "editScreenId": {
+                    "default": null,
+                    "nullable": true,
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  "viewScreenId": {
+                    "default": null,
+                    "nullable": true,
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "defaultScreenId": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "createScreenId": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "editScreenId": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "viewScreenId": {
+                      "nullable": true,
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "isDefault": {
+                      "type": "boolean"
+                    },
+                    "usedBy": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "description",
+                    "defaultScreenId",
+                    "createScreenId",
+                    "editScreenId",
+                    "viewScreenId",
+                    "isDefault",
+                    "usedBy"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete a screen scheme no issue type screen scheme uses (not the default)",
+        "tags": [
+          "Screens"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/issue-type-screen-schemes": {
+      "get": {
+        "summary": "Issue type screen schemes, with the projects using each",
+        "tags": [
+          "Screens"
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "description": "uuid"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "type": "string"
+                      },
+                      "defaultSchemeId": {
+                        "type": "string",
+                        "description": "uuid"
+                      },
+                      "mappings": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "type": "string",
+                          "description": "uuid"
+                        }
+                      },
+                      "projectKeys": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "projects": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name",
+                      "description",
+                      "defaultSchemeId",
+                      "mappings",
+                      "projectKeys",
+                      "projects"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Add an issue type screen scheme",
+        "tags": [
+          "Screens"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 255
+                  },
+                  "description": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  "defaultSchemeId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  "mappings": {
+                    "default": {},
+                    "description": "Work type key → screen scheme id",
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string",
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                    }
+                  }
+                },
+                "required": [
+                  "name",
+                  "defaultSchemeId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "defaultSchemeId": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "mappings": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string",
+                        "description": "uuid"
+                      }
+                    },
+                    "projectKeys": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "projects": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "description",
+                    "defaultSchemeId",
+                    "mappings",
+                    "projectKeys",
+                    "projects"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/issue-type-screen-schemes/{id}": {
+      "get": {
+        "summary": "An issue type screen scheme",
+        "tags": [
+          "Screens"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "defaultSchemeId": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "mappings": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string",
+                        "description": "uuid"
+                      }
+                    },
+                    "projectKeys": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "projects": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "description",
+                    "defaultSchemeId",
+                    "mappings",
+                    "projectKeys",
+                    "projects"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "Change an issue type screen scheme",
+        "tags": [
+          "Screens"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 255
+                  },
+                  "description": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  "defaultSchemeId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  "mappings": {
+                    "default": {},
+                    "description": "Work type key → screen scheme id",
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string",
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "defaultSchemeId": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "mappings": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string",
+                        "description": "uuid"
+                      }
+                    },
+                    "projectKeys": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "projects": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "description",
+                    "defaultSchemeId",
+                    "mappings",
+                    "projectKeys",
+                    "projects"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete an issue type screen scheme; its projects go back to the Default Screen Scheme",
+        "tags": [
+          "Screens"
         ],
         "parameters": [
           {

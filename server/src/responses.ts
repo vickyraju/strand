@@ -133,6 +133,9 @@ export const ProjectDetail = z.object({
   fieldRules: z.record(z.string(), z.record(z.string(), z.object({ description: z.string().optional(), hidden: z.boolean().optional(), required: z.boolean().optional() })))
     .describe('Per work type, each configured field’s description, hidden and required (spec 0504)'),
   fieldConfigScheme: nullable(z.object({ id, name: z.string() })).describe('Its field configuration scheme (null: the Default Field Configuration)'),
+  screens: z.record(z.string(), z.object({ create: nullable(z.array(z.object({ name: z.string(), fields: z.array(z.string()) }))), edit: nullable(z.array(z.object({ name: z.string(), fields: z.array(z.string()) }))),
+    view: nullable(z.array(z.object({ name: z.string(), fields: z.array(z.string()) }))) })).describe('Per work type, the tabs of its Create, Edit and View screens (null: every field; spec 0505)'),
+  issueTypeScreenScheme: nullable(z.object({ id, name: z.string() })).describe('Its issue type screen scheme (null: the Default Screen Scheme)'),
   boards: z.array(z.object({ id, name: z.string(), type: z.enum(['kanban', 'scrum']), jql: z.string(), position: z.number(), hasBacklog: z.boolean() })).describe('Its boards, in order'),
 })
 
@@ -287,6 +290,17 @@ export const RESPONSES: Record<string, z.ZodType> = {
     return {
       'GET /admin/field-configurations': z.array(Config), 'GET /admin/field-configurations/:id': Config, 'POST /admin/field-configurations': Config, 'PATCH /admin/field-configurations/:id': Config,
       'GET /admin/field-config-schemes': z.array(Scheme), 'GET /admin/field-config-schemes/:id': Scheme, 'POST /admin/field-config-schemes': Scheme, 'PATCH /admin/field-config-schemes/:id': Scheme,
+    }
+  })(),
+  ...(() => {
+    const Tab = z.object({ name: z.string(), fields: z.array(z.string()) })
+    const Screen = z.object({ id, name: z.string(), description: z.string(), tabs: nullable(z.array(Tab)), isDefault: z.boolean(), schemes: z.array(z.string()) })
+    const SScheme = z.object({ id, name: z.string(), description: z.string(), defaultScreenId: id, createScreenId: nullable(id), editScreenId: nullable(id), viewScreenId: nullable(id), isDefault: z.boolean(), usedBy: z.array(z.string()) })
+    const Its = z.object({ id, name: z.string(), description: z.string(), defaultSchemeId: id, mappings: z.record(z.string(), id), projectKeys: z.array(z.string()), projects: z.number() })
+    return {
+      'GET /admin/screens': z.array(Screen), 'GET /admin/screens/:id': Screen, 'POST /admin/screens': Screen, 'PATCH /admin/screens/:id': Screen,
+      'GET /admin/screen-schemes': z.array(SScheme), 'GET /admin/screen-schemes/:id': SScheme, 'POST /admin/screen-schemes': SScheme, 'PATCH /admin/screen-schemes/:id': SScheme,
+      'GET /admin/issue-type-screen-schemes': z.array(Its), 'GET /admin/issue-type-screen-schemes/:id': Its, 'POST /admin/issue-type-screen-schemes': Its, 'PATCH /admin/issue-type-screen-schemes/:id': Its,
     }
   })(),
   'POST /issues/:key/move': z.union([

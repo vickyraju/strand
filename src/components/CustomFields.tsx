@@ -340,22 +340,36 @@ function FieldScheme({ project }: { project: Project }) {
   const { state, dispatch } = useStore()
   const { toast } = useApp()
   const [schemes, setSchemes] = useState<{ id: string; name: string }[] | null>(null)
+  const [screenSchemes, setScreenSchemes] = useState<{ id: string; name: string }[] | null>(null)
   const admin = state.isAdmin === true
-  useEffect(() => { if (apiEnabled && admin) api<{ id: string; name: string }[]>('GET', '/api/admin/field-config-schemes').then(setSchemes, () => {}) }, [admin])
+  useEffect(() => {
+    if (!apiEnabled || !admin) return
+    api<{ id: string; name: string }[]>('GET', '/api/admin/field-config-schemes').then(setSchemes, () => {})
+    api<{ id: string; name: string }[]>('GET', '/api/admin/issue-type-screen-schemes').then(setScreenSchemes, () => {})
+  }, [admin])
   if (!apiEnabled) return null
-  const choose = (id: string) => api('PATCH', `/api/projects/${encodeURIComponent(project.key)}`, { fieldConfigSchemeId: id || null })
+  const choose = (patch: object) => api('PATCH', `/api/projects/${encodeURIComponent(project.key)}`, patch)
     .then(() => api<any>('GET', `/api/projects/${encodeURIComponent(project.key)}`)).then(p => {
-      dispatch({ type: 'loadProject', project: { ...project, fieldRules: p.fieldRules, fieldConfigScheme: p.fieldConfigScheme }, sprints: state.sprints.filter(s => s.projectId === project.id) }); toast('Field configuration scheme changed')
+      dispatch({ type: 'loadProject', project: { ...project, fieldRules: p.fieldRules, fieldConfigScheme: p.fieldConfigScheme, screens: p.screens, issueTypeScreenScheme: p.issueTypeScreenScheme }, sprints: state.sprints.filter(s => s.projectId === project.id) })
+      toast('Scheme changed')
     }, () => toast('Couldn’t change the scheme', { tone: 'warn' }))
+  const screenNote = Object.entries(project.screens ?? {}).filter(([, s]) => s.create || s.edit || s.view)
+    .map(([t, s]) => `${t}: ${[s.create && 'create', s.edit && 'edit', s.view && 'view'].filter(Boolean).join(', ')} screens of their own`)
   const counts = Object.entries(project.fieldRules ?? {}).map(([t, r]) => [t, Object.values(r).filter(x => x.required && !x.hidden).length, Object.values(r).filter(x => x.hidden).length] as const).filter(([, a, b]) => a || b)
   return (
     <div className="sm" style={{ marginTop: 6 }}>
       Field configuration: {admin && schemes
-        ? <select className="input input-sm" aria-label="Field configuration scheme" value={project.fieldConfigScheme?.id ?? ''} onChange={e => void choose(e.target.value)}>
+        ? <select className="input input-sm" aria-label="Field configuration scheme" value={project.fieldConfigScheme?.id ?? ''} onChange={e => void choose({ fieldConfigSchemeId: e.target.value || null })}>
             <option value="">Default Field Configuration</option>{schemes.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
         : <b>{project.fieldConfigScheme?.name ?? 'Default Field Configuration'}</b>}
       {counts.map(([t, req, hid]) => <span key={t} className="muted"> · {t}: {req} required, {hid} hidden</span>)}
+      <div style={{ marginTop: 4 }}>Screens: {admin && screenSchemes
+        ? <select className="input input-sm" aria-label="Issue type screen scheme" value={project.issueTypeScreenScheme?.id ?? ''} onChange={e => void choose({ issueTypeScreenSchemeId: e.target.value || null })}>
+            <option value="">Default Screen Scheme</option>{screenSchemes.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+        : <b>{project.issueTypeScreenScheme?.name ?? 'Default Screen Scheme'}</b>}
+        {screenNote.map(n => <span key={n} className="muted"> · {n}</span>)}</div>
     </div>
   )
 }

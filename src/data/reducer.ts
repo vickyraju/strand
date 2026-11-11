@@ -5,6 +5,7 @@ import { can } from './access.ts'
 import { adjustRemaining, type Adjust } from '../../server/src/shared/estimates.ts'
 import type { FieldKind, FieldValue } from '../../server/src/shared/customFields.ts'
 import type { FieldRules } from '../../server/src/shared/fieldRules.ts'
+export interface ScreenTab { name: string; fields: string[] }
 export type { FieldKind, FieldValue }
 
 // ── Types ──────────────────────────────────────────────────
@@ -134,6 +135,9 @@ export interface Project {
   /** Field configurations (spec 0504): per work type, each configured field's description, hidden and required */
   fieldRules?: Record<string, FieldRules>
   fieldConfigScheme?: { id: string; name: string } | null
+  /** Screens (spec 0505): per work type, its Create, Edit and View screens' tabs (null: every field) */
+  screens?: Record<string, { create: ScreenTab[] | null; edit: ScreenTab[] | null; view: ScreenTab[] | null }>
+  issueTypeScreenScheme?: { id: string; name: string } | null
   /** Its boards (from the server; a local workspace has the one built from its statuses) */
   boards?:     BoardRef[]
   /** Archived (spec 0102): read-only for everyone, hidden from lists; its items open by their key */

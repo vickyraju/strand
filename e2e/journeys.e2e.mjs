@@ -1895,3 +1895,27 @@ test('[0504.R4][0504.R5] a required custom field is marked in the create dialog,
   assert.deepEqual(o.problems, [])
 })
 
+test('[0505.R4][0505.R5] screens: Priority off the edit screen is read-only in the details; a view screen with two tabs', { skip, timeout: 120_000 }, async () => {
+  await owner('POST', '/projects', { name: 'Screened journey', key: 'SCJ', template: 'kanban' })
+  const item = (await owner('POST', '/projects/SCJ/issues', { title: 'Seen through screens', type: 'task', dueDate: '2026-12-24' })).body
+  const edit = (await owner('POST', '/admin/screens', { name: 'SCJ edit', tabs: [{ name: 'Main', fields: ['assigneeId', 'labels', 'dueDate'] }] })).body
+  const view = (await owner('POST', '/admin/screens', { name: 'SCJ view', tabs: [{ name: 'Main', fields: ['assigneeId', 'priority', 'labels'] }, { name: 'Dates', fields: ['dueDate'] }] })).body
+  const def = (await owner('GET', '/admin/screens')).body.find(s => s.isDefault)
+  const ss = (await owner('POST', '/admin/screen-schemes', { name: 'SCJ scheme', defaultScreenId: def.id, editScreenId: edit.id, viewScreenId: view.id })).body
+  const its = (await owner('POST', '/admin/issue-type-screen-schemes', { name: 'SCJ types', defaultSchemeId: ss.id })).body
+  await owner('PATCH', '/projects/SCJ', { issueTypeScreenSchemeId: its.id })
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url(`/i/${item.key}`))
+  const tabs = o.locator('[aria-label="Field tabs"]')
+  await tabs.waitFor()
+  // Main: Priority shows, read-only (not on the edit screen); Due date is on the other tab
+  const priority = o.locator('.field:has-text("Priority")')
+  await priority.waitFor()
+  assert.equal(await priority.locator('fieldset[disabled]').count(), 1)
+  assert.equal(await o.locator('.field:has-text("Due date")').count(), 0)
+  await tabs.locator('button:has-text("Dates")').click()
+  await o.locator('.field:has-text("Due date")').waitFor()
+  assert.equal(await o.locator('.field:has-text("Priority")').count(), 0)
+  assert.deepEqual(o.problems, [])
+})
+

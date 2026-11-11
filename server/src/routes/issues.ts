@@ -7,7 +7,8 @@ import { publish } from '../events.ts'
 import { audit } from '../audit.ts'
 import { emit, triggerWebhook } from '../webhooks.ts'
 import { REF_KINDS, valueProblem, type FieldKind, type FieldValue, type Option } from '../shared/customFields.ts'
-import { defaultsFor, enforceRules, rulesFor } from '../fields.ts'
+import { defaultsFor, enforceRules, enforceScreen, rulesFor } from '../fields.ts'
+import { isEmpty } from '../shared/fieldRules.ts'
 import { getSetting } from '../settings.ts'
 import { runRules, moveAllowed } from '../rules.ts'
 import { available, ruleContext, transitionById, transitionTo, type TransitionRow } from '../transitions.ts'
@@ -298,6 +299,8 @@ async function applyPatch(d: Db, me: Me, cur: any, patch: z.infer<typeof patchBo
   // field configurations (spec 0504 R4): only what this edit sets is checked, so items that already lack a value are left as they are
   const customChanged = patch.custom ? [...new Set([...Object.keys(patch.custom), ...Object.keys(cur.custom ?? {})])].filter(k => JSON.stringify(patch.custom![k]) !== JSON.stringify(cur.custom?.[k])).map(k => `custom.${k}`) : []
   if (changed.length) await enforceRules(d, cur.projectId, patch.type ?? cur.type, { ...cur, ...patch }, [...changed.filter(k => k !== 'custom'), ...customChanged])
+  // the edit screen (spec 0505 R4); a transition's own screen decides what a move sets (spec 0103)
+  if (changed.length && !t) await enforceScreen(d, cur.projectId, patch.type ?? cur.type, 'edit', [...changed.filter(k => k !== 'custom'), ...customChanged])
   const w = pick(patch, FIELDS, ['custom', 'testSpec'])
   if (!w.keys.length && !t) return cur
   if (w.keys.length) {
@@ -569,7 +572,15 @@ const plugin: FastifyPluginAsyncZod = async app => {
   })
   app.post('/projects/:key/issues', { schema: { tags: TAG, summary: 'Create an issue (key and rank are assigned by the server)', params: projKeyP, body: createBody } }, async req => {
     const p = await projectByKey(db, req, req.params.key)
-    return tx(async d => (await d.query<any>(`${ISSUE_ROW} where i.id = $1`, [await insertIssue(d, req.me, p.id, req.body)]))[0])
+    return tx(async d => {
+      // the create screen (spec 0505 R4): what the request sets must be on it (clones, imports and test tools copy what they copy)
+      const b = req.body as Record<string, any>
+      const usual = b.priority !== undefined && b.priority === await defaultPriority(d, req.me.workspaceId)    // the default priority isn't a choice the screen must offer
+      const defaults = await defaultsFor(d, p.id, b.type ?? 'task')                                          // nor a field's default value
+      await enforceScreen(d, p.id, b.type ?? 'task', 'create', [...Object.keys(b).filter(k => k !== 'custom' && !isEmpty(b[k]) && !(k === 'priority' && usual)),
+        ...Object.keys(b.custom ?? {}).filter(k => JSON.stringify(b.custom[k]) !== JSON.stringify(defaults[k])).map(k => `custom.${k}`)])
+      return (await d.query<any>(`${ISSUE_ROW} where i.id = $1`, [await insertIssue(d, req.me, p.id, b)]))[0]
+    })
   })
 
   // Clone (Jira's): a copy in the same project, starting at the start status, linked "clones" to the original
