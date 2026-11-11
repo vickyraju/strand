@@ -9,7 +9,7 @@ import { Avatar, Empty, TypeIcon, typeList, priorityKeys, priorityLabel, Priorit
 export default function SummaryView({ project }: { project: Project }) {
   const { state } = useStore()
   const { openIssue, openProject, createIssue } = useApp()
-  const items = state.issues.filter(i => i.projectId === project.id)
+  const items = state.issues.filter(i => !i.archivedAt && i.projectId === project.id)
   const work = items.filter(i => i.type !== 'epic')
 
   if (items.length === 0) {

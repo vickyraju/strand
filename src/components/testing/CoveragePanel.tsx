@@ -34,8 +34,8 @@ export default function CoveragePanel({ issue, project, readOnly }: { issue: Iss
   const [env, setEnv] = useState('')
   const [res, setRes] = useState<Result | null>(null)
   const [linking, setLinking] = useState(false)
-  const plans = state.issues.filter(i => i.projectId === project.id && i.type === 'test_plan')
-  const envs = [...new Set(state.issues.filter(i => i.projectId === project.id && i.type === 'test_execution').flatMap(i => i.testEnvironments ?? []))]
+  const plans = state.issues.filter(i => !i.archivedAt && i.projectId === project.id && i.type === 'test_plan')
+  const envs = [...new Set(state.issues.filter(i => !i.archivedAt && i.projectId === project.id && i.type === 'test_execution').flatMap(i => i.testEnvironments ?? []))]
   const q = new URLSearchParams({ ...(scope.startsWith('v:') ? { version: scope.slice(2) } : {}), ...(scope.startsWith('p:') ? { plan: scope.slice(2) } : {}), ...(env ? { environment: env } : {}) }).toString()
   const load = () => api<Result>('GET', `/api/issues/${enc(issue.key)}/coverage${q ? `?${q}` : ''}`).then(setRes, e => toast(message(e), { tone: 'warn' }))
   useEffect(() => { void load() }, [issue.key, q, issue.links.length])   // eslint-disable-line react-hooks/exhaustive-deps
@@ -90,7 +90,7 @@ function LinkTest({ issue, project, onClose, onLink }: { issue: Issue; project: 
   const { state } = useStore()
   const [q, setQ] = useState('')
   const covering = new Set(state.issues.filter(i => i.links.some(l => l.type === 'tests' && l.issueId === issue.id)).map(i => i.id))
-  const tests = state.issues.filter(i => i.projectId === project.id && i.type === 'test' && !covering.has(i.id)
+  const tests = state.issues.filter(i => !i.archivedAt && i.projectId === project.id && i.type === 'test' && !covering.has(i.id)
     && (!q.trim() || `${i.key} ${i.title}`.toLowerCase().includes(q.trim().toLowerCase()))).slice(0, 100)
   return (
     <Modal title={`A test for ${issue.key}`} onClose={onClose}>

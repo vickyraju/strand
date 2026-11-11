@@ -35,7 +35,7 @@ export default function TimelineView({ project }: { project: Project }) {
   const [drag, setDrag] = useState<{ id: string; mode: 'move' | 'start' | 'end'; x0: number; s0: number; e0: number; dx: number } | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
 
-  const all = state.issues.filter(i => i.projectId === project.id)
+  const all = state.issues.filter(i => !i.archivedAt && i.projectId === project.id)
   // Undated sprint work spans its sprint, like Jira's timeline
   const sprintSpan = (i: Issue): [number, number] | null => {
     const sp = state.sprints.find(s => s.id === i.sprintId)

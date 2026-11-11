@@ -154,6 +154,7 @@ const issueFields = {
   resolution: nullable(z.string()).describe('A resolution name (GET /resolutions), set while the item is in a Done status'),
   resolvedAt: nullable(ts).describe('When the item last reached a Done status'),
   createdAt: ts, updatedAt: ts,
+  archivedAt: nullable(ts).describe('When it was archived (spec 0508): read-only, out of lists'), archivedBy: nullable(id)
 }
 export const IssueRow = z.object(issueFields)
 export const TestMember = IssueRow.extend({ folder: z.string().describe('Folder within a Test Plan ("" at the top)'), itemPosition: z.number() })
@@ -307,6 +308,15 @@ export const RESPONSES: Record<string, z.ZodType> = {
       'GET /admin/issue-type-screen-schemes': z.array(Its), 'GET /admin/issue-type-screen-schemes/:id': Its, 'POST /admin/issue-type-screen-schemes': Its, 'PATCH /admin/issue-type-screen-schemes/:id': Its,
     }
   })(),
+  ...(() => {
+    const RemoteLink = z.object({ id, issueId: id, globalId: nullable(z.string()), url: z.string(), title: z.string(), summary: nullable(z.string()), relationship: nullable(z.string()),
+      application: nullable(z.object({ type: z.string().optional(), name: z.string().optional() })), icon: nullable(z.record(z.string(), z.string())),
+      status: nullable(z.object({ resolved: z.boolean().optional() }).passthrough()), createdBy: nullable(id), createdAt: ts, updatedAt: ts })
+    return { 'GET /issues/:key/remote-links': z.array(RemoteLink), 'POST /issues/:key/remote-links': RemoteLink, 'PUT /issues/:key/remote-links/:id': RemoteLink }
+  })(),
+  'POST /issues/:key/archive': z.object({ archived: z.array(z.string()) }), 'POST /issues/:key/unarchive': z.object({ restored: z.array(z.string()) }),
+  'POST /issues/bulk/archive': z.object({ archived: z.array(z.string()) }),
+  'GET /admin/archived-items': z.object({ items: z.array(z.object({ id, key: z.string(), title: z.string(), type: z.string(), project: z.string(), archivedAt: ts, archivedBy: nullable(z.string()) })), next: nullable(z.string()) }),
   'GET /issues/:key/votes': z.object({ votes: z.number(), hasVoted: z.boolean(), voters: z.array(z.object({ id, name: z.string() })).describe('Empty without View voters and watchers') }),
   'POST /issues/:key/move': z.union([
     z.object({ dryRun: z.literal(true), items: z.array(z.object({ id, key: z.string(), newKey: z.string(),

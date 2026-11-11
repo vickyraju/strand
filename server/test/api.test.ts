@@ -3613,6 +3613,10 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     'POST /admin/issue-type-screen-schemes': ['gadmin', '/admin/issue-type-screen-schemes', { name: 'Matrix its', defaultSchemeId: none }],
     'PATCH /admin/issue-type-screen-schemes/{id}': ['gadmin', `/admin/issue-type-screen-schemes/${none}`, { name: 'x' }], 'DELETE /admin/issue-type-screen-schemes/{id}': ['gadmin', `/admin/issue-type-screen-schemes/${none}`],
     'PUT /issues/{key}/vote': ['read', `/issues/${I}/vote`], 'DELETE /issues/{key}/vote': ['read', `/issues/${I}/vote`], 'GET /issues/{key}/votes': ['read', `/issues/${I}/votes`],   // 0506.R1
+    'GET /issues/{key}/remote-links': ['read', `/issues/${I}/remote-links`], 'POST /issues/{key}/remote-links': ['write', `/issues/${I}/remote-links`, { url: 'https://example.com', title: 'Matrix' }],   // 0507.R1
+    'PUT /issues/{key}/remote-links/{id}': ['write', `/issues/${I}/remote-links/${none}`, { url: 'https://example.com', title: 'x' }], 'DELETE /issues/{key}/remote-links/{id}': ['write', `/issues/${I}/remote-links/${none}`],
+    'POST /issues/{key}/archive': ['gadmin', `/issues/${I}/archive`], 'POST /issues/{key}/unarchive': ['gadmin', `/issues/${I}/unarchive`],   // 0508.R1
+    'POST /issues/bulk/archive': ['gadmin', '/issues/bulk/archive', { issues: ['NOPE-1'] }], 'GET /admin/archived-items': ['gadmin', '/admin/archived-items'],
     'GET /admin/automation/rules': ['gadmin', '/admin/automation/rules'], 'GET /admin/automation/runs': ['gadmin', '/admin/automation/runs'],   // 0709.R3
     'POST /admin/automation/rules': ['gadmin', '/admin/automation/rules', { name: 'Matrix rule', scope: { kind: 'all' }, trigger: { kind: 'created' }, actions: [{ kind: 'label', value: 'matrix' }] }],
     'PUT /admin/automation/rules/{id}': ['gadmin', `/admin/automation/rules/${none}`, { name: 'x', scope: { kind: 'all' }, trigger: { kind: 'created' }, actions: [{ kind: 'label', value: 'x' }] }],
@@ -5751,6 +5755,72 @@ test('[0506.R1][0506.R2][0506.R3][0506.R4] voting: once each, not the reporter, 
   assert.equal(v.votes, 1)
   assert.ok((await pool.query(`select 1 from audit_log where action = 'settings.voting.updated'`)).rows.length)
   await call('PUT', '/api/v1/admin/settings/voting', { enabled: true }); clearSettingsCache()
+})
+
+test('[0507.R1][0507.R2][0507.R3][0507.R4][0507.R5] remote links: web links added, changed, removed; Jira’s REST with globalId; safety; history and JQL; moves keep them', { skip, timeout: 60_000 }, async () => {
+  await call('POST', '/api/v1/projects', { name: 'Linked out', key: 'RLK', template: 'kanban' })
+  await call('POST', '/api/v1/projects', { name: 'Linked dest', key: 'RLD', template: 'kanban' })
+  await join('RLK', 'rl.viewer@x.com', 'viewer')
+  const item = (await call('POST', '/api/v1/projects/RLK/issues', { title: 'Has links' })).body
+  const base = `/api/v1/issues/${item.key}/remote-links`
+  // R1, R3: add, refuse javascript:, viewers can't add
+  assert.equal((await call('POST', base, { url: 'javascript:alert(1)', title: 'x' })).status, 400)
+  assert.equal((await call('POST', base, { url: 'https://example.com/spec', title: 'Spec' }, 'rl.viewer@x.com')).status, 403)
+  const spec = (await call('POST', base, { url: 'https://example.com/spec', title: 'Spec' })).body
+  assert.equal((await call('PUT', `${base}/${spec.id}`, { url: 'https://example.com/spec-v2', title: 'Spec v2' })).body.title, 'Spec v2')
+  assert.deepEqual((await call('GET', base, undefined, 'rl.viewer@x.com')).body.map((l: any) => l.title), ['Spec v2'])
+  // R2: Jira's REST: create, upsert by globalId, read by globalId, delete by globalId
+  const jira = (path: string, method = 'GET', body?: unknown) => call(method, `/rest/api/2/issue/${item.key}/remotelink${path}`, body)
+  const made = await jira('', 'POST', { globalId: 'gh=1', application: { type: 'com.github', name: 'GitHub' }, relationship: 'mentioned in', object: { url: 'https://github.com/acme/x/pull/1', title: 'PR #1', status: { resolved: false } } })
+  assert.equal(made.status, 201)
+  await jira('', 'POST', { globalId: 'gh=1', object: { url: 'https://github.com/acme/x/pull/1', title: 'PR #1 merged', status: { resolved: true } } })
+  const byGlobal = (await jira('?globalId=gh%3D1')).body
+  assert.deepEqual([byGlobal.object.title, byGlobal.object.status.resolved, byGlobal.application], ['PR #1 merged', true, undefined])
+  assert.equal((await jira('')).body.length, 2)
+  // R4: JQL and history
+  const found = (await call('GET', `/api/v1/search?jql=${encodeURIComponent('issue in remoteLinksByGlobalId("gh=1")')}`)).body.items.map((i: any) => i.key)
+  assert.deepEqual(found, [item.key])
+  const hist = (await pool.query(`select text from activity where issue_id = $1 and field = 'remoteLink' order by created_at`, [item.id])).rows.map(r => r.text)
+  assert.deepEqual(hist, ['Added the web link “Spec”', 'Changed the web link “Spec v2”', 'Added the web link “PR #1”', 'Changed the web link “PR #1 merged”'])
+  assert.equal((await jira('?globalId=gh%3D1', 'DELETE')).status, 204)
+  assert.equal((await jira('?globalId=gh%3D1', 'DELETE')).status, 404)
+  // R5: a moved item keeps its web links
+  const moved = (await call('POST', `/api/v1/issues/${item.key}/move`, { projectKey: 'RLD' })).body
+  assert.deepEqual((await call('GET', `/api/v1/issues/${moved.key}/remote-links`)).body.map((l: any) => l.title), ['Spec v2'])
+  assert.equal((await call('DELETE', `/api/v1/issues/${moved.key}/remote-links/${spec.id}`)).status, 204)
+})
+
+test('[0508.R1][0508.R2][0508.R3][0508.R4] archiving single items: with sub-items, not an epic’s items; read-only; out of lists, search and boards; opens by key; restored', { skip, timeout: 60_000 }, async () => {
+  await call('POST', '/api/v1/projects', { name: 'Archiving', key: 'ARC', template: 'kanban' })
+  await join('ARC', 'arc.admin@x.com', 'admin')
+  const epic = (await call('POST', '/api/v1/projects/ARC/issues', { title: 'Big theme', type: 'epic' })).body
+  const item = (await call('POST', '/api/v1/projects/ARC/issues', { title: 'Old work', parentId: epic.id })).body
+  const sub = (await call('POST', '/api/v1/projects/ARC/issues', { title: 'Old sub-item', parentId: item.id })).body
+  const kept = (await call('POST', '/api/v1/projects/ARC/issues', { title: 'Still live', parentId: epic.id })).body
+  // R1: system admins only (not a project admin)
+  assert.equal((await call('POST', `/api/v1/issues/${item.key}/archive`, undefined, 'arc.admin@x.com')).status, 403)
+  assert.deepEqual((await call('POST', `/api/v1/issues/${item.key}/archive`)).body.archived.sort(), [item.key, sub.key].sort())
+  // R2: out of lists, search and JQL; still opens by its key; read-only
+  const listed = (await call('GET', '/api/v1/projects/ARC/issues')).body.items.map((i: any) => i.key)
+  assert.deepEqual(listed.sort(), [epic.key, kept.key].sort())
+  assert.deepEqual((await call('GET', `/api/v1/search?jql=${encodeURIComponent('project = ARC')}`)).body.items.map((i: any) => i.key).sort(), [epic.key, kept.key].sort())
+  const opened = (await call('GET', `/api/v1/issues/${item.key}`)).body
+  assert.ok(opened.archivedAt)
+  assert.equal((await call('PATCH', `/api/v1/issues/${item.key}`, { title: 'x' })).status, 403)
+  assert.equal((await call('POST', `/api/v1/issues/${sub.key}/comments`, { body: 'x' })).status, 403)
+  assert.equal((await call('PUT', `/api/v1/issues/${item.key}/watch`)).status, 403)
+  // the epic and its other items stay
+  assert.equal((await call('GET', `/api/v1/issues/${kept.key}`)).body.archivedAt, null)
+  // R3: the list, then restore with the sub-item
+  const arch = (await call('GET', '/api/v1/admin/archived-items?query=old')).body.items.map((i: any) => i.key)
+  assert.deepEqual(arch.sort(), [item.key, sub.key].sort())
+  assert.equal((await call('GET', '/api/v1/admin/archived-items', undefined, 'arc.admin@x.com')).status, 403)
+  assert.deepEqual((await call('POST', `/api/v1/issues/${item.key}/unarchive`)).body.restored.sort(), [item.key, sub.key].sort())
+  assert.equal((await call('PATCH', `/api/v1/issues/${item.key}`, { title: 'Back again' })).status, 200)
+  // bulk
+  assert.deepEqual((await call('POST', '/api/v1/issues/bulk/archive', { issues: [kept.key] })).body.archived, [kept.key])
+  // R4: audited and in history
+  assert.deepEqual((await pool.query(`select action from audit_log where target = $1 and action like 'issue.%archived' order by at`, [item.key])).rows.map(r => r.action), ['issue.archived', 'issue.unarchived'])
 })
 
 test('[0705.R2] a webhook never reaches private addresses, whatever its name resolves to', { skip }, async () => {

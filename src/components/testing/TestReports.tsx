@@ -18,8 +18,8 @@ function useScope(project: Project) {
   const { state } = useStore()
   const [scope, setScope] = useState('')
   const [env, setEnv] = useState('')
-  const plans = state.issues.filter(i => i.projectId === project.id && i.type === 'test_plan')
-  const envs = [...new Set(state.issues.filter(i => i.projectId === project.id && i.type === 'test_execution').flatMap(i => i.testEnvironments ?? []))]
+  const plans = state.issues.filter(i => !i.archivedAt && i.projectId === project.id && i.type === 'test_plan')
+  const envs = [...new Set(state.issues.filter(i => !i.archivedAt && i.projectId === project.id && i.type === 'test_execution').flatMap(i => i.testEnvironments ?? []))]
   const query = new URLSearchParams({ ...(scope.startsWith('v:') ? { version: scope.slice(2) } : {}), ...(scope.startsWith('p:') ? { plan: scope.slice(2) } : {}), ...(env ? { environment: env } : {}) }).toString()
   const picker = (
     <div className="exec-meta report-scope">

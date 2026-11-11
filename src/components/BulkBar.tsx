@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { X, Trash2, ArrowRightLeft } from 'lucide-react'
+import { X, Trash2, ArrowRightLeft, Archive } from 'lucide-react'
 import { api, apiEnabled, errorMessage } from '../api/client'
 import { issueSync } from '../api/sync'
 import { sprintDeps } from '../api/sprints'
@@ -45,6 +45,15 @@ export default function BulkBar({ ids, onClear }: { ids: string[]; onClear: () =
     toast(`Updated fix versions on ${plural(moves.length, 'item')}`)
   }
 
+  // Jira DC's bulk Archive (spec 0508): system administrators; sub-items go with their parent
+  const archiveAll = async () => {
+    try {
+      await issueSync.idle()
+      const r = await api<{ archived: string[] }>('POST', '/api/issues/bulk/archive', { issues: items.map(i => issueSync.serverKey(i)) })
+      dispatch({ type: 'mergeIssues', issues: items.map(i => ({ ...i, archivedAt: Date.now() })) })
+      toast(`Archived ${plural(r.archived.length, 'item')}`); onClear()
+    } catch (e) { toast(errorMessage(e), { tone: 'warn' }) }
+  }
   const apply = (patch: IssuePatch, what: string) => {
     let target = ids
     if (patch.status && project) {
@@ -85,6 +94,7 @@ export default function BulkBar({ ids, onClear }: { ids: string[]; onClear: () =
             onChange={v => toVersion(v === '-' ? null : v)} className="btn btn-ghost btn-sm" title="Add fix version" trigger="Version" />
         )}
         {mayMove && <button className="btn btn-ghost btn-sm" onClick={() => setMoving(true)}><ArrowRightLeft size={14} />Move</button>}
+        {apiEnabled && state.isAdmin === true && <button className="btn btn-ghost btn-sm" onClick={() => void archiveAll()}><Archive size={14} />Archive</button>}
         {mayDelete && <>
           <span className="bulk-sep" />
           <button className="btn btn-ghost btn-sm text-danger" onClick={() => setConfirm(true)}><Trash2 size={14} />Delete</button>

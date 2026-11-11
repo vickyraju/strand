@@ -1965,3 +1965,37 @@ test('[0506.R1] someone votes for an item and sees the count; the reporter canâ€
   assert.deepEqual([o.problems, v.problems], [[], []])
 })
 
+test('[0507.R1] a web link is added to an item and opens its address in a new tab', { skip, timeout: 120_000 }, async () => {
+  await owner('POST', '/projects', { name: 'Web links journey', key: 'WLJ', template: 'kanban' })
+  const item = (await owner('POST', '/projects/WLJ/issues', { title: 'Points elsewhere' })).body
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url(`/i/${item.key}`))
+  await o.click('[aria-label="Add web link"]')
+  await o.fill('#wl-url', 'https://example.com/design')
+  await o.fill('#wl-title', 'Design doc')
+  await o.click('.modal button:has-text("Save")')
+  const link = o.locator('[aria-label="Web links"] a:has-text("Design doc")')
+  await link.waitFor()
+  assert.deepEqual([await link.getAttribute('href'), await link.getAttribute('target'), await link.getAttribute('rel')], ['https://example.com/design', '_blank', 'noopener noreferrer'])
+  assert.deepEqual(o.problems, [])
+})
+
+test('[0508.R2][0508.R3] an admin archives an item: it leaves the projectâ€™s list, opens read-only by key, and comes back with Restore', { skip, timeout: 120_000 }, async () => {
+  await owner('POST', '/projects', { name: 'Archive journey', key: 'AWI', template: 'kanban' })
+  const item = (await owner('POST', '/projects/AWI/issues', { title: 'Done long ago' })).body
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url(`/i/${item.key}`))
+  await o.click('[aria-label="More actions"]')
+  await o.click('[role="menu"] button:has-text("Archive")')
+  await o.waitForSelector('text=read-only, and left out of lists')
+  assert.deepEqual((await owner('GET', '/projects/AWI/issues')).body.items, [])
+  await o.goto(url(`/i/${item.key}`))
+  await o.waitForSelector('text=Done long ago')
+  await o.waitForSelector('text=read-only, and left out of lists')
+  await o.goto(url('/admin/archived-items'))
+  await o.click(`tr:has-text("${item.key}") button:has-text("Restore")`)
+  await o.waitForSelector(`text=Restored ${item.key}`)
+  assert.equal((await owner('GET', '/projects/AWI/issues')).body.items.length, 1)
+  assert.deepEqual(o.problems, [])
+})
+

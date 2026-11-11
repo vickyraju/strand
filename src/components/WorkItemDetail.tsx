@@ -64,7 +64,7 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
   const { createIssue, openIssue, closeIssue, openProject, toast, moveIssue, runTransition } = useApp()
   const issue = state.issues.find(i => i.id === issueId)
   const project = projectOf(state, issue?.projectId)
-  const readOnly = !canEdit(project)
+  const readOnly = !canEdit(project) || !!issue?.archivedAt   // an archived item is read-only (spec 0508)
   const archived = !!project?.archivedAt
   const flag = useFlagActions(issue, !readOnly && !archived)          // Jira's Add flag / Remove flag (spec 0408)   // spec 0102: nothing changes, not even a comment or watching
   const mentionable = useProjectPeople(issue?.projectId, state.users)   // only people who can see the item can be mentioned
@@ -81,6 +81,14 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
   const [cloning, setCloning]     = useState(false)
   const [moving, setMoving]       = useState(false)
   const voting = usePublicSettings().voting
+  const archiveItem = async (on: boolean) => {
+    try {
+      const r = await api<{ archived?: string[]; restored?: string[] }>('POST', `/api/issues/${encodeURIComponent(issue!.key)}/${on ? 'archive' : 'unarchive'}`)
+      const n = (r.archived ?? r.restored ?? []).length
+      dispatch({ type: 'mergeIssues', issues: [{ ...issue!, archivedAt: on ? Date.now() : undefined }] })
+      toast(on ? `Archived ${issue!.key}${n > 1 ? ` and ${n - 1} sub-item${n > 2 ? 's' : ''}` : ''}` : `Restored ${issue!.key}`)
+    } catch (e) { toast(errorMessage(e), { tone: 'warn' }) }
+  }
   // the field configuration (spec 0504) and the screens (spec 0505) of the item's type: what shows, on which tab, and what can change
   const screens = project?.screens?.[issue?.type ?? '']
   const viewTabs = screens?.view ?? null
@@ -209,6 +217,8 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
           ...(readOnly ? [] : [{ label: 'Save as template', icon: <FileText size={14} />, onClick: () => setTemplating(true) }]),
           ...(!readOnly && issue.type !== 'epic' && !issue.parentId ? [{ label: 'Add sub-item', icon: <Plus size={14} />, onClick: () => createIssue({ projectId: project.id, parentId: issue.id, sprintId: issue.sprintId }) }] : []),
           ...flag.items,
+          // Jira DC's Archive (spec 0508): system administrators
+          ...(apiEnabled && state.isAdmin === true && !issue.archivedAt && !archived ? [{ label: 'Archive', icon: <Archive size={14} />, onClick: () => void archiveItem(true) }] : []),
           ...(can(project, 'deleteIssues') && !project?.archivedAt ? [{ label: 'Delete', icon: <Trash2 size={14} />, danger: true, divider: true, onClick: () => setConfirmDel(true) }] : []),
         ]} />
         <button className="icon-btn" onClick={() => mode === 'peek' ? openIssue(issue.id, { full: true }) : navigate(href({ name: 'project', key: project.key }, issue.key))}
@@ -219,6 +229,12 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
       </div>
 
       {archived && <p className="callout" role="status" style={{ margin: '12px 20px 0' }}><Archive size={15} />This work item is in an archived project. It can’t be changed.</p>}
+      {issue.archivedAt && (
+        <div className="apply-banner warn" role="status">
+          <span>Archived {new Date(issue.archivedAt).toLocaleDateString(undefined, { dateStyle: 'medium' })}: read-only, and left out of lists, boards and search.</span>
+          {state.isAdmin === true && <button className="btn btn-secondary btn-sm" onClick={() => void archiveItem(false)}>Restore</button>}
+        </div>
+      )}
       <div className="detail-body">
         <div className="detail-main">
           {mode === 'full' && <h1 className="sr-only">{issue.key}: {issue.title}</h1>}
@@ -326,6 +342,8 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
               </div>
             </section>
           )}
+
+          {apiEnabled && <WebLinks issue={issue} canLink={can(project, 'linkIssues') && !archived} />}
 
           <section className="detail-section">
             <div className="section-title-row">
@@ -477,7 +495,7 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
                     { value: undefined, label: 'None' },
                     // Jira's levels (spec 0303): an epic, or (for an item without sub-items) an item of this project that isn't a sub-item
                     // an epic marked Done (its Epic Status, spec 0716) isn't offered, unless it is already the parent
-                    ...state.issues.filter(i => i.projectId === project.id && i.id !== issue.id && (i.type === 'epic' ? i.epicStatus !== 'Done' || i.id === issue.parentId
+                    ...state.issues.filter(i => !i.archivedAt && i.projectId === project.id && i.id !== issue.id && (i.type === 'epic' ? i.epicStatus !== 'Done' || i.id === issue.parentId
                       : (children.length === 0 && (!i.parentId || state.issues.find(x => x.id === i.parentId)?.type === 'epic'))))
                       .map(i => ({ value: i.id as string | undefined, label: `${i.key} ${i.title}`, icon: <TypeIcon type={i.type} size={12} /> })),
                   ]}
@@ -645,6 +663,55 @@ function VoteButton({ issue }: { issue: Issue }) {
       title={`${why}${v.voters.length ? ` · Voted: ${v.voters.map(x => x.name).join(', ')}` : ''}`}>
       <ThumbsUp size={16} /><span className="sm">{v.votes}</span>
     </button>
+  )
+}
+
+interface RemoteLink { id: string; url: string; title: string; summary: string | null; relationship: string | null; application: { name?: string } | null; status: { resolved?: boolean } | null }
+/** Web links (spec 0507), as Jira's: a URL and its text, and remote links apps add; people with Link issues add, change and remove them. */
+function WebLinks({ issue, canLink }: { issue: Issue; canLink: boolean }) {
+  const { toast } = useApp()
+  const [links, setLinks] = useState<RemoteLink[] | null>(null)
+  const [editing, setEditing] = useState<RemoteLink | 'new' | null>(null)
+  const [url, setUrl] = useState(''), [title, setTitle] = useState('')
+  const base = `/api/issues/${encodeURIComponent(issue.key)}/remote-links`
+  const load = () => api<RemoteLink[]>('GET', base).then(setLinks, () => setLinks([]))
+  useEffect(() => { void load() }, [issue.key])   // eslint-disable-line react-hooks/exhaustive-deps
+  const open = (l: RemoteLink | 'new') => { setEditing(l); setUrl(l === 'new' ? 'https://' : l.url); setTitle(l === 'new' ? '' : l.title) }
+  const save = () => (editing === 'new' ? api('POST', base, { url, title }) : api('PUT', `${base}/${(editing as RemoteLink).id}`, { url, title }))
+    .then(() => { setEditing(null); void load() }, e => toast(errorMessage(e), { tone: 'warn' }))
+  if (!links || (!links.length && !canLink)) return null
+  return (
+    <section className="detail-section" aria-label="Web links">
+      <div className="section-title-row">
+        <h2 className="section-title">Web links</h2><div style={{ flex: 1 }} />
+        {canLink && <button className="icon-btn sm" onClick={() => open('new')} aria-label="Add web link" title="Add web link"><Plus size={15} /></button>}
+      </div>
+      {links.length > 0 && <div className="rows-box">{links.map(l => (
+        <div key={l.id} className="link-row">
+          {l.relationship && <span className="link-type">{l.relationship}</span>}
+          <a className="link-target" href={l.url} target="_blank" rel="noopener noreferrer" title={l.summary ?? l.url}>
+            <Link2 size={13} /><span className={`cell-ellipsis${l.status?.resolved ? ' struck' : ''}`}>{l.title}</span>
+            {l.application?.name && <span className="muted sm">{l.application.name}</span>}
+          </a>
+          {canLink && <>
+            <button className="icon-btn sm" title="Edit web link" aria-label={`Edit ${l.title}`} onClick={() => open(l)}><Pencil size={13} /></button>
+            <button className="icon-btn sm" title="Remove web link" aria-label={`Remove ${l.title}`} onClick={() => api('DELETE', `${base}/${l.id}`).then(load, e => toast(errorMessage(e), { tone: 'warn' }))}><Unlink size={13} /></button>
+          </>}
+        </div>
+      ))}</div>}
+      {!links.length && <p className="muted sm">No web links.</p>}
+      {editing && (
+        <Modal title={editing === 'new' ? 'Add web link' : 'Edit web link'} onClose={() => setEditing(null)} footer={<>
+          <button className="btn btn-secondary" onClick={() => setEditing(null)}>Cancel</button>
+          <button className="btn btn-primary" disabled={!/^https?:\/\/\S+/.test(url) || !title.trim()} onClick={() => void save()}>Save</button>
+        </>}>
+          <label className="label" htmlFor="wl-url">URL</label>
+          <input id="wl-url" className="input" type="url" value={url} onChange={e => setUrl(e.target.value)} autoFocus />
+          <label className="label" htmlFor="wl-title" style={{ marginTop: 10 }}>Link text</label>
+          <input id="wl-title" className="input" value={title} onChange={e => setTitle(e.target.value)} />
+        </Modal>
+      )}
+    </section>
   )
 }
 

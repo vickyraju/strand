@@ -160,6 +160,10 @@ export async function jqlToSql(d: Db, me: Me, q: Query, args: unknown[]): Promis
   /** The condition for "field = one value". */
   const eq = (c: Clause, v: Value): string => {
     if (c.field === 'key' && v.kind === 'fn' && TEST_FNS.has(v.name)) return testFn(v)
+    if (c.field === 'key' && v.kind === 'fn' && v.name === 'remotelinksbyglobalid') {   // spec 0507
+      const ids = v.args ?? (v.arg ? [v.arg] : [])
+      return `i.id in (select issue_id from remote_links where global_id = any(${put(ids)}::text[]))`
+    }
     if (c.field === 'key' && v.kind === 'fn' && v.name === 'votedissues') return `i.id in (select issue_id from issue_votes where user_id = ${put(me.id)})`   // spec 0506
     switch (c.field) {
       // a project's earlier keys still find it (spec 0703 R2)

@@ -18,7 +18,7 @@ export default function WorkTypesPanel({ project }: { project: Project }) {
   const [editing, setEditing] = useState<WorkType | 'new' | null>(null)
   const [removing, setRemoving] = useState<WorkType | null>(null)
   const types = typesOf(project)
-  const count = (k: string) => state.issues.filter(i => i.projectId === project.id && i.type === k).length
+  const count = (k: string) => state.issues.filter(i => !i.archivedAt && i.projectId === project.id && i.type === k).length
 
   /** Server first (it checks names and moves items), then the app's copy. */
   const save = async (t: WorkType, isNew: boolean) => {
@@ -42,7 +42,7 @@ export default function WorkTypesPanel({ project }: { project: Project }) {
         await sprintDeps.reloadProject(project.id)   // its items now have another type
       } catch (e) { toast(errorMessage(e), { tone: 'warn' }); return }
     } else {
-      const ids = state.issues.filter(i => i.projectId === project.id && i.type === t.key).map(i => i.id)
+      const ids = state.issues.filter(i => !i.archivedAt && i.projectId === project.id && i.type === t.key).map(i => i.id)
       if (ids.length) dispatch({ type: 'updateIssues', ids, patch: { type: moveTo } })
     }
     const transitions = project.transitions.map(x => (x.types?.includes(t.key) ? { ...x, types: x.types.filter(k => k !== t.key).length ? x.types.filter(k => k !== t.key) : undefined } : x))

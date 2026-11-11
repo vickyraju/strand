@@ -34,6 +34,7 @@ export const MENU: { title: string; items: MenuItem[] }[] = [
     { id: 'development', label: 'Development tools', Icon: GitPullRequest, intro: 'Connect GitHub so each work item shows the branches, commits and pull requests that name its key, as Jira’s Development panel.' },
     { id: 'audit', label: 'Audit log', Icon: ScrollText, intro: 'Who changed people, project settings, workflows, automation and deletions, and when. Entries can’t be edited or removed.' },
     { id: 'archived', label: 'Archived projects', Icon: ArchiveRestore, intro: 'Archived projects are read-only and hidden from lists, search and boards; their work items still open from links. Restore one to bring it back as it was.' },
+    { id: 'archived-items', label: 'Archived work items', Icon: Archive, intro: 'Work items a system administrator archived: read-only and left out of lists, boards and search, as Jira’s archived issues. Restore one to bring it back with its sub-items.' },
     { id: 'backups', label: 'Project backups', Icon: Archive, intro: 'A copy of each project taken when it is deleted, so a system administrator can bring it back.' },
     { id: 'views', label: 'Shared views', Icon: Bookmark, intro: 'Saved views shared beyond their owner, and views whose owner has left. Give one a new owner to keep it looked after.' },
   ] },

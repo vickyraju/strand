@@ -77,7 +77,7 @@ function AddRunsDialog({ issue, project, onClose, onAdded }: { issue: Issue; pro
   const [from, setFrom] = useState('')
   const [jql, setJql] = useState(`project = ${project.key} AND type = test`)
   const [error, setError] = useState('')
-  const items = state.issues.filter(i => i.projectId === project.id)
+  const items = state.issues.filter(i => !i.archivedAt && i.projectId === project.id)
   const tests = items.filter(i => i.type === 'test'), containers = items.filter(i => i.type === 'test_set' || i.type === 'test_plan')
   const ok = mode === 'pick' ? picked.length > 0 : mode === 'from' ? !!from : !!jql.trim()
   const add = () => api<{ added: number }>('POST', `/api/issues/${enc(issue.key)}/runs`, mode === 'pick' ? { keys: picked } : mode === 'from' ? { from } : { jql })

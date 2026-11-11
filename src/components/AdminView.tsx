@@ -26,6 +26,7 @@ import GlobalAutomation from './GlobalAutomation'
 import CustomFieldsAdmin from './CustomFieldsAdmin'
 import FieldConfigsAdmin from './FieldConfigsAdmin'
 import ScreensAdmin from './ScreensAdmin'
+import ArchivedItems from './ArchivedItems'
 import SharedViewsAdmin from './SharedViewsAdmin'
 import ArchivedProjects from './admin/ArchivedProjects'
 
@@ -66,6 +67,7 @@ export default function AdminView({ section = 'people', item }: { section?: Admi
       {section === 'settings' && <SystemSettings page={settingsPage} />}
       {section === 'audit' && <AuditLog />}
       {section === 'archived' && <ArchivedProjects />}
+      {section === 'archived-items' && <ArchivedItems />}
       {section === 'backups' && <Backups />}
       {section === 'views' && <SharedViewsAdmin />}
     </AdminShell>

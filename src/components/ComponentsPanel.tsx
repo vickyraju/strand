@@ -21,7 +21,7 @@ export default function ComponentsPanel({ project }: { project: Project }) {
   const [removing, setRemoving] = useState<Component | null>(null)
   const list = project.components ?? []
   const set = (components: Component[]) => dispatch({ type: 'updateProject', id: project.id, patch: { components } })
-  const usage = (id: string) => state.issues.filter(i => i.projectId === project.id && i.componentIds?.includes(id)).length
+  const usage = (id: string) => state.issues.filter(i => !i.archivedAt && i.projectId === project.id && i.componentIds?.includes(id)).length
 
   return (
     <section className="panel" aria-label="Components">
@@ -91,7 +91,7 @@ function ComponentDialog({ component, project, onClose, onSave }: { component: C
 function DeleteComponentDialog({ project, component, onClose }: { project: Project; component: Component; onClose: () => void }) {
   const { state, dispatch } = useStore()
   const { toast } = useApp()
-  const mine = state.issues.filter(i => i.projectId === project.id && i.componentIds?.includes(component.id))
+  const mine = state.issues.filter(i => !i.archivedAt && i.projectId === project.id && i.componentIds?.includes(component.id))
   const [items, setItems] = useState<number | null>(apiEnabled ? null : mine.length)
   useEffect(() => {
     if (apiEnabled) api<{ items: number }>('GET', `/api/projects/${project.key}/components/${component.id}/usage`).then(u => setItems(u.items), () => setItems(mine.length))

@@ -103,11 +103,11 @@ export default function YourWork({ onCreateProject }: { onCreateProject: () => v
   // The project cards: with an API the server says which projects were active last and counts their items;
   // without one they are worked out from the store
   interface Card { id: string; key: string; name: string; color: string; template: 'kanban' | 'scrum'; open: number | null; done: number | null; total: number }
-  const lastTouch = (projectId: string) => Math.max(projectOf(state, projectId)!.createdAt, ...state.issues.filter(i => i.projectId === projectId).map(i => i.updatedAt))
+  const lastTouch = (projectId: string) => Math.max(projectOf(state, projectId)!.createdAt, ...state.issues.filter(i => !i.archivedAt && i.projectId === projectId).map(i => i.updatedAt))
   const cards: Card[] = apiEnabled
     ? (serverProjects ?? []).map(p => ({ id: p.id, key: p.key, name: p.name, color: p.color, template: p.template, open: p.myOpen, done: p.done, total: p.total }))
     : [...state.projects].sort((a, b) => lastTouch(b.id) - lastTouch(a.id)).slice(0, 4).map(p => {
-        const items = state.issues.filter(i => i.projectId === p.id && i.type !== 'epic')
+        const items = state.issues.filter(i => !i.archivedAt && i.projectId === p.id && i.type !== 'epic')
         return { id: p.id, key: p.key, name: p.name, color: p.color, template: p.template, open: items.filter(i => i.assigneeId === me.id && !isDone(p, i)).length, done: items.filter(i => isDone(p, i)).length, total: items.length }
       })
 

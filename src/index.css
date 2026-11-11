@@ -1622,3 +1622,4 @@ h2.empty-title, h2.section-title, h2.side-title { margin: 0 }
 .anon-list { margin: 10px 0 0 18px; display: grid; gap: 4px; font-size: 13px }
 .webhook-events { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px 16px; margin-top: 6px }
 .secret-box { padding: 6px 8px; background: var(--sunken); border-radius: var(--radius); word-break: break-all; flex: 1 }
+.struck { text-decoration: line-through }

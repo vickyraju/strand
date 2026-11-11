@@ -188,7 +188,7 @@ const JIRA_FIELD: Record<string, [string, 'jira' | 'custom']> = {
   title: ['summary', 'jira'], description: ['description', 'jira'], type: ['issuetype', 'jira'], priority: ['priority', 'jira'], statusId: ['status', 'jira'],
   assigneeId: ['assignee', 'jira'], reporterId: ['reporter', 'jira'], labels: ['labels', 'jira'], dueDate: ['duedate', 'jira'], resolution: ['resolution', 'jira'],
   timeEstimate: ['timeoriginalestimate', 'jira'], timeRemaining: ['timeestimate', 'jira'], sprintId: ['Sprint', 'custom'], estimate: ['Story Points', 'custom'],
-  key: ['Key', 'jira'], projectId: ['project', 'jira'], flagged: ['Flagged', 'custom'], epicStatus: ['Epic Status', 'custom'], epicColor: ['Epic Colour', 'custom'], rank: ['Rank', 'custom'], startDate: ['Start date', 'custom'],
+  key: ['Key', 'jira'], projectId: ['project', 'jira'], RemoteIssueLink: ['RemoteIssueLink', 'jira'], flagged: ['Flagged', 'custom'], epicStatus: ['Epic Status', 'custom'], epicColor: ['Epic Colour', 'custom'], rank: ['Rank', 'custom'], startDate: ['Start date', 'custom'],
 }
 const LIST_FIELD: Record<string, string> = { fixReleaseIds: 'Fix Version', affectsReleaseIds: 'Version', componentIds: 'Component' }
 
