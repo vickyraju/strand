@@ -1,6 +1,6 @@
 # 0505 Screens
 
-Status: Approved (PO, 10 Nov 2026: "yes go ahead and build complete everything whatever is pending"; product questions follow Jira DC)
+Status: Ported (aws-jira `84ef4fc`, strand `25d4c95`), approved by the PO on 10 Nov 2026; awaiting verification
 Parity rows: ISS-09
 
 ## Context and Jira reference
