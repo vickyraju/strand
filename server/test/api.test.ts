@@ -6608,13 +6608,15 @@ test('[0803.R2][0803.R3][0803.R4][0803.R6] plans: from projects or a saved view,
   // only what each person sees: the developer doesn't see PLS (nor the initiative's project)
   const dev = (await call('GET', `/api/v1/plans/${plan.id}/timeline`, undefined, 'pl.dev@x.com')).body
   assert.deepEqual(dev.items.map((i: any) => i.title).sort(), ['Login screen', 'Mobile app', 'Push messages'])
-  assert.equal((await call('GET', '/api/v1/plans', undefined, 'pl.dev@x.com')).body.some((p: any) => p.id === plan.id), true)
+  const seenByDev = (await call('GET', '/api/v1/plans', undefined, 'pl.dev@x.com')).body.find((p: any) => p.id === plan.id)
+  assert.deepEqual([seenByDev.projects.map((p: any) => p.key), seenByDev.projectIds.length], [['PLW'], 1])     // not the project they can't see
   // R2: only the owner (or a system administrator) changes it
   assert.equal((await call('PATCH', `/api/v1/plans/${plan.id}`, { name: 'Mine now' }, 'pl.dev@x.com')).status, 403)
   assert.equal((await call('DELETE', `/api/v1/plans/${plan.id}`, undefined, 'pl.dev@x.com')).status, 403)
   // R2: from a saved view; R3: the limit
   const view = (await call('POST', '/api/v1/views', { name: 'Epic work', filters: { q: '', resolution: 'open', jql: `project = PLW AND "Epic Link" = ${epic.key}`.replace('"Epic Link"', 'parent') } })).body
   const byView = (await call('POST', '/api/v1/plans', { name: 'By view', viewId: view.id })).body
+  assert.equal((await call('GET', `/api/v1/plans/${byView.id}`, undefined, 'pl.dev@x.com')).body.viewName, null)   // a private view's name stays private
   assert.deepEqual((await call('GET', `/api/v1/plans/${byView.id}/timeline`)).body.items.map((i: any) => i.title).sort(), ['Login screen', 'Push messages'])
   await call('PUT', '/api/v1/admin/settings/plans', { maxItems: 100 })
   assert.equal((await call('GET', `/api/v1/plans/${plan.id}/timeline`)).body.maxItems, 100)

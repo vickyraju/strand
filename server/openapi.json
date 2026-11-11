@@ -74161,7 +74161,7 @@
     },
     "/api/v1/plans": {
       "get": {
-        "summary": "Every plan of the workspace, by name",
+        "summary": "Every plan of the workspace, by name (its sources as far as I can see them)",
         "tags": [
           "Plans"
         ],
