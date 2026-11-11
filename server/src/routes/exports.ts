@@ -9,7 +9,7 @@ import { audit } from '../audit.ts'
 import { getSetting } from '../settings.ts'
 import { jiraIssue, lookups } from '../jiraShapes.ts'
 import { issueByKey } from './issues.ts'
-import { commentShown, visible } from '../access.ts'
+import { commentShown, levelOk, visible } from '../access.ts'
 import { searchWhere, searchFilters, type SearchFilters } from './misc.ts'
 
 const x = (s: unknown) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' })[c]!)
@@ -23,7 +23,8 @@ interface Item { id: string; key: string; fields: Record<string, any>; history: 
 async function visibleIssues(d: Db, me: Me, ids: string[]) {
   if (!ids.length) return new Set<string>()
   const args: unknown[] = [ids]
-  return new Set((await d.query<{ id: string }>(`select i.id from issues i where i.id = any($1::uuid[]) and i.deleted_at is null and ${visible(me, 'i.project_id', args)}`, args)).map(r => r.id))
+  const where = visible(me, 'i.project_id', args); args.push(me.id)
+  return new Set((await d.query<{ id: string }>(`select i.id from issues i where i.id = any($1::uuid[]) and i.deleted_at is null and ${where} and ${levelOk(me, args.length)}`, args)).map(r => r.id))   // and its security level
 }
 
 /** The items, in this order, as `me` may read them. */

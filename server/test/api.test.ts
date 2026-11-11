@@ -6371,14 +6371,17 @@ test('[0608.R1][0608.R2][0608.R3][0608.R4][0608.R5] print and XML export: Jira\'
   await call('POST', '/api/v1/projects', { name: 'Exports hidden', key: 'XPH', template: 'kanban' })
   const hidden = (await call('POST', '/api/v1/projects/XPH/issues', { title: 'Secret neighbour' })).body
   await call('POST', `/api/v1/issues/${a.key}/links`, { type: 'relates', targetKey: hidden.key })
-  const get = async (url: string, who = 'owner@x.com') => app.inject({ method: 'GET', url: `/api/v1${url}`, headers: await bearer(who) })
+  const lvl = (await call('POST', '/api/v1/projects/XPT/security-levels', { name: 'Admins only', members: [{ kind: 'role', role: 'admin' }] })).body
+  const levelled = (await call('POST', '/api/v1/projects/XPT/issues', { title: 'Behind a level', securityLevelId: lvl.id })).body
+  await call('POST', `/api/v1/issues/${a.key}/links`, { type: 'relates', targetKey: levelled.key })
+  const get = async (url: string, who = 'owner@x.com') => app.inject({ method: 'GET', url: `/api/v1${url}`, headers: { 'x-dev-user': who } })
   const jql = encodeURIComponent('project = XPT ORDER BY key')
   // R2: Jira's XML: rss 0.92, an item per work item with Jira's elements; a restricted comment only for those who may read it
   const xml = await get(`/search/export.xml?jql=${jql}`)
   assert.equal(xml.statusCode, 200)
   assert.match(String(xml.headers['content-type']), /application\/xml/)
   assert.match(xml.body, /^<\?xml version="1.0" encoding="UTF-8"\?>\n<rss version="0.92">/)
-  assert.equal(xml.body.match(/<item>/g)?.length, 2)
+  assert.equal(xml.body.match(/<item>/g)?.length, 3)
   assert.match(xml.body, new RegExp(`<key id="${a.id}">${a.key}</key>`))
   assert.match(xml.body, /<summary>Export me &amp; you<\/summary>/)
   assert.match(xml.body, /<description>The &lt;whole&gt; story<\/description>/)
@@ -6389,6 +6392,7 @@ test('[0608.R1][0608.R2][0608.R3][0608.R4][0608.R5] print and XML export: Jira\'
   const mia = await get(`/search/export.xml?jql=${jql}`, 'xp.mia@x.com')
   assert.ok(mia.body.includes('Everyone sees this') && !mia.body.includes('Admins only note'))
   assert.ok(xml.body.includes(hidden.key) && !mia.body.includes(hidden.key))                    // a linked item Mia can't see isn't named
+  assert.ok(xml.body.includes(levelled.key) && !mia.body.includes(levelled.key))                // nor one behind a security level
   assert.ok(!(await get(`/issues/${a.key}/export.html`, 'xp.mia@x.com')).body.includes('Secret neighbour'))
   // RSS, with and without comments
   const rss = await get(`/search/export.rss?jql=${jql}`), rssC = await get(`/search/export.rss?jql=${jql}&comments=1`)
