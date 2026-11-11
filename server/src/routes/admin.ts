@@ -39,6 +39,25 @@ const peopleWhere = (f: z.infer<typeof peopleQ>, args: unknown[]) => {
 
 // Everyone a filter matched, a batch at a time, each batch in its own transaction (so a refused batch doesn't undo the
 // others); the progress is kept on the job.
+// Spec 0609 R5: a new indexing language re-indexes the workspace's items and comments, a thousand at a time
+registerJob('search.reindex', async (p: { workspaceId: string }) => {
+  let n = 0
+  for (const t of ['issues', 'comments'] as const) {
+    let after = '00000000-0000-0000-0000-000000000000'
+    for (;;) {
+      const rows = await db.query<{ id: string }>(t === 'issues'
+        ? `update issues i set search = to_tsvector(search_config(i.workspace_id), i.search_text)
+            where i.id in (select id from issues where workspace_id = $1 and id > $2 order by id limit 1000) returning i.id`
+        : `update comments c set search = to_tsvector(search_config($1), c.body)
+            where c.id in (select c2.id from comments c2 join issues i on i.id = c2.issue_id where i.workspace_id = $1 and c2.id > $2 order by c2.id limit 1000) returning c.id`, [p.workspaceId, after])
+      if (!rows.length) break
+      n += rows.length
+      after = rows.map(r => r.id).sort().at(-1)!
+    }
+  }
+  return { reindexed: n }
+})
+
 registerJob('users.bulk', async (payload, job) => {
   const ws = payload.actor.workspaceId as string, who = { me: payload.actor as Me, ip: payload.ip ?? undefined }
   const g = await checkGroup(db, payload.groupId ?? undefined)
@@ -290,7 +309,9 @@ const plugin: FastifyPluginAsyncZod = async app => {
       await setSetting(d, req.me.workspaceId, key, parsed.data, req.me.id)
       const c = changes(before as any, parsed.data as any)
       if (c.changed) await audit(d, req, { action: `settings.${key}.updated`, type: 'settings', name: SETTINGS[key].label, before: c.before, after: c.after })
+      if (key === 'search' && c.changed) await enqueue(d, 'search.reindex', { workspaceId: req.me.workspaceId }, { workspaceId: req.me.workspaceId, createdBy: req.me.id })   // no dedupe: a running one may have passed rows already
     })
+    if (key === 'search') kickJobs(app.log)
     return view(req.me.workspaceId, key)
   })
   // ── Link types (Jira's issue linking): everyone reads them; workspace admins add, rename and remove them ──

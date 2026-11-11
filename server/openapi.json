@@ -36390,7 +36390,7 @@
             "in": "path",
             "name": "key",
             "required": true,
-            "description": "One of: rateLimiting, announcement, attachments, accessTokens, searchAndBulk, filterSubscriptions, plans, signIn, groups, voting, webhooks, automation, testing, dueReminders, email, emailBatching, userDefaults, deletedItems, projectKeys, timeTracking"
+            "description": "One of: rateLimiting, announcement, attachments, accessTokens, searchAndBulk, filterSubscriptions, plans, search, signIn, groups, voting, webhooks, automation, testing, dueReminders, email, emailBatching, userDefaults, deletedItems, projectKeys, timeTracking"
           }
         ],
         "responses": {

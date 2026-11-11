@@ -8,6 +8,7 @@
 // History (spec 0602): status WAS "In Progress", WAS IN (…), WAS NOT, WAS NOT IN, assignee CHANGED, each followed by
 // AFTER d, BEFORE d, ON d, DURING (d1, d2), BY person or BY (p1, p2); CHANGED also takes FROM v and TO v.
 // Combine with AND, OR, NOT and parentheses; sort with ORDER BY field [ASC|DESC], …  Pure: parsed here, run elsewhere.
+import { parseTextQuery, TextQueryError } from './textQuery.ts'
 
 export type Op = '=' | '!=' | 'in' | 'not in' | '~' | '!~' | '>' | '>=' | '<' | '<=' | 'is empty' | 'is not empty'
   | 'was' | 'was in' | 'was not' | 'was not in' | 'changed'
@@ -33,7 +34,7 @@ export const FIELDS: Record<string, string> = {
   assignee: 'assignee', reporter: 'reporter', labels: 'labels', label: 'labels', component: 'component', components: 'component',
   fixversion: 'fixVersion', release: 'fixVersion', affectedversion: 'affectedVersion', affectsversion: 'affectedVersion',
   sprint: 'sprint', parent: 'parent', epic: 'parent', 'parent link': 'parentLink', parentlink: 'parentLink', resolution: 'resolution', flagged: 'flagged', category: 'category', projectcategory: 'category', 'epic status': 'epicStatus', epicstatus: 'epicStatus',
-  text: 'text', summary: 'summary', title: 'summary', description: 'description',
+  text: 'text', summary: 'summary', title: 'summary', description: 'description', comment: 'comment',
   created: 'created', createddate: 'created', updated: 'updated', updateddate: 'updated', resolved: 'resolved', resolutiondate: 'resolved',
   due: 'due', duedate: 'due', start: 'start', startdate: 'start',
   storypoints: 'estimate', 'story points': 'estimate', estimate: 'estimate', originalestimate: 'timeEstimate', remainingestimate: 'timeRemaining',
@@ -162,7 +163,13 @@ export function parseJql(src: string): Query {
       if (peek()?.t === 'word' && peek(1)?.t === '(') return { kind: 'clause', field, op, values: [value()] }
       return { kind: 'clause', field, op, values: list() }
     }
-    return { kind: 'clause', field, op, values: [value()] }
+    const at = peek()
+    const v = value()
+    // a text search is Jira's Lucene syntax (spec 0609); its mistakes are JQL mistakes, at their place in the query
+    if ((op === '~' || op === '!~') && field !== 'labels' && v.kind === 'text') {
+      try { parseTextQuery(v.text) } catch (e) { if (e instanceof TextQueryError) throw new JqlError(e.message, at!.at + (at!.t === 'str' ? 1 : 0) + e.at); throw e }
+    }
+    return { kind: 'clause', field, op, values: [v] }
   }
   const and = (): Node => {
     const items = [clause()]
