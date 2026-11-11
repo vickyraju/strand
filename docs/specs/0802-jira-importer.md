@@ -1,6 +1,6 @@
 # 0802 Jira DC importer with dry run and reconciliation
 
-Status: Approved (PO, 10 Nov 2026: "yes go ahead and build complete everything whatever is pending")
+Status: Ported (aws-jira `e0d57cc`, strand `caa2cbb`), approved by the PO on 10 Nov 2026; awaiting verification
 Parity rows: IN-03
 
 ## Context and Jira reference
