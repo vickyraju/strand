@@ -1,6 +1,6 @@
 # 0510 Bulk transition, watch and stop watching
 
-Status: Approved (pending work, 11 Nov 2026)
+Status: Ported (aws-jira `c82b560`, strand `a871046`), pending work the PO asked to complete on 11 Nov 2026; awaiting verification
 Parity rows: ISS-20
 
 ## Context and Jira reference
