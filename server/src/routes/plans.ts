@@ -6,22 +6,32 @@ import { z } from 'zod'
 import { db, tx, type Db } from '../db.ts'
 import { HttpError, type Me } from '../auth.ts'
 import { audit } from '../audit.ts'
-import { visible } from '../access.ts'
+import { visible, visibleAs } from '../access.ts'
 import { getSetting } from '../settings.ts'
 import { searchWhere, viewSeenBy } from './misc.ts'
 
 const uuid = z.string().uuid()
 const idP = z.object({ id: uuid })
-const LIST = `select pl.id, pl.name, pl.owner_id, u.name as owner_name, pl.project_ids, pl.view_id, v.name as view_name, pl.done_days, pl.created_at, pl.updated_at,
-    (select coalesce(jsonb_agg(jsonb_build_object('id', p.id, 'key', p.key, 'name', p.name) order by p.key), '[]') from projects p where p.id = any(pl.project_ids)) as projects
+/** Plans as `me` may see them: only the source projects they can see, and the source view's name only if they can see the view.
+ *  `$u` is the parameter holding my id. */
+const LIST = (me: Me, u: number) => `select pl.id, pl.name, pl.owner_id, u.name as owner_name, pl.view_id, v.name as view_name, pl.done_days, pl.created_at, pl.updated_at,
+    (select coalesce(jsonb_agg(jsonb_build_object('id', p.id, 'key', p.key, 'name', p.name) order by p.key), '[]') from projects p where p.id = any(pl.project_ids) and ${visibleAs(me, 'p.id', u)}) as projects
   from plans pl join users u on u.id = pl.owner_id left join saved_views v on v.id = pl.view_id`
+/** The view's name only for those who can see the view; project ids only the visible ones. */
+async function shown(d: Db, me: Me, rows: any[]) {
+  for (const r of rows) {
+    r.projectIds = r.viewId ? null : r.projects.map((p: { id: string }) => p.id)
+    if (r.viewId && !(await viewSeenBy(d, me, r.viewId))) r.viewName = null
+  }
+  return rows
+}
 const ROW = `i.id, p.key || '-' || i.number as key, i.project_id, p.key as project_key, i.type, i.title, i.status_id, st.name as status_name, st.category,
   i.start_date, i.due_date, i.sprint_id, i.fix_release_ids, i.assignee_id, i.estimate, live_par.id as parent_id, live_pl.id as parent_link_id, i.rank, i.resolved_at`
 
 const plugin: FastifyPluginAsyncZod = async app => {
   const T = ['Plans']
   const plan = async (d: Db, me: Me, id: string) => {
-    const [p] = await d.query<any>(`${LIST} where pl.id = $1 and pl.workspace_id = $2`, [id, me.workspaceId])
+    const [p] = await shown(d, me, await d.query<any>(`${LIST(me, 3)} where pl.id = $1 and pl.workspace_id = $2`, [id, me.workspaceId, me.id]))
     if (!p) throw new HttpError(404, 'Plan not found')
     return p
   }
@@ -44,8 +54,8 @@ const plugin: FastifyPluginAsyncZod = async app => {
   }
   const unique = (e: any) => { if (e.code === '23505') throw new HttpError(409, 'A plan already has that name', { name: 'Already used' }); throw e }
 
-  app.get('/plans', { schema: { tags: T, summary: 'Every plan of the workspace, by name' } }, async req =>
-    db.query(`${LIST} where pl.workspace_id = $1 order by lower(pl.name)`, [req.me.workspaceId]))
+  app.get('/plans', { schema: { tags: T, summary: 'Every plan of the workspace, by name (its sources as far as I can see them)' } }, async req =>
+    shown(db, req.me, await db.query(`${LIST(req.me, 2)} where pl.workspace_id = $1 order by lower(pl.name)`, [req.me.workspaceId, req.me.id])))
   app.post('/plans', { schema: { tags: T, summary: 'Make a plan from some projects or a saved view', body } }, async (req, reply) => {
     const b = req.body
     const p = await tx(async d => {
@@ -84,6 +94,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
   // R3, R4: the timeline: the plan's work as the person sees it, with dependencies, releases and sprints
   app.get('/plans/:id/timeline', { schema: { tags: T, summary: 'A plan’s timeline: its initiatives, epics and items (and the initiatives its epics belong to), “blocks” dependencies, releases and sprints', params: idP } }, async req => {
     const p = await plan(db, req.me, req.params.id)
+    const [{ projectIds: allIds }] = await db.query<{ projectIds: string[] | null }>('select project_ids from plans where id = $1', [p.id]) as any   // the visible() filter below still applies
     const { maxItems } = await getSetting(req.me.workspaceId, 'plans')
     const args: unknown[] = []
     let where: string[]
@@ -96,7 +107,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     } else {
       args.push(req.me.workspaceId)
       where = [`i.workspace_id = $${args.length}`, 'i.deleted_at is null', 'i.archived_at is null', visible(req.me, 'i.project_id', args)]
-      args.push(p.projectIds ?? []); where.push(`i.project_id = any($${args.length}::uuid[])`)
+      args.push(allIds ?? []); where.push(`i.project_id = any($${args.length}::uuid[])`)
     }
     args.push(p.doneDays); where.push(`(st.category <> 'done' or coalesce(i.resolved_at, i.updated_at) > now() - make_interval(days => $${args.length}))`)
     where.push(`not exists (select 1 from issues sp where sp.id = i.parent_id and sp.type <> 'epic')`)           // sub-items aren't shown
