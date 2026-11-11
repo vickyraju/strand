@@ -12,12 +12,12 @@ import { PageAction } from './admin/AdminShell'
 type Type = 'ad' | 'ldap'
 interface Config {
   host: string; port: number; security: 'none' | 'ldaps' | 'starttls'; bindDn: string; baseDn: string; userDn: string; groupDn: string
-  pageSize: number; syncMinutes: number; connectTimeoutSeconds: number; readTimeoutSeconds: number
+  pageSize: number; syncMinutes: number; incremental: boolean; fullSyncHours: number; connectTimeoutSeconds: number; readTimeoutSeconds: number
   user: { objectClass: string; filter: string; username: string; firstName: string; lastName: string; displayName: string; email: string; guid: string }
   group: { objectClass: string; filter: string; name: string; description: string }
   membership: { groupMember: string; userMemberOf: string; useMemberOf: boolean; nested: boolean }
 }
-interface LastSync { at: string; ok: boolean; ms: number; error?: string; users?: Record<string, any>; groups?: Record<string, any> }
+interface LastSync { at: string; ok: boolean; ms: number; error?: string; mode?: 'full' | 'incremental'; why?: string; users?: Record<string, any>; groups?: Record<string, any> }
 interface Dir {
   id: string; name: string; type: Type; position: number; enabled: boolean; config: Config; hasPassword: boolean; users: number
   lastSync: LastSync | null; syncing: { jobId: string; status: string; progress: { done?: number } | null } | null
@@ -51,7 +51,7 @@ export default function UserDirectories() {
   }
   const toggle = (d: Dir) => api('PUT', `/api/admin/directories/${d.id}`, { name: d.name, enabled: !d.enabled, config: d.config })
     .then(() => { toast(`${d.name} ${d.enabled ? 'disabled' : 'enabled'}`); void load() }, fail)
-  const sync = (d: Dir) => api('POST', `/api/admin/directories/${d.id}/sync`).then(() => { toast(`Synchronising ${d.name}`); void load() }, fail)
+  const sync = (d: Dir, full = false) => api('POST', `/api/admin/directories/${d.id}/sync`, { full }).then(() => { toast(`${full ? 'Fully synchronising' : 'Synchronising'} ${d.name}`); void load() }, fail)
 
   if (error) return <LoadError error={error} onRetry={() => { setError(''); void load() }} />
   if (!dirs) return <Loading />
@@ -81,6 +81,7 @@ export default function UserDirectories() {
                   <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                     <button className="btn btn-ghost btn-sm" onClick={() => setEditing(d)}>Edit</button>
                     <button className="btn btn-ghost btn-sm" disabled={!d.enabled || !!d.syncing} onClick={() => sync(d)}>Synchronise</button>
+                    {d.type === 'ad' && d.config.incremental && <button className="btn btn-ghost btn-sm" disabled={!d.enabled || !!d.syncing} title="Read everything, applying deletions now" onClick={() => sync(d, true)}>Full synchronisation</button>}
                     <button className="btn btn-ghost btn-sm" onClick={() => toggle(d)}>{d.enabled ? 'Disable' : 'Enable'}</button>
                   </td>
                 </tr>
@@ -107,8 +108,9 @@ function SyncStatus({ d }: { d: Dir }) {
   if (!s.ok) return <span className="text-danger" title={s.error}>Failed {timeAgo(Date.parse(s.at))}: {s.error}</span>
   const u = s.users ?? {}, skipped = (u.skipped?.length ?? 0) + (s.groups?.skipped?.length ?? 0)
   const what = [u.created && `${u.created} new`, u.updated && `${u.updated} updated`, u.deactivated && `${u.deactivated} deactivated`, u.reactivated && `${u.reactivated} reactivated`].filter(Boolean).join(', ')
-  return <span title={skipped ? [...(u.skipped ?? []), ...(s.groups?.skipped ?? [])].map((x: any) => `${x.name}: ${x.why}`).join('\n') : undefined}>
-    {timeAgo(Date.parse(s.at))}<span className="muted">{what ? ` · ${what}` : ''}{skipped ? ` · ${skipped} skipped` : ''}</span>
+  const mode = s.mode === 'incremental' ? 'Incremental' : s.mode === 'full' ? 'Full' : ''
+  return <span title={[s.why, ...(skipped ? [...(u.skipped ?? []), ...(s.groups?.skipped ?? [])].map((x: any) => `${x.name}: ${x.why}`) : [])].filter(Boolean).join('\n') || undefined}>
+    {timeAgo(Date.parse(s.at))}<span className="muted">{mode ? ` · ${mode}` : ''}{what ? ` · ${what}` : ''}{skipped ? ` · ${skipped} skipped` : ''}</span>
   </span>
 }
 
@@ -191,6 +193,11 @@ function Editor({ dir, type, onClose, onSaved }: { dir: Dir | null; type: Type; 
         {text('password', 'Password', password, setPassword, dir?.hasPassword ? 'Unchanged unless you type a new one (needed again when the server or username changes)' : 'The service account’s password', 'password')}
         <h3 className="dir-section">Advanced</h3>
         {ADVANCED.map(field)}
+        {type === 'ad' && <>
+          <label className="check-row"><input type="checkbox" checked={c.incremental} onChange={e => setC({ ...c, incremental: e.target.checked })} />Enable incremental synchronisation</label>
+          <p className="hint">Reads only what changed since the last run (uSNChanged). A full synchronisation still runs at least every:</p>
+          {field(['fullSyncHours', 'Full synchronisation every (hours)', 'Applies people and groups deleted or moved out of scope'])}
+        </>}
         <h3 className="dir-section">User schema</h3>
         {USER.map(([k, label]) => text(`user.${k}`, label, c.user[k], v => setC({ ...c, user: { ...c.user, [k]: v } })))}
         <h3 className="dir-section">Group schema</h3>

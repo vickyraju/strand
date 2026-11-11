@@ -28,7 +28,7 @@ const Webhook = z.object({ id, name: z.string(), description: z.string(), url: z
 export const UserDirectory = z.object({
   id, name: z.string(), type: z.enum(['ad', 'ldap']), position: z.number(), enabled: z.boolean(), config: directoryConfig,
   hasPassword: z.boolean().describe('The service account’s password is stored (it is never returned)'),
-  lastSync: z.unknown().describe('When the last synchronisation ran, whether it worked, and what it changed'),
+  lastSync: z.unknown().describe('When the last synchronisation ran, whether it worked, and what it changed; mode full or incremental, and why a full one ran (spec 0713)'),
   syncing: z.unknown().describe('The synchronisation running now, with its progress, or null'),
   users: z.number().describe('Active people from this directory'), createdAt: ts, updatedAt: ts,
 })

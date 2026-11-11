@@ -56274,6 +56274,18 @@
                             "minimum": 5,
                             "maximum": 10080
                           },
+                          "incremental": {
+                            "default": false,
+                            "description": "Active Directory: read only what changed since the last run (uSNChanged), as Jira’s Enable Incremental Synchronization (spec 0713)",
+                            "type": "boolean"
+                          },
+                          "fullSyncHours": {
+                            "default": 24,
+                            "description": "A full synchronisation at least this often, which applies deletions and objects moved out of scope (spec 0713)",
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 720
+                          },
                           "connectTimeoutSeconds": {
                             "default": 10,
                             "type": "integer",
@@ -56430,6 +56442,8 @@
                           "groupDn",
                           "pageSize",
                           "syncMinutes",
+                          "incremental",
+                          "fullSyncHours",
                           "connectTimeoutSeconds",
                           "readTimeoutSeconds",
                           "user",
@@ -56443,7 +56457,7 @@
                         "description": "The service account’s password is stored (it is never returned)"
                       },
                       "lastSync": {
-                        "description": "When the last synchronisation ran, whether it worked, and what it changed"
+                        "description": "When the last synchronisation ran, whether it worked, and what it changed; mode full or incremental, and why a full one ran (spec 0713)"
                       },
                       "syncing": {
                         "description": "The synchronisation running now, with its progress, or null"
@@ -56610,6 +56624,18 @@
                         "type": "integer",
                         "minimum": 5,
                         "maximum": 10080
+                      },
+                      "incremental": {
+                        "default": false,
+                        "description": "Active Directory: read only what changed since the last run (uSNChanged), as Jira’s Enable Incremental Synchronization (spec 0713)",
+                        "type": "boolean"
+                      },
+                      "fullSyncHours": {
+                        "default": 24,
+                        "description": "A full synchronisation at least this often, which applies deletions and objects moved out of scope (spec 0713)",
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 720
                       },
                       "connectTimeoutSeconds": {
                         "default": 10,
@@ -56868,6 +56894,18 @@
                           "minimum": 5,
                           "maximum": 10080
                         },
+                        "incremental": {
+                          "default": false,
+                          "description": "Active Directory: read only what changed since the last run (uSNChanged), as Jira’s Enable Incremental Synchronization (spec 0713)",
+                          "type": "boolean"
+                        },
+                        "fullSyncHours": {
+                          "default": 24,
+                          "description": "A full synchronisation at least this often, which applies deletions and objects moved out of scope (spec 0713)",
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 720
+                        },
                         "connectTimeoutSeconds": {
                           "default": 10,
                           "type": "integer",
@@ -57024,6 +57062,8 @@
                         "groupDn",
                         "pageSize",
                         "syncMinutes",
+                        "incremental",
+                        "fullSyncHours",
                         "connectTimeoutSeconds",
                         "readTimeoutSeconds",
                         "user",
@@ -57037,7 +57077,7 @@
                       "description": "The service account’s password is stored (it is never returned)"
                     },
                     "lastSync": {
-                      "description": "When the last synchronisation ran, whether it worked, and what it changed"
+                      "description": "When the last synchronisation ran, whether it worked, and what it changed; mode full or incremental, and why a full one ran (spec 0713)"
                     },
                     "syncing": {
                       "description": "The synchronisation running now, with its progress, or null"
@@ -57409,6 +57449,18 @@
                           "minimum": 5,
                           "maximum": 10080
                         },
+                        "incremental": {
+                          "default": false,
+                          "description": "Active Directory: read only what changed since the last run (uSNChanged), as Jira’s Enable Incremental Synchronization (spec 0713)",
+                          "type": "boolean"
+                        },
+                        "fullSyncHours": {
+                          "default": 24,
+                          "description": "A full synchronisation at least this often, which applies deletions and objects moved out of scope (spec 0713)",
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 720
+                        },
                         "connectTimeoutSeconds": {
                           "default": 10,
                           "type": "integer",
@@ -57565,6 +57617,8 @@
                         "groupDn",
                         "pageSize",
                         "syncMinutes",
+                        "incremental",
+                        "fullSyncHours",
                         "connectTimeoutSeconds",
                         "readTimeoutSeconds",
                         "user",
@@ -57578,7 +57632,7 @@
                       "description": "The service account’s password is stored (it is never returned)"
                     },
                     "lastSync": {
-                      "description": "When the last synchronisation ran, whether it worked, and what it changed"
+                      "description": "When the last synchronisation ran, whether it worked, and what it changed; mode full or incremental, and why a full one ran (spec 0713)"
                     },
                     "syncing": {
                       "description": "The synchronisation running now, with its progress, or null"
@@ -57777,6 +57831,18 @@
                         "type": "integer",
                         "minimum": 5,
                         "maximum": 10080
+                      },
+                      "incremental": {
+                        "default": false,
+                        "description": "Active Directory: read only what changed since the last run (uSNChanged), as Jira’s Enable Incremental Synchronization (spec 0713)",
+                        "type": "boolean"
+                      },
+                      "fullSyncHours": {
+                        "default": 24,
+                        "description": "A full synchronisation at least this often, which applies deletions and objects moved out of scope (spec 0713)",
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 720
                       },
                       "connectTimeoutSeconds": {
                         "default": 10,
@@ -58047,6 +58113,18 @@
                           "minimum": 5,
                           "maximum": 10080
                         },
+                        "incremental": {
+                          "default": false,
+                          "description": "Active Directory: read only what changed since the last run (uSNChanged), as Jira’s Enable Incremental Synchronization (spec 0713)",
+                          "type": "boolean"
+                        },
+                        "fullSyncHours": {
+                          "default": 24,
+                          "description": "A full synchronisation at least this often, which applies deletions and objects moved out of scope (spec 0713)",
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 720
+                        },
                         "connectTimeoutSeconds": {
                           "default": 10,
                           "type": "integer",
@@ -58203,6 +58281,8 @@
                         "groupDn",
                         "pageSize",
                         "syncMinutes",
+                        "incremental",
+                        "fullSyncHours",
                         "connectTimeoutSeconds",
                         "readTimeoutSeconds",
                         "user",
@@ -58216,7 +58296,7 @@
                       "description": "The service account’s password is stored (it is never returned)"
                     },
                     "lastSync": {
-                      "description": "When the last synchronisation ran, whether it worked, and what it changed"
+                      "description": "When the last synchronisation ran, whether it worked, and what it changed; mode full or incremental, and why a full one ran (spec 0713)"
                     },
                     "syncing": {
                       "description": "The synchronisation running now, with its progress, or null"
@@ -58458,6 +58538,18 @@
                             "minimum": 5,
                             "maximum": 10080
                           },
+                          "incremental": {
+                            "default": false,
+                            "description": "Active Directory: read only what changed since the last run (uSNChanged), as Jira’s Enable Incremental Synchronization (spec 0713)",
+                            "type": "boolean"
+                          },
+                          "fullSyncHours": {
+                            "default": 24,
+                            "description": "A full synchronisation at least this often, which applies deletions and objects moved out of scope (spec 0713)",
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 720
+                          },
                           "connectTimeoutSeconds": {
                             "default": 10,
                             "type": "integer",
@@ -58614,6 +58706,8 @@
                           "groupDn",
                           "pageSize",
                           "syncMinutes",
+                          "incremental",
+                          "fullSyncHours",
                           "connectTimeoutSeconds",
                           "readTimeoutSeconds",
                           "user",
@@ -58627,7 +58721,7 @@
                         "description": "The service account’s password is stored (it is never returned)"
                       },
                       "lastSync": {
-                        "description": "When the last synchronisation ran, whether it worked, and what it changed"
+                        "description": "When the last synchronisation ran, whether it worked, and what it changed; mode full or incremental, and why a full one ran (spec 0713)"
                       },
                       "syncing": {
                         "description": "The synchronisation running now, with its progress, or null"
@@ -58827,6 +58921,18 @@
                         "type": "integer",
                         "minimum": 5,
                         "maximum": 10080
+                      },
+                      "incremental": {
+                        "default": false,
+                        "description": "Active Directory: read only what changed since the last run (uSNChanged), as Jira’s Enable Incremental Synchronization (spec 0713)",
+                        "type": "boolean"
+                      },
+                      "fullSyncHours": {
+                        "default": 24,
+                        "description": "A full synchronisation at least this often, which applies deletions and objects moved out of scope (spec 0713)",
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 720
                       },
                       "connectTimeoutSeconds": {
                         "default": 10,
@@ -59140,10 +59246,27 @@
     },
     "/api/v1/admin/directories/{id}/sync": {
       "post": {
-        "summary": "Synchronise now (202 with the job; one already waiting or running is returned instead)",
+        "summary": "Synchronise now (202 with the job; one already waiting or running is returned instead); `full` reads everything (spec 0713)",
         "tags": [
           "User directories"
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "nullable": true,
+                "type": "object",
+                "properties": {
+                  "full": {
+                    "description": "A full synchronisation, even where an incremental one would do",
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
         "parameters": [
           {
             "schema": {

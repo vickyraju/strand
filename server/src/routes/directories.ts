@@ -125,11 +125,12 @@ const directories: FastifyPluginAsyncZod = async app => {
     return { steps: await testDirectory(b.config, pw, b.testUser) }
   })
 
-  app.post('/admin/directories/:id/sync', { schema: { tags: T, summary: 'Synchronise now (202 with the job; one already waiting or running is returned instead)', params: id } }, async (req, reply) => {
+  app.post('/admin/directories/:id/sync', { schema: { tags: T, summary: 'Synchronise now (202 with the job; one already waiting or running is returned instead); `full` reads everything (spec 0713)', params: id,
+    body: z.object({ full: z.boolean().optional().describe('A full synchronisation, even where an incremental one would do') }).nullish() } }, async (req, reply) => {
     requireNoToken(req)
     const d = await one(req.params.id)
     if (!d.enabled) throw new HttpError(409, 'The directory is disabled')
-    const jobId = await tx(x => syncNow(x, req.params.id, req.me.id))
+    const jobId = await tx(x => syncNow(x, req.params.id, req.me.id, !!req.body?.full))
     kickJobs(app.log)
     reply.code(202)
     return { jobId }

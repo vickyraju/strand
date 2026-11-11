@@ -2444,3 +2444,26 @@ test('[0718.R1] a system admin adds the “Pull request merged” trigger to a t
   assert.deepEqual(saved.rules.triggers, ['pr_merged'])
   assert.deepEqual(o.problems, [])
 })
+
+test('[0713.R2][0713.R4] an admin runs a Full synchronisation from the directory’s row; the result says Full', { skip, timeout: 90_000 }, async () => {
+  let [dir] = (await owner('GET', '/admin/directories')).body.filter(d => d.config.host === 'dc1.e2e.test')
+  if (!dir) {
+    const { ad } = (await owner('GET', '/admin/directories/presets')).body
+    dir = (await owner('POST', '/admin/directories', { name: 'Active Directory', type: 'ad', enabled: true, password: 'svc-pass',
+      config: { ...ad, host: 'dc1.e2e.test', bindDn: 'CN=svc-strand,OU=Service,DC=e2e,DC=test', baseDn: 'DC=e2e,DC=test' } })).body
+  }
+  for (let i = 0; i < 40 && !(await owner('GET', '/admin/directories')).body.find(d => d.id === dir.id).lastSync; i++) await new Promise(r => setTimeout(r, 250))
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url('/admin/directories'))
+  const row = o.locator(`tr:has-text("${dir.name}")`)
+  await row.locator('button:has-text("Full synchronisation")').click()
+  await o.waitForSelector(`text=Fully synchronising ${dir.name}`)
+  for (let i = 0; i < 40; i++) {
+    const s = (await owner('GET', '/admin/directories')).body.find(d => d.id === dir.id)
+    if (!s.syncing && s.lastSync?.why === 'A full synchronisation was asked for') break
+    await new Promise(r => setTimeout(r, 250))
+  }
+  await o.reload()
+  await o.waitForSelector(`tr:has-text("${dir.name}") >> text=/· Full/`)
+  assert.deepEqual(o.problems, [])
+})

@@ -7099,3 +7099,70 @@ test('[0718.R1][0718.R2][0718.R3] workflow triggers: a branch starts an item, a 
   const cur = (await call('GET', `/api/v1/workflows/${wf}`)).body
   assert.equal((await call('POST', `/api/v1/admin/workflows/${wf}/publish`, { statuses: cur.statuses, transitions: [{ id: 'x', name: 'x', fromIds: null, toId: cur.statuses[0].id, rules: { triggers: ['deployed'] } }] })).status, 400)
 })
+
+test('[0713.R1][0713.R2][0713.R3][0713.R4] incremental directory synchronisation: only what changed, groups again when one did, full runs for deletions, settings, age and failures', { skip }, async () => {
+  const { syncDirectory, PRESETS } = await import('../src/directories.ts')
+  const saved = { entries: other.entries, passwords: other.passwords }
+  process.env.STRAND_SECRET_KEY ??= 'a-secret-key-for-tests-only-0712-xxxxxxxx'
+  other.passwords = { ...other.passwords, [SVC]: 'svc-pass' }
+  const team = `CN=Incr Team,OU=Groups,${BASE}`, annDn = `CN=Ann Inc,OU=People,${BASE}`, benDn = `CN=Ben Inc,OU=People,${BASE}`
+  const at = (e: any, n: number) => ({ ...e, uSNChanged: String(n) })
+  other.entries = [at(adUser('Ann Inc', 'ainc', { groups: [team] }), 10), at(adUser('Ben Inc', 'binc'), 11), at(adGroup('Incr Team', [annDn]), 12)]
+  const config = { ...PRESETS.ad, host: other.host, port: 389, security: 'none', bindDn: SVC, baseDn: BASE }
+  const dir = (await call('POST', '/api/v1/admin/directories', { name: 'Incremental AD', type: 'ad', enabled: true, config, password: 'svc-pass' })).body
+  assert.equal(dir.config.incremental, true)
+  const sync = async (o: { full?: boolean } = {}) => { const r: any = await syncDirectory(dir.id, undefined, o); assert.ok(r.ok, JSON.stringify(r)); return r }
+  const members = async () => (await pool.query(`select u.username from group_members gm join groups g on g.id = gm.group_id join users u on u.id = gm.user_id where g.display_name = 'Incr Team' order by 1`)).rows.map(r => r.username)
+  const active = async (sam: string) => (await pool.query('select active from users where username = $1', [sam])).rows[0].active
+  const put = (e: any) => { other.entries = [...other.entries.filter(x => x.dn !== e.dn), e] }
+  // R2: the first run is full
+  const r1 = await sync()
+  assert.deepEqual([r1.mode, r1.why, r1.users.created], ['full', 'The first synchronisation', 2])
+  assert.deepEqual(await members(), ['ainc'])
+  // R1: nothing changed: only changes are asked for, and none come back
+  other.log = { binds: [], searches: [] }
+  const r2 = await sync()
+  assert.deepEqual([r2.mode, r2.users.found, r2.groups.found], ['incremental', 0, 0])
+  assert.ok(other.log.searches.some(f => f.includes('(uSNChanged>=13)')), other.log.searches.join(' | '))
+  // a person disabled in the directory: read alone, deactivated
+  put(at(adUser('Ben Inc', 'binc', { uac: '514' }), 20))
+  const r3 = await sync()
+  assert.deepEqual([r3.mode, r3.users.found, r3.users.deactivated], ['incremental', 1, 1])
+  assert.equal(await active('binc'), false)
+  // a group's members changed (the group changes, not the person): groups and memberships read again
+  put(at(adUser('Ben Inc', 'binc', { groups: [team] }), 21)); put(at(adGroup('Incr Team', [annDn, benDn]), 22))
+  const r4 = await sync()
+  assert.deepEqual([r4.mode, r4.groups.found], ['incremental', 1])
+  assert.deepEqual(await members(), ['ainc', 'binc'])
+  // a person deleted from the directory: an incremental run can't see it; the next full run deactivates them (R2)
+  other.entries = other.entries.filter(x => x.dn !== annDn); put(at(adGroup('Incr Team', [benDn]), 23))
+  assert.equal((await sync()).mode, 'incremental')
+  assert.equal(await active('ainc'), true)
+  assert.deepEqual(await members(), ['binc'])
+  const full = await sync({ full: true })
+  assert.deepEqual([full.mode, full.why, full.users.deactivated], ['full', 'A full synchronisation was asked for', 1])
+  assert.equal(await active('ainc'), false)
+  // settings changed, or the last full run too old: full
+  assert.equal((await call('PUT', `/api/v1/admin/directories/${dir.id}`, { name: dir.name, enabled: true, config: { ...dir.config, fullSyncHours: 12 } })).status, 200)
+  assert.deepEqual([(await sync()).why], ['The directory’s settings changed'])
+  assert.equal((await sync()).mode, 'incremental')
+  await pool.query(`update user_directories set sync_state = jsonb_set(sync_state, '{fullAt}', to_jsonb((now() - interval '13 hours')::text)) where id = $1`, [dir.id])
+  assert.match((await sync()).why, /over 12 hours ago/)
+  // R3: an incremental run that fails becomes a full one
+  other.failSearches = 'uSNChanged'
+  const fell = await sync()
+  assert.deepEqual([fell.mode, /incremental synchronisation failed/.test(fell.why)], ['full', true])
+  other.failSearches = undefined
+  // a directory that doesn't report uSNChanged is always fully synchronised
+  other.entries = other.entries.map(({ uSNChanged: _, ...e }: any) => e)
+  await sync({ full: true })
+  assert.equal((await sync()).why, 'The directory doesn’t report uSNChanged')
+  // R4: the result is shown; Full synchronisation as a job
+  const listed = (await call('GET', '/api/v1/admin/directories')).body.find((d: any) => d.id === dir.id)
+  assert.equal(listed.lastSync.mode, 'full')
+  const started = await call('POST', `/api/v1/admin/directories/${dir.id}/sync`, { full: true })
+  assert.equal(started.status, 202)
+  assert.equal((await pool.query('select payload from jobs where id = $1', [started.body.jobId])).rows[0].payload.full, true)
+  await call('PUT', `/api/v1/admin/directories/${dir.id}`, { name: dir.name, enabled: false, config: dir.config })
+  Object.assign(other, saved)
+})
