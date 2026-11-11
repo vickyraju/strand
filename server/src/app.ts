@@ -42,6 +42,8 @@ import screenRoutes from './routes/screens.ts'
 import remoteLinkRoutes, { jiraRemoteLinks } from './routes/remoteLinks.ts'
 import subscriptionRoutes, { startSubscriptions } from './routes/subscriptions.ts'
 import notificationSchemeRoutes from './routes/notificationSchemes.ts'
+import incomingMailRoutes from './routes/incomingMail.ts'
+import { startMailHandlers } from './mail.ts'
 import { startDirectories } from './directories.ts'
 import { startAuth } from './authConfig.ts'
 import { githubWebhook } from './routes/github.ts'
@@ -181,6 +183,7 @@ export async function build() {
       await v1.register(remoteLinkRoutes)
       await v1.register(subscriptionRoutes)
       await v1.register(notificationSchemeRoutes)
+      await v1.register(incomingMailRoutes)
     }
     await api.register(routes, { prefix: '/api/v1' })
     // ponytail: the unversioned /api is kept as a hidden alias so clients built before /api/v1 keep working;
@@ -204,6 +207,8 @@ export async function build() {
     for (const w of (await pool.query<{ id: string }>('select id from workspaces')).rows) await schedulePurge(db, w.id).catch(e => app.log.error(e))
   // every filter subscription has its next run queued (spec 0604)
   if (process.env.DATABASE_URL) await startSubscriptions().catch(e => app.log.error(e))
+  // every enabled mail handler has its next run queued (spec 0607)
+  if (process.env.DATABASE_URL) await startMailHandlers().catch(e => app.log.error(e))
   app.addHook('onClose', async () => stopJobs())
   app.addHook('onClose', async () => { await stopListener(); await pool.end() })
   return app

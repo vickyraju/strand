@@ -77,6 +77,9 @@ export const Rule = z.object({ id, projectId: nullable(id).describe('Null: a glo
 const Step = z.object({ action: z.string(), outcome: z.enum(['done', 'skipped', 'unchanged', 'failed']), note: z.string().optional() })
 const SchemeEntry = z.object({ id, event: z.string().describe('Jira’s event, as issue_commented'), recipient: z.string(), value: nullable(z.string()), valueName: nullable(z.string()) })
 export const NotificationScheme = z.object({ id, name: z.string(), description: z.string(), isDefault: z.boolean(), projects: z.number().describe('Projects using it'), entries: z.array(SchemeEntry).optional() })
+export const MailServer = z.object({ id, name: z.string(), kind: z.enum(['imap', 'graph', 'files']), config: z.record(z.string(), z.unknown()), hasSecret: z.boolean(), createdAt: ts, handlers: z.number() })
+export const MailHandler = z.object({ id, name: z.string(), kind: z.string(), enabled: z.boolean(), delayMinutes: z.number(), params: z.record(z.string(), z.unknown()),
+  serverId: id, serverName: z.string(), lastRunAt: nullable(ts), lastResult: nullable(z.record(z.string(), z.unknown())).describe('When it last ran: counts, and each message’s outcome') })
 export const Subscription = z.object({ id, viewId: id, createdBy: id, createdByName: z.string(), groupId: nullable(id), groupName: nullable(z.string()),
   cron: z.string().describe('Quartz cron, as Jira stores schedules'), emailWhenEmpty: z.boolean(), nextRunAt: nullable(ts), lastRunAt: nullable(ts), createdAt: ts })
 export const Release = z.object({ id, workspaceId: id, projectId: id, name: z.string(), description: z.string(), startDate: nullable(day), releaseDate: nullable(day), released: z.boolean(), releasedAt: nullable(ts), archived: z.boolean().describe('Hidden from pickers; items keep it') })
@@ -328,6 +331,9 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'POST /admin/notification-schemes/:id/copy': NotificationScheme, 'PATCH /admin/notification-schemes/:id': NotificationScheme,
   'POST /admin/notification-schemes/:id/entries': NotificationScheme, 'DELETE /admin/notification-schemes/:id/entries/:entryId': NotificationScheme,
   'GET /projects/:key/notification-scheme': z.object({ scheme: nullable(z.object({ id, name: z.string() })) }), 'PUT /projects/:key/notification-scheme': z.object({ scheme: nullable(z.object({ id, name: z.string() })) }),
+  'GET /admin/mail-servers': z.array(MailServer), 'POST /admin/mail-servers': MailServer, 'PUT /admin/mail-servers/:id': MailServer,
+  'POST /admin/mail-servers/test': z.object({ ok: z.boolean(), unread: z.number().optional(), error: z.string().optional() }),
+  'GET /admin/mail-handlers': z.array(MailHandler), 'POST /admin/mail-handlers': MailHandler, 'PUT /admin/mail-handlers/:id': MailHandler, 'POST /admin/mail-handlers/:id/run': z.object({ jobId: id }),
   'GET /views/:id/subscriptions': z.array(Subscription), 'POST /views/:id/subscriptions': Subscription, 'PATCH /subscriptions/:id': Subscription,
   'POST /subscriptions/:id/run': z.object({ jobId: id }),
   'GET /issues/:key/votes': z.object({ votes: z.number(), hasVoted: z.boolean(), voters: z.array(z.object({ id, name: z.string() })).describe('Empty without View voters and watchers') }),

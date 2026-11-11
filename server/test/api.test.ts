@@ -3756,6 +3756,12 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     'POST /notifications/read-all': ['any', '/notifications/read-all'],
     'GET /views': ['any', '/views'], 'POST /views': ['any', '/views', { name: 'v', filters: {} }],
     'PATCH /views/{id}': ['own', `/views/${view}`, { name: 'x' }], 'DELETE /views/{id}': ['own', `/views/${view}`],
+    'GET /admin/mail-servers': ['gadmin', '/admin/mail-servers'], 'POST /admin/mail-servers': ['gadmin', '/admin/mail-servers', { name: 'x', config: { kind: 'graph', tenantId: 't', clientId: 'c', mailbox: 'a@b.co' }, secret: 's' }],   // 0607.R1
+    'PUT /admin/mail-servers/{id}': ['gadmin', `/admin/mail-servers/${none}`, { name: 'x', config: { kind: 'files' } }], 'DELETE /admin/mail-servers/{id}': ['gadmin', `/admin/mail-servers/${none}`],
+    'POST /admin/mail-servers/test': ['gadmin', '/admin/mail-servers/test', { config: { kind: 'graph', tenantId: 't', clientId: 'c', mailbox: 'a@b.co' }, secret: 's' }],
+    'GET /admin/mail-handlers': ['gadmin', '/admin/mail-handlers'], 'POST /admin/mail-handlers': ['gadmin', '/admin/mail-handlers', { name: 'x', serverId: none, kind: 'comment_entire', params: {} }],
+    'PUT /admin/mail-handlers/{id}': ['gadmin', `/admin/mail-handlers/${none}`, { name: 'x', serverId: none, kind: 'comment_entire', params: {} }],
+    'DELETE /admin/mail-handlers/{id}': ['gadmin', `/admin/mail-handlers/${none}`], 'POST /admin/mail-handlers/{id}/run': ['gadmin', `/admin/mail-handlers/${none}/run`],
     'GET /admin/notification-schemes': ['gadmin', '/admin/notification-schemes'], 'POST /admin/notification-schemes': ['gadmin', '/admin/notification-schemes', { name: 'x' }],   // 0605.R1
     'GET /admin/notification-schemes/{id}': ['gadmin', `/admin/notification-schemes/${none}`], 'PATCH /admin/notification-schemes/{id}': ['gadmin', `/admin/notification-schemes/${none}`, { name: 'x' }],
     'DELETE /admin/notification-schemes/{id}': ['gadmin', `/admin/notification-schemes/${none}`], 'POST /admin/notification-schemes/{id}/copy': ['gadmin', `/admin/notification-schemes/${none}/copy`, {}],
@@ -6242,6 +6248,80 @@ test('[0606.R1][0606.R2][0606.R3][0606.R4][0606.R5] batched email, Autowatch, My
   await call('PATCH', `/api/v1/issues/${b.key}`, { title: 'Mine again' }, 'bt.ann@x.com')
   assert.equal(await mine(), 1)
   await call('PUT', '/api/v1/admin/settings/email', { enabled: false, from: '', appUrl: '' })
+})
+
+test('[0607.R1][0607.R2][0607.R3][0607.R4][0607.R5][0607.R7][0607.R8] incoming mail: handlers make work items and comments from email, as Jira\'s', { skip }, async () => {
+  const { mkdtempSync, writeFileSync, readdirSync } = await import('node:fs')
+  const { tmpdir } = await import('node:os')
+  const { runJobs } = await import('../src/jobs.ts')
+  const dir = mkdtempSync(`${tmpdir()}/strand-mail-`)
+  process.env.STRAND_MAIL_DIR = dir
+  await call('POST', '/api/v1/projects', { name: 'Mailbox', key: 'MLB', template: 'kanban' })
+  await join('MLB', 'ml.ann@x.com'); await join('MLB', 'ml.bob@x.com')
+  await call('GET', '/api/v1/me', undefined, 'ml.outsider@x.com')
+  let n = 0
+  const mail = (h: Record<string, string>, body: string) => writeFileSync(`${dir}/${String(++n).padStart(3, '0')}.eml`,
+    [...Object.entries({ 'Message-ID': `<m${n}@mail.test>`, Date: new Date().toUTCString(), To: 'support@x.com', ...h }).map(([k, v]) => `${k}: ${v}`), 'Content-Type: text/plain; charset=utf-8', '', body].join('\r\n'))
+  // R1: a server (message files) and a handler; the secret rules for IMAP
+  assert.equal((await call('POST', '/api/v1/admin/mail-servers', { name: 'Inbox', config: { kind: 'imap', host: 'mail.x.com', username: 'support' } })).status, 400)   // no password
+  assert.equal((await call('POST', '/api/v1/admin/mail-servers', { name: 'Escape', config: { kind: 'files', folder: '../..' } })).status, 400)
+  const srv = (await call('POST', '/api/v1/admin/mail-servers', { name: 'Support box', config: { kind: 'files', folder: '' } })).body
+  assert.deepEqual((await call('POST', '/api/v1/admin/mail-servers/test', { config: { kind: 'files', folder: '' } })).body, { ok: true, unread: 0 })
+  assert.equal((await call('POST', '/api/v1/admin/mail-handlers', { name: 'Bad', serverId: srv.id, kind: 'create_or_comment', params: { project: 'MLB', splitRegex: '/x/' } })).status, 400)   // not this handler's
+  assert.equal((await call('POST', '/api/v1/admin/mail-handlers', { name: 'Bad', serverId: srv.id, kind: 'create_or_comment', params: {} })).status, 400)                        // no project
+  const h = (await call('POST', '/api/v1/admin/mail-handlers', { name: 'Support', serverId: srv.id, kind: 'create_or_comment', delayMinutes: 5, enabled: false,   // Run now only, below
+    params: { project: 'MLB', issueType: 'bug', stripQuotes: true, defaultReporter: 'ml.bob@x.com', ccWatchers: true, bulk: 'ignore' } })).body
+  const run = async () => { await call('POST', `/api/v1/admin/mail-handlers/${h.id}/run`); await runJobs(); return (await call('GET', '/api/v1/admin/mail-handlers')).body.find((x: any) => x.id === h.id).lastResult }
+  // R2, R3: a person's email makes a bug, Cc'd people watch; an unknown sender's goes in as the default reporter
+  mail({ From: 'Ann <ml.ann@x.com>', Cc: 'ml.bob@x.com', Subject: 'Printer on fire', 'X-Priority': '1' }, 'It is very hot.\n> earlier text')
+  mail({ From: 'stranger@elsewhere.com', Subject: 'Hello from outside' }, 'Who reads this?')
+  mail({ From: 'robot@x.com', Subject: 'Out of office', 'Auto-Submitted': 'auto-replied' }, 'Away')   // R5: automatic mail ignored
+  let r = await run()
+  assert.deepEqual(r.counts, { created: 2, commented: 0, ignored: 1, forwarded: 0, failed: 0 })
+  const fire = (await call('GET', `/api/v1/issues/${r.messages[0].key}`)).body
+  assert.deepEqual([fire.title, fire.type, fire.priority, fire.description, fire.reporterId], ['Printer on fire', 'bug', 'high', 'It is very hot.', (await call('GET', '/api/v1/me', undefined, 'ml.ann@x.com')).body.id])
+  assert.ok(fire.watcherIds.includes((await call('GET', '/api/v1/me', undefined, 'ml.bob@x.com')).body.id))
+  const outside = (await call('GET', `/api/v1/issues/${r.messages[1].key}`)).body
+  assert.match(outside.description, /\(Sent by stranger@elsewhere.com\)/)
+  assert.deepEqual(readdirSync(dir), [])                                     // dealt with: removed
+  // R4: a key in the subject comments; a reply to the email that made an item comments on it; quoted lines left out
+  mail({ From: 'ml.bob@x.com', Subject: `Re: ${fire.key} Printer on fire` }, 'Fire is out.\n> It is very hot.')
+  mail({ From: 'ml.ann@x.com', Subject: 'Re: Printer on fire', 'In-Reply-To': '<m1@mail.test>' }, 'Thanks!')
+  r = await run()
+  assert.deepEqual(r.counts.commented, 2)
+  const comments = (await call('GET', `/api/v1/issues/${fire.key}`)).body.comments.map((c: any) => c.body)
+  assert.deepEqual(comments.sort(), ['Fire is out.', 'Thanks!'])
+  // R3, R7: no default reporter and an unknown sender: it fails and stays for next time
+  await call('PUT', `/api/v1/admin/mail-handlers/${h.id}`, { name: 'Support', serverId: srv.id, kind: 'create_or_comment', delayMinutes: 5, enabled: false, params: { project: 'MLB' } })
+  mail({ From: 'nobody@nowhere.com', Subject: 'Lost' }, 'Hm')
+  r = await run()
+  assert.deepEqual([r.counts.failed, r.messages[0].reason], [1, 'Nobody in Strand has the address nobody@nowhere.com'])
+  assert.equal(readdirSync(dir).length, 1)
+  // R4: Jira's other handlers: before a marker; comment-only refuses a new item
+  const marker = (await call('POST', '/api/v1/admin/mail-handlers', { name: 'Marker', serverId: srv.id, kind: 'comment_before_marker', enabled: false, params: { splitRegex: '/-{4}\\s*Original Message/' } })).body
+  for (const x of readdirSync(dir)) (await import('node:fs')).unlinkSync(`${dir}/${x}`)
+  mail({ From: 'ml.ann@x.com', Subject: `${fire.key}` }, 'Above the line\n---- Original Message ----\nbelow')
+  mail({ From: 'ml.ann@x.com', Subject: 'No key here' }, 'Nothing to comment on')
+  await call('POST', `/api/v1/admin/mail-handlers/${marker.id}/run`); await runJobs()
+  const mr = (await call('GET', '/api/v1/admin/mail-handlers')).body.find((x: any) => x.id === marker.id).lastResult
+  assert.deepEqual([mr.counts.commented, mr.counts.failed], [1, 1])
+  assert.ok((await call('GET', `/api/v1/issues/${fire.key}`)).body.comments.some((c: any) => c.body === 'Above the line'))
+  // R8: permissions and records
+  assert.equal((await call('GET', '/api/v1/admin/mail-servers', undefined, 'ml.ann@x.com')).status, 403)
+  assert.equal((await call('DELETE', `/api/v1/admin/mail-servers/${srv.id}`)).status, 409)          // handlers read it
+  assert.ok((await pool.query(`select 1 from audit_log where action = 'mail_handler.created'`)).rows.length >= 2)
+  for (const x of [h.id, marker.id]) await call('DELETE', `/api/v1/admin/mail-handlers/${x}`)
+  assert.equal((await call('DELETE', `/api/v1/admin/mail-servers/${srv.id}`)).status, 204)
+  delete process.env.STRAND_MAIL_DIR
+})
+
+test('[0607.R4] mail: what a handler keeps of an email\'s text', async () => {
+  const { bodyFor } = await import('../src/mail.ts')
+  assert.equal(bodyFor('comment_non_quoted', {}, 'Mine\n> theirs\n| also theirs\nMine too'), 'Mine\nMine too')
+  assert.equal(bodyFor('comment_entire', {}, 'All\n> of it'), 'All\n> of it')
+  assert.equal(bodyFor('create_or_comment', { stripQuotes: true }, 'A\n>b'), 'A')
+  assert.equal(bodyFor('comment_before_marker', { splitRegex: '/^--$/m' }, 'Top\n--\nsig'), 'Top')
+  assert.equal(bodyFor('comment_before_marker', { splitRegex: '/[/' }, 'Broken regex keeps all'), 'Broken regex keeps all')
 })
 
 test('[0705.R2] a webhook never reaches private addresses, whatever its name resolves to', { skip }, async () => {

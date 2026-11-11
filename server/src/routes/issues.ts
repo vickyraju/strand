@@ -548,6 +548,48 @@ export async function quietly(d: Db, req: Parameters<typeof issueByKey>[1] & { b
   await withoutNotifications(d)
 }
 
+const visibility = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('role'), role: z.enum(['admin', 'member', 'viewer']) }), z.object({ kind: z.literal('group'), id: uuid }),
+]).nullable().describe('Who can read it (Jira\'s comment visibility): a project role or a group; null or left out: everyone who sees the item')
+/** As in Jira, a comment is limited only to a group I belong to or a role I hold (Strand's roles stack: an admin also
+ *  holds member); global admins may choose any (spec 0203 R4). */
+const checkVisibility = async (d: Db, me: Me, projectId: string, v: z.infer<typeof visibility> | undefined) => {
+  if (!v || me.admin) return
+  if (v.kind === 'group' && !(await d.query('select 1 from group_members where group_id = $1 and user_id = $2', [v.id, me.id])).length)
+    throw new HttpError(400, 'You can limit a comment only to a group you are in', { visibility: 'Not your group' })
+  const RANK = { viewer: 1, member: 2, admin: 3 } as const
+  if (v.kind === 'role' && RANK[(await roleOf(d, me, projectId)) ?? 'viewer'] < RANK[v.role])
+    throw new HttpError(400, 'You can limit a comment only to a role you hold', { visibility: 'Not your role' })
+}
+/** Who of these people may read a comment with this visibility (the author always can). */
+const readers = async (d: Db, projectId: string, people: string[], v: z.infer<typeof visibility> | undefined) => {
+  if (!v || !people.length) return people
+  const rows = await d.query<{ id: string }>(v.kind === 'group'
+    ? 'select user_id as id from group_members where group_id = $2 and user_id = any($1::uuid[])'
+    : `select u.id from unnest($1::uuid[]) u(id) where exists (select 1 from project_access pa where pa.project_id = $2 and pa.user_id = u.id and pa.role = $3)
+         or ($3 = 'admin' and is_system_admin(u.id))`,
+    v.kind === 'group' ? [people, v.id] : [people, projectId, v.role])
+  const ok = new Set(rows.map(r => r.id))
+  return people.filter(p => ok.has(p))
+}
+/** Add a comment as `req.me` (the API, and incoming mail, spec 0607): a mention tells that person; the scheme's recipients
+ *  hear "commented" (not both, spec 0605 R3); the commenter starts watching (Autowatch, spec 0606). A restricted comment
+ *  reaches only people who may read it. */
+export async function addComment(d: Db, req: { me: Me; method: string }, key: string, b: { body: string; id?: string; visibility?: z.infer<typeof visibility> }) {
+  const i = await issueByKey(d, req, key, false, 'addComments')            // read-only people can comment (Strand's viewers)
+  if (b.visibility?.kind === 'group' && !(await d.query('select 1 from groups where id = $1', [b.visibility.id])).length) throw new HttpError(400, 'No such group', { visibility: 'Unknown group' })
+  await checkVisibility(d, req.me, i.projectId, b.visibility)
+  const [c] = await d.query<any>('insert into comments (id, issue_id, author_id, body, visibility) values (coalesce($4::uuid, uuid_v7()), $1, $2, $3, $5) returning *',
+    [i.id, req.me.id, b.body, b.id ?? null, b.visibility ? JSON.stringify(b.visibility) : null])
+  const mentioned = await readers(d, i.projectId, await mentionedIn(d, i.projectId, b.body, req.me.id), b.visibility)
+  for (const u of mentioned) await note(d, u, req.me, i.id, 'mentioned', 'mentioned you in a comment')
+  await autowatch(d, req.me, i.id)
+  await publish(d, i.projectId, { type: 'comment.created', key: i.key })
+  await emit(d, req.me.workspaceId, 'comment_created', { issueId: i.id, projectId: i.projectId, commentId: c.id }, req.me.id)
+  await emit(d, req.me.workspaceId, 'jira:issue_updated', { issueId: i.id, projectId: i.projectId, commentId: c.id, type: 'issue_commented', notifyExcept: mentioned }, req.me.id)   // as Jira's (spec 0715 R2)
+  return c
+}
+
 const plugin: FastifyPluginAsyncZod = async app => {
   // Board/list page of a project, in backlog order. Keyset-paginated: pass `next` back as `cursor`.
   // Everything the project's reports are calculated from: every item (not just a page) and every status change.
@@ -1010,50 +1052,9 @@ const plugin: FastifyPluginAsyncZod = async app => {
 
   // ── Comments (authors edit/delete their own) ──
   const body = z.object({ body: z.string().min(1).max(20000) })
-  const visibility = z.discriminatedUnion('kind', [
-    z.object({ kind: z.literal('role'), role: z.enum(['admin', 'member', 'viewer']) }), z.object({ kind: z.literal('group'), id: uuid }),
-  ]).nullable().describe('Who can read it (Jira\'s comment visibility): a project role or a group; null or left out: everyone who sees the item')
   const commentCreate = body.extend({ id: uuid.optional().describe('Client-chosen id'), visibility: visibility.optional() })
-  /** As in Jira, a comment is limited only to a group I belong to or a role I hold (Strand's roles stack: an admin also
-   *  holds member); global admins may choose any (spec 0203 R4). */
-  const checkVisibility = async (d: Db, me: Me, projectId: string, v: z.infer<typeof visibility> | undefined) => {
-    if (!v || me.admin) return
-    if (v.kind === 'group' && !(await d.query('select 1 from group_members where group_id = $1 and user_id = $2', [v.id, me.id])).length)
-      throw new HttpError(400, 'You can limit a comment only to a group you are in', { visibility: 'Not your group' })
-    const RANK = { viewer: 1, member: 2, admin: 3 } as const
-    if (v.kind === 'role' && RANK[(await roleOf(d, me, projectId)) ?? 'viewer'] < RANK[v.role])
-      throw new HttpError(400, 'You can limit a comment only to a role you hold', { visibility: 'Not your role' })
-  }
-  /** Who of these people may read a comment with this visibility (the author always can). */
-  const readers = async (d: Db, projectId: string, people: string[], v: z.infer<typeof visibility> | undefined) => {
-    if (!v || !people.length) return people
-    const rows = await d.query<{ id: string }>(v.kind === 'group'
-      ? 'select user_id as id from group_members where group_id = $2 and user_id = any($1::uuid[])'
-      : `select u.id from unnest($1::uuid[]) u(id) where exists (select 1 from project_access pa where pa.project_id = $2 and pa.user_id = u.id and pa.role = $3)
-           or ($3 = 'admin' and is_system_admin(u.id))`,
-      v.kind === 'group' ? [people, v.id] : [people, projectId, v.role])
-    const ok = new Set(rows.map(r => r.id))
-    return people.filter(p => ok.has(p))
-  }
-  app.post('/issues/:key/comments', { schema: { tags: ['Comments & work logs'], summary: 'Add a comment (notifies watchers who may read it)', params: keyP, body: commentCreate } }, async req => {
-    const b = req.body
-    return tx(async d => {
-      const i = await issueByKey(d, req, req.params.key, false, 'addComments')            // read-only people can comment (Strand's viewers)
-      if (b.visibility?.kind === 'group' && !(await d.query('select 1 from groups where id = $1', [b.visibility.id])).length) throw new HttpError(400, 'No such group', { visibility: 'Unknown group' })
-      await checkVisibility(d, req.me, i.projectId, b.visibility)
-      const [c] = await d.query('insert into comments (id, issue_id, author_id, body, visibility) values (coalesce($4::uuid, uuid_v7()), $1, $2, $3, $5) returning *',
-        [i.id, req.me.id, b.body, b.id ?? null, b.visibility ? JSON.stringify(b.visibility) : null])
-      // A mention tells that person; the scheme's recipients hear "commented" (not both, spec 0605 R3); the commenter and the
-      // mentioned start watching. A restricted comment reaches only people who may read it.
-      const mentioned = await readers(d, i.projectId, await mentionedIn(d, i.projectId, b.body, req.me.id), b.visibility)
-      for (const u of mentioned) await note(d, u, req.me, i.id, 'mentioned', 'mentioned you in a comment')
-      await autowatch(d, req.me, i.id)   // the commenter (Autowatch); a mention doesn't make a watcher (spec 0606 R3)
-      await publish(d, i.projectId, { type: 'comment.created', key: i.key })
-      await emit(d, req.me.workspaceId, 'comment_created', { issueId: i.id, projectId: i.projectId, commentId: c.id }, req.me.id)
-      await emit(d, req.me.workspaceId, 'jira:issue_updated', { issueId: i.id, projectId: i.projectId, commentId: c.id, type: 'issue_commented', notifyExcept: mentioned }, req.me.id)   // as Jira's (spec 0715 R2)
-      return c
-    })
-  })
+  app.post('/issues/:key/comments', { schema: { tags: ['Comments & work logs'], summary: 'Add a comment (notifies watchers who may read it)', params: keyP, body: commentCreate } }, async req =>
+    tx(async d => addComment(d, req, req.params.key, req.body)))
   /** A comment in an archived project can't change (spec 0102). */
   /** A comment I may change: my own (Edit/Delete own comments), or anyone's with Edit/Delete all comments (project admins,
    *  spec 0203); in an archived project, none (0102). Someone else's comment is in the audit log. */

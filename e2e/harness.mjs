@@ -8,9 +8,13 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { createHmac } from 'node:crypto'
 import { createRequire } from 'node:module'
 import { chromium } from 'playwright-core'
+import { mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 
 const root = new URL('..', import.meta.url).pathname
 export const dbUrl = process.env.E2E_DATABASE_URL
+/** The server's mail folder (spec 0607): journeys drop message files here */
+export const mailDir = mkdtempSync(`${tmpdir()}/strand-e2e-mail-`)
 export const skip = !dbUrl && 'E2E_DATABASE_URL not set (it is wiped, so it must be a scratch database)'
 const SECRET = 'e2e-dev-secret'
 /** recovery_admin's password (spec 0711 recovery mode is on for every run). */
@@ -79,7 +83,7 @@ export async function start() {
     STRAND_LDAP_FAKE: `${root}e2e/fake-directory.json`,   // a company directory in memory (spec 0712)
     STRAND_WEBHOOK_HTTP_HOSTS: '127.0.0.1', STRAND_WEBHOOK_PRIVATE_HOSTS: '127.0.0.1',   // the journeys' webhook receiver (spec 0705)
     GITHUB_WEBHOOK_SECRET: GITHUB_SECRET,   // the journeys' GitHub deliveries (spec 0707)
-    EMAIL_TRANSPORT: 'log',   // emails go to the server's log; journeys read the jobs that sent them
+    EMAIL_TRANSPORT: 'log', STRAND_MAIL_DIR: mailDir,   // emails go to the server's log; journeys read the jobs that sent them
     CORS_ORIGINS: webUrl, JOBS_POLL_MS: '500', DUE_SCAN_INTERVAL_MS: '0', FILE_SWEEP_MS: '0', S3_BUCKET: '',
   })
   run(['node_modules/vite/bin/vite.js', '--port', String(webPort), '--strictPort', '--host', 'localhost'], root, {
