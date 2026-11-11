@@ -2108,6 +2108,7 @@ test('[0607.R1][0607.R2] an admin sets up incoming mail; an email becomes a work
   await o.click('button:has-text("Add mail server")')
   await o.fill('#ms-name', 'Drop folder')
   await o.selectOption('#ms-kind', 'files')
+  await o.fill('#ms-authservId', 'mx.e2e.test')
   await o.click('.modal button:has-text("Test")')
   await o.waitForSelector('.modal [role="status"]:has-text("Connected: 0 unread")')
   await o.click('.modal button:has-text("Save")')

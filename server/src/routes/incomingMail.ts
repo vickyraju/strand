@@ -14,10 +14,12 @@ import { projectByKey } from './projects.ts'
 const T = ['Incoming mail']
 const idP = z.object({ id: z.string().uuid() })
 const host = z.string().trim().min(1).max(255)
+/** The authserv-id of the receiving mail server's Authentication-Results, the only verdict on senders trusted (spec 0607 R3) */
+const authservId = z.string().trim().max(255).regex(/^[A-Za-z0-9.-]*$/, 'A host name, such as mx.example.com').default('')
 const config = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('imap'), host, port: z.number().int().min(1).max(65535).default(993), secure: z.boolean().default(true), username: z.string().min(1).max(255), folder: z.string().max(255).default('INBOX') }),
+  z.object({ kind: z.literal('imap'), host, port: z.number().int().min(1).max(65535).default(993), secure: z.boolean().default(true), username: z.string().min(1).max(255), folder: z.string().max(255).default('INBOX'), authservId }),
   z.object({ kind: z.literal('graph'), tenantId: z.string().min(1).max(100), clientId: z.string().min(1).max(100), mailbox: z.string().email().max(255), folder: z.string().max(255).default('inbox') }),
-  z.object({ kind: z.literal('files'), folder: z.string().max(255).default('') }),
+  z.object({ kind: z.literal('files'), folder: z.string().max(255).default(''), authservId }),
 ])
 /** Where the stored secret may go: changing any of these needs it again (as user directories, spec 0712 R3). */
 const WHERE = ['kind', 'host', 'port', 'username', 'tenantId', 'clientId', 'mailbox'] as const

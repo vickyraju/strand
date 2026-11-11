@@ -109,16 +109,34 @@ export function bodyFor(kind: Kind, p: Params, text: string) {
   return t
 }
 
-/** Spoofing guard (spec 0607 R3): does the receiving mail server vouch for the From address? Its verdict is the topmost
- *  Authentication-Results header (added last, by our own server): DMARC pass, or DKIM pass for the sender's domain. In a
- *  Microsoft 365 mailbox, Exchange marks mail from inside the organisation as internal (and strips that mark from outside mail). */
-export function senderVerified(m: Pick<ParsedMail, 'headerLines'>, from: string, kind: MailServer['kind']) {
-  const first = (k: string) => (m.headerLines ?? []).find(l => l.key === k)?.line ?? ''
-  if (kind === 'graph' && /:\s*internal\s*$/i.test(first('x-ms-exchange-organization-authas'))) return true
-  const ar = first('authentication-results').toLowerCase()
-  if (/\bdmarc=pass\b/.test(ar)) return true
-  const domain = from.split('@')[1] ?? '', signed = /\bdkim=pass\b[^;]*header\.d=([a-z0-9.-]+)/.exec(ar)?.[1]
-  return !!signed && !!domain && (domain === signed || domain.endsWith(`.${signed}`))
+/** An Authentication-Results header (RFC 8601) as its authserv-id and method results: comments in parentheses dropped,
+ *  then `authserv-id; method=result prop=value …; …`. Microsoft 365 leaves the authserv-id out. */
+export function parseAuthResults(line: string) {
+  let v = line.replace(/^[^:]*:\s*/, ''), prev = ''
+  while (prev !== v) { prev = v; v = v.replace(/\([^()]*\)/g, ' ') }   // nested comments, innermost first
+  const parts = v.split(';').map(p => p.trim()).filter(Boolean)
+  const authservId = parts[0] && !/^[a-z0-9.-]+\s*=/i.test(parts[0]) ? parts.shift()!.split(/\s+/)[0]!.toLowerCase() : ''
+  const results = parts.map(p => {
+    const [head, ...props] = p.split(/\s+/)
+    const [method, result] = (head ?? '').toLowerCase().split('=')
+    return { method: method ?? '', result: result ?? '', props: Object.fromEntries(props.map(x => x.split('=')).filter(x => x.length === 2).map(([k, val]) => [k!.toLowerCase(), val!.toLowerCase()])) }
+  })
+  return { authservId, results }
+}
+
+/** Spoofing guard (spec 0607 R3): does the receiving mail server vouch for the From address? Only its own verdict counts:
+ *  for IMAP and message files, the topmost Authentication-Results whose authserv-id is the one the server is set to trust
+ *  (none set: nobody is verified); in a Microsoft 365 mailbox, Exchange's own (the topmost), or its internal mark (Exchange
+ *  strips that from outside mail). Verified: DMARC pass for the From domain, or DKIM pass for it or a domain it's under. */
+export function senderVerified(m: Pick<ParsedMail, 'headerLines'>, from: string, server: Pick<MailServer, 'kind' | 'config'>) {
+  const lines = (m.headerLines ?? []).filter(l => l.key === 'authentication-results').map(l => parseAuthResults(l.line))
+  if (server.kind === 'graph' && /:\s*internal\s*$/i.test((m.headerLines ?? []).find(l => l.key === 'x-ms-exchange-organization-authas')?.line ?? '')) return true
+  const trusted = server.kind === 'graph' ? lines[0] : server.config.authservId ? lines.find(l => l.authservId === String(server.config.authservId).toLowerCase()) : undefined
+  const domain = (from.split('@')[1] ?? '').toLowerCase()
+  if (!trusted || !domain) return false
+  return trusted.results.some(r => r.result === 'pass' && (
+    (r.method === 'dmarc' && r.props['header.from'] === domain) ||
+    (r.method === 'dkim' && !!r.props['header.d'] && (domain === r.props['header.d'] || domain.endsWith(`.${r.props['header.d']}`)))))
 }
 
 type Outcome = { messageId: string; subject: string; from: string; result: 'created' | 'commented' | 'ignored' | 'forwarded' | 'failed'; key?: string; reason?: string }
@@ -132,7 +150,7 @@ async function meFor(d: Db, ws: string, email: string): Promise<Me | null> {
 }
 
 /** R2–R6: one message through one handler. Throws to leave it unread (it's tried again next run). */
-export async function handleMessage(h: MailHandler, raw: Buffer, kind: MailServer['kind']): Promise<Outcome> {
+export async function handleMessage(h: MailHandler, raw: Buffer, server: Pick<MailServer, 'kind' | 'config'>): Promise<Outcome> {
   const m: ParsedMail = await simpleParser(raw)
   const subject = (m.subject ?? '').trim(), from = addresses(m.from)[0] ?? ''
   const out = (result: Outcome['result'], extra: Partial<Outcome> = {}): Outcome => ({ messageId: m.messageId ?? '', subject, from, result, ...extra })
@@ -148,7 +166,7 @@ export async function handleMessage(h: MailHandler, raw: Buffer, kind: MailServe
   }
   return tx(async d => {
     // R3: the sender is a person of the workspace with that address (when the mail server verified it); else the default reporter
-    const verified = p.verifiedSenders === false || senderVerified(m, from, kind)
+    const verified = p.verifiedSenders === false || senderVerified(m, from, server)
     let me = verified ? await meFor(d, h.workspaceId, from) : null
     let viaDefault = false
     if (!me && p.defaultReporter) { me = await meFor(d, h.workspaceId, p.defaultReporter); viaDefault = !!me }
@@ -257,7 +275,7 @@ export async function runHandler(id: string) {
         try {
           for (const msg of box.messages) {
             // as Jira's: a message that failed stays in the mailbox (unread) and is tried again next run
-            try { const o = await handleMessage(h, msg.raw, s!.kind); outcomes.push(o); if (o.result !== 'failed') await msg.done() }
+            try { const o = await handleMessage(h, msg.raw, s!); outcomes.push(o); if (o.result !== 'failed') await msg.done() }
             catch (e) { outcomes.push({ messageId: msg.id, subject: '', from: '', result: 'failed', reason: `Left for next time: ${e instanceof Error ? e.message : e}` }) }
           }
         } finally { await box.close() }
