@@ -82,7 +82,7 @@ The roadmap, in order. Bugs come first, then the permission model, then the data
 | [0508](0508-archive-single-items.md) | Archive single items | 5 | Ported |
 | [0509](0509-convert-sub-items.md) | Convert to and from sub-items | 5 | Ported |
 | [0601](0601-field-change-history.md) | Field change history, indexed | 6 | Ported |
-| [0602](0602-jql-history-operators.md) | JQL history operators | 6 | Approved |
+| [0602](0602-jql-history-operators.md) | JQL history operators | 6 | Ported |
 | 0603 | Missing JQL functions | 6 | Planned |
 | 0604 | Filter subscriptions | 6 | Planned |
 | 0605 | Notification schemes; bulk change without notifying | 6 | Planned |

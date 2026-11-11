@@ -1,6 +1,6 @@
 # 0602 JQL history operators
 
-Status: Approved (PO, 10 Nov 2026: "yes go ahead and build complete everything whatever is pending")
+Status: Ported (aws-jira `75df799`, strand `e892387`), approved by the PO on 10 Nov 2026; awaiting verification
 Parity rows: SR-01
 
 ## Context and Jira reference
