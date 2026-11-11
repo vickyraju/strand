@@ -7,6 +7,7 @@ import type { Db } from './db.ts'
 import { HttpError } from './auth.ts'
 import { publish } from './events.ts'
 import { valueProblem, hasOptions, type FieldKind, type FieldValue, type Option } from './shared/customFields.ts'
+import { SYSTEM_FIELDS, isEmpty, valueOf, type FieldRules } from './shared/fieldRules.ts'
 
 export type Opt = { id?: string; name: string; disabled?: boolean; parentId?: string | null }
 
@@ -119,4 +120,53 @@ export async function defaultsFor(d: Db, projectId: string, type: string, given:
   const rows = await d.query<{ id: string; defaultValue: FieldValue }>(
     `select id, default_value from field_defs where project_id = $1 and default_value is not null and (type_keys is null or $2 = any(type_keys))`, [projectId, type])
   return Object.fromEntries(rows.filter(r => !(r.id in given)).map(r => [r.id, r.defaultValue]))
+}
+
+// ── Field configurations (spec 0504) ──
+
+/** The workspace's Default Field Configuration (made when first needed, as every workspace has one). */
+export async function defaultConfigId(d: Db, ws: string) {
+  const [c] = await d.query<{ id: string }>('select id from field_configurations where workspace_id = $1 and is_default', [ws])
+  if (c) return c.id
+  const [n] = await d.query<{ id: string }>(
+    `insert into field_configurations (workspace_id, name, description, is_default) values ($1, 'Default Field Configuration', 'Used by every project without a field configuration scheme', true)
+     on conflict (workspace_id) where is_default do update set name = excluded.name returning id`, [ws])
+  return n!.id
+}
+
+/** Each work type's field rules in a project: its scheme's configuration for the type, else the scheme's default, else the Default Field Configuration. */
+export async function rulesFor(d: Db, projectId: string): Promise<Record<string, FieldRules>> {
+  const [p] = await d.query<{ workspaceId: string; schemeId: string | null }>('select workspace_id, field_config_scheme_id as scheme_id from projects where id = $1', [projectId])
+  if (!p) return {}
+  const types = (await d.query<{ key: string }>('select key from work_types where project_id = $1', [projectId])).map(t => t.key)
+  const def = await defaultConfigId(d, p.workspaceId)
+  const [s] = p.schemeId ? await d.query<{ defaultConfigId: string; mappings: Record<string, string> }>('select default_config_id, mappings from field_config_schemes where id = $1', [p.schemeId]) : []
+  const configOf = (t: string) => s?.mappings?.[t] ?? s?.defaultConfigId ?? def
+  const ids = [...new Set(types.map(configOf))]
+  const items = new Map((await d.query<{ id: string; items: FieldRules }>('select id, items from field_configurations where id = any($1::uuid[])', [ids])).map(c => [c.id, c.items]))
+  return Object.fromEntries(types.map(t => [t, items.get(configOf(t)) ?? {}]))
+}
+
+/** Hidden fields set, or required fields left empty, by an item's values (spec 0504 R4). `keys`: the fields being set
+ *  (null: creating, every required field must have a value). Throws a 400 naming each field. */
+export async function enforceRules(d: Db, projectId: string, type: string, item: Record<string, any>, keys: string[] | null) {
+  const rules = (await rulesFor(d, projectId))[type] ?? {}
+  if (!Object.keys(rules).length) return
+  const defs = await d.query<{ id: string; name: string; kind: string; options: Opt[] | null }>('select id, name, kind, options from field_defs where project_id = $1', [projectId])
+  const nameOf = (k: string) => (k.startsWith('custom.') ? defs.find(f => f.id === k.slice(7))?.name ?? 'A custom field' : SYSTEM_FIELDS[k] ?? k)
+  const needsChild = (k: string, v: unknown) => {
+    const f = k.startsWith('custom.') ? defs.find(x => x.id === k.slice(7)) : undefined
+    if (f?.kind !== 'cascading' || !Array.isArray(v) || !v.length) return false
+    const parent = (f.options ?? []).find(o => o.name === v[0] && !o.parentId)
+    return !!parent && (f.options ?? []).some(o => o.parentId === parent.id && !o.disabled)
+  }
+  const errors: Record<string, string> = {}
+  for (const [k, r] of Object.entries(rules)) {
+    const touched = keys === null || keys.includes(k)
+    if (!touched) continue
+    const v = valueOf(item, k)
+    if (r.hidden && !isEmpty(v)) errors[k] = `${nameOf(k)} isn’t shown in this project for this work type`
+    else if (r.required && !r.hidden && isEmpty(v, needsChild(k, v))) errors[k] = `${nameOf(k)} is required`
+  }
+  if (Object.keys(errors).length) throw new HttpError(400, Object.values(errors).join('; '), errors)
 }

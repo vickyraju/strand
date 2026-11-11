@@ -1901,3 +1901,28 @@ test('[0503.R1][0503.R2] an admin makes a global custom field, then a project co
   assert.deepEqual(o.problems, [])
 })
 
+test('[0504.R4][0504.R5] a required custom field is marked in the create dialog, and Create waits for it', { skip, timeout: 120_000 }, async () => {
+  await owner('POST', '/projects', { name: 'Required fields', key: 'RQF', template: 'kanban' })
+  const f = (await owner('POST', '/admin/custom-fields', { name: 'Customer', kind: 'text', context: { projectKeys: ['RQF'] } })).body
+  const cfg = (await owner('POST', '/admin/field-configurations', { name: 'Customer required', items: { [`custom.${f.id}`]: { required: true, description: 'Who asked for it' } } })).body
+  const def = (await owner('GET', '/admin/field-configurations')).body.find(c => c.isDefault)
+  const sch = (await owner('POST', '/admin/field-config-schemes', { name: 'RQF scheme', defaultConfigId: def.id, mappings: { task: cfg.id } })).body
+  await owner('PATCH', '/projects/RQF', { fieldConfigSchemeId: sch.id })
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url('/project/RQF'))
+  await o.waitForSelector('text=Required fields')
+  await o.locator('body').click({ position: { x: 5, y: 5 } })
+  await o.keyboard.press('c')
+  const dialog = o.locator('[aria-label="Create work item"]')
+  await dialog.locator('[aria-label="Title"]').fill('Needs a customer')
+  await dialog.locator('[aria-label="Required fields"] >> text=Customer *').waitFor()
+  assert.equal(await dialog.locator('button[type="submit"]').isDisabled(), true)
+  assert.match(await dialog.innerText(), /Who asked for it/)
+  await dialog.locator('[aria-label="Required fields"] input').fill('Acme')
+  await dialog.locator('button[type="submit"]').click()
+  let made
+  for (let n = 0; n < 50 && !made; n++) { made = (await owner('GET', '/projects/RQF/issues')).body.items.find(i => i.title === 'Needs a customer'); if (!made) await new Promise(r => setTimeout(r, 200)) }
+  assert.equal(made.custom[f.id], 'Acme')
+  assert.deepEqual(o.problems, [])
+})
+

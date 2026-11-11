@@ -2034,6 +2034,13 @@
                     "format": "uuid",
                     "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                   },
+                  "fieldConfigSchemeId": {
+                    "nullable": true,
+                    "description": "Its field configuration scheme (system administrators), or null for the Default Field Configuration (spec 0504)",
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
                   "boardPrefs": {
                     "type": "object",
                     "additionalProperties": {}
@@ -2886,6 +2893,47 @@
                         "additionalProperties": false
                       }
                     },
+                    "fieldRules": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "type": "object",
+                          "properties": {
+                            "description": {
+                              "type": "string"
+                            },
+                            "hidden": {
+                              "type": "boolean"
+                            },
+                            "required": {
+                              "type": "boolean"
+                            }
+                          },
+                          "additionalProperties": false
+                        }
+                      },
+                      "description": "Per work type, each configured field’s description, hidden and required (spec 0504)"
+                    },
+                    "fieldConfigScheme": {
+                      "nullable": true,
+                      "description": "Its field configuration scheme (null: the Default Field Configuration)",
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "description": "uuid"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name"
+                      ],
+                      "additionalProperties": false
+                    },
                     "boards": {
                       "type": "array",
                       "items": {
@@ -2962,6 +3010,8 @@
                     "sprints",
                     "workflowSchemeId",
                     "workflows",
+                    "fieldRules",
+                    "fieldConfigScheme",
                     "boards"
                   ],
                   "additionalProperties": false
@@ -4158,6 +4208,47 @@
                         "additionalProperties": false
                       }
                     },
+                    "fieldRules": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "type": "object",
+                          "properties": {
+                            "description": {
+                              "type": "string"
+                            },
+                            "hidden": {
+                              "type": "boolean"
+                            },
+                            "required": {
+                              "type": "boolean"
+                            }
+                          },
+                          "additionalProperties": false
+                        }
+                      },
+                      "description": "Per work type, each configured field’s description, hidden and required (spec 0504)"
+                    },
+                    "fieldConfigScheme": {
+                      "nullable": true,
+                      "description": "Its field configuration scheme (null: the Default Field Configuration)",
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "description": "uuid"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name"
+                      ],
+                      "additionalProperties": false
+                    },
                     "boards": {
                       "type": "array",
                       "items": {
@@ -4234,6 +4325,8 @@
                     "sprints",
                     "workflowSchemeId",
                     "workflows",
+                    "fieldRules",
+                    "fieldConfigScheme",
                     "boards"
                   ],
                   "additionalProperties": false
@@ -5164,6 +5257,47 @@
                         "additionalProperties": false
                       }
                     },
+                    "fieldRules": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "type": "object",
+                          "properties": {
+                            "description": {
+                              "type": "string"
+                            },
+                            "hidden": {
+                              "type": "boolean"
+                            },
+                            "required": {
+                              "type": "boolean"
+                            }
+                          },
+                          "additionalProperties": false
+                        }
+                      },
+                      "description": "Per work type, each configured field’s description, hidden and required (spec 0504)"
+                    },
+                    "fieldConfigScheme": {
+                      "nullable": true,
+                      "description": "Its field configuration scheme (null: the Default Field Configuration)",
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "description": "uuid"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name"
+                      ],
+                      "additionalProperties": false
+                    },
                     "boards": {
                       "type": "array",
                       "items": {
@@ -5240,6 +5374,8 @@
                     "sprints",
                     "workflowSchemeId",
                     "workflows",
+                    "fieldRules",
+                    "fieldConfigScheme",
                     "boards"
                   ],
                   "additionalProperties": false
@@ -6349,6 +6485,47 @@
                         "additionalProperties": false
                       }
                     },
+                    "fieldRules": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "type": "object",
+                          "properties": {
+                            "description": {
+                              "type": "string"
+                            },
+                            "hidden": {
+                              "type": "boolean"
+                            },
+                            "required": {
+                              "type": "boolean"
+                            }
+                          },
+                          "additionalProperties": false
+                        }
+                      },
+                      "description": "Per work type, each configured field’s description, hidden and required (spec 0504)"
+                    },
+                    "fieldConfigScheme": {
+                      "nullable": true,
+                      "description": "Its field configuration scheme (null: the Default Field Configuration)",
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "description": "uuid"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name"
+                      ],
+                      "additionalProperties": false
+                    },
                     "boards": {
                       "type": "array",
                       "items": {
@@ -6425,6 +6602,8 @@
                     "sprints",
                     "workflowSchemeId",
                     "workflows",
+                    "fieldRules",
+                    "fieldConfigScheme",
                     "boards"
                   ],
                   "additionalProperties": false
@@ -6555,6 +6734,13 @@
                   "categoryId": {
                     "nullable": true,
                     "description": "Its project category (system administrators), or null for none (spec 0703)",
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  "fieldConfigSchemeId": {
+                    "nullable": true,
+                    "description": "Its field configuration scheme (system administrators), or null for the Default Field Configuration (spec 0504)",
                     "type": "string",
                     "format": "uuid",
                     "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
@@ -7404,6 +7590,47 @@
                         "additionalProperties": false
                       }
                     },
+                    "fieldRules": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "type": "object",
+                          "properties": {
+                            "description": {
+                              "type": "string"
+                            },
+                            "hidden": {
+                              "type": "boolean"
+                            },
+                            "required": {
+                              "type": "boolean"
+                            }
+                          },
+                          "additionalProperties": false
+                        }
+                      },
+                      "description": "Per work type, each configured field’s description, hidden and required (spec 0504)"
+                    },
+                    "fieldConfigScheme": {
+                      "nullable": true,
+                      "description": "Its field configuration scheme (null: the Default Field Configuration)",
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "description": "uuid"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name"
+                      ],
+                      "additionalProperties": false
+                    },
                     "boards": {
                       "type": "array",
                       "items": {
@@ -7480,6 +7707,8 @@
                     "sprints",
                     "workflowSchemeId",
                     "workflows",
+                    "fieldRules",
+                    "fieldConfigScheme",
                     "boards"
                   ],
                   "additionalProperties": false
@@ -62661,6 +62890,1515 @@
             },
             "in": "path",
             "name": "contextId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/field-configurations": {
+      "get": {
+        "summary": "Field configurations, the default first, with the schemes that use each",
+        "tags": [
+          "Field configurations"
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "description": "uuid"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "type": "string"
+                      },
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "type": "object",
+                          "properties": {
+                            "description": {
+                              "type": "string"
+                            },
+                            "hidden": {
+                              "type": "boolean"
+                            },
+                            "required": {
+                              "type": "boolean"
+                            }
+                          },
+                          "additionalProperties": false
+                        }
+                      },
+                      "isDefault": {
+                        "type": "boolean"
+                      },
+                      "schemes": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name",
+                      "description",
+                      "items",
+                      "isDefault",
+                      "schemes"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Add a field configuration",
+        "tags": [
+          "Field configurations"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 255
+                  },
+                  "description": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  "items": {
+                    "default": {},
+                    "description": "Field key (assigneeId, custom.<field id>…) → its description, hidden, required",
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "object",
+                      "properties": {
+                        "description": {
+                          "type": "string",
+                          "maxLength": 1000
+                        },
+                        "hidden": {
+                          "type": "boolean"
+                        },
+                        "required": {
+                          "type": "boolean"
+                        }
+                      }
+                    }
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "object",
+                        "properties": {
+                          "description": {
+                            "type": "string"
+                          },
+                          "hidden": {
+                            "type": "boolean"
+                          },
+                          "required": {
+                            "type": "boolean"
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    },
+                    "isDefault": {
+                      "type": "boolean"
+                    },
+                    "schemes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "description",
+                    "items",
+                    "isDefault",
+                    "schemes"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/field-configurations/{id}": {
+      "get": {
+        "summary": "A field configuration",
+        "tags": [
+          "Field configurations"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "object",
+                        "properties": {
+                          "description": {
+                            "type": "string"
+                          },
+                          "hidden": {
+                            "type": "boolean"
+                          },
+                          "required": {
+                            "type": "boolean"
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    },
+                    "isDefault": {
+                      "type": "boolean"
+                    },
+                    "schemes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "description",
+                    "items",
+                    "isDefault",
+                    "schemes"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "Change a field configuration: its fields’ description, hidden and required",
+        "tags": [
+          "Field configurations"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 255
+                  },
+                  "description": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  "items": {
+                    "default": {},
+                    "description": "Field key (assigneeId, custom.<field id>…) → its description, hidden, required",
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "object",
+                      "properties": {
+                        "description": {
+                          "type": "string",
+                          "maxLength": 1000
+                        },
+                        "hidden": {
+                          "type": "boolean"
+                        },
+                        "required": {
+                          "type": "boolean"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "object",
+                        "properties": {
+                          "description": {
+                            "type": "string"
+                          },
+                          "hidden": {
+                            "type": "boolean"
+                          },
+                          "required": {
+                            "type": "boolean"
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    },
+                    "isDefault": {
+                      "type": "boolean"
+                    },
+                    "schemes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "description",
+                    "items",
+                    "isDefault",
+                    "schemes"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete a field configuration no scheme uses (not the default)",
+        "tags": [
+          "Field configurations"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/field-config-schemes": {
+      "get": {
+        "summary": "Field configuration schemes, with the projects using each",
+        "tags": [
+          "Field configurations"
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "description": "uuid"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "type": "string"
+                      },
+                      "defaultConfigId": {
+                        "type": "string",
+                        "description": "uuid"
+                      },
+                      "mappings": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "type": "string",
+                          "description": "uuid"
+                        }
+                      },
+                      "projectKeys": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "projects": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name",
+                      "description",
+                      "defaultConfigId",
+                      "mappings",
+                      "projectKeys",
+                      "projects"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Add a field configuration scheme",
+        "tags": [
+          "Field configurations"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 255
+                  },
+                  "description": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  "defaultConfigId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  "mappings": {
+                    "default": {},
+                    "description": "Work type key → field configuration id",
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string",
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                    }
+                  }
+                },
+                "required": [
+                  "name",
+                  "defaultConfigId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "defaultConfigId": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "mappings": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string",
+                        "description": "uuid"
+                      }
+                    },
+                    "projectKeys": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "projects": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "description",
+                    "defaultConfigId",
+                    "mappings",
+                    "projectKeys",
+                    "projects"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/field-config-schemes/{id}": {
+      "get": {
+        "summary": "A field configuration scheme",
+        "tags": [
+          "Field configurations"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "defaultConfigId": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "mappings": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string",
+                        "description": "uuid"
+                      }
+                    },
+                    "projectKeys": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "projects": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "description",
+                    "defaultConfigId",
+                    "mappings",
+                    "projectKeys",
+                    "projects"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "Change a field configuration scheme",
+        "tags": [
+          "Field configurations"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 255
+                  },
+                  "description": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  "defaultConfigId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  "mappings": {
+                    "default": {},
+                    "description": "Work type key → field configuration id",
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string",
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "defaultConfigId": {
+                      "type": "string",
+                      "description": "uuid"
+                    },
+                    "mappings": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string",
+                        "description": "uuid"
+                      }
+                    },
+                    "projectKeys": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "projects": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "description",
+                    "defaultConfigId",
+                    "mappings",
+                    "projectKeys",
+                    "projects"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete a field configuration scheme; its projects go back to the Default Field Configuration",
+        "tags": [
+          "Field configurations"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "path",
+            "name": "id",
             "required": true
           }
         ],

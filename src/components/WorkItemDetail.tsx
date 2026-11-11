@@ -37,6 +37,7 @@ import { TimeField } from './TimeTracking'
 import { TemplateDialog, blankTemplate } from './TemplatesImport'
 import DevelopmentPanel from './DevelopmentPanel'
 import MoveDialog from './MoveDialog'
+import type { FieldRule } from '../../server/src/shared/fieldRules.ts'
 
 function AutoText(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
   const ref = useRef<HTMLTextAreaElement>(null)
@@ -47,8 +48,10 @@ function AutoText(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
   return <textarea ref={ref} rows={1} {...props} />
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return <div className="field"><span className="field-label">{label}</span><div className="field-val">{children}</div></div>
+/** One field of the details; a field configuration (spec 0504) may hide it, require it (*) or describe it. */
+function Field({ label, children, rule }: { label: string; children: React.ReactNode; rule?: FieldRule }) {
+  if (rule?.hidden) return null
+  return <div className="field" title={rule?.description}><span className="field-label">{label}{rule?.required ? ' *' : ''}</span><div className="field-val">{children}</div></div>
 }
 
 export default function WorkItemDetail({ issueId, mode, navList }: { issueId: string; mode: 'peek' | 'full'; navList: string[] }) {
@@ -72,6 +75,7 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
   const [linking, setLinking]     = useState(false)
   const [cloning, setCloning]     = useState(false)
   const [moving, setMoving]       = useState(false)
+  const fr = (k: string): FieldRule => project?.fieldRules?.[issue?.type ?? '']?.[k] ?? {}   // field configuration (spec 0504)
   const [confirmDel, setConfirmDel] = useState(false)
   const attachRef = useRef<HTMLInputElement>(null)
   const [templating, setTemplating] = useState(false)
@@ -228,8 +232,8 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
             </div>
           )}
 
-          <section className="detail-section">
-            <h2 className="section-title">Description</h2>
+          {!fr('description').hidden && <section className="detail-section">
+            <h2 className="section-title" title={fr('description').description}>Description{fr('description').required ? ' *' : ''}</h2>
             {editingDesc ? (
               <>
                 <MentionTextarea className="input desc-input" value={desc} onChange={setDesc} users={mentionable} autoFocus
@@ -248,7 +252,7 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
                 {issue.description ? <Markdown text={issue.description} users={state.users} /> : readOnly ? 'No description' : 'Add a description…'}
               </div>
             )}
-          </section>
+          </section>}
 
           {(issue.type === 'test' || issue.type === 'precondition') && <TestSpecEditor issue={issue} readOnly={readOnly} onSave={testSpec => set({ testSpec })} />}
           {apiEnabled && ['test_set', 'test_plan', 'precondition'].includes(issue.type) && <TestsPanel issue={issue} project={project} readOnly={readOnly} />}
@@ -413,24 +417,24 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
 
           <div className="side-card">
             <h2 className="side-title">Details</h2>
-            <Field label="Assignee">
+            <Field label="Assignee" rule={fr('assigneeId')}>
               <UserPicker value={issue.assigneeId} onChange={assigneeId => set({ assigneeId })} projectId={issue.projectId} className="field-btn" title="Assignee"
                 trigger={<><Avatar user={assignee} size={22} />{assignee?.name ?? 'Unassigned'}</>} />
               {issue.assigneeId !== state.me?.id && <button className="link sm" onClick={() => set({ assigneeId: state.me?.id })}><UserCheck size={12} />Assign to me</button>}
             </Field>
-            <Field label="Reporter">
+            <Field label="Reporter" rule={fr('reporterId')}>
               {/* Modify reporter: project admins (spec 0203 R6) */}
               {can(project, 'modifyReporter') && !archived
                 ? <UserPicker value={issue.reporterId} onChange={reporterId => reporterId && set({ reporterId })} projectId={issue.projectId} className="field-btn" title="Reporter" allowUnassigned={false}
                     trigger={<><Avatar user={reporter} size={22} />{reporter?.name ?? '—'}</>} />
                 : <span className="field-static"><Avatar user={reporter} size={22} />{reporter?.name ?? '—'}</span>}
             </Field>
-            <Field label="Priority">
+            <Field label="Priority" rule={fr('priority')}>
               <Picker value={issue.priority} options={priorityOptions()} onChange={priority => set({ priority })} className="field-btn" title="Priority"
                 trigger={<><PriorityIcon priority={issue.priority} />{priorityLabel(issue.priority)}</>} />
             </Field>
             {issue.resolution && (
-              <Field label="Resolution">
+              <Field label="Resolution" rule={fr('resolution')}>
                 <Picker value={issue.resolution} options={resolutionNames().map(r => ({ value: r, label: r }))} onChange={resolution => set({ resolution })}
                   className="field-btn" title="Resolution" trigger={<>{issue.resolution}{issue.resolvedAt && <span className="muted sm">&nbsp;· {timeAgo(issue.resolvedAt)}</span>}</>} />
               </Field>
@@ -446,7 +450,7 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
               </Field>
             )}
             {issue.type !== 'epic' && (
-              <Field label="Parent">
+              <Field label="Parent" rule={fr('parentId')}>
                 <Picker value={issue.parentId} search className="field-btn" title="Parent"
                   options={[
                     { value: undefined, label: 'None' },
@@ -461,7 +465,7 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
               </Field>
             )}
             {project.template === 'scrum' && issue.type !== 'epic' && (
-              <Field label="Sprint">
+              <Field label="Sprint" rule={fr('sprintId')}>
                 <Picker value={issue.sprintId} className="field-btn" title="Sprint"
                   options={[{ value: undefined, label: 'Backlog' }, ...sprints.map(s => ({ value: s.id as string | undefined, label: s.name, hint: s.state === 'active' ? 'Active' : undefined }))]}
                   onChange={sprintId => set({ sprintId })}
@@ -469,7 +473,7 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
               </Field>
             )}
             {project.releases.length > 0 && issue.type !== 'epic' && (
-              <Field label="Fix versions">
+              <Field label="Fix versions" rule={fr('fixReleaseIds')}>
                 <MultiSelect label="Fix versions" all={project.releases.map(r => ({ key: r.id, name: r.name }))} locked={archivedIds} value={issue.fixReleaseIds ?? []} onChange={fixReleaseIds => set({ fixReleaseIds })} />
               </Field>
             )}
@@ -484,33 +488,33 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
               </Field>
             )}
             {(project.components?.length ?? 0) > 0 && (
-              <Field label="Components">
+              <Field label="Components" rule={fr('componentIds')}>
                 <MultiSelect label="Components" all={project.components!.map(c => ({ key: c.id, name: c.name }))} value={issue.componentIds ?? []} onChange={componentIds => set({ componentIds })} />
               </Field>
             )}
             {project.releases.length > 0 && issue.type !== 'epic' && (
-              <Field label="Affects versions">
+              <Field label="Affects versions" rule={fr('affectsReleaseIds')}>
                 <MultiSelect label="Affects versions" all={project.releases.map(r => ({ key: r.id, name: r.name }))} locked={archivedIds} value={issue.affectsReleaseIds ?? []} onChange={affectsReleaseIds => set({ affectsReleaseIds })} />
               </Field>
             )}
-            <Field label="Labels">
+            <Field label="Labels" rule={fr('labels')}>
               <input className="field-input" value={labels} placeholder="None" aria-label="Labels (separated by spaces)"
                 onChange={e => setLabels(e.target.value)}
                 onBlur={() => set({ labels: splitLabels(labels) })} />
             </Field>
-            <Field label="Story points">
+            <Field label="Story points" rule={fr('estimate')}>
               <input className="field-input" type="number" min={0} value={issue.estimate ?? ''} placeholder="None" aria-label="Story points"
                 onChange={e => set({ estimate: e.target.value === '' ? undefined : Math.max(0, Number(e.target.value)) })} />
             </Field>
-            {issue.type !== 'epic' && <Field label="Time tracking"><TimeField key={issue.id} issue={issue} /></Field>}
-            <Field label="Start date">
+            {issue.type !== 'epic' && <Field label="Time tracking" rule={fr('timeEstimate')}><TimeField key={issue.id} issue={issue} /></Field>}
+            <Field label="Start date" rule={fr('startDate')}>
               <input className="field-input" type="date" value={issue.startDate ?? ''} max={issue.dueDate} aria-label="Start date" onChange={e => set({ startDate: e.target.value || undefined })} />
             </Field>
-            <Field label="Due date">
+            <Field label="Due date" rule={fr('dueDate')}>
               <input className="field-input" type="date" value={issue.dueDate ?? ''} min={issue.startDate} aria-label="Due date" onChange={e => set({ dueDate: e.target.value || undefined })} />
             </Field>
             {project.fields.filter(f => !f.typeKeys || f.typeKeys.includes(issue.type)).map(f => (   // a field applies to its context's work types (spec 0503)
-              <Field key={f.id} label={f.name}><CustomFieldInput key={issue.id} field={f} issue={issue} /></Field>
+              <Field key={f.id} label={f.name} rule={fr(`custom.${f.id}`)}><CustomFieldInput key={issue.id} field={f} issue={issue} /></Field>
             ))}
             <Field label="Watchers">
               <span className="avatar-group sm">{watchers.map(u => <Avatar key={u.id} user={u} size={22} />)}</span>

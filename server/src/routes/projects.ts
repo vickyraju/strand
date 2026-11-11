@@ -21,7 +21,7 @@ import { checkImport } from '../csvImport.ts'
 import { getSetting } from '../settings.ts'
 import { describeKeyRule, keyFits } from '../shared/projectKeys.ts'
 import { KIND_LIST, type FieldKind } from '../shared/customFields.ts'
-import { carryOptions, clearValues, withOptionIds, type Opt } from '../fields.ts'
+import { carryOptions, clearValues, rulesFor, withOptionIds, type Opt } from '../fields.ts'
 
 const uuid = z.string().uuid()
 const color = z.string().regex(/^#[0-9a-fA-F]{6}$/)
@@ -141,6 +141,7 @@ const projectBody = z.object({
   name: z.string().min(1).max(120), description: z.string(), color, leadId: uuid.nullable(),
   key: z.string().trim().min(2).max(255).transform(k => k.toUpperCase()).describe('A new key (system administrators): its items take it, the old one still finds them (spec 0703)'),
   categoryId: uuid.nullable().describe('Its project category (system administrators), or null for none (spec 0703)'),
+  fieldConfigSchemeId: uuid.nullable().describe('Its field configuration scheme (system administrators), or null for the Default Field Configuration (spec 0504)'),
   boardPrefs: z.record(z.string(), z.unknown()), layout: z.record(z.string(), z.unknown()),
 }).partial()
 
@@ -359,10 +360,16 @@ const plugin: FastifyPluginAsyncZod = async app => {
     await requireProjectAdmin(req, p)
     const b = req.body
     // the key and the category: system administrators (spec 0703 R1, R5); other details never touch the category (R7)
-    if ((b.key !== undefined && b.key !== p.key) || b.categoryId !== undefined) {
+    if ((b.key !== undefined && b.key !== p.key) || b.categoryId !== undefined || b.fieldConfigSchemeId !== undefined) {
       requireAdmin(req)
       await tx(async d => {
-        const [before] = await d.query<{ key: string; categoryId: string | null }>('select key, category_id from projects where id = $1 for update', [p.id])
+        const [before] = await d.query<{ key: string; categoryId: string | null; schemeId: string | null }>('select key, category_id, field_config_scheme_id as scheme_id from projects where id = $1 for update', [p.id])
+        if (b.fieldConfigSchemeId !== undefined && b.fieldConfigSchemeId !== before!.schemeId) {
+          if (b.fieldConfigSchemeId && !(await d.query('select 1 from field_config_schemes where id = $1 and workspace_id = $2', [b.fieldConfigSchemeId, req.me.workspaceId])).length)
+            throw new HttpError(400, 'No such field configuration scheme', { fieldConfigSchemeId: 'Unknown scheme' })
+          await d.query('update projects set field_config_scheme_id = $2 where id = $1', [p.id, b.fieldConfigSchemeId])
+          await audit(d, req, { action: 'project.field_config_scheme_changed', type: 'project', id: p.id, name: before!.key, project: p, before: { fieldConfigSchemeId: before!.schemeId }, after: { fieldConfigSchemeId: b.fieldConfigSchemeId } })
+        }
         if (b.categoryId !== undefined && b.categoryId !== before!.categoryId) {
           if (b.categoryId && !(await d.query('select 1 from project_categories where id = $1 and workspace_id = $2', [b.categoryId, req.me.workspaceId])).length)
             throw new HttpError(400, 'No such category', { categoryId: 'Unknown category' })
@@ -1072,7 +1079,10 @@ export async function projectDetail(d: Db, ws: string, key: string, role: Projec
   const rules = await by('rules', 'id'), releases = await by('releases', 'release_date nulls last, id'), components = await by('components', 'lower(name)'), securityLevels = await by('security_levels', 'name')
   const sprints = await by('sprints', 'created_at'), workflows = await typeWorkflowList(d, p.id)
   const boards = await d.query(`select id, name, type, jql, position, jsonb_array_length(kanban_backlog) > 0 as has_backlog from boards where project_id = $1 order by position, lower(name), id`, [p.id])
-  return { ...project, role, statuses, transitions, types, fields, templates, rules, releases, components, securityLevels, sprints, workflows, boards }
+  // field configurations (spec 0504): each work type's rules, and the scheme the project uses
+  const fieldRules = await rulesFor(d, project.id)
+  const [fcs] = project.fieldConfigSchemeId ? await d.query<{ id: string; name: string }>('select id, name from field_config_schemes where id = $1', [project.fieldConfigSchemeId]) : []
+  return { ...project, role, statuses, transitions, types, fields, templates, rules, releases, components, securityLevels, sprints, workflows, boards, fieldRules, fieldConfigScheme: fcs ?? null }
 }
 
 export default plugin
