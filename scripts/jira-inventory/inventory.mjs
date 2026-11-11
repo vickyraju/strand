@@ -27,6 +27,8 @@ export const FIELD_TYPES = {
   'com.pyxis.greenhopper.jira:gh-epic-label': 'Strand: the epic’s summary', 'com.pyxis.greenhopper.jira:gh-epic-status': 'Strand: Epic Status',
   'com.pyxis.greenhopper.jira:gh-epic-color': 'Strand: Epic colour', 'com.pyxis.greenhopper.jira:gh-lexo-rank': 'Strand: Rank',
   'com.atlassian.jira.plugin.system.customfieldtypes:jira-story-points': 'Strand: Story points',
+  'com.atlassian.jpo:jpo-custom-field-parent': 'Strand: Parent Link (plans, spec 0803)', 'com.atlassian.jpo:jpo-custom-field-baseline-start': 'Strand: Start date',
+  'com.atlassian.jpo:jpo-custom-field-baseline-end': 'Strand: Due date', 'com.atlassian.jpo:jpo-custom-field-team': 'Not yet: teams and capacity (spec 0803, B+)',
 }
 /** Strand's testing (Xray) covers Xray's own fields. */
 const XRAY = 'com.xpandit.plugins.xray'
@@ -104,7 +106,7 @@ export async function inventory({ baseUrl, headers, fetch = globalThis.fetch, lo
 export function gaps(inv) {
   const g = []
   for (const f of inv.customFields.filter(f => !f.strand)) g.push({ kind: 'Custom field type', what: `${f.name} (${f.type || 'unknown type'})`, decide: 'Strand has no such field type: map it to another, or leave it out' })
-  if (inv.customFields.some(f => f.type.startsWith('com.atlassian.jpo:'))) g.push({ kind: 'Advanced Roadmaps', what: 'Plans’ fields (Parent Link, Team, Target dates)', decide: 'Strand plans with the Timeline; Advanced Roadmaps is spec 0803' })
+  if (inv.customFields.some(f => f.type === 'com.atlassian.jpo:jpo-custom-field-team' || /^team$/i.test(f.name))) g.push({ kind: 'Advanced Roadmaps', what: 'Teams and capacity (the Team field)', decide: 'Parent Link and Target dates come over (spec 0803); teams and capacity are the next step (B+): tell the product owner they are in use' })
   for (const p of inv.projects.filter(p => p.type === 'service_desk')) g.push({ kind: 'Service project', what: `${p.key} ${p.name}`, decide: 'Strand has no service desk: move it as a software project, or leave it' })
   for (const a of inv.apps.filter(a => a.enabled && !a.strand)) g.push({ kind: 'App', what: `${a.name} (${a.key} ${a.version})`, decide: 'Check what it does in your Jira; Strand doesn’t run Jira apps' })
   for (const [s, why] of Object.entries(inv.unreadable)) g.push({ kind: 'Not read', what: s, decide: `The token couldn’t read it (${why}): run again as a Jira administrator for the whole picture` })

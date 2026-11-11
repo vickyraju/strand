@@ -118,6 +118,7 @@ export default function NavRail({ collapsed, onCollapseToggle, onCmdK, route, dr
         {item(route.name === 'inbox', 'Inbox', Inbox, () => goTo('inbox'), unread)}
         {item(route.name === 'search' && !route.view, 'Search', SearchCode, () => goTo('search'))}
         {item(route.name === 'projects', 'All projects', FolderKanban, () => goTo('projects'))}
+        {item(route.name === 'plans', 'Plans', GanttChart, () => goTo('plans'))}
 
         {views.length > 0 && !collapsed && <div className="nav-section">Views</div>}
         {!collapsed && views.map(v => (

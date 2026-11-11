@@ -2219,3 +2219,41 @@ test('[0802.R1][0802.R2] an admin tests a Jira and runs a dry run: its report sh
   } finally { jiraServer.close() }
 })
 
+test('[0803.R1][0803.R2][0803.R6] an epic joins an initiative; a plan shows them nested; dragging a bar changes the dates', { skip, timeout: 120_000 }, async () => {
+  await owner('POST', '/projects', { name: 'Journey goals', key: 'JPF', template: 'kanban' })
+  await owner('POST', '/projects', { name: 'Journey delivery', key: 'JDV', template: 'kanban' })
+  await owner('PUT', '/projects/JPF/initiatives', { enabled: true })
+  const ini = (await owner('POST', '/projects/JPF/issues', { title: 'Delight customers', type: 'initiative' })).body
+  const epic = (await owner('POST', '/projects/JDV/issues', { title: 'Faster checkout', type: 'epic' })).body
+  const story = (await owner('POST', '/projects/JDV/issues', { title: 'One-click pay', parentId: epic.id, startDate: '2026-12-01', dueDate: '2026-12-15' })).body
+  const o = await signIn('owner@e2e.test')
+  // R1: the epic's Initiative field
+  await o.goto(url(`/i/${epic.key}`))
+  await o.click('button[title="Initiative"]')
+  await o.fill('.picker-menu input', 'Delight')
+  await o.click(`.picker-menu .picker-item:has-text("${ini.key}")`)
+  for (let n = 0; n < 20 && (await owner('GET', `/issues/${epic.key}`)).body.parentLinkId !== ini.id; n++) await o.waitForTimeout(250)
+  assert.equal((await owner('GET', `/issues/${epic.key}`)).body.parentLinkId, ini.id)
+  // R2: a plan of the delivery project; its epic's initiative comes with it
+  await o.goto(url('/plans'))
+  await o.click('button:has-text("Create plan")')
+  await o.fill('#pl-name', 'Journey plan')
+  await o.fill('[aria-label="Add a project"]', 'JDV')
+  await o.click('.modal .picker-item:has-text("JDV")')
+  await o.click('.modal button:has-text("Create")')
+  await o.waitForSelector(`.tl-row[data-key="${ini.key}"]`)
+  const order = await o.$$eval('.tl-row[data-key]', rows => rows.map(r => r.getAttribute('data-key')))
+  assert.deepEqual(order, [ini.key, epic.key, story.key])
+  // R6: drag the story's bar five days later (months: 6px a day)
+  const bar = o.locator(`.tl-row[data-key="${story.key}"] .tl-bar`)
+  const box = await bar.boundingBox()
+  await o.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+  await o.mouse.down()
+  await o.mouse.move(box.x + box.width / 2 + 30, box.y + box.height / 2, { steps: 5 })
+  await o.mouse.up()
+  for (let n = 0; n < 20 && (await owner('GET', `/issues/${story.key}`)).body.startDate === '2026-12-01'; n++) await o.waitForTimeout(250)
+  const moved = (await owner('GET', `/issues/${story.key}`)).body
+  assert.deepEqual([moved.startDate, moved.dueDate], ['2026-12-06', '2026-12-20'])
+  assert.deepEqual(o.problems, [])
+})
+

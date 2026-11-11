@@ -215,6 +215,11 @@ export async function jiraChangelog(d: Db, L: L, issueId: string, changes: Chang
       for (const f of defs) if (JSON.stringify(before[f.id] ?? null) !== JSON.stringify(after[f.id] ?? null)) item(f.name, 'custom', before[f.id], before[f.id], after[f.id], after[f.id])
       continue
     }
+    if (c.field === 'parentLinkId') {               // an epic into or out of an initiative: Advanced Roadmaps' Parent Link (spec 0803)
+      const [a, b] = [c.from ? await L.issue(String(c.from)) : null, c.to ? await L.issue(String(c.to)) : null]
+      item('Parent Link', 'custom', a?.id, a?.key, b?.id, b?.key)
+      continue
+    }
     if (c.field === 'parentId') {                   // into or out of an epic is Jira's Epic Link; a sub-item's parent is Parent
       const [a, b] = [c.from ? await L.issue(String(c.from)) : null, c.to ? await L.issue(String(c.to)) : null]
       const epic = a?.type === 'epic' || b?.type === 'epic'

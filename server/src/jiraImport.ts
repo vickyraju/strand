@@ -97,7 +97,7 @@ export async function testConnection(c: Conn, fetchImpl?: (url: string, init: an
 
 const CATEGORY: Record<string, 'todo' | 'in-progress' | 'done'> = { new: 'todo', indeterminate: 'in-progress', done: 'done' }
 const COLOR = { todo: '#64748b', 'in-progress': '#2563eb', done: '#16a34a' }
-const BUILTIN_TYPES: Record<string, string> = { epic: 'epic', story: 'story', task: 'task', bug: 'bug', 'sub-task': 'task', subtask: 'task' }
+const BUILTIN_TYPES: Record<string, string> = { epic: 'epic', story: 'story', task: 'task', bug: 'bug', 'sub-task': 'task', subtask: 'task', initiative: 'initiative' }
 /** Jira's custom field types Strand has (spec 0801's map), and Jira Software's fields Strand keeps as its own. */
 const KIND: Record<string, string> = Object.fromEntries(Object.entries({
   textfield: 'text', textarea: 'textarea', float: 'number', datepicker: 'date', datetime: 'datetime', select: 'select', multiselect: 'multiselect', radiobuttons: 'radio',
@@ -108,6 +108,8 @@ const SOFTWARE: Record<string, string> = {
   'com.pyxis.greenhopper.jira:gh-sprint': 'sprint', 'com.pyxis.greenhopper.jira:gh-epic-link': 'epicLink', 'com.pyxis.greenhopper.jira:gh-epic-status': 'epicStatus',
   'com.pyxis.greenhopper.jira:gh-epic-color': 'epicColor', 'com.pyxis.greenhopper.jira:gh-lexo-rank': 'rank', 'com.pyxis.greenhopper.jira:gh-epic-label': 'epicName',
   'com.atlassian.jira.plugin.system.customfieldtypes:jira-story-points': 'storyPoints',
+  // Advanced Roadmaps (spec 0803 R7): the Parent Link, and its target dates as Start and Due date
+  'com.atlassian.jpo:jpo-custom-field-parent': 'parentLink', 'com.atlassian.jpo:jpo-custom-field-baseline-start': 'targetStart', 'com.atlassian.jpo:jpo-custom-field-baseline-end': 'targetEnd',
 }
 /** Jira's field names for its own fields that live as custom fields (Story Points and Flagged are named, not typed, in Jira DC). */
 const NAMED: Record<string, string> = { 'story points': 'storyPoints', flagged: 'flagged' }
@@ -270,6 +272,9 @@ async function importProject(c: Ctx, key: string) {
       }
     }
   }
+  if (r.issueTypes.some((t: { name: string }) => t.name.toLowerCase() === 'initiative')) {             // Jira's Initiative type: the project's initiatives on (spec 0803)
+    await d.query('select seed_initiative_type($1)', [pid]); await d.query('update projects set initiatives = true where id = $1', [pid])
+  }
   await applyScheme(d, { me: { id: c.by ?? '', email: 'jira-import', workspaceId: ws } as any, ip: undefined } as any, pid)
   await firstBoard(d, { id: pid, workspaceId: ws, key, template }, c.by)
   // work types: Strand's for Epic, Story, Task, Bug and Sub-task; the project's own for the rest
@@ -377,19 +382,24 @@ async function importIssue(c: Ctx, key: string, pid: string, i: J, ranks: [strin
   }
   const num = Number(String(i.key).split('-').pop())
   const sp = soft('storyPoints'), flagged = soft('flagged'), epicStatus = soft('epicStatus'), epicColor = soft('epicColor'), rank = soft('rank')
+  const tStart = soft('targetStart'), tEnd = soft('targetEnd'), pLink = soft('parentLink')
   const [row] = await d.query<{ id: string }>(`insert into issues (workspace_id, project_id, number, type, title, description, status_id, priority, resolution, resolved_at, assignee_id, reporter_id,
-      labels, estimate, time_estimate, time_remaining, due_date, sprint_id, component_ids, fix_release_ids, affects_release_ids, custom, flagged, epic_status, epic_color, rank, created_at, updated_at)
-    values ($1, $2, $3, $4, $5, $6, $7, coalesce($8, (select key from priorities where workspace_id = $1 and is_default)), $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, 0, $26, $27) returning id`, [
+      labels, estimate, time_estimate, time_remaining, due_date, sprint_id, component_ids, fix_release_ids, affects_release_ids, custom, flagged, epic_status, epic_color, rank, created_at, updated_at, start_date)
+    values ($1, $2, $3, $4, $5, $6, $7, coalesce($8, (select key from priorities where workspace_id = $1 and is_default)), $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, 0, $26, $27, $28) returning id`, [
     ws, pid, num, typeKey, String(f.summary ?? '').slice(0, 500), f.description ?? '', first!.id, priority, resolution, resolution ? f.resolutiondate ?? null : null,
     await personFor(d, ws, f.assignee), await personFor(d, ws, f.reporter ?? f.creator), f.labels ?? [], sp ? Number(f[sp.id]) : null,
-    f.timeoriginalestimate != null ? Math.round(f.timeoriginalestimate / 60) : null, f.timeestimate != null ? Math.round(f.timeestimate / 60) : null, ymd(f.duedate), sprint,
+    f.timeoriginalestimate != null ? Math.round(f.timeoriginalestimate / 60) : null, f.timeestimate != null ? Math.round(f.timeestimate / 60) : null, ymd(f.duedate) ?? (tEnd ? ymd(f[tEnd.id]) : null), sprint,
     (await Promise.all((f.components ?? []).map((x: J) => mapped(d, ws, 'component', x.id)))).filter(Boolean),
     (await Promise.all((f.fixVersions ?? []).map((x: J) => mapped(d, ws, 'version', x.id)))).filter(Boolean),
     (await Promise.all((f.versions ?? []).map((x: J) => mapped(d, ws, 'version', x.id)))).filter(Boolean),
     JSON.stringify(custom), !!(flagged && f[flagged.id]?.length), typeKey === 'epic' ? (epicStatus ? f[epicStatus.id]?.value ?? 'To Do' : 'To Do') : null,
-    typeKey === 'epic' && epicColor ? String(f[epicColor.id] ?? '') || null : null, f.created ?? new Date().toISOString(), f.updated ?? f.created ?? new Date().toISOString()])
+    typeKey === 'epic' && epicColor ? String(f[epicColor.id] ?? '') || null : null, f.created ?? new Date().toISOString(), f.updated ?? f.created ?? new Date().toISOString(),
+    tStart ? ymd(f[tStart.id]) : null])
   const id = row!.id
   await remember(d, ws, 'issue', i.id, id)
+  // its Parent Link: made once the initiative is in (it may be in a project imported later)
+  const link = pLink ? f[pLink.id] : null, target = link?.data?.id ?? link?.id ?? (typeof link === 'string' || typeof link === 'number' ? link : null)
+  if (typeKey === 'epic' && target != null) await remember(d, ws, 'parent-link-wanted', id, String(target))
   await remember(d, ws, 'issue-key', i.key, id)
   if (rank) ranks.push([id, String(f[rank.id])])
   else ranks.push([id, String(num).padStart(12, '0')])
@@ -493,7 +503,14 @@ async function linkTypeFor(d: Db, ws: string, t: J) {
 }
 
 /** R6: links whose other item has been imported since are made now. */
-const linkWaiting = (ws: string) => db.query(`with ready as (delete from jira_import_links l using jira_import_map m where l.workspace_id = $1 and m.workspace_id = l.workspace_id and m.kind = 'issue' and m.jira_id = l.jira_target
+const linkWaiting = async (ws: string) => {
+  // Parent Links (spec 0803 R7) whose initiative is in now
+  await db.query(`with ready as (delete from jira_import_map w using jira_import_map m where w.workspace_id = $1 and w.kind = 'parent-link-wanted'
+      and m.workspace_id = w.workspace_id and m.kind = 'issue' and m.jira_id = w.strand_id returning w.jira_id::uuid as epic, m.strand_id::uuid as initiative)
+    update issues i set parent_link_id = ready.initiative from ready, issues t where i.id = ready.epic and t.id = ready.initiative and t.type = 'initiative'`, [ws])
+  return linkWaitingLinks(ws)
+}
+const linkWaitingLinks = (ws: string) => db.query(`with ready as (delete from jira_import_links l using jira_import_map m where l.workspace_id = $1 and m.workspace_id = l.workspace_id and m.kind = 'issue' and m.jira_id = l.jira_target
     returning l.issue_id, m.strand_id::uuid as target_id, l.type_id)
   insert into issue_links (issue_id, target_id, type) select issue_id, target_id, type_id from ready on conflict do nothing`, [ws])
 

@@ -194,6 +194,7 @@ async function restoreProject(p: { backupId: string; actorId: string | null; act
         if (table === 'statuses' && !globals.has(String(r.global_status_id))) r.global_status_id = null
         if (table === 'transitions') continue                          // the scheme applied below makes them
         if (table === 'issues' || table === 'test_folders') r.parent_id = null   // set below, once every row exists
+        if (table === 'issues') r.parent_link_id = null                          // likewise (spec 0803), if the initiative is still there
         if (NEEDS_PERSON.has(table) && !people.has(String(r.user_id))) continue
         if (groups && !groups.has(String(r.group_id))) continue        // a group removed from the directory since
         for (const k of PERSON) if (r[k] != null && !people.has(String(r[k]))) r[k] = null
@@ -211,6 +212,8 @@ async function restoreProject(p: { backupId: string; actorId: string | null; act
     for (const f of doc.tables.test_folders ?? []) if (f.parent_id) await c.query('update test_folders set parent_id = $2 where id = $1', [f.id, f.parent_id])
     for (const i of doc.tables.issues ?? []) if (i.parent_id && issueIds.has(String(i.parent_id)))
       await c.query('update issues set parent_id = $2 where id = $1', [i.id, i.parent_id])
+    for (const i of doc.tables.issues ?? []) if (i.parent_link_id)
+      await c.query('update issues set parent_link_id = $2 where id = $1 and exists (select 1 from issues where id = $2)', [i.id, i.parent_link_id])
     // the restored files must not be removed by deletions queued when the project was deleted
     await c.query('delete from file_deletions where object_key = any($1::text[])', [(doc.tables.attachments ?? []).map(a => a.object_key)])
     await c.query('update project_backups set restored_at = now() where id = $1', [b.id])

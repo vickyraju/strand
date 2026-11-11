@@ -392,7 +392,7 @@ export const priorityOptions = (): PickerOption<Priority>[] =>
 
 /** Work types to choose from: the project's (without one, every loaded project's); `allowEpic` false leaves out the parent level. */
 export const typeOptions = (project?: Pick<Project, 'types'>, allowEpic = true, all: Pick<Project, 'types'>[] = []): PickerOption<IssueType>[] =>
-  typeList(project, all).filter(t => allowEpic || t.key !== 'epic')
+  typeList(project, all).filter(t => allowEpic || (t.key !== 'epic' && t.key !== 'initiative'))
     .map(t => ({ value: t.key, label: t.name, icon: <TypeIcon type={t.key} project={project} /> }))
 
 export const userOptions = (users: User[]): PickerOption<string | undefined>[] => [

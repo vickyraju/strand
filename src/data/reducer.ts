@@ -129,6 +129,8 @@ export interface Project {
   securityLevels?: SecurityLevel[]
   /** Test management is on (Xray's work types) */
   testing?: boolean
+  /** The Initiative work type is on (spec 0803) */
+  initiatives?: boolean
   /** Work types that count as requirements for coverage (unset: all but Bug and the testing types) */
   requirementTypes?: string[]
   /** Components (Jira's): parts of the project, each with a lead and a default assignee for new work in it */
@@ -352,6 +354,8 @@ export interface Issue {
   startDate?:  string
   sprintId?:   string
   parentId?:   string
+  /** Epics: the initiative they belong to (Jira's Parent Link, spec 0803) */
+  parentLinkId?: string
   watcherIds:  string[]
   links:       IssueLink[]
   attachments: Attachment[]
@@ -484,7 +488,7 @@ export interface State {
 }
 
 export type ProjectPatch = Partial<Pick<Project,
-  'name' | 'description' | 'color' | 'leadId' | 'statuses' | 'transitions' | 'layout' | 'boardPrefs' | 'rules' | 'fields' | 'releases' | 'templates' | 'types' | 'components' | 'securityLevels' | 'testing' | 'requirementTypes'>>
+  'name' | 'description' | 'color' | 'leadId' | 'statuses' | 'transitions' | 'layout' | 'boardPrefs' | 'rules' | 'fields' | 'releases' | 'templates' | 'types' | 'components' | 'securityLevels' | 'testing' | 'initiatives' | 'requirementTypes'>>
 export type IssuePatch = Partial<Omit<Issue, 'id' | 'key' | 'projectId' | 'createdAt' | 'watcherIds' | 'links' | 'attachments' | 'rank' | 'worklogs'>>   // reporterId: project admins (spec 0203)
 export type NewIssue = Pick<Issue, 'projectId' | 'title'> & Partial<Pick<Issue,
   'type' | 'description' | 'status' | 'priority' | 'assigneeId' | 'labels' | 'estimate' | 'dueDate' | 'startDate' | 'sprintId' | 'parentId' | 'custom' | 'fixReleaseIds' | 'timeEstimate' | 'componentIds' | 'affectsReleaseIds' | 'testFolderId' | 'epicStatus'>>

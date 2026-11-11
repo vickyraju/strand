@@ -21,7 +21,7 @@ const NUMBERS: Record<string, string> = {
 }
 const EMPTY: Record<string, string> = {
   flagged: 'not i.flagged', epicStatus: 'i.epic_status is null', assignee: 'i.assignee_id is null', reporter: 'i.reporter_id is null', labels: 'cardinality(i.labels) = 0', component: 'cardinality(i.component_ids) = 0',
-  fixVersion: 'cardinality(i.fix_release_ids) = 0', affectedVersion: 'cardinality(i.affects_release_ids) = 0', sprint: 'i.sprint_id is null', parent: 'i.parent_id is null',
+  fixVersion: 'cardinality(i.fix_release_ids) = 0', affectedVersion: 'cardinality(i.affects_release_ids) = 0', sprint: 'i.sprint_id is null', parent: 'i.parent_id is null', parentLink: 'i.parent_link_id is null',
   voter: 'not exists (select 1 from issue_votes vv where vv.issue_id = i.id)', watcher: 'not exists (select 1 from issue_watchers ww where ww.issue_id = i.id)',
   resolution: 'i.resolution is null', category: 'p.category_id is null', description: `coalesce(i.description, '') = ''`,
   due: 'i.due_date is null', start: 'i.start_date is null', resolved: 'i.resolved_at is null',
@@ -289,6 +289,7 @@ export async function jqlToSql(d: Db, me: Me, q: Query, args: unknown[]): Promis
       case 'devNoneText': return 'false'
       case 'epicStatus': return `lower(i.epic_status) = lower(${put(text(v, 'Epic Status'))})`
       case 'parent': return `i.parent_id in (select pi.id from issues pi join projects pp on pp.id = pi.project_id where pp.key || '-' || pi.number = upper(${put(text(v, 'parent'))}))`
+      case 'parentLink': return `i.parent_link_id in (select pi.id from issues pi join projects pp on pp.id = pi.project_id where pp.key || '-' || pi.number = upper(${put(text(v, 'Parent Link'))}))`   // spec 0803
       case 'resolution': {
         const t = text(v, 'resolution')
         return t.toLowerCase() === 'unresolved' ? 'i.resolution is null' : `lower(i.resolution) = lower(${put(t)})`

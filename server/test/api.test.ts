@@ -3561,6 +3561,7 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
   await call('POST', '/api/v1/projects/MTX/groups', { groupId: group, role: 'viewer' })
   const view = (await call('POST', '/api/v1/views', { name: 'Matrix view', filters: {} })).body.id
   const subscription = (await call('POST', `/api/v1/views/${view}/subscriptions`, { cron: '0 0 7 ? * *' })).body.id
+  const plan = (await call('POST', '/api/v1/plans', { name: 'Matrix plan', projectKeys: ['MTX'] })).body.id
   const token = (await call('POST', '/api/v1/me/tokens', { name: 'mine' })).body.id
   const notification = (await pool.query(
     `insert into notifications (user_id, issue_id, kind, text) select $1, i.id, 'assigned', 'matrix' from issues i join projects p on p.id = i.project_id where p.key = 'MTX' limit 1 returning id`, [ownerId])).rows[0].id
@@ -3758,6 +3759,9 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     'POST /notifications/read-all': ['any', '/notifications/read-all'],
     'GET /views': ['any', '/views'], 'POST /views': ['any', '/views', { name: 'v', filters: {} }],
     'PATCH /views/{id}': ['own', `/views/${view}`, { name: 'x' }], 'DELETE /views/{id}': ['own', `/views/${view}`],
+    'PUT /projects/{key}/initiatives': ['padmin', `/projects/${K}/initiatives`, { enabled: false }], 'GET /initiatives': ['any', '/initiatives'],   // 0803.R1
+    'GET /plans': ['any', '/plans'], 'POST /plans': ['any', '/plans', { name: `Plan ${Math.random()}`, projectKeys: [K] }], 'GET /plans/{id}': ['any', `/plans/${plan}`],   // 0803.R2
+    'GET /plans/{id}/timeline': ['any', `/plans/${plan}/timeline`], 'PATCH /plans/{id}': ['own', `/plans/${plan}`, { doneDays: 30 }], 'DELETE /plans/{id}': ['own', `/plans/${plan}`],
     'POST /admin/jira-import/test': ['gadmin', '/admin/jira-import/test', { url: 'https://jira.invalid', token: 'x' }],   // 0802.R1
     'GET /admin/jira-imports': ['gadmin', '/admin/jira-imports'], 'GET /admin/jira-imports/{id}': ['gadmin', `/admin/jira-imports/${none}`],
     'POST /admin/jira-imports': ['gadmin', '/admin/jira-imports', { url: 'https://jira.invalid', token: 'x', projectKeys: ['ABC'], dryRun: true }],
@@ -3960,7 +3964,7 @@ test('system settings: admins change policies at runtime (validated, audited); e
   const { clearSettingsCache } = await import('../src/settings.ts')
   const put = (key: string, value: object, who = 'owner@x.com') => call('PUT', `/api/v1/admin/settings/${key}`, value, who)
   const all = (await call('GET', '/api/v1/admin/settings')).body
-  assert.deepEqual(all.map((s: any) => s.key), ['rateLimiting', 'announcement', 'attachments', 'accessTokens', 'searchAndBulk', 'filterSubscriptions', 'signIn', 'groups', 'voting', 'webhooks', 'automation', 'testing', 'dueReminders', 'email', 'emailBatching', 'userDefaults', 'deletedItems', 'projectKeys', 'timeTracking'])
+  assert.deepEqual(all.map((s: any) => s.key), ['rateLimiting', 'announcement', 'attachments', 'accessTokens', 'searchAndBulk', 'filterSubscriptions', 'plans', 'signIn', 'groups', 'voting', 'webhooks', 'automation', 'testing', 'dueReminders', 'email', 'emailBatching', 'userDefaults', 'deletedItems', 'projectKeys', 'timeTracking'])
   assert.equal(all.find((s: any) => s.key === 'rateLimiting').value.enabled, false)                  // no limit unless an admin sets one
   assert.equal((await call('GET', '/api/v1/admin/settings', undefined, 'set.member@x.com')).status, 403)
   assert.equal((await put('attachments', { enabled: true, maxSizeMb: 5 }, 'set.member@x.com')).status, 403)
@@ -3970,7 +3974,7 @@ test('system settings: admins change policies at runtime (validated, audited); e
 
   // public settings: what the web app needs, for anyone signed in (not rate limiting)
   const pub = (await call('GET', '/api/v1/settings/public', undefined, 'set.member@x.com')).body
-  assert.deepEqual(Object.keys(pub).sort(), ['accessTokens', 'announcement', 'attachments', 'dueReminders', 'filterSubscriptions', 'groups', 'priorities', 'projectKeys', 'resolutions', 'searchAndBulk', 'testing', 'timeTracking', 'userDefaults', 'voting'])
+  assert.deepEqual(Object.keys(pub).sort(), ['accessTokens', 'announcement', 'attachments', 'dueReminders', 'filterSubscriptions', 'groups', 'plans', 'priorities', 'projectKeys', 'resolutions', 'searchAndBulk', 'testing', 'timeTracking', 'userDefaults', 'voting'])
 
   // attachments: size limit and the switch
   await call('POST', '/api/v1/projects', { name: 'Settings', key: 'SET', template: 'kanban' })
@@ -6455,14 +6459,15 @@ test('[0802.R1][0802.R2][0802.R3][0802.R4][0802.R5][0802.R6][0802.R7] the Jira i
   const at = '2026-01-05T09:00:00.000+0000'
   const ann = { key: 'ann', name: 'ann', displayName: 'Ann Jira', emailAddress: 'mig.ann@x.com' }, bob = { key: 'bob', name: 'bob', displayName: 'Bob Jira', emailAddress: 'mig.bob@x.com' }
   const st = (id: string, name: string, key: string) => ({ id, name, statusCategory: { key } })
-  const F = { team: 'customfield_10001', sprint: 'customfield_10002', epic: 'customfield_10003', points: 'customfield_10004', rank: 'customfield_10005', mood: 'customfield_10006' }
+  const F = { team: 'customfield_10001', sprint: 'customfield_10002', epic: 'customfield_10003', points: 'customfield_10004', rank: 'customfield_10005', mood: 'customfield_10006',
+    plink: 'customfield_10008', tstart: 'customfield_10009', tend: 'customfield_10010' }
   const issue = (id: string, key: string, type: { id: string; name: string }, fields: Record<string, unknown>, histories: unknown[] = []) => ({ id, key, fields: {
     summary: key, issuetype: type, status: st('10', 'Backlog', 'new'), priority: { name: 'Medium' }, reporter: ann, creator: ann, created: at, updated: at, labels: [],
     comment: { total: 0, comments: [] }, worklog: { total: 0, worklogs: [] }, watches: { watchCount: 0 }, votes: { votes: 0 }, issuelinks: [], attachment: [], ...fields }, changelog: { histories } })
-  const EPIC = { id: '2', name: 'Epic' }, BUG = { id: '1', name: 'Bug' }, SUB = { id: '3', name: 'Sub-task', subtask: true }
+  const EPIC = { id: '2', name: 'Epic' }, BUG = { id: '1', name: 'Bug' }, SUB = { id: '3', name: 'Sub-task', subtask: true }, INI = { id: '9', name: 'Initiative' }
   const issues: Record<string, unknown[]> = {
     MIG: [
-      issue('1001', 'MIG-1', EPIC, { summary: 'Big epic', status: st('11', 'Doing it', 'indeterminate') }),
+      issue('1001', 'MIG-1', EPIC, { summary: 'Big epic', status: st('11', 'Doing it', 'indeterminate'), [F.plink]: { data: { id: 1009, key: 'MIG-9' } }, [F.tstart]: '2026-03-01', [F.tend]: '2026-05-31' }),
       issue('1002', 'MIG-2', BUG, { summary: 'Broken thing', status: st('12', 'Shipped', 'done'), resolution: { name: 'Done' }, resolutiondate: '2026-02-02T10:00:00.000+0000',
         assignee: bob, priority: { name: 'High' }, labels: ['api'], components: [{ id: '200' }], fixVersions: [{ id: '100' }], timeoriginalestimate: 7200,
         [F.team]: { value: 'Core' }, [F.mood]: 'happy', [F.points]: 5, [F.rank]: '0|i0001:', [F.sprint]: ['com.atlassian.greenhopper.service.sprint.Sprint@1[id=7,rapidViewId=5,state=ACTIVE,name=Sprint 1]'], [F.epic]: 'MIG-1',
@@ -6473,11 +6478,12 @@ test('[0802.R1][0802.R2][0802.R3][0802.R4][0802.R5][0802.R6][0802.R7] the Jira i
         [{ author: ann, created: '2026-01-06T09:00:00.000+0000', items: [{ field: 'status', from: '10', fromString: 'Backlog', to: '11', toString: 'Doing it' }] },
          { author: bob, created: '2026-01-07T09:00:00.000+0000', items: [{ field: 'status', from: '11', fromString: 'Doing it', to: '12', toString: 'Shipped' }, { field: 'assignee', from: null, fromString: null, to: 'bob', toString: 'Bob Jira' }] }]),
       issue('1005', 'MIG-5', SUB, { summary: 'Small part', parent: { id: '1002', key: 'MIG-2' } }),
+      issue('1009', 'MIG-9', INI, { summary: 'The big goal' }),                // after the epic that links to it
     ],
     NXT: [issue('2001', 'NXT-1', BUG, { summary: 'Next door' })],
   }
   const projects: Record<string, unknown> = {
-    MIG: { id: '10000', key: 'MIG', name: 'Migrated', description: 'From Jira', lead: ann, issueTypes: [BUG, EPIC, SUB, { id: '4', name: 'Spike' }] },
+    MIG: { id: '10000', key: 'MIG', name: 'Migrated', description: 'From Jira', lead: ann, issueTypes: [BUG, EPIC, SUB, { id: '4', name: 'Spike' }, INI] },
     NXT: { id: '10001', key: 'NXT', name: 'Next', description: '', lead: ann, issueTypes: [BUG] },
   }
   let base = ''
@@ -6491,7 +6497,10 @@ test('[0802.R1][0802.R2][0802.R3][0802.R4][0802.R5][0802.R6][0802.R7] the Jira i
       { id: F.epic, name: 'Epic Link', custom: true, schema: { custom: 'com.pyxis.greenhopper.jira:gh-epic-link' } },
       { id: F.points, name: 'Story Points', custom: true, schema: { custom: 'com.atlassian.jira.plugin.system.customfieldtypes:float' } },
       { id: F.rank, name: 'Rank', custom: true, schema: { custom: 'com.pyxis.greenhopper.jira:gh-lexo-rank' } },
-      { id: F.mood, name: 'Mood', custom: true, schema: { custom: 'com.example:mood' } }]
+      { id: F.mood, name: 'Mood', custom: true, schema: { custom: 'com.example:mood' } },
+      { id: F.plink, name: 'Parent Link', custom: true, schema: { custom: 'com.atlassian.jpo:jpo-custom-field-parent' } },
+      { id: F.tstart, name: 'Target start', custom: true, schema: { custom: 'com.atlassian.jpo:jpo-custom-field-baseline-start' } },
+      { id: F.tend, name: 'Target end', custom: true, schema: { custom: 'com.atlassian.jpo:jpo-custom-field-baseline-end' } }]
     const proj = /^\/rest\/api\/2\/project\/([A-Z]+)(\/.*)?$/.exec(p)
     if (proj) {
       const [, k, rest] = proj
@@ -6554,9 +6563,9 @@ test('[0802.R1][0802.R2][0802.R3][0802.R4][0802.R5][0802.R6][0802.R7] the Jira i
     const dry = await start(['MIG'], true)
     assert.equal(dry.status, 'done')
     const dp = dry.report.projects[0]
-    assert.deepEqual([dp.key, dp.workItems, dp.versions, dp.components, dp.sprints, dp.stop], ['MIG', 3, 1, 1, 1, null])
-    assert.deepEqual(dp.issueTypes.map((t: any) => [t.name, t.existing]), [['Bug', true], ['Epic', true], ['Sub-task', true], ['Spike', false]])
-    assert.deepEqual(dp.customFields.map((f: any) => [f.name, f.as]).sort(), [['Epic Link', 'Strand’s own'], ['Migration squad', 'new'], ['Mood', 'left out'], ['Rank', 'Strand’s own'], ['Sprint', 'Strand’s own'], ['Story Points', 'Strand’s own']])
+    assert.deepEqual([dp.key, dp.workItems, dp.versions, dp.components, dp.sprints, dp.stop], ['MIG', 4, 1, 1, 1, null])
+    assert.deepEqual(dp.issueTypes.map((t: any) => [t.name, t.existing]), [['Bug', true], ['Epic', true], ['Sub-task', true], ['Spike', false], ['Initiative', true]])
+    assert.deepEqual(dp.customFields.map((f: any) => [f.name, f.as]).sort(), [['Epic Link', 'Strand’s own'], ['Migration squad', 'new'], ['Mood', 'left out'], ['Parent Link', 'Strand’s own'], ['Rank', 'Strand’s own'], ['Sprint', 'Strand’s own'], ['Story Points', 'Strand’s own'], ['Target end', 'Strand’s own'], ['Target start', 'Strand’s own']])
     assert.deepEqual([dry.report.people.matched, dry.report.people.new], [1, 1])
     assert.equal((await pool.query(`select 1 from projects where key = 'MIG'`)).rows.length, 0)
     // R3, R4, R5: the import
@@ -6568,7 +6577,10 @@ test('[0802.R1][0802.R2][0802.R3][0802.R4][0802.R5][0802.R6][0802.R7] the Jira i
     const p = (await call('GET', '/api/v1/projects/MIG')).body
     assert.deepEqual([p.name, p.description, p.statuses.map((x: any) => x.name)], ['Migrated', 'From Jira', ['Backlog', 'Doing it', 'Shipped']])
     const keys = (await call('GET', `/api/v1/search?jql=${encodeURIComponent('project = MIG ORDER BY key')}`)).body.items.map((i: any) => i.key)
-    assert.deepEqual(keys, ['MIG-1', 'MIG-2', 'MIG-5'])
+    assert.deepEqual(keys, ['MIG-1', 'MIG-2', 'MIG-5', 'MIG-9'])
+    // spec 0803 R7: Advanced Roadmaps' Parent Link (to an initiative imported after its epic) and Target dates
+    const mig1 = (await call('GET', '/api/v1/issues/MIG-1')).body, mig9 = (await call('GET', '/api/v1/issues/MIG-9')).body
+    assert.deepEqual([mig9.type, mig1.parentLinkId, mig1.startDate, mig1.dueDate, p.initiatives], ['initiative', mig9.id, '2026-03-01', '2026-05-31', true])
     const b = (await call('GET', '/api/v1/issues/MIG-2')).body
     const people = (await pool.query(`select email, active from users where email in ('mig.ann@x.com', 'mig.bob@x.com') order by email`)).rows
     assert.deepEqual(people, [{ email: 'mig.ann@x.com', active: true }, { email: 'mig.bob@x.com', active: false }])   // Bob made, deactivated
@@ -6601,11 +6613,102 @@ test('[0802.R1][0802.R2][0802.R3][0802.R4][0802.R5][0802.R6][0802.R7] the Jira i
     assert.equal(nxt.report.waitingLinks, 0)
     assert.ok((await call('GET', '/api/v1/issues/MIG-2?expand=links')).body.links.some((l: any) => l.key === 'NXT-1'))
     // a new item continues after Jira's numbers
-    assert.equal((await call('POST', '/api/v1/projects/MIG/issues', { title: 'After import' })).body.key, 'MIG-6')
+    assert.equal((await call('POST', '/api/v1/projects/MIG/issues', { title: 'After import' })).body.key, 'MIG-10')
     // the token went to Jira (only GETs) and is never returned
     assert.ok(seen.every(x => x === 'GET Bearer pat-123'))
     assert.ok(!JSON.stringify((await call('GET', '/api/v1/admin/jira-imports')).body).includes('pat-123'))
   } finally { jiraServer.close() }
+})
+
+test('[0803.R1] initiatives: a project turns them on; only epics take a Parent Link, to an initiative in any project; history and JQL', { skip }, async () => {
+  await call('POST', '/api/v1/projects', { name: 'Portfolio', key: 'PFO', template: 'kanban' })
+  await call('POST', '/api/v1/projects', { name: 'Delivery', key: 'DLV', template: 'kanban' })
+  await join('DLV', 'pf.dev@x.com')
+  assert.equal((await call('POST', '/api/v1/projects/PFO/issues', { title: 'Too early', type: 'initiative' })).status, 400)   // not on yet
+  assert.deepEqual((await call('PUT', '/api/v1/projects/PFO/initiatives', { enabled: true })).body, { enabled: true })
+  assert.equal((await call('PUT', '/api/v1/projects/PFO/initiatives', { enabled: true }, 'pf.dev@x.com')).status, 404)       // not a member of it
+  const p = (await call('GET', '/api/v1/projects/PFO')).body
+  assert.ok(p.initiatives && p.types.some((t: any) => t.key === 'initiative' && t.name === 'Initiative'))
+  const ini = (await call('POST', '/api/v1/projects/PFO/issues', { title: 'Grow revenue', type: 'initiative' })).body
+  const epic = (await call('POST', '/api/v1/projects/DLV/issues', { title: 'Checkout', type: 'epic', parentLinkId: ini.id })).body
+  assert.equal(epic.parentLinkId, ini.id)                                                           // across projects
+  const story = (await call('POST', '/api/v1/projects/DLV/issues', { title: 'Pay button', parentId: epic.id })).body
+  const why = async (r: Promise<any>) => { const x = await r; return [x.status, Object.keys(x.body.errors ?? {})[0]] }
+  assert.deepEqual(await why(call('PATCH', `/api/v1/issues/${story.key}`, { parentLinkId: ini.id })), [400, 'parentLinkId'])           // only epics
+  assert.deepEqual(await why(call('PATCH', `/api/v1/issues/${story.key}`, { parentId: ini.id })), [400, 'parentId'])                   // an initiative is no parent
+  assert.deepEqual(await why(call('PATCH', `/api/v1/issues/${epic.key}`, { parentLinkId: story.id })), [400, 'parentLinkId'])          // not an initiative
+  const bare = (await call('POST', '/api/v1/projects/DLV/issues', { title: 'Bare epic', type: 'epic', parentLinkId: ini.id })).body
+  assert.deepEqual(await why(call('PATCH', `/api/v1/issues/${bare.key}`, { type: 'story' })), [400, 'parentLinkId'])                   // an epic in an initiative stays an epic
+  assert.deepEqual(await why(call('PATCH', `/api/v1/issues/${ini.key}`, { type: 'task' })), [400, 'type'])                             // an initiative with epics stays one
+  assert.deepEqual(await why(call('POST', '/api/v1/projects/PFO/issues', { title: 'x', type: 'initiative', parentId: ini.id })), [400, 'parentId'])
+  assert.equal((await call('POST', '/api/v1/projects/DLV/issues', { title: 'Dev epic', type: 'epic', parentLinkId: ini.id }, 'pf.dev@x.com')).status, 400)   // an initiative they can't see
+  // history and JQL
+  await call('PATCH', `/api/v1/issues/${epic.key}`, { parentLinkId: null })
+  await call('PATCH', `/api/v1/issues/${epic.key}`, { parentLinkId: ini.id })
+  const hist = (await call('GET', `/api/v1/issues/${epic.key}/activity?limit=20`)).body.items.filter((a: any) => a.field === 'parentLinkId').map((a: any) => [a.fromString, a.toString])
+  assert.deepEqual(hist, [[null, ini.key], [ini.key, null]])
+  const keys = async (jql: string) => (await call('GET', `/api/v1/search?jql=${encodeURIComponent(jql)}`)).body.items.map((i: any) => i.key).sort()
+  assert.deepEqual(await keys(`"Parent Link" = ${ini.key}`), [epic.key, bare.key].sort())
+  assert.deepEqual(await keys(`project = DLV AND "Parent Link" is empty`), [story.key])
+  assert.deepEqual((await call('GET', '/api/v1/initiatives?query=revenue')).body.map((i: any) => i.key), [ini.key])
+  assert.deepEqual((await call('GET', '/api/v1/initiatives', undefined, 'pf.dev@x.com')).body, [])
+  // off again only without initiatives
+  assert.equal((await call('PUT', '/api/v1/projects/PFO/initiatives', { enabled: false })).status, 409)
+})
+
+test('[0803.R2][0803.R3][0803.R4][0803.R6] plans: from projects or a saved view, the timeline as each person sees it, dependencies, releases, sprints, live edits', { skip }, async () => {
+  await call('POST', '/api/v1/projects', { name: 'Plan goals', key: 'PLG', template: 'kanban' })
+  await call('POST', '/api/v1/projects', { name: 'Plan work', key: 'PLW', template: 'scrum' })
+  await call('POST', '/api/v1/projects', { name: 'Plan secret', key: 'PLS', template: 'kanban' })
+  await join('PLW', 'pl.dev@x.com')
+  await call('PUT', '/api/v1/projects/PLG/initiatives', { enabled: true })
+  const mk = async (key: string, b: object) => (await call('POST', `/api/v1/projects/${key}/issues`, b)).body
+  const ini = await mk('PLG', { title: 'Win the market', type: 'initiative' })
+  const epic = await mk('PLW', { title: 'Mobile app', type: 'epic', parentLinkId: ini.id, startDate: '2026-12-01', dueDate: '2027-01-31' })
+  const a = await mk('PLW', { title: 'Login screen', parentId: epic.id, startDate: '2026-12-01', dueDate: '2026-12-20' })
+  const b = await mk('PLW', { title: 'Push messages', parentId: epic.id, startDate: '2026-12-10', dueDate: '2027-01-10' })
+  await mk('PLW', { title: 'A sub-item', parentId: a.id })                                         // not on plans
+  const [, , done] = (await call('GET', '/api/v1/projects/PLW')).body.statuses.slice(-3)
+  const old = await mk('PLW', { title: 'Finished long ago' })
+  await call('PATCH', `/api/v1/issues/${old.key}`, { statusId: (await call('GET', '/api/v1/projects/PLW')).body.statuses.find((s: any) => s.category === 'done').id })
+  await pool.query(`set session_replication_role = replica; update issues set resolved_at = now() - interval '40 days', updated_at = now() - interval '40 days' where id = '${old.id}'; set session_replication_role = origin`)   // past the resolution trigger
+  await call('POST', `/api/v1/issues/${a.key}/links`, { type: 'blocks', targetKey: b.key })
+  await call('POST', '/api/v1/projects/PLW/releases', { name: '1.0', releaseDate: '2027-01-15' })
+  await call('POST', '/api/v1/projects/PLW/sprints', { name: 'Sprint 9' })
+  await mk('PLS', { title: 'Hidden from the dev' })
+  void done
+  // R2: a plan from projects
+  assert.equal((await call('POST', '/api/v1/plans', { name: 'Nothing' })).status, 400)
+  const plan = (await call('POST', '/api/v1/plans', { name: 'Mobile 2027', projectKeys: ['PLW', 'PLS'] })).body
+  assert.deepEqual(plan.projects.map((p: any) => p.key), ['PLS', 'PLW'])
+  assert.equal((await call('POST', '/api/v1/plans', { name: 'mobile 2027', projectKeys: ['PLW'] })).status, 409)
+  // R3: the timeline: the items, the initiative its epic belongs to (from another project), no sub-items, no long-finished work
+  const tl = (await call('GET', `/api/v1/plans/${plan.id}/timeline`)).body
+  const titles = tl.items.map((i: any) => i.title).sort()
+  assert.deepEqual(titles, ['Hidden from the dev', 'Login screen', 'Mobile app', 'Push messages', 'Win the market'])
+  assert.deepEqual(tl.dependencies, [{ fromId: a.id, toId: b.id }])
+  assert.deepEqual([tl.releases.map((r: any) => r.name), tl.sprints.map((s: any) => s.name), tl.truncated], [['1.0'], ['Sprint 9'], false])
+  // only what each person sees: the developer doesn't see PLS (nor the initiative's project)
+  const dev = (await call('GET', `/api/v1/plans/${plan.id}/timeline`, undefined, 'pl.dev@x.com')).body
+  assert.deepEqual(dev.items.map((i: any) => i.title).sort(), ['Login screen', 'Mobile app', 'Push messages'])
+  assert.equal((await call('GET', '/api/v1/plans', undefined, 'pl.dev@x.com')).body.some((p: any) => p.id === plan.id), true)
+  // R2: only the owner (or a system administrator) changes it
+  assert.equal((await call('PATCH', `/api/v1/plans/${plan.id}`, { name: 'Mine now' }, 'pl.dev@x.com')).status, 403)
+  assert.equal((await call('DELETE', `/api/v1/plans/${plan.id}`, undefined, 'pl.dev@x.com')).status, 403)
+  // R2: from a saved view; R3: the limit
+  const view = (await call('POST', '/api/v1/views', { name: 'Epic work', filters: { q: '', resolution: 'open', jql: `project = PLW AND "Epic Link" = ${epic.key}`.replace('"Epic Link"', 'parent') } })).body
+  const byView = (await call('POST', '/api/v1/plans', { name: 'By view', viewId: view.id })).body
+  assert.deepEqual((await call('GET', `/api/v1/plans/${byView.id}/timeline`)).body.items.map((i: any) => i.title).sort(), ['Login screen', 'Push messages'])
+  await call('PUT', '/api/v1/admin/settings/plans', { maxItems: 100 })
+  assert.equal((await call('GET', `/api/v1/plans/${plan.id}/timeline`)).body.maxItems, 100)
+  await call('PUT', '/api/v1/admin/settings/plans', { maxItems: 5000 })
+  // R6: a drag is an edit: the item's dates change, with history
+  await call('PATCH', `/api/v1/issues/${b.key}`, { startDate: '2026-12-21', dueDate: '2027-01-12' })
+  const after = (await call('GET', `/api/v1/plans/${plan.id}/timeline`)).body.items.find((i: any) => i.id === b.id)
+  assert.deepEqual([after.startDate, after.dueDate], ['2026-12-21', '2027-01-12'])
+  assert.equal((await call('PATCH', `/api/v1/plans/${plan.id}`, { doneDays: 60 })).body.doneDays, 60)
+  assert.ok((await call('GET', `/api/v1/plans/${plan.id}/timeline`)).body.items.some((i: any) => i.id === old.id))   // within 60 days now
+  assert.equal((await call('DELETE', `/api/v1/plans/${plan.id}`)).status, 204)
 })
 
 test('[0705.R2] a webhook never reaches private addresses, whatever its name resolves to', { skip }, async () => {

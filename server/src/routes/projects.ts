@@ -644,6 +644,28 @@ const plugin: FastifyPluginAsyncZod = async app => {
     })
   })
 
+  // Initiatives (spec 0803 R1): the built-in Initiative work type, on or off (off only while the project has none)
+  app.put('/projects/:key/initiatives', { schema: { tags: T.config, summary: 'Turn the Initiative work type on or off for a project (project admins)', params: keyP,
+    body: z.object({ enabled: z.boolean() }) } }, async req => {
+    const p = await projectByKey(db, req, req.params.key)
+    await requireProjectAdmin(req, p)
+    return tx(async d => {
+      const [cur] = await d.query<{ initiatives: boolean }>('select initiatives from projects where id = $1 for update', [p.id])
+      if (cur!.initiatives === req.body.enabled) return { enabled: cur!.initiatives }
+      if (req.body.enabled) await d.query('select seed_initiative_type($1)', [p.id])
+      else {
+        const [{ n }] = await d.query<{ n: number }>(`select count(*)::int as n from issues where project_id = $1 and type = 'initiative' and deleted_at is null`, [p.id]) as any
+        if (n) throw new HttpError(409, `${n} work items are initiatives: change their type or delete them first`)
+        await d.query(`delete from issues where project_id = $1 and type = 'initiative'`, [p.id])     // in the trash only
+        await d.query(`delete from work_types where project_id = $1 and key = 'initiative'`, [p.id])
+      }
+      await applyScheme(d, req, p.id)                                                    // the type has a workflow
+      await d.query('update projects set initiatives = $2 where id = $1', [p.id, req.body.enabled])
+      await audit(d, req, { action: req.body.enabled ? 'project.initiatives.enabled' : 'project.initiatives.disabled', type: 'project', id: p.id, name: p.key, project: p })
+      return { enabled: req.body.enabled }
+    })
+  })
+
   // ── Work types (Jira's issue types): the built-in four can be renamed and recoloured; a project can add its own,
   // and removing one moves its items to another type ──
   const ICONS = ['zap', 'bookmark', 'check', 'bug', 'flag', 'star', 'wrench', 'book', 'shield', 'lightbulb', 'rocket', 'circle', 'flask', 'clipboard', 'layers', 'map', 'play'] as const
@@ -688,7 +710,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     await tx(async d => {
       const [t] = await d.query<any>('select * from work_types where project_id = $1 and key = $2 for update', [p.id, req.params.typeKey])
       if (!t) throw new HttpError(404, 'No such work type')
-      if (['epic', 'story', 'task', 'bug', ...TEST_TYPES].includes(t.key)) throw new HttpError(409, `${t.name} is built in: rename it instead`)
+      if (['epic', 'story', 'task', 'bug', 'initiative', ...TEST_TYPES].includes(t.key)) throw new HttpError(409, `${t.name} is built in: ${t.key === 'initiative' ? 'turn Initiatives off instead' : 'rename it instead'}`)
       const [{ n }] = await d.query<{ n: number }>('select count(*)::int as n from issues where project_id = $1 and type = $2', [p.id, t.key]) as any
       const moveTo = req.query.moveTo
       if (n && !moveTo) throw new HttpError(409, `${n} work items are of this type: choose a type to move them to`)

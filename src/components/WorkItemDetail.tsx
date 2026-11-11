@@ -37,6 +37,7 @@ import { TimeField } from './TimeTracking'
 import { TemplateDialog, blankTemplate } from './TemplatesImport'
 import DevelopmentPanel from './DevelopmentPanel'
 import MoveDialog from './MoveDialog'
+import { InitiativeField, InitiativeEpics } from './Initiatives'
 import { issueSync } from '../api/sync'
 import { mapIssue } from '../api/map'
 import { usePublicSettings } from '../api/settings-public'
@@ -319,7 +320,8 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
 
           <Attachments issue={issue} pickRef={attachRef} />
 
-          {(issue.type === 'epic' || !issue.parentId) && (
+          {apiEnabled && issue.type === 'initiative' && <InitiativeEpics issue={issue} />}
+          {(issue.type === 'epic' || !issue.parentId) && issue.type !== 'initiative' && (
             <section className="detail-section">
               <div className="section-title-row">
                 <h2 className="section-title">{issue.type === 'epic' ? 'Work in this epic' : 'Sub-items'}</h2>
@@ -511,7 +513,12 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
                   onChange={epicStatus => set({ epicStatus })} className="field-btn" title="Epic Status" trigger={<>{issue.epicStatus ?? 'To Do'}</>} />
               </Field>
             )}
-            {issue.type !== 'epic' && (
+            {issue.type === 'epic' && apiEnabled && (
+              <Field label="Initiative" rule={fr('parentLinkId')}>
+                <InitiativeField issue={issue} onChange={parentLinkId => set({ parentLinkId })} />
+              </Field>
+            )}
+            {issue.type !== 'epic' && issue.type !== 'initiative' && (
               <Field label="Parent" rule={fr('parentId')}>
                 <Picker value={issue.parentId} search className="field-btn" title="Parent"
                   options={[

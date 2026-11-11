@@ -11,6 +11,8 @@ export type Route =
   | { name: 'inbox' }
   | { name: 'search'; q: string; view?: string }
   | { name: 'projects' }
+  /** Plans (spec 0803): the list, or one plan */
+  | { name: 'plans'; id?: string }
   | { name: 'settings' }
   /** `item`: a page within the section (a group, a workflow, a settings page, a Workflows tab) */
   | { name: 'admin'; section?: AdminSection; item?: string }
@@ -33,6 +35,7 @@ export function parse(pathname: string, search: string): { route: Route; peek?: 
   else if (a === 'search')        route = { name: 'search', q: params.get('q') ?? '', view: params.get('view') ?? undefined }
   else if (a === 'dashboards')    route = { name: 'home' }   // old bookmarks: the Dashboards page is gone, a project's Summary replaces it
   else if (a === 'projects' && !b) route = { name: 'projects' }
+  else if (a === 'plans')         route = { name: 'plans', ...(b ? { id: b } : {}) }
   else if (a === 'settings')      route = { name: 'settings' }
   else if (a === 'groups')        route = { name: 'admin', section: 'groups' }   // old address: groups live in Administration / Configuration
   else if (a === 'admin' && (!b || (ADMIN as string[]).includes(b))) route = { name: 'admin', section: b as AdminSection | undefined, ...(b && c ? { item: c } : {}) }
@@ -56,6 +59,7 @@ export function href(route: Route, peek?: string): string {
       return `/search${str ? `?${str}` : ''}`
     }
     case 'projects':  return `/projects${q}`
+    case 'plans':     return `/plans${route.id ? `/${encodeURIComponent(route.id)}` : ''}${q}`
     case 'settings':  return `/settings${q}`
     case 'admin':     return `/admin${route.section ? `/${route.section}` : ''}${route.section && route.item ? `/${route.item}` : ''}`
     case 'issue':     return `/i/${route.key}`

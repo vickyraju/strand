@@ -5,6 +5,7 @@ import SecurityLevelsPanel from './SecurityLevelsPanel'
 import TestingPanel from './testing/TestingPanel'
 import { WorkflowPanel } from './ProjectWorkflow'
 import { NotificationsPanel } from './NotificationSchemes'
+import { InitiativesPanel } from './Initiatives'
 const TestRepository = lazy(() => import('./testing/TestRepository'))
 import { Plus, Star, FolderPlus, Columns2, List, ListChecks, Settings, Gauge, BarChart3, GanttChart, CalendarDays, Rocket, Check, Info, Zap, Users, FlaskConical, Archive } from 'lucide-react'
 import { useStore, userOf, isDone, timeAgo, PROJECT_COLORS, type Project, type ProjectPatch } from '../data/store'
@@ -415,6 +416,7 @@ function ProjectSettings({ project }: { project: Project }) {
       {apiEnabled && can(project, 'deleteIssues') && <DeletedItems project={project} />}
 
       {apiEnabled && <TestingPanel project={project} admin={canAdmin(project)} />}
+      {apiEnabled && <InitiativesPanel project={project} admin={canAdmin(project)} />}
       <WorkTypesPanel project={project} />
       <ComponentsPanel project={project} />
       {apiEnabled && <SecurityLevelsPanel project={project} />}

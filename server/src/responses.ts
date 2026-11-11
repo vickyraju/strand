@@ -82,6 +82,11 @@ export const MailHandler = z.object({ id, name: z.string(), kind: z.string(), en
   serverId: id, serverName: z.string(), lastRunAt: nullable(ts), lastResult: nullable(z.record(z.string(), z.unknown())).describe('When it last ran: counts, and each message’s outcome') })
 export const JiraImportRun = z.object({ id, url: z.string(), projectKeys: z.array(z.string()), dryRun: z.boolean(), status: z.enum(['queued', 'running', 'done', 'failed']),
   report: nullable(z.record(z.string(), z.unknown())), createdAt: ts, finishedAt: nullable(ts), createdByName: nullable(z.string()), progress: nullable(z.record(z.string(), z.unknown())) })
+const PlanItem = z.object({ id, key: z.string(), projectId: id, projectKey: z.string(), type: z.string(), title: z.string(), statusId: id, statusName: z.string(), category: z.string(),
+  startDate: nullable(day), dueDate: nullable(day), sprintId: nullable(id), fixReleaseIds: z.array(id), assigneeId: nullable(id), estimate: nullable(z.number()),
+  parentId: nullable(id), parentLinkId: nullable(id), rank: z.number(), resolvedAt: nullable(ts) })
+export const Plan = z.object({ id, name: z.string(), ownerId: id, ownerName: z.string(), projectIds: nullable(z.array(id)), viewId: nullable(id), viewName: nullable(z.string()),
+  doneDays: z.number(), createdAt: ts, updatedAt: ts, projects: z.array(z.object({ id, key: z.string(), name: z.string() })) })
 export const Subscription = z.object({ id, viewId: id, createdBy: id, createdByName: z.string(), groupId: nullable(id), groupName: nullable(z.string()),
   cron: z.string().describe('Quartz cron, as Jira stores schedules'), emailWhenEmpty: z.boolean(), nextRunAt: nullable(ts), lastRunAt: nullable(ts), createdAt: ts })
 export const Release = z.object({ id, workspaceId: id, projectId: id, name: z.string(), description: z.string(), startDate: nullable(day), releaseDate: nullable(day), released: z.boolean(), releasedAt: nullable(ts), archived: z.boolean().describe('Hidden from pickers; items keep it') })
@@ -138,7 +143,7 @@ export const Board = z.object({
 })
 export const ProjectDetail = z.object({
   id, workspaceId: id, key: z.string(), name: z.string(), description: z.string(), color: z.string(), template: z.enum(['kanban', 'scrum']),
-  leadId: nullable(id), archivedAt: nullable(ts), nextNumber: z.number(), testing: z.boolean().describe('Test management is on'), requirementTypes: nullable(z.array(z.string())).describe('Work types counted as requirements (null: all but testing types and Bug)'), boardPrefs: z.record(z.string(), z.unknown()), layout: z.record(z.string(), z.unknown()),
+  leadId: nullable(id), archivedAt: nullable(ts), nextNumber: z.number(), testing: z.boolean().describe('Test management is on'), initiatives: z.boolean().optional().describe('The Initiative work type is on (spec 0803)'), requirementTypes: nullable(z.array(z.string())).describe('Work types counted as requirements (null: all but testing types and Bug)'), boardPrefs: z.record(z.string(), z.unknown()), layout: z.record(z.string(), z.unknown()),
   sample: z.boolean(), createdAt: ts, role: z.enum(['admin', 'member', 'viewer']).describe('My role in this project'),
   keys: z.array(z.string()).describe('Its key, then its earlier keys, which still find it (spec 0703)'), categoryId: nullable(id), category: nullable(z.object({ id, name: z.string() })),
   avatar: nullable(z.string()).describe('Its avatar’s address under the API, or null (spec 0703)'),
@@ -160,7 +165,7 @@ const issueFields = {
   assigneeId: nullable(id), reporterId: nullable(id), labels: z.array(z.string()), estimate: nullable(z.number()), timeEstimate: nullable(z.number()), timeRemaining: nullable(z.number()), componentIds: z.array(id), affectsReleaseIds: z.array(id), securityLevelId: nullable(id),
   testSpec: nullable(z.unknown()).describe('Test steps, Gherkin or definition (Tests and Pre-Conditions)'), testFolderId: nullable(id).describe('Test repository folder'),
   testEnvironments: z.array(z.string()).describe('Test Executions: what it ran against'), revision: z.string().describe('Test Executions: build or revision'),
-  dueDate: nullable(day), startDate: nullable(day), sprintId: nullable(id), fixReleaseIds: z.array(id), parentId: nullable(id),
+  dueDate: nullable(day), startDate: nullable(day), sprintId: nullable(id), fixReleaseIds: z.array(id), parentId: nullable(id), parentLinkId: nullable(id).optional().describe('Epics: their initiative (Jira’s Parent Link)'),
   custom: z.record(z.string(), z.union([z.string(), z.number(), z.array(z.string())])), rank: z.number(), version: z.number().describe('Send as If-Match to reject stale edits'),
   resolution: nullable(z.string()).describe('A resolution name (GET /resolutions), set while the item is in a Done status'),
   resolvedAt: nullable(ts).describe('When the item last reached a Done status'),
@@ -338,6 +343,11 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'GET /admin/mail-handlers': z.array(MailHandler), 'POST /admin/mail-handlers': MailHandler, 'PUT /admin/mail-handlers/:id': MailHandler, 'POST /admin/mail-handlers/:id/run': z.object({ jobId: id }),
   'POST /admin/jira-import/test': z.object({ ok: z.boolean(), version: z.string().optional(), title: z.string().optional(), user: z.string().optional(), error: z.string().optional() }),
   'GET /admin/jira-imports': z.array(JiraImportRun), 'GET /admin/jira-imports/:id': JiraImportRun, 'POST /admin/jira-imports': JiraImportRun,
+  'GET /plans': z.array(Plan), 'POST /plans': Plan, 'GET /plans/:id': Plan, 'PATCH /plans/:id': Plan,
+  'GET /plans/:id/timeline': z.object({ items: z.array(PlanItem), dependencies: z.array(z.object({ fromId: id, toId: id })),
+    releases: z.array(z.object({ id, name: z.string(), projectKey: z.string(), releaseDate: day, released: z.boolean() })),
+    sprints: z.array(z.object({ id, name: z.string(), projectKey: z.string(), state: z.string(), startedAt: nullable(ts), endsAt: nullable(ts), completedAt: nullable(ts) })),
+    truncated: z.boolean(), maxItems: z.number() }),
   'GET /views/:id/subscriptions': z.array(Subscription), 'POST /views/:id/subscriptions': Subscription, 'PATCH /subscriptions/:id': Subscription,
   'POST /subscriptions/:id/run': z.object({ jobId: id }),
   'GET /issues/:key/votes': z.object({ votes: z.number(), hasVoted: z.boolean(), voters: z.array(z.object({ id, name: z.string() })).describe('Empty without View voters and watchers') }),
@@ -428,6 +438,8 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'POST /issues/:key/clone': IssueRow,
   'GET /link-types': z.array(LinkType),
   'PUT /projects/:key/testing': z.object({ enabled: z.boolean(), requirementTypes: nullable(z.array(z.string())) }),
+  'PUT /projects/:key/initiatives': z.object({ enabled: z.boolean() }),
+  'GET /initiatives': z.array(z.object({ id, key: z.string(), title: z.string(), projectKey: z.string() })),
   'GET /issues/:key/tests': z.array(TestMember),
   'POST /issues/:key/tests': z.object({ added: z.number(), already: z.number().describe('Already in it'), items: z.array(TestMember) }),
   'PATCH /issues/:key/tests/:test': z.array(TestMember),

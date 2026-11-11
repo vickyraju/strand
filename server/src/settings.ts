@@ -86,6 +86,13 @@ export const SETTINGS = {
     }),
     default: { groupSubscribers: 'everyone', maxItems: 200 },
   },
+  plans: {
+    label: 'Plans',
+    description: 'How many work items one plan shows at most (spec 0803), as Jira’s plans: 5,000 by default.',
+    public: true,
+    schema: z.object({ maxItems: z.number().int().min(100).max(20_000).describe('Most work items in one plan') }),
+    default: { maxItems: 5000 },
+  },
   signIn: {
     label: 'Sign-in',
     description: 'Sign-ins through the login form: how long one lasts, and how many wrong passwords lock a username for a while (Administration › Authentication methods).',

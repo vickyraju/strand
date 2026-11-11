@@ -25,6 +25,7 @@ const JIRA = {
     { id: 'customfield_10001', name: 'Team', custom: true, schema: { custom: 'com.atlassian.jira.plugin.system.customfieldtypes:select' } },
     { id: 'customfield_10002', name: 'Sprint', custom: true, schema: { custom: 'com.pyxis.greenhopper.jira:gh-sprint' } },
     { id: 'customfield_10003', name: 'Parent Link', custom: true, schema: { custom: 'com.atlassian.jpo:jpo-custom-field-parent' } },
+    { id: 'customfield_10007', name: 'Team', custom: true, schema: { custom: 'com.atlassian.jpo:jpo-custom-field-team' } },
     { id: 'customfield_10004', name: 'Test Steps', custom: true, schema: { custom: 'com.xpandit.plugins.xray:manual-test-steps-custom-field' } },
     { id: 'customfield_10005', name: 'Mood', custom: true, schema: { custom: 'com.example.mood:smiley' } },
   ],
@@ -58,9 +59,10 @@ test('[0801.R1][0801.R2][0801.R3] the inventory reads a Jira (only GETs, with th
     assert.deepEqual([inv.jira.version, inv.totals.projects, inv.totals.issues, inv.totals.users, inv.totals.activeUsers, inv.totals.groups], ['9.12.4', 3, 1230, 3, 2, 7])
     assert.deepEqual(inv.boards, { total: 3, scrum: 2, kanban: 1 })
     assert.deepEqual(inv.projects.map(p => [p.key, p.issues, p.versions]), [['PAY', 1200, 2], ['HELP', 30, 0], ['OLD', null, null]])
-    assert.deepEqual(inv.customFields.map(f => f.strand), ['select', 'Strand: Sprint', null, 'Strand: testing (Xray)', null])
+    assert.deepEqual(inv.customFields.map(f => f.strand), ['select', 'Strand: Sprint', 'Strand: Parent Link (plans, spec 0803)', 'Not yet: teams and capacity (spec 0803, B+)', 'Strand: testing (Xray)', null])
     assert.deepEqual(inv.unreadable, { 'issue security schemes': '403 Forbidden' })
-    assert.deepEqual(inv.gaps.map(g => g.kind), ['Custom field type', 'Custom field type', 'Advanced Roadmaps', 'Service project', 'App', 'Not read'])
+    assert.deepEqual(inv.gaps.map(g => g.kind), ['Custom field type', 'Advanced Roadmaps', 'Service project', 'App', 'Not read'])
+    assert.match(inv.gaps.find(g => g.kind === 'Advanced Roadmaps').what, /Teams and capacity/)
     const md = report(inv)
     assert.match(md, /^# Jira inventory\n\nAcme Jira 9\.12\.4/)
     assert.match(md, /\| Work items \| 1,230 \|/)

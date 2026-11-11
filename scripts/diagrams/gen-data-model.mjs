@@ -18,7 +18,7 @@ const DOMAINS = [
   { key: 'planning', title: 'Planning', c: '#9673A6', f: '#F4EDF7', cols: [['sprints', 'releases', 'boards', 'board_admins']] },
   { key: 'work', title: 'Work items', c: '#D79B00', f: '#FFF6E5', cols: [['issues'], ['issue_links', 'issue_watchers', 'issue_votes', 'remote_links', 'issue_editors', 'mail_message_ids', 'jira_import_links', 'attachments', 'file_deletions', 'worklogs', 'labels', 'moved_issue_keys']] },
   { key: 'collab', title: 'Collaboration', c: '#B85450', f: '#FBEDEC', cols: [['comments', 'activity', 'notifications', 'email_batch_items']] },
-  { key: 'personal', title: 'Views & personal', c: '#0E8088', f: '#E6F4F5', cols: [['saved_views', 'filter_subscriptions', 'issue_views']] },
+  { key: 'personal', title: 'Views & personal', c: '#0E8088', f: '#E6F4F5', cols: [['saved_views', 'filter_subscriptions', 'plans', 'issue_views']] },
 ]
 const rows1 = ['people', 'projects', 'planning', 'work']
 

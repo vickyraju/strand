@@ -45,6 +45,7 @@ import notificationSchemeRoutes from './routes/notificationSchemes.ts'
 import incomingMailRoutes from './routes/incomingMail.ts'
 import exportRoutes from './routes/exports.ts'
 import jiraImportRoutes from './routes/jiraImport.ts'
+import planRoutes from './routes/plans.ts'
 import './jiraImport.ts'   // the jira.import job (spec 0802)
 import { startMailHandlers } from './mail.ts'
 import { startDirectories } from './directories.ts'
@@ -189,6 +190,7 @@ export async function build() {
       await v1.register(incomingMailRoutes)
       await v1.register(exportRoutes)
       await v1.register(jiraImportRoutes)
+      await v1.register(planRoutes)
     }
     await api.register(routes, { prefix: '/api/v1' })
     // ponytail: the unversioned /api is kept as a hidden alias so clients built before /api/v1 keep working;

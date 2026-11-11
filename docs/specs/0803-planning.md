@@ -93,7 +93,7 @@ Checked 11 Nov 2026 on [jira.atlassian.com](https://jira.atlassian.com/issues/?j
   - An initiative has no parent and is no item's parent. An epic joins one through its **Parent Link** (Jira's field), which can point to any project's initiative the person can see. Only epics have a Parent Link.
   - An epic in an initiative stays an epic until it's taken out; an initiative with epics stays an initiative.
   - Parent Link changes go into the history and webhooks, and JQL has `"Parent Link" = KEY` and `"Parent Link" is empty`.
-  - An epic's details show its initiative. An initiative's details show its epics, with their progress.
+  - An epic's details show its initiative. An initiative's details show its epics and how many of them are done (each epic's own progress is on the plan).
 - **R2: Plans.**
   - Anyone in the workspace makes a **plan**: a name, and its source, which is either some projects or a saved view.
   - Finished work leaves the plan after 30 days by default (Jira's "exclude resolved issues older than").
