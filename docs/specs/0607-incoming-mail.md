@@ -1,6 +1,6 @@
 # 0607 Incoming mail
 
-Status: Approved (PO, 10 Nov 2026: "yes go ahead and build complete everything whatever is pending")
+Status: Ported (aws-jira `aa98503`, strand `87e5694`), approved by the PO on 10 Nov 2026; awaiting verification
 Parity rows: NT-04
 
 ## Context and Jira reference
