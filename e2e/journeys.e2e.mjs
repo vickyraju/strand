@@ -1919,3 +1919,18 @@ test('[0505.R4][0505.R5] screens: Priority off the edit screen is read-only in t
   assert.deepEqual(o.problems, [])
 })
 
+test('[0506.R1] someone votes for an item and sees the count; the reporter can’t', { skip, timeout: 120_000 }, async () => {
+  await owner('POST', '/projects', { name: 'Votes journey', key: 'VTJ', template: 'kanban' })
+  await owner('POST', '/projects/VTJ/members', { userIds: [await idOf('vic@e2e.test')], role: 'member' })
+  const item = (await owner('POST', '/projects/VTJ/issues', { title: 'Popular idea' })).body
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url(`/i/${item.key}`))
+  assert.equal(await o.locator('[aria-label="You can’t vote for a work item you reported"]').isDisabled(), true)
+  const v = await signIn('vic@e2e.test')
+  await v.goto(url(`/i/${item.key}`))
+  await v.click('[aria-label="Vote for this work item"]')
+  await v.waitForSelector('[aria-label="Remove your vote"] >> text=1')
+  assert.equal((await owner('GET', `/issues/${item.key}/votes`)).body.votes, 1)
+  assert.deepEqual([o.problems, v.problems], [[], []])
+})
+

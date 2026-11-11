@@ -3597,6 +3597,7 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     'GET /admin/issue-type-screen-schemes': ['gadmin', '/admin/issue-type-screen-schemes'], 'GET /admin/issue-type-screen-schemes/{id}': ['gadmin', `/admin/issue-type-screen-schemes/${none}`],
     'POST /admin/issue-type-screen-schemes': ['gadmin', '/admin/issue-type-screen-schemes', { name: 'Matrix its', defaultSchemeId: none }],
     'PATCH /admin/issue-type-screen-schemes/{id}': ['gadmin', `/admin/issue-type-screen-schemes/${none}`, { name: 'x' }], 'DELETE /admin/issue-type-screen-schemes/{id}': ['gadmin', `/admin/issue-type-screen-schemes/${none}`],
+    'PUT /issues/{key}/vote': ['read', `/issues/${I}/vote`], 'DELETE /issues/{key}/vote': ['read', `/issues/${I}/vote`], 'GET /issues/{key}/votes': ['read', `/issues/${I}/votes`],   // 0506.R1
     'GET /admin/automation/rules': ['gadmin', '/admin/automation/rules'], 'GET /admin/automation/runs': ['gadmin', '/admin/automation/runs'],   // 0709.R3
     'POST /admin/automation/rules': ['gadmin', '/admin/automation/rules', { name: 'Matrix rule', scope: { kind: 'all' }, trigger: { kind: 'created' }, actions: [{ kind: 'label', value: 'matrix' }] }],
     'PUT /admin/automation/rules/{id}': ['gadmin', `/admin/automation/rules/${none}`, { name: 'x', scope: { kind: 'all' }, trigger: { kind: 'created' }, actions: [{ kind: 'label', value: 'x' }] }],
@@ -3909,7 +3910,7 @@ test('system settings: admins change policies at runtime (validated, audited); e
   const { clearSettingsCache } = await import('../src/settings.ts')
   const put = (key: string, value: object, who = 'owner@x.com') => call('PUT', `/api/v1/admin/settings/${key}`, value, who)
   const all = (await call('GET', '/api/v1/admin/settings')).body
-  assert.deepEqual(all.map((s: any) => s.key), ['rateLimiting', 'announcement', 'attachments', 'accessTokens', 'searchAndBulk', 'signIn', 'groups', 'webhooks', 'automation', 'testing', 'dueReminders', 'email', 'deletedItems', 'projectKeys', 'timeTracking'])
+  assert.deepEqual(all.map((s: any) => s.key), ['rateLimiting', 'announcement', 'attachments', 'accessTokens', 'searchAndBulk', 'signIn', 'groups', 'voting', 'webhooks', 'automation', 'testing', 'dueReminders', 'email', 'deletedItems', 'projectKeys', 'timeTracking'])
   assert.equal(all.find((s: any) => s.key === 'rateLimiting').value.enabled, false)                  // no limit unless an admin sets one
   assert.equal((await call('GET', '/api/v1/admin/settings', undefined, 'set.member@x.com')).status, 403)
   assert.equal((await put('attachments', { enabled: true, maxSizeMb: 5 }, 'set.member@x.com')).status, 403)
@@ -3919,7 +3920,7 @@ test('system settings: admins change policies at runtime (validated, audited); e
 
   // public settings: what the web app needs, for anyone signed in (not rate limiting)
   const pub = (await call('GET', '/api/v1/settings/public', undefined, 'set.member@x.com')).body
-  assert.deepEqual(Object.keys(pub).sort(), ['accessTokens', 'announcement', 'attachments', 'dueReminders', 'groups', 'priorities', 'projectKeys', 'resolutions', 'searchAndBulk', 'testing', 'timeTracking'])
+  assert.deepEqual(Object.keys(pub).sort(), ['accessTokens', 'announcement', 'attachments', 'dueReminders', 'groups', 'priorities', 'projectKeys', 'resolutions', 'searchAndBulk', 'testing', 'timeTracking', 'voting'])
 
   // attachments: size limit and the switch
   await call('POST', '/api/v1/projects', { name: 'Settings', key: 'SET', template: 'kanban' })
@@ -5677,6 +5678,39 @@ test('[0505.R1][0505.R2][0505.R3][0505.R4] screens: create, edit and view screen
   assert.equal((await call('PATCH', `/api/v1/issues/${bug.key}`, { priority: 'low' })).status, 200)          // back to the Default Screen
   assert.equal((await call('DELETE', `/api/v1/admin/screen-schemes/${bugScreens.id}`)).status, 204)
   assert.equal((await call('DELETE', `/api/v1/admin/screens/${edit.id}`)).status, 204)
+})
+
+test('[0506.R1][0506.R2][0506.R3][0506.R4] voting: once each, not the reporter, not once resolved; who voted for those who may see; the switch; JQL', { skip, timeout: 60_000 }, async () => {
+  await call('POST', '/api/v1/projects', { name: 'Voted', key: 'VOT', template: 'kanban' })
+  await join('VOT', 'vot.member@x.com', 'member'); await join('VOT', 'vot.viewer@x.com', 'viewer')
+  const mine = (await call('POST', '/api/v1/projects/VOT/issues', { title: 'Mine' })).body
+  const theirs = (await call('POST', '/api/v1/projects/VOT/issues', { title: 'Theirs' }, 'vot.member@x.com')).body
+  const vote = (key: string, who?: string, method = 'PUT') => call(method, `/api/v1/issues/${key}/vote`, undefined, who)
+  // R1: the reporter can't vote; others can, once; a viewer may vote and see who voted
+  assert.equal((await vote(mine.key)).status, 400)
+  assert.equal((await vote(mine.key, 'vot.member@x.com')).status, 204)
+  assert.equal((await vote(mine.key, 'vot.member@x.com')).status, 204)
+  assert.equal((await vote(mine.key, 'vot.viewer@x.com')).status, 204)
+  assert.equal((await vote(theirs.key)).status, 204)
+  let v = (await call('GET', `/api/v1/issues/${mine.key}/votes`, undefined, 'vot.viewer@x.com')).body
+  assert.deepEqual([v.votes, v.hasVoted, v.voters.length], [2, true, 2])
+  // R3: JQL
+  const keys = async (q: string, who?: string) => (await call('GET', `/api/v1/search?jql=${encodeURIComponent(q)}`, undefined, who)).body.items.map((i: any) => i.key)
+  assert.deepEqual(await keys('project = VOT AND votes >= 2'), [mine.key])
+  assert.deepEqual(await keys('project = VOT AND issue in votedIssues()', 'vot.member@x.com'), [mine.key])
+  assert.deepEqual(await keys('project = VOT ORDER BY votes DESC'), [mine.key, theirs.key])
+  // R1: votes on a resolved item can't change
+  const done = (await call('GET', '/api/v1/projects/VOT')).body.statuses.find((s: any) => s.category === 'done')
+  await call('PATCH', `/api/v1/issues/${mine.key}`, { statusId: done.id })
+  assert.equal((await vote(mine.key, 'vot.member@x.com', 'DELETE')).status, 400)
+  // R2: the switch: off, voting is refused and votes are kept
+  assert.equal((await call('PUT', '/api/v1/admin/settings/voting', { enabled: false })).status, 200)
+  const { clearSettingsCache } = await import('../src/settings.ts'); clearSettingsCache()
+  assert.equal((await vote(theirs.key, 'vot.viewer@x.com')).status, 403)
+  v = (await call('GET', `/api/v1/issues/${theirs.key}/votes`)).body
+  assert.equal(v.votes, 1)
+  assert.ok((await pool.query(`select 1 from audit_log where action = 'settings.voting.updated'`)).rows.length)
+  await call('PUT', '/api/v1/admin/settings/voting', { enabled: true }); clearSettingsCache()
 })
 
 test('[0705.R2] a webhook never reaches private addresses, whatever its name resolves to', { skip }, async () => {

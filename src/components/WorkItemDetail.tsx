@@ -4,7 +4,7 @@ import { usePresence } from '../api/presence'
 import { recordView } from '../api/work'
 import {
   Maximize2, Minimize2, X, Link2, Trash2, Plus, Eye, EyeOff, ChevronUp, ChevronDown, MoreHorizontal, RefreshCw, CopyPlus, Lock,
-  Ban, Unlink, Pencil, UserCheck, Copy, Paperclip, FileText, Archive, Flag, ArrowRightLeft } from 'lucide-react'
+  Ban, Unlink, Pencil, UserCheck, Copy, Paperclip, FileText, Archive, Flag, ArrowRightLeft, ThumbsUp } from 'lucide-react'
 import {
   useStore, userOf, projectOf, timeAgo, transitionsFrom, loopsFrom, moveContext, linkWords, DEFAULT_LINK_TYPES,
   type Issue, type IssuePatch,
@@ -37,6 +37,7 @@ import { TimeField } from './TimeTracking'
 import { TemplateDialog, blankTemplate } from './TemplatesImport'
 import DevelopmentPanel from './DevelopmentPanel'
 import MoveDialog from './MoveDialog'
+import { usePublicSettings } from '../api/settings-public'
 import type { FieldRule } from '../../server/src/shared/fieldRules.ts'
 
 function AutoText(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
@@ -79,6 +80,7 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
   const [linking, setLinking]     = useState(false)
   const [cloning, setCloning]     = useState(false)
   const [moving, setMoving]       = useState(false)
+  const voting = usePublicSettings().voting
   // the field configuration (spec 0504) and the screens (spec 0505) of the item's type: what shows, on which tab, and what can change
   const screens = project?.screens?.[issue?.type ?? '']
   const viewTabs = screens?.view ?? null
@@ -190,6 +192,7 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
             <button className="icon-btn" disabled={!next} onClick={() => next && openIssue(next)} title="Next (J)" aria-label="Next work item"><ChevronDown size={16} /></button>
           </span>
         )}
+        {apiEnabled && voting.enabled && <VoteButton issue={issue} />}
         <button className={`icon-btn${watching ? ' active' : ''}`} disabled={archived} onClick={() => dispatch({ type: 'toggleWatch', issueId: issue.id })}
           title={watching ? 'Stop watching' : 'Watch for updates'} aria-pressed={watching} aria-label={watching ? 'Stop watching' : 'Watch'}>
           {watching ? <Eye size={16} /> : <EyeOff size={16} />}<span className="sm">{watchers.length}</span>
@@ -615,3 +618,23 @@ function LinkDialog({ issue, onClose }: { issue: Issue; onClose: () => void }) {
     </Modal>
   )
 }
+
+/** Jira's Vote (spec 0506): the count, my vote, and who voted for those who may see it. Not for the reporter, nor once resolved. */
+function VoteButton({ issue }: { issue: Issue }) {
+  const { state } = useStore()
+  const { toast } = useApp()
+  const [v, setV] = useState<{ votes: number; hasVoted: boolean; voters: { id: string; name: string }[] } | null>(null)
+  const load = () => api<NonNullable<typeof v>>('GET', `/api/issues/${encodeURIComponent(issue.key)}/votes`).then(setV, () => {})
+  useEffect(() => { void load() }, [issue.key])   // eslint-disable-line react-hooks/exhaustive-deps
+  if (!v) return null
+  const own = issue.reporterId === state.me?.id, resolved = !!issue.resolution
+  const why = own ? 'You can’t vote for a work item you reported' : resolved ? 'Votes on a resolved work item can’t change' : v.hasVoted ? 'Remove your vote' : 'Vote for this work item'
+  const toggle = () => api(v.hasVoted ? 'DELETE' : 'PUT', `/api/issues/${encodeURIComponent(issue.key)}/vote`).then(load, e => toast(errorMessage(e), { tone: 'warn' }))
+  return (
+    <button className={`icon-btn${v.hasVoted ? ' active' : ''}`} disabled={own || resolved} onClick={() => void toggle()} aria-label={why}
+      title={`${why}${v.voters.length ? ` · Voted: ${v.voters.map(x => x.name).join(', ')}` : ''}`}>
+      <ThumbsUp size={16} /><span className="sm">{v.votes}</span>
+    </button>
+  )
+}
+

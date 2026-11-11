@@ -15,6 +15,7 @@ const NUMBERS: Record<string, string> = {
   devCommits: dev(`de.kind = 'commit'`), devBranches: dev(`de.kind = 'branch' and de.state is distinct from 'deleted'`), devPrs: dev(`de.kind = 'pull_request'`),
   devPrsOpen: dev(`de.kind = 'pull_request' and de.state = 'open'`), devPrsMerged: dev(`de.kind = 'pull_request' and de.state = 'merged'`),
   devPrsDeclined: dev(`de.kind = 'pull_request' and de.state = 'closed'`), devNone: '0',
+  votes: '(select count(*) from issue_votes vv where vv.issue_id = i.id)',   // Jira's votes (spec 0506)
 }
 const EMPTY: Record<string, string> = {
   flagged: 'not i.flagged', epicStatus: 'i.epic_status is null', assignee: 'i.assignee_id is null', reporter: 'i.reporter_id is null', labels: 'cardinality(i.labels) = 0', component: 'cardinality(i.component_ids) = 0',
@@ -26,6 +27,7 @@ const EMPTY: Record<string, string> = {
 export const ORDER: Record<string, string> = {
   created: 'i.created_at', updated: 'i.updated_at', priority: PRIORITY_RANK, due: 'i.due_date', key: 'p.key, i.number', rank: 'i.rank',
   status: `case st.category when 'todo' then 0 when 'in-progress' then 1 else 2 end, st.position`, resolved: 'i.resolved_at', summary: 'lower(i.title)', estimate: 'i.estimate',
+  votes: '(select count(*) from issue_votes vv where vv.issue_id = i.id)',
 }
 
 /** Parse, or answer 400 with where the mistake is. */
@@ -158,6 +160,7 @@ export async function jqlToSql(d: Db, me: Me, q: Query, args: unknown[]): Promis
   /** The condition for "field = one value". */
   const eq = (c: Clause, v: Value): string => {
     if (c.field === 'key' && v.kind === 'fn' && TEST_FNS.has(v.name)) return testFn(v)
+    if (c.field === 'key' && v.kind === 'fn' && v.name === 'votedissues') return `i.id in (select issue_id from issue_votes where user_id = ${put(me.id)})`   // spec 0506
     switch (c.field) {
       // a project's earlier keys still find it (spec 0703 R2)
       case 'project': { const t = put(text(v, 'project')); return `(p.key = upper(${t}) or lower(p.name) = lower(${t}) or p.id in (select h.project_id from project_key_history h where h.workspace_id = p.workspace_id and h.key = upper(${t})))` }

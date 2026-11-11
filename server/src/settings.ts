@@ -95,6 +95,13 @@ export const SETTINGS = {
     schema: z.object({ whoCanCreate: z.enum(['everyone', 'admins']).describe('Who may make a group: everyone, or system administrators only') }),
     default: { whoCanCreate: 'everyone' as 'everyone' | 'admins' },
   },
+  voting: {
+    label: 'Voting',
+    description: 'Whether people can vote for work items, as Jira’s Voting option. Turned off, votes are kept but nobody can vote.',
+    public: true,
+    schema: z.object({ enabled: z.boolean() }),
+    default: { enabled: true },
+  },
   webhooks: {
     label: 'Webhooks',
     description: 'The ids your Jira gave Jira Software’s fields, so webhooks carry them under the same keys and integrations built for Jira read them unchanged. Find them in Jira under Administration › Issues › Custom fields.',
