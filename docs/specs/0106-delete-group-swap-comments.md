@@ -29,7 +29,7 @@ Parity rows: PRM-18
 
 ## Permissions
 
-As for deleting the group (spec 0104): its owners and system administrators. The swap group is any other group of the workspace. An owner could already add anyone to the deleted group, so moving its comments gives them no new reach.
+As for deleting the group (spec 0104): its owners and system administrators. A system administrator may choose any other group. An owner may choose only a group they're in or own, the same rule as restricting a comment (spec 0203).
 
 ## Data model and migration
 

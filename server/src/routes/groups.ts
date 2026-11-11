@@ -156,6 +156,9 @@ const plugin: FastifyPluginAsyncZod = async app => {
       if (n) {
         ;[swap] = await d.query<{ id: string; displayName: string }>('select id, display_name from groups where id = $1 and id <> $2', [swapGroupId, g.id])
         if (!swap) throw new HttpError(400, 'No such group to move the comments to', { swapGroupId: 'Unknown group' })
+        // as for restricting a comment (only to a group I'm in), an owner moves them only to a group they're in or own; an administrator to any
+        if (!req.me.admin && !(await d.query(`select 1 from group_members where group_id = $1 and user_id = $2 union select 1 from group_owners where group_id = $1 and user_id = $2`, [swap.id, req.me.id])).length)
+          throw new HttpError(403, 'You can move the comments only to a group you’re in or own', { swapGroupId: 'Not your group' })
         await d.query(`update comments set visibility = jsonb_build_object('kind', 'group', 'id', $2::text) where visibility->>'kind' = 'group' and visibility->>'id' = $1`, [g.id, swap.id])
       }
       // R2: it leaves every notification scheme, as in Jira
