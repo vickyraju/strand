@@ -1,6 +1,6 @@
 # 0501 Move items between projects
 
-Status: Approved (PO, 10 Nov 2026: "yes go ahead and build complete everything whatever is pending")
+Status: Ported (aws-jira `5eadc05`, strand `54f3930`), approved by the PO on 10 Nov 2026; awaiting verification
 Parity rows: ISS-10, ISS-20
 
 ## Context and Jira reference

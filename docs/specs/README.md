@@ -72,7 +72,7 @@ The roadmap, in order. Bugs come first, then the permission model, then the data
 | [0409](0409-card-colours.md) | Card colours | 4 | Ported |
 | [0410](0410-control-chart.md) | Control chart | 4 | Ported |
 | [0411](0411-version-epic-release-reports.md) | Version, epic, epic burndown, release burndown and burnup reports | 4 | Ported |
-| [0501](0501-move-items-between-projects.md) | Move items between projects; old keys redirect | 5 | Approved |
+| [0501](0501-move-items-between-projects.md) | Move items between projects; old keys redirect | 5 | Ported |
 | 0502 | More custom field types | 5 | Planned |
 | 0503 | Global custom fields with contexts | 5 | Planned |
 | 0504 | Field configurations: required and hidden | 5 | Planned |
