@@ -9,7 +9,7 @@ import { audit } from '../audit.ts'
 import { getSetting } from '../settings.ts'
 import { jiraIssue, lookups } from '../jiraShapes.ts'
 import { issueByKey } from './issues.ts'
-import { commentShown } from '../access.ts'
+import { commentShown, visible } from '../access.ts'
 import { searchWhere, searchFilters, type SearchFilters } from './misc.ts'
 
 const x = (s: unknown) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' })[c]!)
@@ -18,6 +18,13 @@ const h = (s: unknown) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp
 const rfc822 = (t: string | null | undefined) => (t ? new Date(t.replace('+0000', 'Z')).toUTCString().replace('GMT', '+0000') : '')
 
 interface Item { id: string; key: string; fields: Record<string, any>; history: { at: string; who: string | null; field: string | null; from: string | null; to: string | null; text: string }[]; webLinks: { url: string; title: string }[]; customNames: Record<string, string> }
+
+/** Which of these work items I can see. */
+async function visibleIssues(d: Db, me: Me, ids: string[]) {
+  if (!ids.length) return new Set<string>()
+  const args: unknown[] = [ids]
+  return new Set((await d.query<{ id: string }>(`select i.id from issues i where i.id = any($1::uuid[]) and i.deleted_at is null and ${visible(me, 'i.project_id', args)}`, args)).map(r => r.id))
+}
 
 /** The items, in this order, as `me` may read them. */
 async function load(d: Db, me: Me, ids: string[], full: boolean): Promise<Item[]> {
@@ -31,11 +38,19 @@ async function load(d: Db, me: Me, ids: string[], full: boolean): Promise<Item[]
     const shown = new Set((await d.query<{ id: string }>(`select c.id from comments c where c.issue_id = $1 and ${commentShown(me, f.project.id, 2)}`, [id, me.id])).map(r => r.id))
     const keep = (f.comment?.comments ?? []).filter((c: any) => shown.has(c.id))
     f.comment = { ...f.comment, comments: keep, total: keep.length, maxResults: keep.length }
+    // linked items, sub-items and the parent only when I can see them; history of a hidden parent without its key
+    const other = (l: any) => (l.outwardIssue ?? l.inwardIssue)?.id
+    const seen = await visibleIssues(d, me, [...(f.issuelinks ?? []).map(other), ...(f.subtasks ?? []).map((s: any) => s.id), f.parent?.id].filter(Boolean))
+    f.issuelinks = (f.issuelinks ?? []).filter((l: any) => seen.has(other(l)))
+    f.subtasks = (f.subtasks ?? []).filter((s: any) => seen.has(s.id))
+    if (f.parent && !seen.has(f.parent.id)) delete f.parent
     const customNames = Object.fromEntries((await d.query<{ id: string; name: string }>('select f.id, f.name from field_defs f join issues i on i.project_id = f.project_id where i.id = $1', [id])).map(r => [`customfield_${r.id}`, r.name]))
-    const history = full ? await d.query<any>(`select a.created_at as at, u.name as who, a.field, coalesce(a.from_string, a.from_value) as from, coalesce(a.to_string, a.to_value) as to, a.text
+    const history = full ? await d.query<any>(`select a.created_at as at, u.name as who, a.field, a.from_value, a.to_value, coalesce(a.from_string, a.from_value) as from, coalesce(a.to_string, a.to_value) as to, a.text
         from activity a left join users u on u.id = a.actor_id where a.issue_id = $1 order by a.created_at, a.id limit 500`, [id]) : []
     const webLinks = full ? await d.query<any>('select url, title from remote_links where issue_id = $1 order by created_at limit 200', [id]) : []
-    out.push({ id: j.id, key: j.key, fields: f, history: history.map(r => ({ ...r, at: new Date(r.at).toISOString() })), webLinks, customNames })
+    const parents = await visibleIssues(d, me, history.filter(r => r.field === 'parentId').flatMap(r => [r.fromValue, r.toValue]).filter(Boolean))
+    const hide = (r: any, side: 'from' | 'to') => (r.field === 'parentId' && r[`${side}Value`] && !parents.has(r[`${side}Value`]) ? 'a work item you can’t see' : r[side])
+    out.push({ id: j.id, key: j.key, fields: f, history: history.map(r => ({ ...r, from: hide(r, 'from'), to: hide(r, 'to'), at: new Date(r.at).toISOString() })), webLinks, customNames })
   }
   return out
 }

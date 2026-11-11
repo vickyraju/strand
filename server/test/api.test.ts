@@ -5370,6 +5370,11 @@ test('[0715.R1][0715.R2][0715.R3][0715.R4][0715.R5][0715.R6][0715.R7][0715.R8] w
     await take()
     await call('PATCH', `/api/v1/projects/WHJ/sprints/${sp.id}`, { name: 'S1 renamed' })
     const su = of(await take(), 'sprint_updated')[0]
+    // Jira Software's Sprint field: the sprint as Jira prints it, with its board
+    await call('PATCH', `/api/v1/issues/${item.key}`, { sprintId: sp.id }); await take()
+    await call('PATCH', `/api/v1/issues/${item.key}`, { title: 'In a sprint' })
+    const inSprint = of(await take(), 'jira:issue_updated')[0].issue.fields
+    assert.match(inSprint[Object.keys(inSprint).find(k => String(inSprint[k]).includes('greenhopper'))!][0], new RegExp(`\\[id=${sp.id},rapidViewId=[0-9a-f-]{36},state=FUTURE,name=S1 renamed,`))
     assert.deepEqual([su.sprint.name, su.oldValue.name, su.sprint.state], ['S1 renamed', 'S1', 'future'])
     await call('POST', `/api/v1/projects/WHJ/releases/${v2.id}/merge`, { from: [v1.id] })
     calls = await take()
@@ -6308,6 +6313,9 @@ test('[0608.R1][0608.R2][0608.R3][0608.R4][0608.R5] print and XML export: Jira\'
   await call('POST', `/api/v1/issues/${a.key}/comments`, { body: 'Everyone sees this' })
   await call('POST', `/api/v1/issues/${a.key}/comments`, { body: 'Admins only note', visibility: { kind: 'role', role: 'admin' } })
   await call('POST', `/api/v1/issues/${a.key}/remote-links`, { url: 'https://docs.example.com/spec', title: 'The spec' })
+  await call('POST', '/api/v1/projects', { name: 'Exports hidden', key: 'XPH', template: 'kanban' })
+  const hidden = (await call('POST', '/api/v1/projects/XPH/issues', { title: 'Secret neighbour' })).body
+  await call('POST', `/api/v1/issues/${a.key}/links`, { type: 'relates', targetKey: hidden.key })
   const get = async (url: string, who = 'owner@x.com') => app.inject({ method: 'GET', url: `/api/v1${url}`, headers: await bearer(who) })
   const jql = encodeURIComponent('project = XPT ORDER BY key')
   // R2: Jira's XML: rss 0.92, an item per work item with Jira's elements; a restricted comment only for those who may read it
@@ -6325,6 +6333,8 @@ test('[0608.R1][0608.R2][0608.R3][0608.R4][0608.R5] print and XML export: Jira\'
   assert.match(xml.body, /Admins only note/)
   const mia = await get(`/search/export.xml?jql=${jql}`, 'xp.mia@x.com')
   assert.ok(mia.body.includes('Everyone sees this') && !mia.body.includes('Admins only note'))
+  assert.ok(xml.body.includes(hidden.key) && !mia.body.includes(hidden.key))                    // a linked item Mia can't see isn't named
+  assert.ok(!(await get(`/issues/${a.key}/export.html`, 'xp.mia@x.com')).body.includes('Secret neighbour'))
   // RSS, with and without comments
   const rss = await get(`/search/export.rss?jql=${jql}`), rssC = await get(`/search/export.rss?jql=${jql}&comments=1`)
   assert.ok(rss.body.includes(`<guid>${a.key}</guid>`) && !rss.body.includes('Everyone sees this'))
