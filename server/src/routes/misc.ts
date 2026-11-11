@@ -289,18 +289,30 @@ const plugin: FastifyPluginAsyncZod = async app => {
     const rows = new Map((await db.query<{ kind: string; inbox: boolean; email: boolean }>('select kind, inbox, email from notification_prefs where user_id = $1', [userId])).map(r => [r.kind, r]))
     return KINDS.map(kind => ({ kind, inbox: rows.get(kind)?.inbox ?? true, email: rows.get(kind)?.email ?? true }))
   }
-  app.get('/me/notification-prefs', { schema: { tags: ['Notifications'], summary: 'For each kind of notification: whether I get it in my Inbox, and by email (when the workspace sends email)' } }, async req => ({
-    prefs: await prefsOf(req.me.id), emailEnabled: (await getSetting(req.me.workspaceId, 'email')).enabled,
-  }))
+  /** Autowatch and My changes (spec 0606): mine, or null for the default (System settings › Default user preferences). */
+  const allPrefs = async (me: Me) => {
+    const [p] = await db.query<{ autowatch: boolean | null; notifyOwnChanges: boolean | null }>('select autowatch, notify_own_changes from user_preferences where user_id = $1', [me.id])
+    return { prefs: await prefsOf(me.id), emailEnabled: (await getSetting(me.workspaceId, 'email')).enabled,
+      autowatch: p?.autowatch ?? null, notifyOwnChanges: p?.notifyOwnChanges ?? null, defaults: await getSetting(me.workspaceId, 'userDefaults') }
+  }
+  app.get('/me/notification-prefs', { schema: { tags: ['Notifications'], summary: 'For each kind of notification: whether I get it in my Inbox, and by email (when the workspace sends email); and Autowatch and My changes' } }, async req => allPrefs(req.me))
   app.put('/me/notification-prefs', { schema: { tags: ['Notifications'], summary: 'Change what I get, and how', body: z.object({
-    prefs: z.array(z.object({ kind: z.enum(KINDS), inbox: z.boolean(), email: z.boolean() })).max(KINDS.length),
+    prefs: z.array(z.object({ kind: z.enum(KINDS), inbox: z.boolean(), email: z.boolean() })).max(KINDS.length).default([]),
+    autowatch: z.boolean().nullable().optional().describe('Watch work I create or comment on (null: the default)'),
+    notifyOwnChanges: z.boolean().nullable().optional().describe('Hear about my own changes (null: the default)'),
   }) } }, async req => {
     await tx(async d => {
       for (const p of req.body.prefs)
         await d.query(`insert into notification_prefs (user_id, kind, inbox, email) values ($1, $2, $3, $4)
                        on conflict (user_id, kind) do update set inbox = excluded.inbox, email = excluded.email`, [req.me.id, p.kind, p.inbox, p.email])
+      const b = req.body
+      if (b.autowatch !== undefined || b.notifyOwnChanges !== undefined)
+        await d.query(`insert into user_preferences (user_id, autowatch, notify_own_changes) values ($1, $2, $3)
+                       on conflict (user_id) do update set autowatch = case when $4 then excluded.autowatch else user_preferences.autowatch end,
+                                                           notify_own_changes = case when $5 then excluded.notify_own_changes else user_preferences.notify_own_changes end`,
+          [req.me.id, b.autowatch ?? null, b.notifyOwnChanges ?? null, b.autowatch !== undefined, b.notifyOwnChanges !== undefined])
     })
-    return { prefs: await prefsOf(req.me.id), emailEnabled: (await getSetting(req.me.workspaceId, 'email')).enabled }
+    return allPrefs(req.me)
   })
 
   // ── Saved views (owner edits; shared views visible to all) ──

@@ -30291,7 +30291,7 @@
     },
     "/api/v1/me/notification-prefs": {
       "get": {
-        "summary": "For each kind of notification: whether I get it in my Inbox, and by email (when the workspace sends email)",
+        "summary": "For each kind of notification: whether I get it in my Inbox, and by email (when the workspace sends email); and Autowatch and My changes",
         "tags": [
           "Notifications"
         ],
@@ -30338,11 +30338,41 @@
                     "emailEnabled": {
                       "type": "boolean",
                       "description": "The workspace sends email (System settings)"
+                    },
+                    "autowatch": {
+                      "nullable": true,
+                      "description": "Watch work I create or comment on (null: the default)",
+                      "type": "boolean"
+                    },
+                    "notifyOwnChanges": {
+                      "nullable": true,
+                      "description": "Hear about my own changes (null: the default)",
+                      "type": "boolean"
+                    },
+                    "defaults": {
+                      "type": "object",
+                      "properties": {
+                        "autowatch": {
+                          "type": "boolean"
+                        },
+                        "notifyOwnChanges": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "autowatch",
+                        "notifyOwnChanges"
+                      ],
+                      "additionalProperties": false,
+                      "description": "System settings › Default user preferences"
                     }
                   },
                   "required": [
                     "prefs",
-                    "emailEnabled"
+                    "emailEnabled",
+                    "autowatch",
+                    "notifyOwnChanges",
+                    "defaults"
                   ],
                   "additionalProperties": false
                 }
@@ -30405,6 +30435,7 @@
                 "type": "object",
                 "properties": {
                   "prefs": {
+                    "default": [],
                     "maxItems": 7,
                     "type": "array",
                     "items": {
@@ -30435,11 +30466,18 @@
                         "email"
                       ]
                     }
+                  },
+                  "autowatch": {
+                    "description": "Watch work I create or comment on (null: the default)",
+                    "nullable": true,
+                    "type": "boolean"
+                  },
+                  "notifyOwnChanges": {
+                    "description": "Hear about my own changes (null: the default)",
+                    "nullable": true,
+                    "type": "boolean"
                   }
-                },
-                "required": [
-                  "prefs"
-                ]
+                }
               }
             }
           }
@@ -30487,11 +30525,41 @@
                     "emailEnabled": {
                       "type": "boolean",
                       "description": "The workspace sends email (System settings)"
+                    },
+                    "autowatch": {
+                      "nullable": true,
+                      "description": "Watch work I create or comment on (null: the default)",
+                      "type": "boolean"
+                    },
+                    "notifyOwnChanges": {
+                      "nullable": true,
+                      "description": "Hear about my own changes (null: the default)",
+                      "type": "boolean"
+                    },
+                    "defaults": {
+                      "type": "object",
+                      "properties": {
+                        "autowatch": {
+                          "type": "boolean"
+                        },
+                        "notifyOwnChanges": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "autowatch",
+                        "notifyOwnChanges"
+                      ],
+                      "additionalProperties": false,
+                      "description": "System settings › Default user preferences"
                     }
                   },
                   "required": [
                     "prefs",
-                    "emailEnabled"
+                    "emailEnabled",
+                    "autowatch",
+                    "notifyOwnChanges",
+                    "defaults"
                   ],
                   "additionalProperties": false
                 }
@@ -35451,7 +35519,7 @@
             "in": "path",
             "name": "key",
             "required": true,
-            "description": "One of: rateLimiting, announcement, attachments, accessTokens, searchAndBulk, filterSubscriptions, signIn, groups, voting, webhooks, automation, testing, dueReminders, email, deletedItems, projectKeys, timeTracking"
+            "description": "One of: rateLimiting, announcement, attachments, accessTokens, searchAndBulk, filterSubscriptions, signIn, groups, voting, webhooks, automation, testing, dueReminders, email, emailBatching, userDefaults, deletedItems, projectKeys, timeTracking"
           }
         ],
         "responses": {

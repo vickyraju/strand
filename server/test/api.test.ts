@@ -947,7 +947,7 @@ test('statuses carry a description: empty by default, set on create, changed by 
 // ── Notifications: mentions and due dates ──
 const inbox = async (who: string, query = '') => (await call('GET', `/api/v1/notifications${query}`, undefined, who)).body as { kind: string; text: string; issueKey: string; actorId: string | null }[]
 
-test('mentions: @Full Name notifies that person (not twice), watchers hear "commented", and mentioned people start watching', { skip }, async () => {
+test('[0606.R2][0606.R3] mentions: @Full Name notifies that person (not twice), watchers hear "commented", the commenter starts watching and the mentioned don\'t', { skip }, async () => {
   const [ann, bob, cy] = ['mention.ann', 'mention.bob', 'mention.cy']
   await call('POST', '/api/v1/projects', { name: 'Mentions', key: 'MEN', template: 'kanban' })
   for (const n of [ann, bob, cy]) await join('MEN', `${n}@x.com`)
@@ -957,14 +957,15 @@ test('mentions: @Full Name notifies that person (not twice), watchers hear "comm
   assert.deepEqual((await inbox(`${bob}@x.com`)).filter(n => n.issueKey === 'MEN-1').map(n => n.kind), ['mentioned'])
   assert.deepEqual((await inbox(`${cy}@x.com`)).filter(n => n.issueKey === 'MEN-1' && n.kind !== 'updated').map(n => n.kind), ['commented'])   // the assignee hears, was not mentioned (creating it was "updated")
   assert.deepEqual((await inbox(`${ann}@x.com`)).filter(n => n.issueKey === 'MEN-1'), [])                                                       // never notified about their own comment
-  // the commenter and the mentioned person now watch: a later comment by someone else reaches them as "commented"
+  // the commenter now watches (Autowatch); the mentioned person doesn't (as Jira's): a later comment reaches only the commenter
   await call('POST', '/api/v1/issues/MEN-1/comments', { body: 'a later comment' }, `${cy}@x.com`)
-  assert.ok((await inbox(`${bob}@x.com`)).some(n => n.issueKey === 'MEN-1' && n.kind === 'commented'))
+  assert.ok(!(await inbox(`${bob}@x.com`)).some(n => n.issueKey === 'MEN-1' && n.kind === 'commented'))
   assert.ok((await inbox(`${ann}@x.com`)).some(n => n.issueKey === 'MEN-1' && n.kind === 'commented'))
-  // a person mentioned AND already watching gets "mentioned" only
+  // a person mentioned AND watching gets "mentioned" only
+  await call('PUT', '/api/v1/issues/MEN-1/watch', undefined, `${bob}@x.com`)
   await call('POST', '/api/v1/issues/MEN-1/comments', { body: `@${bob} again` }, `${cy}@x.com`)
   const bobNow = (await inbox(`${bob}@x.com`)).filter(n => n.issueKey === 'MEN-1')
-  assert.deepEqual(bobNow.map(n => n.kind).sort(), ['commented', 'mentioned', 'mentioned'])
+  assert.deepEqual(bobNow.map(n => n.kind).sort(), ['mentioned', 'mentioned'])
   assert.ok(issue.id)
 })
 
@@ -3948,7 +3949,7 @@ test('system settings: admins change policies at runtime (validated, audited); e
   const { clearSettingsCache } = await import('../src/settings.ts')
   const put = (key: string, value: object, who = 'owner@x.com') => call('PUT', `/api/v1/admin/settings/${key}`, value, who)
   const all = (await call('GET', '/api/v1/admin/settings')).body
-  assert.deepEqual(all.map((s: any) => s.key), ['rateLimiting', 'announcement', 'attachments', 'accessTokens', 'searchAndBulk', 'filterSubscriptions', 'signIn', 'groups', 'voting', 'webhooks', 'automation', 'testing', 'dueReminders', 'email', 'deletedItems', 'projectKeys', 'timeTracking'])
+  assert.deepEqual(all.map((s: any) => s.key), ['rateLimiting', 'announcement', 'attachments', 'accessTokens', 'searchAndBulk', 'filterSubscriptions', 'signIn', 'groups', 'voting', 'webhooks', 'automation', 'testing', 'dueReminders', 'email', 'emailBatching', 'userDefaults', 'deletedItems', 'projectKeys', 'timeTracking'])
   assert.equal(all.find((s: any) => s.key === 'rateLimiting').value.enabled, false)                  // no limit unless an admin sets one
   assert.equal((await call('GET', '/api/v1/admin/settings', undefined, 'set.member@x.com')).status, 403)
   assert.equal((await put('attachments', { enabled: true, maxSizeMb: 5 }, 'set.member@x.com')).status, 403)
@@ -3958,7 +3959,7 @@ test('system settings: admins change policies at runtime (validated, audited); e
 
   // public settings: what the web app needs, for anyone signed in (not rate limiting)
   const pub = (await call('GET', '/api/v1/settings/public', undefined, 'set.member@x.com')).body
-  assert.deepEqual(Object.keys(pub).sort(), ['accessTokens', 'announcement', 'attachments', 'dueReminders', 'filterSubscriptions', 'groups', 'priorities', 'projectKeys', 'resolutions', 'searchAndBulk', 'testing', 'timeTracking', 'voting'])
+  assert.deepEqual(Object.keys(pub).sort(), ['accessTokens', 'announcement', 'attachments', 'dueReminders', 'filterSubscriptions', 'groups', 'priorities', 'projectKeys', 'resolutions', 'searchAndBulk', 'testing', 'timeTracking', 'userDefaults', 'voting'])
 
   // attachments: size limit and the switch
   await call('POST', '/api/v1/projects', { name: 'Settings', key: 'SET', template: 'kanban' })
@@ -6184,6 +6185,63 @@ test('[0605.R3] a notification scheme never tells someone outside an item\'s sec
   const heard = async (who: string) => (await inbox(`${who}@x.com`)).map(n => n.issueKey).filter(k => k.startsWith('NSL-')).sort()
   assert.deepEqual(await heard('nsl.ann'), [hidden.key, open.key].sort())   // a member in the level
   assert.deepEqual(await heard('nsl.bob'), [open.key])
+})
+
+test('[0606.R1][0606.R2][0606.R3][0606.R4][0606.R5] batched email, Autowatch, My changes and their defaults', { skip }, async () => {
+  process.env.EMAIL_TRANSPORT = 'memory'
+  const { sentEmails } = await import('../src/email.ts')
+  const { runJobs } = await import('../src/jobs.ts')
+  await call('PUT', '/api/v1/admin/settings/email', { enabled: true, from: 'Strand <strand@example.com>', appUrl: 'https://strand.example.com' })
+  await call('POST', '/api/v1/projects', { name: 'Batched', key: 'BTE', template: 'kanban' })
+  await join('BTE', 'bt.ann@x.com'); await join('BTE', 'bt.bob@x.com')
+  const ann = (await call('GET', '/api/v1/me', undefined, 'bt.ann@x.com')).body.id
+  const mailsTo = (who: string) => sentEmails.filter(m => m.to === who)
+  const watching = async (key: string, who: string) => (await call('GET', `/api/v1/issues/${key}`, undefined, who)).body.watcherIds.includes((await call('GET', '/api/v1/me', undefined, who)).body.id)
+  const due = () => pool.query(`update jobs set run_at = now() where kind = 'email.batch' and status = 'queued'`)
+  // R1: batching off: one email per change
+  const a = (await call('POST', '/api/v1/projects/BTE/issues', { title: 'Unbatched', assigneeId: ann })).body
+  await runJobs()
+  const n0 = mailsTo('bt.ann@x.com').length
+  await call('PATCH', `/api/v1/issues/${a.key}`, { title: 'Unbatched 2' }); await call('PATCH', `/api/v1/issues/${a.key}`, { priority: 'high' }); await runJobs()
+  assert.equal(mailsTo('bt.ann@x.com').length, n0 + 2)
+  // R1: batching on: three changes, one email listing them; nothing before the window ends; a mention at once
+  await call('PUT', '/api/v1/admin/settings/emailBatching', { enabled: true, minutes: 10 })
+  const n1 = mailsTo('bt.ann@x.com').length
+  await call('PATCH', `/api/v1/issues/${a.key}`, { title: 'Batched' }); await call('PATCH', `/api/v1/issues/${a.key}`, { priority: 'low' })
+  await call('POST', `/api/v1/issues/${a.key}/comments`, { body: 'One more thing' })
+  await runJobs()
+  assert.equal(mailsTo('bt.ann@x.com').length, n1)
+  const mentionedName = (await call('GET', '/api/v1/me', undefined, 'bt.bob@x.com')).body.name
+  await call('POST', `/api/v1/issues/${a.key}/comments`, { body: `@${mentionedName} have a look` }); await runJobs()
+  assert.match(mailsTo('bt.bob@x.com').at(-1)!.text, /mentioned you/)
+  await due(); await runJobs()
+  const batch = mailsTo('bt.ann@x.com').slice(n1)
+  assert.equal(batch.length, 1)
+  assert.match(batch[0]!.text, /^4 changes to /)      // two edits and two comments
+  assert.equal((await pool.query('select count(*)::int as n from email_batch_items')).rows[0].n, 0)
+  await call('PUT', '/api/v1/admin/settings/emailBatching', { enabled: false, minutes: 10 })
+  // R2, R3: creating and commenting make you a watcher; a mention doesn't
+  const b = (await call('POST', '/api/v1/projects/BTE/issues', { title: 'Watch me' }, 'bt.ann@x.com')).body
+  assert.ok(await watching(b.key, 'bt.ann@x.com'))
+  await call('POST', `/api/v1/issues/${b.key}/comments`, { body: 'Hi' }, 'bt.bob@x.com')
+  assert.ok(await watching(b.key, 'bt.bob@x.com'))
+  // R2, R5: Autowatch off (mine), then the default off for those who haven't chosen
+  const prefs = (await call('PUT', '/api/v1/me/notification-prefs', { autowatch: false }, 'bt.bob@x.com')).body
+  assert.deepEqual([prefs.autowatch, prefs.notifyOwnChanges, prefs.defaults], [false, null, { autowatch: true, notifyOwnChanges: false }])
+  const c = (await call('POST', '/api/v1/projects/BTE/issues', { title: 'Not watched' }, 'bt.bob@x.com')).body
+  assert.ok(!(await watching(c.key, 'bt.bob@x.com')))
+  await call('PUT', '/api/v1/admin/settings/userDefaults', { autowatch: false, notifyOwnChanges: false })
+  const d2 = (await call('POST', '/api/v1/projects/BTE/issues', { title: 'Default off' }, 'bt.ann@x.com')).body
+  assert.ok(!(await watching(d2.key, 'bt.ann@x.com')))
+  await call('PUT', '/api/v1/admin/settings/userDefaults', { autowatch: true, notifyOwnChanges: false })
+  // R4: My changes: off, my own change doesn't reach me; on, it does
+  const mine = async () => (await inbox('bt.ann@x.com')).filter(x => x.issueKey === b.key && x.text === 'updated a work item').length
+  await call('PATCH', `/api/v1/issues/${b.key}`, { title: 'Mine' }, 'bt.ann@x.com')
+  assert.equal(await mine(), 0)
+  await call('PUT', '/api/v1/me/notification-prefs', { notifyOwnChanges: true }, 'bt.ann@x.com')
+  await call('PATCH', `/api/v1/issues/${b.key}`, { title: 'Mine again' }, 'bt.ann@x.com')
+  assert.equal(await mine(), 1)
+  await call('PUT', '/api/v1/admin/settings/email', { enabled: false, from: '', appUrl: '' })
 })
 
 test('[0705.R2] a webhook never reaches private addresses, whatever its name resolves to', { skip }, async () => {

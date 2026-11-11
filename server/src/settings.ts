@@ -167,6 +167,26 @@ export const SETTINGS = {
     }).refine(v => !v.enabled || !!v.from, { path: ['from'], message: 'Say who the emails come from' }),
     default: { enabled: false, from: '', appUrl: '' },
   },
+  emailBatching: {
+    label: 'Batched email notifications',
+    description: 'As Jira 8’s: a person’s notification emails about one work item wait for the window, then go as one email; @mentions go at once (spec 0606).',
+    public: false,
+    schema: z.object({
+      enabled: z.boolean().describe('Batch notification emails'),
+      minutes: z.number().int().min(1).max(1440).describe('How long changes to one work item are gathered'),
+    }),
+    default: { enabled: false, minutes: 10 },
+  },
+  userDefaults: {
+    label: 'Default user preferences',
+    description: 'What each person starts with until they choose in Settings › Notifications, as Jira’s Default User Preferences (spec 0606).',
+    public: true,
+    schema: z.object({
+      autowatch: z.boolean().describe('Watch work you create or comment on'),
+      notifyOwnChanges: z.boolean().describe('Hear about your own changes'),
+    }),
+    default: { autowatch: true, notifyOwnChanges: false },
+  },
   deletedItems: {
     label: 'Deleted work items',
     description: 'How long a deleted work item can be restored (Project settings › Deleted work items) before it is removed for good.',

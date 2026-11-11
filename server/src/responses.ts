@@ -57,6 +57,8 @@ export const Component = z.object({ id, projectId: id, name: z.string(), descrip
 export const NotificationPrefs = z.object({
   prefs: z.array(z.object({ kind: z.enum(['assigned', 'mentioned', 'commented', 'status', 'updated', 'due', 'automation']), inbox: z.boolean(), email: z.boolean() })),
   emailEnabled: z.boolean().describe('The workspace sends email (System settings)'),
+  autowatch: nullable(z.boolean()).describe('Watch work I create or comment on (null: the default)'), notifyOwnChanges: nullable(z.boolean()).describe('Hear about my own changes (null: the default)'),
+  defaults: z.object({ autowatch: z.boolean(), notifyOwnChanges: z.boolean() }).describe('System settings › Default user preferences'),
 })
 export const SecurityLevel = z.object({
   id, projectId: id, name: z.string(), description: z.string(), items: z.number(),
