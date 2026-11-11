@@ -168,6 +168,8 @@ export const statistic = (x: { estimation?: string | null; estimationFieldId?: s
 /** The custom field a statistic counts, if it's one. */
 export const statField = (e?: Estimation) => (e?.startsWith('field:') ? e.slice(6) : null)
 /** An item's value in a statistic. */
+/** Do I hold a global permission (spec 0717)? Without a server, everything is allowed. */
+export const holds = (state: Pick<State, 'globalPermissions'>, p: string) => !state.globalPermissions || state.globalPermissions.includes(p)
 export const statOf = (i: Pick<Issue, 'estimate' | 'timeEstimate'> & { custom?: Record<string, FieldValue> }, e: Estimation = 'points') => {
   const f = statField(e)
   if (f) { const v = i.custom?.[f]; return typeof v === 'number' ? v : 0 }
@@ -473,6 +475,8 @@ export interface State {
   recovery?:     boolean
   /** Groups I am in (transition rules can name groups). */
   groupIds?:     string[]
+  /** My global permissions (spec 0717); unset without a server, where everything is allowed */
+  globalPermissions?: string[]
   /** The workspace's link types (from the server; Jira's defaults otherwise). */
   linkTypes?:    LinkType[]
   users:         User[]

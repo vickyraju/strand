@@ -2367,3 +2367,27 @@ test('[0414.R2][0414.R3] with parallel sprints on, a second sprint starts from t
     await owner('PUT', '/admin/settings/sprints', { parallel: false })
   }
 })
+
+test('[0717.R1][0717.R3] an admin takes Bulk change from the default users group; a member’s selection bar says so', { skip, timeout: 90_000 }, async () => {
+  await owner('POST', '/projects', { name: 'Global perms', key: 'GPJ', template: 'scrum' })
+  await owner('POST', '/projects/GPJ/members', { userIds: [await idOf('maya@e2e.test')], role: 'member' })
+  const item = (await owner('POST', '/projects/GPJ/issues', { title: 'Bulk me' })).body
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url('/admin/global-permissions'))
+  const section = o.locator('section[aria-label="Bulk change"]')
+  await section.locator('button:has-text("Remove")').click()
+  await o.waitForSelector('text=no longer has Bulk change')
+  const grant = (await owner('GET', '/admin/global-permissions')).body.find(p => p.key === 'bulk-change')
+  assert.equal(grant.groups.length, 0)
+  try {
+    const m = await signIn('maya@e2e.test')
+    await m.goto(url('/project/GPJ/backlog'))
+    await m.click(`[aria-label="Select ${item.key}"]`)
+    await m.waitForSelector('.bulk-bar >> text=Bulk changes need the Bulk change global permission')
+    assert.equal(await m.locator('.bulk-bar button:has-text("Move")').count(), 0)
+    assert.deepEqual([o.problems, m.problems], [[], []])
+  } finally {
+    const users = (await owner('GET', '/admin/global-permissions')).body.find(p => p.key === 'browse-users').groups[0].groupId
+    await owner('POST', '/admin/global-permissions', { permission: 'bulk-change', groupId: users })
+  }
+})

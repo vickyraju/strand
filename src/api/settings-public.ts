@@ -15,7 +15,7 @@ export interface PublicSettings {
   searchAndBulk: { exportMaxRows: number; bulkMaxItems: number; importMaxRows: number }
   testing: { finalStatusesHavePrecedence: boolean; resultImportMaxMb: number; resultImportMaxTests: number }
   groups: { whoCanCreate: 'everyone' | 'admins' }
-  filterSubscriptions: { groupSubscribers: 'everyone' | 'admins'; maxItems: number }
+  filterSubscriptions: { maxItems: number }
   dueReminders: { enabled: boolean; daysAhead: number; daysLate: number; dueSoonDays: number }
   sprints: { parallel: boolean }
   timeTracking: TimeSettings
@@ -33,7 +33,7 @@ export const DEFAULT_SETTINGS: PublicSettings = {
   searchAndBulk: { exportMaxRows: 20_000, bulkMaxItems: 200, importMaxRows: 10_000 },
   testing: { finalStatusesHavePrecedence: true, resultImportMaxMb: 10, resultImportMaxTests: 2000 },
   groups: { whoCanCreate: 'everyone' },
-  filterSubscriptions: { groupSubscribers: 'everyone', maxItems: 200 },
+  filterSubscriptions: { maxItems: 200 },
   dueReminders: { enabled: true, daysAhead: 1, daysLate: 3, dueSoonDays: 3 },
   sprints: { parallel: false },
   timeTracking: DEFAULT_TIME,

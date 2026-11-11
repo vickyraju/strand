@@ -117,7 +117,6 @@ export default function SystemSettings({ page = SETTINGS_PAGES[0].id }: { page?:
           options: [...LANGUAGES.map(l => [l, l[0]!.toUpperCase() + l.slice(1)] as [string, string]), ['other', 'Other']] },
       ]} />}
       {page === 'filter-subscriptions' && <SimpleSection setting={of('filterSubscriptions')} save={v => save('filterSubscriptions', v)} fields={[
-        { key: 'groupSubscribers', label: 'Who may subscribe a group', type: 'select', options: [['everyone', 'Everyone'], ['admins', 'System administrators only']] },
         { key: 'maxItems', label: 'Most work items in one email', type: 'number', min: 1, max: 1000 },
       ]} />}
       {page === 'groups' && <SelectSection setting={of('groups')} save={v => save('groups', v)} field="whoCanCreate" label="Who may make groups"

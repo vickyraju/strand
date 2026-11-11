@@ -28,6 +28,7 @@ import FieldConfigsAdmin from './FieldConfigsAdmin'
 import ScreensAdmin from './ScreensAdmin'
 import ArchivedItems from './ArchivedItems'
 import NotificationSchemes from './NotificationSchemes'
+import GlobalPermissions from './GlobalPermissions'
 import IncomingMail from './IncomingMail'
 import JiraImport from './JiraImport'
 import SharedViewsAdmin from './SharedViewsAdmin'
@@ -72,6 +73,7 @@ export default function AdminView({ section = 'people', item }: { section?: Admi
       {section === 'archived' && <ArchivedProjects />}
       {section === 'archived-items' && <ArchivedItems />}
       {section === 'notification-schemes' && <NotificationSchemes />}
+      {section === 'global-permissions' && <GlobalPermissions />}
       {section === 'incoming-mail' && <IncomingMail />}
       {section === 'jira-import' && <JiraImport />}
       {section === 'backups' && <Backups />}

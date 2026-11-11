@@ -2,6 +2,7 @@
 // creator, or to each member of a group who can see the view, each getting what they may see. A run queues one email job
 // per recipient, so a large group never makes one long job.
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
+import { needGlobal } from './globalPermissions.ts'
 import { z } from 'zod'
 import { db, tx, type Db } from '../db.ts'
 import { HttpError, type Me } from '../auth.ts'
@@ -119,8 +120,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
   }
   const checkGroup = async (d: Db, me: Me, groupId: string | null) => {
     if (!groupId) return
-    if ((await getSetting(me.workspaceId, 'filterSubscriptions')).groupSubscribers === 'admins' && !me.admin)
-      throw new HttpError(403, 'Only system administrators subscribe groups (System settings › Filter subscriptions)')
+    await needGlobal(me, 'group-subscriptions', d)                          // Jira's Manage group filter subscriptions (spec 0717)
     if (!(await d.query('select 1 from groups where id = $1', [groupId])).length) throw new HttpError(400, 'No such group', { groupId: 'Unknown group' })
   }
   const seen = async (d: Db, me: Me, viewId: string) => { if (!(await viewSeenBy(d, me, viewId))) throw new HttpError(404, 'View not found') }

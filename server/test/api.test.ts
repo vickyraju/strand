@@ -3758,6 +3758,7 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     'GET /admin/mail-handlers': ['gadmin', '/admin/mail-handlers'], 'POST /admin/mail-handlers': ['gadmin', '/admin/mail-handlers', { name: 'x', serverId: none, kind: 'comment_entire', params: {} }],
     'PUT /admin/mail-handlers/{id}': ['gadmin', `/admin/mail-handlers/${none}`, { name: 'x', serverId: none, kind: 'comment_entire', params: {} }],
     'DELETE /admin/mail-handlers/{id}': ['gadmin', `/admin/mail-handlers/${none}`], 'POST /admin/mail-handlers/{id}/run': ['gadmin', `/admin/mail-handlers/${none}/run`],
+    'GET /admin/global-permissions': ['gadmin', '/admin/global-permissions'], 'POST /admin/global-permissions': ['gadmin', '/admin/global-permissions', { permission: 'bulk-change', groupId: none }], 'DELETE /admin/global-permissions/{id}': ['gadmin', `/admin/global-permissions/${none}`],   // 0717.R1
     'GET /admin/notification-schemes': ['gadmin', '/admin/notification-schemes'], 'POST /admin/notification-schemes': ['gadmin', '/admin/notification-schemes', { name: 'x' }],   // 0605.R1
     'GET /admin/notification-schemes/{id}': ['gadmin', `/admin/notification-schemes/${none}`], 'PATCH /admin/notification-schemes/{id}': ['gadmin', `/admin/notification-schemes/${none}`, { name: 'x' }],
     'DELETE /admin/notification-schemes/{id}': ['gadmin', `/admin/notification-schemes/${none}`], 'POST /admin/notification-schemes/{id}/copy': ['gadmin', `/admin/notification-schemes/${none}/copy`, {}],
@@ -6049,11 +6050,13 @@ test('[0604.R1][0604.R2][0604.R3][0604.R4][0604.R5][0604.R6] filter subscription
   await call('PATCH', `/api/v1/subscriptions/${empty.id}`, { emailWhenEmpty: true })
   await call('POST', `/api/v1/subscriptions/${empty.id}/run`); await runJobs(); await runJobs()
   assert.equal(mails().length, before + 4)
-  await call('PUT', '/api/v1/admin/settings/filterSubscriptions', { groupSubscribers: 'everyone', maxItems: 1 })
+  await call('PUT', '/api/v1/admin/settings/filterSubscriptions', { maxItems: 1 })
   await call('POST', `/api/v1/subscriptions/${mine.id}/run`); await runJobs(); await runJobs()
   assert.match(mails().at(-1)!.text, /… and 1 more/)
-  // R1: who may subscribe groups, change and delete; a hidden view is not found
-  await call('PUT', '/api/v1/admin/settings/filterSubscriptions', { groupSubscribers: 'admins', maxItems: 200 })
+  // R1: who may subscribe groups (Manage group filter subscriptions, spec 0717), change and delete; a hidden view is not found
+  await call('PUT', '/api/v1/admin/settings/filterSubscriptions', { maxItems: 200 })
+  const subsGrant = (await call('GET', '/api/v1/admin/global-permissions')).body.find((p: any) => p.key === 'group-subscriptions').groups[0]
+  await call('DELETE', `/api/v1/admin/global-permissions/${subsGrant.id}`)
   assert.equal((await call('POST', `/api/v1/views/${view.id}/subscriptions`, { cron: '0 0 8 ? * *', groupId: team.id }, 'sb.bob@x.com')).status, 403)
   assert.equal((await call('POST', `/api/v1/views/${view.id}/subscriptions`, { cron: '0 0 8 ? * *' }, 'sb.bob@x.com')).status, 201)
   assert.equal((await call('POST', `/api/v1/views/${hidden.id}/subscriptions`, { cron: '0 0 8 ? * *' }, 'sb.bob@x.com')).status, 404)
@@ -6072,7 +6075,7 @@ test('[0604.R1][0604.R2][0604.R3][0604.R4][0604.R5][0604.R6] filter subscription
   await runJobs(); await runJobs()
   assert.equal(mails().length, n + 1)
   assert.ok((await pool.query('select next_run_at > now() as later from filter_subscriptions where id = $1', [mine.id])).rows[0].later)
-  await call('PUT', '/api/v1/admin/settings/filterSubscriptions', { groupSubscribers: 'everyone', maxItems: 200 })
+  await call('POST', '/api/v1/admin/global-permissions', { permission: 'group-subscriptions', groupId: subsGrant.groupId })
   await call('PUT', '/api/v1/admin/settings/email', { enabled: false, from: '', appUrl: '' })
 })
 
@@ -6901,4 +6904,54 @@ test('[0414.R1][0414.R2][0414.R3][0414.R4] parallel sprints: off, one active spr
   assert.equal((await call('POST', `/api/v1/projects/TWO/sprints/${b.s.id}/reopen`)).status, 200)
   for (const s of [a.s, b.s]) await call('POST', `/api/v1/projects/TWO/sprints/${s.id}/complete`, { moveTo: null })
   await put(false)
+})
+
+test('[0717.R1][0717.R2][0717.R3][0717.R4] global permissions: granted to groups; without each, its action is refused; a group granted System administrators administers', { skip }, async () => {
+  await call('POST', '/api/v1/projects', { name: 'Global perms', key: 'GLP', template: 'kanban' })
+  await join('GLP', 'gp.ann@x.com')
+  await call('GET', '/api/v1/me', undefined, 'gp.zed@x.com')                       // someone in no shared project
+  const item = (await call('POST', '/api/v1/projects/GLP/issues', { title: 'Shared item' })).body
+  const team = (await call('POST', '/api/v1/groups', { name: 'gp-team' })).body
+  const list = async () => (await call('GET', '/api/v1/admin/global-permissions')).body
+  const grantOf = async (key: string) => (await list()).find((p: any) => p.key === key).groups.find((g: any) => !g.fixed)
+  // R2: by default, the default users group holds the four; the system-administrators group always administers
+  const perms = await list()
+  assert.deepEqual(perms.map((p: any) => p.key), ['system-admin', 'browse-users', 'shared-objects', 'group-subscriptions', 'bulk-change'])
+  assert.deepEqual(perms[0].groups.map((g: any) => g.fixed), [true])
+  for (const p of perms.slice(1)) assert.equal(p.groups.length, 1, p.key)
+  const defaultUsers = perms[1].groups[0].groupId
+  assert.deepEqual((await call('GET', '/api/v1/me', undefined, 'gp.ann@x.com')).body.globalPermissions.sort(), ['browse-users', 'bulk-change', 'group-subscriptions', 'shared-objects'])
+  // R1: take each away, and its action is refused
+  for (const key of ['browse-users', 'shared-objects', 'group-subscriptions', 'bulk-change']) await call('DELETE', `/api/v1/admin/global-permissions/${(await grantOf(key)).id}`)
+  assert.deepEqual((await call('GET', '/api/v1/me', undefined, 'gp.ann@x.com')).body.globalPermissions, [])
+  const bulk = await call('POST', '/api/v1/issues/bulk/edit', { issues: [item.key], patch: { priority: 'high' } }, 'gp.ann@x.com')
+  assert.equal(bulk.status, 403); assert.match(bulk.body.error, /Bulk change/)
+  assert.equal((await call('POST', '/api/v1/views', { name: 'Mine', shared: true, filters: {} }, 'gp.ann@x.com')).status, 403)
+  const own = await call('POST', '/api/v1/views', { name: 'Private', filters: {} }, 'gp.ann@x.com')
+  assert.equal(own.status, 201)
+  const names = async (q: string) => (await call('GET', `/api/v1/users/search?query=${encodeURIComponent(q)}`, undefined, 'gp.ann@x.com')).body.items.map((u: any) => u.email)
+  assert.deepEqual(await names('gp.zed'), [])
+  assert.deepEqual(await names('gp.zed@x.com'), ['gp.zed@x.com'])                  // the exact email still finds them
+  assert.ok(!(await call('GET', '/api/v1/users', undefined, 'gp.ann@x.com')).body.some((u: any) => u.email === 'gp.zed@x.com'))
+  assert.ok((await call('GET', '/api/v1/users/search?project=GLP&query=gp', undefined, 'gp.ann@x.com')).body.items.length >= 1)   // a project's pickers still work
+  assert.ok(!(await call('GET', '/api/v1/groups/search?query=gp-team', undefined, 'gp.ann@x.com')).body.some((g: any) => g.id === team.id))
+  assert.equal((await call('POST', `/api/v1/views/${own.body.id}/subscriptions`, { cron: '0 0 8 ? * *', groupId: team.id }, 'gp.ann@x.com')).status, 403)
+  // and granting them back allows it again
+  for (const key of ['browse-users', 'shared-objects', 'group-subscriptions', 'bulk-change'])
+    assert.equal((await call('POST', '/api/v1/admin/global-permissions', { permission: key, groupId: defaultUsers })).status, 201)
+  assert.equal((await call('POST', '/api/v1/issues/bulk/edit', { issues: [item.key], patch: { priority: 'high' } }, 'gp.ann@x.com')).status, 200)
+  assert.deepEqual(await names('gp.zed'), ['gp.zed@x.com'])
+  // R1: a group granted System administrators makes its members admins; the system group can't be added again; members can't grant
+  await call('POST', `/api/v1/groups/${team.id}/members`, { userIds: [(await call('GET', '/api/v1/me', undefined, 'gp.ann@x.com')).body.id] })
+  assert.equal((await call('GET', '/api/v1/me', undefined, 'gp.ann@x.com')).body.admin, false)
+  const sys = await call('POST', '/api/v1/admin/global-permissions', { permission: 'system-admin', groupId: team.id })
+  assert.equal(sys.status, 201)
+  assert.equal((await call('GET', '/api/v1/me', undefined, 'gp.ann@x.com')).body.admin, true)
+  assert.equal((await call('POST', '/api/v1/admin/global-permissions', { permission: 'system-admin', groupId: perms[0].groups[0].groupId })).status, 409)
+  await call('DELETE', `/api/v1/admin/global-permissions/${sys.body.id}`)
+  assert.equal((await call('GET', '/api/v1/me', undefined, 'gp.ann@x.com')).body.admin, false)
+  assert.equal((await call('POST', '/api/v1/admin/global-permissions', { permission: 'bulk-change', groupId: team.id }, 'gp.ann@x.com')).status, 403)
+  // R4: audited
+  const audited = (await call('GET', '/api/v1/audit?action=global_permission')).body.items.map((e: any) => e.action)
+  assert.ok(audited.includes('global_permission.granted') && audited.includes('global_permission.revoked'))
 })
