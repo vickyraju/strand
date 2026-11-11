@@ -6,8 +6,8 @@ There are 65 specs: 63 are built and ported to both branches, 0101 is verified, 
 
 | # | Spec | What | Parity row | State |
 |---|---|---|---|---|
-| 1 | 0609 | `~` text search as Jira's: stemming, indexing language, phrases, wildcards, AND/OR/NOT, fuzzy, a `comment` field, comments in `text ~` | SR-03 | Spec drafted, not built |
-| 2 | 0310 | Project templates beyond Scrum and Kanban: Basic and Business | PRJ-06 | Queued |
+| 1 | 0609 | `~` text search as Jira's: stemming, indexing language, phrases, wildcards, AND/OR/NOT, fuzzy, a `comment` field, comments in `text ~` | SR-03 | Done (ported 12 Nov) |
+| 2 | 0310 | Project templates beyond Scrum and Kanban: Basic and Business | PRJ-06 | Done (ported 12 Nov) |
 | 3 | 0412 | Estimation by business value or a custom field; remaining-estimate burndown; team time zone | AG-07, AG-08 | Queued |
 | 4 | 0414 | Parallel sprints (Jira allows more than one active sprint) | AG-06 | Queued; also limits imports, see B4 |
 | 5 | 0717 | Global permissions (Browse users, Create shared objects, Bulk change…) | PRM-10 | Queued |
