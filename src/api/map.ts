@@ -152,10 +152,13 @@ export const mapComment = (c: Row): Comment => ({
   ...(c.visibility ? { visibility: c.visibility } : {}),
   ...(c.editedAt ? { editedAt: ms(c.editedAt) } : {}),
 })
+const own = (a: Row, k: string): unknown => (Object.prototype.hasOwnProperty.call(a, k) ? a[k] : undefined)   // toString is also every object's method
 export const mapActivity = (a: Row): Activity => ({
   id: a.id, issueId: a.issueId, actorId: a.actorId ?? 'automation', text: a.text, createdAt: ms(a.createdAt) ?? Date.now(),
   // the server names the column (statusId); the app records status changes as 'status'
   ...(a.field ? { field: a.field === 'statusId' ? 'status' : a.field } : {}), ...(a.fromValue != null ? { from: a.fromValue } : {}), ...(a.toValue != null ? { to: a.toValue } : {}),
+  // the names as they read at the time (spec 0601 R1)
+  ...(a.fromString != null ? { fromName: a.fromString } : {}), ...(typeof own(a, 'toString') === 'string' ? { toName: own(a, 'toString') as string } : {}),
 })
 export const mapWorklog = (w: Row): Worklog => ({
   id: w.id, userId: w.userId ?? '', minutes: w.minutes, date: w.date, note: w.note ?? '', at: ms(w.createdAt) ?? Date.now(),

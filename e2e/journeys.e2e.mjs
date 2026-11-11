@@ -2018,3 +2018,15 @@ test('[0509.R1][0509.R2] an item is converted to a sub-item from its menu, then 
   assert.deepEqual(o.problems, [])
 })
 
+test('[0601.R4] the History tab shows each change with its old and new names', { skip, timeout: 120_000 }, async () => {
+  await owner('POST', '/projects', { name: 'Changes journey', key: 'HSJ', template: 'kanban' })
+  const [todo, doing] = (await owner('GET', '/projects/HSJ')).body.statuses
+  const item = (await owner('POST', '/projects/HSJ/issues', { title: 'Watch its history' })).body
+  await owner('PATCH', `/issues/${item.key}`, { statusId: doing.id })
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url(`/i/${item.key}`))
+  await o.click('[aria-label="Activity filter"] [role="tab"]:has-text("History")')
+  await o.waitForSelector(`text=${todo.name} → ${doing.name}`)
+  assert.deepEqual(o.problems, [])
+})
+
