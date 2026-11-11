@@ -1,7 +1,7 @@
 // Converts API payloads (camelCased rows, ISO dates, nullable columns) into the app's own types
 // (epoch-millisecond numbers, optional fields). Pure: no React, no fetch, so it is unit-tested.
 import {
-  DEFAULT_BOARD_PREFS, type Project, type Sprint, type State, type User,
+  DEFAULT_BOARD_PREFS, statistic, type Project, type Sprint, type State, type User,
   type Notification, type SavedView, type Activity, type Attachment, type Comment, type IssueLink, type Worklog, type Issue, type Status, type Transition, type Rule, type FieldDef, type Release, type ItemTemplate,
 } from '../data/reducer.ts'
 
@@ -43,7 +43,7 @@ export const mapSprint = (s: Row): Sprint => ({
   ...(s.boardId ? { boardId: s.boardId } : {}),
   startedAt: ms(s.startedAt), endsAt: ms(s.endsAt), completedAt: ms(s.completedAt),
   ...(s.committed != null ? { committed: s.committed } : {}), ...(s.completed != null ? { completed: s.completed } : {}),
-  ...(s.issueIds ? { issueIds: s.issueIds } : {}), ...(s.estimation ? { estimation: s.estimation } : {}),
+  ...(s.issueIds ? { issueIds: s.issueIds } : {}), ...(s.estimation ? { estimation: statistic(s) } : {}),
 })
 
 /** `GET /api/projects/:key` → Project. Server-side `{}` board prefs fall back to the app defaults. */

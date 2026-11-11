@@ -1,4 +1,4 @@
-import type { Issue } from './reducer.ts'
+import type { Estimation, Issue } from './reducer.ts'
 
 /** Jira's time tracking settings (System settings › Time tracking, spec 0306): how long a day and a week are, how time is
  *  shown, and the unit of a number typed alone. Times themselves are always minutes. */
@@ -41,9 +41,11 @@ export function formatDuration(minutes: number, t: TimeSettings = DEFAULT_TIME) 
 
 export const loggedMinutes = (i: Issue) => i.worklogs.reduce((n, w) => n + w.minutes, 0)
 
-/** A total in a board's estimation statistic, with its unit (spec 0404): "8 points", "1d 2h" (time format), "3 issues". */
-export function statLabel(total: number, e: 'points' | 'time' | 'count' = 'points', t: TimeSettings = DEFAULT_TIME) {
+/** A total in a board's estimation statistic, with its unit (spec 0404): "8 points", "1d 2h" (time format), "3 issues";
+ *  a number field's total is the number (spec 0412). */
+export function statLabel(total: number, e: Estimation = 'points', t: TimeSettings = DEFAULT_TIME) {
   if (e === 'time') return formatDuration(total, t)
   const n = Math.round(total * 10) / 10
+  if (e.startsWith('field:')) return String(n)
   return `${n} ${e === 'count' ? (n === 1 ? 'issue' : 'issues') : n === 1 ? 'point' : 'points'}`
 }

@@ -4,7 +4,7 @@
 // saves on its own; the server checks every query and says which one is wrong.
 import { useEffect, useState } from 'react'
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Kanban, MoveHorizontal, Plus, Trash2, X } from 'lucide-react'
-import { DEFAULT_FIELDS, useStore, userOf, type Board, type CardColors, type Estimation, type Project } from '../../data/store'
+import { DEFAULT_FIELDS, statField, statistic, useStore, userOf, type Board, type CardColors, type Estimation, type Project } from '../../data/store'
 import { priorityList } from '../../data/lists'
 import { canAdmin } from '../../data/access'
 import { api, ApiError, errorMessage } from '../../api/client'
@@ -68,7 +68,11 @@ export default function ConfigureBoard({ project, boardId }: { project: Project;
 
   const can = board.canManage
   const save: Save = async patch => {
-    replace(await api<Board>('PATCH', `/api/boards/${encodeURIComponent(board.id)}`, patch))
+    // a number field statistic goes to the server as `field` and its id (spec 0412)
+    const f = statField(patch.estimation)
+    const body = f ? { ...patch, estimation: 'field', estimationFieldId: f } : patch
+    const b = await api<Board & { estimationFieldId?: string | null }>('PATCH', `/api/boards/${encodeURIComponent(board.id)}`, body)
+    replace({ ...b, estimation: statistic(b as any) })
     toast('Board saved')
   }
   const toBoard = () => navigate(href({ name: 'project', key: project.key, tab: 'board', sub: board.id }))
@@ -125,7 +129,8 @@ export default function ConfigureBoard({ project, boardId }: { project: Project;
 // ── General ────────────────────────────────────────────────
 
 function General({ board, project, can, save }: { board: Board; project: Project; can: boolean; save: Save }) {
-  const initial = () => ({ name: board.name, jql: board.jql, doneDays: board.doneDays, estimation: board.estimation ?? 'points', admins: board.admins })
+  const initial = () => ({ name: board.name, jql: board.jql, doneDays: board.doneDays, estimation: board.estimation ?? 'points', timeTracking: board.timeTracking ?? 'none', admins: board.admins })
+  const numberFields = project.fields.filter(x => x.kind === 'number')
   const [f, setF] = useState(initial)
   useEffect(() => setF(initial()), [board])   // eslint-disable-line react-hooks/exhaustive-deps
   const { checked, run } = useJqlCount(f.jql, can)
@@ -182,14 +187,24 @@ function General({ board, project, can, save }: { board: Board; project: Project
         <label className="label" htmlFor="bc-estimation" style={{ marginTop: 14 }}>Estimation</label>
         <p className="hint" style={{ marginTop: 0 }}>What the backlog totals, sprint commitment, velocity and burndown count. A sprint keeps the one it started with.</p>
         <select id="bc-estimation" className="input" style={{ width: 'auto' }} disabled={!can} value={f.estimation}
-          onChange={e => setF({ ...f, estimation: e.target.value as Estimation })}>
+          onChange={e => { const estimation = e.target.value as Estimation; setF({ ...f, estimation, timeTracking: estimation === 'time' ? f.timeTracking : 'none' }) }}>
           <option value="points">Story points</option>
           <option value="time">Original time estimate</option>
           <option value="count">Issue count</option>
+          {numberFields.map(x => <option key={x.id} value={`field:${x.id}`}>{x.name}</option>)}
         </select>
+        {f.estimation === 'time' && <>
+          <label className="label" htmlFor="bc-tracking" style={{ marginTop: 14 }}>Time tracking</label>
+          <p className="hint" style={{ marginTop: 0 }}>With the remaining estimate, the burndown falls as people log work, not only when work is done.</p>
+          <select id="bc-tracking" className="input" style={{ width: 'auto' }} disabled={!can} value={f.timeTracking}
+            onChange={e => setF({ ...f, timeTracking: e.target.value as 'none' | 'remaining' })}>
+            <option value="none">None</option>
+            <option value="remaining">Remaining estimate and time spent</option>
+          </select>
+        </>}
       </>}
       {can && <SaveRow dirty={dirty} busy={s.busy} message={fieldError(s.error, 'jql') ? 'Not saved: fix the filter' : s.message} onReset={() => setF(initial())}
-        onSave={() => s.run({ name: f.name.trim(), jql: f.jql.trim(), doneDays: f.doneDays, ...(board.type === 'scrum' ? { estimation: f.estimation } : {}),
+        onSave={() => s.run({ name: f.name.trim(), jql: f.jql.trim(), doneDays: f.doneDays, ...(board.type === 'scrum' ? { estimation: f.estimation, timeTracking: f.timeTracking } : {}),
           admins: { userIds: f.admins.filter(a => a.kind === 'user').map(a => a.id), groupIds: f.admins.filter(a => a.kind === 'group').map(a => a.id) } })} />}
     </section>
   )
@@ -495,6 +510,8 @@ export function BoardsPanel({ project }: { project: Project }) {
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
 /** Jira's working days (spec 0405): the team's working weekdays and days off; the burndown's guideline falls only on working days. */
+/** Time zones this browser knows (spec 0412). */
+const ZONES: string[] = (Intl as unknown as { supportedValuesOf?: (k: string) => string[] }).supportedValuesOf?.('timeZone') ?? ['UTC']
 function WorkingDays({ board, can, save }: { board: Board; can: boolean; save: Save }) {
   const initial = () => board.workingDays ?? { weekdays: [1, 2, 3, 4, 5], nonWorking: [] }
   const [f, setF] = useState(initial)
@@ -513,6 +530,13 @@ function WorkingDays({ board, can, save }: { board: Board; can: boolean; save: S
           <label key={d} className="cell-flex"><input type="checkbox" disabled={!can} checked={f.weekdays.includes(d)} onChange={() => toggle(d)} />{WEEKDAYS[d]}</label>
         ))}
       </div>
+      <label className="label" htmlFor="bc-zone" style={{ marginTop: 14 }}>Time zone</label>
+      <select id="bc-zone" className="input" style={{ width: 'auto' }} disabled={!can} value={f.timeZone ?? ''}
+        onChange={e => { const { timeZone: _, ...rest } = f; setF(e.target.value ? { ...rest, timeZone: e.target.value } : rest) }}>
+        <option value="">Each person’s own</option>
+        {ZONES.map(z => <option key={z} value={z}>{z.replace(/_/g, ' ')}</option>)}
+      </select>
+      <p className="hint">Where the team’s days start and end, for the burndown and the other reports.</p>
       <span className="label" style={{ marginTop: 14 }}>Non-working days</span>
       <div className="chip-list">
         {f.nonWorking.length === 0 && <span className="muted">None</span>}

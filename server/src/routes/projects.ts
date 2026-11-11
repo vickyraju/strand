@@ -152,7 +152,10 @@ const keyIdP = keyP.extend({ id: uuid })
 
 /** An item's value in its sprint's estimation statistic (spec 0404), as SQL over `i` (an issue) inside an update of
  *  `sprints`: story points, minutes of original estimate, or one per item. */
-const STAT = `case coalesce(sprints.estimation, (select estimation from boards where id = sprints.board_id), 'points') when 'time' then i.time_estimate when 'count' then 1 else i.estimate end`
+const STAT = `case coalesce(sprints.estimation, (select estimation from boards where id = sprints.board_id), 'points') when 'time' then i.time_estimate when 'count' then 1
+  when 'field' then (select case when jsonb_typeof(i.custom -> f.id::text) = 'number' then (i.custom ->> f.id::text)::numeric end
+                       from custom_fields f where f.id = coalesce(sprints.estimation_field_id, (select estimation_field_id from boards where id = sprints.board_id)))
+  else i.estimate end`
 
 /** The statuses of a board's rightmost column that has any: what "completed" means for its sprints (Jira's; spec 0401). */
 async function doneColumnOf(d: Db, boardId: string | null) {
@@ -860,13 +863,13 @@ const plugin: FastifyPluginAsyncZod = async app => {
       [sp.id, sp.startedAt, sp.completedAt])).map(r => r.id).filter(id => !members.includes(id))
     const args: unknown[] = [[...members, ...removed], sp.id]
     const rows = await db.query<any>(
-      `select i.id, p.key || '-' || i.number as key, i.title, i.type, i.priority, st.name as status, i.estimate, i.time_estimate, i.resolved_at,
+      `select i.id, p.key || '-' || i.number as key, i.title, i.type, i.priority, st.name as status, i.estimate, i.time_estimate, i.custom, i.resolved_at,
               coalesce((select max(a.created_at) from activity a where a.issue_id = i.id and a.field = 'sprintId' and a.to_value = $2::text), i.created_at) as joined_at
          from issues i join projects p on p.id = i.project_id join statuses st on st.id = i.status_id
         where i.id = any($1::uuid[]) and i.deleted_at is null and ${visible(req.me, 'i.project_id', args)} order by i.rank, i.id`, args)
     const row = (r: any) => {
       const added = !!start && !(r.id in start)
-      const now = sp.estimation === 'time' ? r.timeEstimate : sp.estimation === 'count' ? 1 : r.estimate   // the sprint's statistic (spec 0404)
+      const now = sp.estimation === 'time' ? r.timeEstimate : sp.estimation === 'count' ? 1 : sp.estimation === 'field' ? (typeof r.custom?.[sp.estimationFieldId] === 'number' ? r.custom[sp.estimationFieldId] : null) : r.estimate   // the sprint's statistic (specs 0404, 0412)
       return { key: r.key, title: r.title, type: r.type, priority: r.priority, status: r.status, points: (start && r.id in start ? start[r.id] : now) ?? null, addedAfterStart: added }
     }
     // already resolved before it joined the sprint (at the start, or when added)
@@ -973,6 +976,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
       const [s] = await d.query(
         `update sprints set state = 'active', started_at = now(), ends_at = $3,
                 estimation = (select estimation from boards where id = sprints.board_id),
+                estimation_field_id = (select estimation_field_id from boards where id = sprints.board_id),
                 committed = (select coalesce(sum(${STAT}), 0) from issues i where sprint_id = sprints.id and deleted_at is null),
                 start_estimates = (select coalesce(jsonb_object_agg(id, ${STAT}), '{}') from issues i where sprint_id = sprints.id and deleted_at is null)   -- for the Sprint Report (0402)
           where id = $1 and project_id = $2 and state = 'planned' returning *`, [req.params.id, p.id, endsAt])

@@ -159,10 +159,20 @@ export interface CardColors {
   queries?: { id: string; jql: string; color: string }[]
 }
 
-/** A Scrum board's estimation statistic (spec 0404): story points, original time estimate (minutes), or issue count. */
-export type Estimation = 'points' | 'time' | 'count'
+/** A Scrum board's estimation statistic (spec 0404): story points, original time estimate (minutes), issue count, or a
+ *  number custom field, `field:<id>` (spec 0412). */
+export type Estimation = 'points' | 'time' | 'count' | `field:${string}`
+/** The statistic as the server sends it (`field` with its field's id) as one value. */
+export const statistic = (x: { estimation?: string | null; estimationFieldId?: string | null }): Estimation | undefined =>
+  x.estimation === 'field' ? (x.estimationFieldId ? `field:${x.estimationFieldId}` : 'points') : (x.estimation ?? undefined) as Estimation | undefined
+/** The custom field a statistic counts, if it's one. */
+export const statField = (e?: Estimation) => (e?.startsWith('field:') ? e.slice(6) : null)
 /** An item's value in a statistic. */
-export const statOf = (i: Pick<Issue, 'estimate' | 'timeEstimate'>, e: Estimation = 'points') => (e === 'time' ? i.timeEstimate ?? 0 : e === 'count' ? 1 : i.estimate ?? 0)
+export const statOf = (i: Pick<Issue, 'estimate' | 'timeEstimate'> & { custom?: Record<string, FieldValue> }, e: Estimation = 'points') => {
+  const f = statField(e)
+  if (f) { const v = i.custom?.[f]; return typeof v === 'number' ? v : 0 }
+  return e === 'time' ? i.timeEstimate ?? 0 : e === 'count' ? 1 : i.estimate ?? 0
+}
 
 export interface Board extends BoardRef {
   projectId: string; projectKey: string
@@ -171,10 +181,12 @@ export interface Board extends BoardRef {
   quickFilters: { id: string; name: string; jql: string }[]
   cardFields: Partial<Record<CardField, boolean>>
   doneDays: number | null
-  /** Scrum: what estimates count (Jira's estimation statistic, spec 0404) */
+  /** Scrum: what estimates count (Jira's estimation statistic, spec 0404; a number field, spec 0412) */
   estimation?: Estimation
-  /** Working weekdays (0 is Sunday) and non-working dates: the burndown's guideline falls only on working days (spec 0405) */
-  workingDays?: { weekdays: number[]; nonWorking: string[] }
+  /** Scrum with the time statistic: remaining makes the burndown follow the remaining estimate (spec 0412) */
+  timeTracking?: 'none' | 'remaining'
+  /** Working weekdays (0 is Sunday) and non-working dates: the burndown's guideline falls only on working days (spec 0405); the team's time zone (spec 0412) */
+  workingDays?: { weekdays: number[]; nonWorking: string[]; timeZone?: string }
   /** Card colours (Jira's "Colors based on", spec 0409); each method keeps its own colours */
   cardColors?: CardColors
   /** Kanban: the statuses in the Kanban backlog; empty when it is off (spec 0406) */

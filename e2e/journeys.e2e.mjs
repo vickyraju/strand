@@ -2318,3 +2318,22 @@ test('[0310.R1][0310.R2] create a Process management project: its board has the 
   assert.equal((await owner('GET', '/projects/PRCS')).body.template, 'process')
   assert.deepEqual(page.problems, [])
 })
+
+test('[0412.R1] a board admin estimates with a number field: the sprint totals it in the backlog', { skip, timeout: 90_000 }, async () => {
+  await owner('POST', '/projects', { name: 'Value board', key: 'VLB', template: 'scrum' })
+  const value = (await owner('POST', '/admin/custom-fields', { name: 'Business value', kind: 'number', context: { projectKeys: ['VLB'] } })).body
+  const s1 = (await owner('POST', '/projects/VLB/sprints', { name: 'Valued sprint' })).body
+  await owner('POST', '/projects/VLB/issues', { title: 'Checkout', sprintId: s1.id, estimate: 1, custom: { [value.id]: 8 } })
+  await owner('POST', '/projects/VLB/issues', { title: 'Wishlist', sprintId: s1.id, estimate: 1, custom: { [value.id]: 5 } })
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url(`/project/VLB/boards/${s1.boardId}`))
+  await o.selectOption('#bc-estimation', `field:${value.id}`)
+  await o.click('#general button:has-text("Save")')
+  const est = async () => (await owner('GET', `/boards/${s1.boardId}`)).body
+  for (let i = 0; i < 40 && (await est()).estimation !== 'field'; i++) await new Promise(r => setTimeout(r, 250))
+  assert.equal((await est()).estimationFieldId, value.id)
+  await o.goto(url(`/project/VLB/backlog/${s1.boardId}`))
+  await o.waitForSelector('.pts-summary .pt-todo')
+  assert.equal((await o.locator('.pts-summary .pt-todo').first().innerText()).trim(), '13')
+  assert.deepEqual(o.problems, [])
+})

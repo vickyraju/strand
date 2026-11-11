@@ -200,14 +200,14 @@ function Backlog({ project, board, switcher }: { project: Project; board?: Board
   /** Why this person can't manage this board's sprints (spec 0101), or '' when they can */
   const cantManage = board?.canManageSprints === false ? NO_SPRINTS : ''
 
-  // totals in the board's estimation statistic (story points, original time estimate, or issue count; spec 0404)
+  // totals in the board's estimation statistic (story points, original time estimate, issue count, spec 0404; or a number field, spec 0412)
   const est = board?.estimation ?? 'points'
   const summary = (list: Issue[]) => {
     const pts = list.reduce((n, i) => n + statOf(i, est), 0)
     const byCat = (c: string) => list.filter(i => projectOf(i).statuses.find(s => s.id === i.status)?.category === c).reduce((n, i) => n + statOf(i, est), 0)
     const show = (n: number) => (est === 'time' ? format(n) : n)
     return (
-      <span className="pts-summary" title={`${est === 'time' ? 'Original time estimate' : est === 'count' ? 'Issues' : 'Story points'}: to do · in progress · done`}>
+      <span className="pts-summary" title={`${est === 'time' ? 'Original time estimate' : est === 'count' ? 'Issues' : est.startsWith('field:') ? 'The estimation field' : 'Story points'}: to do · in progress · done`}>
         <span className="muted">{plural(list.length, 'item')}</span>
         {pts > 0 && est !== 'count' && <>
           <span className="pt pt-todo">{show(byCat('todo'))}</span>

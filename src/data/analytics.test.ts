@@ -83,3 +83,36 @@ test('[0405.R2] the burndown guideline falls only on working days, flat across a
   assert.deepEqual(guideline(timeline, 7), [7, 6, 5, 4, 3, 2, 1, 0])                     // no working days set: every day
   assert.equal(isWorkingDay(day(7), w), false)
 })
+
+test('[0412.R1][0412.R2][0412.R3] a number field statistic, the remaining-estimate burndown, and days in the team’s time zone', async () => {
+  const { statOf, statistic } = await import('./reducer.ts')
+  const { estimatesAt } = await import('./agile.ts')
+  const { startOfDay, endOfDay, days, isoDay } = await import('./analytics.ts')
+  // R1: the statistic as one value; an item's field value, and as it stood from the field's history
+  assert.equal(statistic({ estimation: 'field', estimationFieldId: 'f1' }), 'field:f1')
+  assert.equal(statistic({ estimation: 'field', estimationFieldId: null }), 'points')
+  assert.equal(statOf({ estimate: 3, timeEstimate: 60, custom: { f1: 8 } }, 'field:f1'), 8)
+  assert.equal(statOf({ estimate: 3, timeEstimate: 60, custom: { f1: 'x' } }, 'field:f1'), 0)
+  const s = sample()
+  const sprint = s.sprints.find(x => x.state === 'active')!
+  const item = s.issues.find(i => i.sprintId === sprint.id)!
+  const t0 = sprint.startedAt!
+  const withField: State = { ...s, issues: s.issues.map(i => i.id === item.id ? { ...i, custom: { ...i.custom, f1: 13 } } : i),
+    activity: [...s.activity, { id: 'h1', issueId: item.id, actorId: '', text: 'x', field: 'custom:f1', from: '5', to: '13', createdAt: t0 + 3_600_000 }] }
+  const at = estimatesAt(withField, 'field:f1')
+  assert.deepEqual([at(withField.issues.find(i => i.id === item.id)!, t0), at(withField.issues.find(i => i.id === item.id)!, t0 + 7_200_000)], [5, 13])
+  // R2: the remaining estimate falls as work is logged, not only when work is done
+  const members = s.issues.filter(i => i.sprintId === sprint.id)
+  const timed: State = { ...s, issues: s.issues.map(i => i.sprintId === sprint.id ? { ...i, timeEstimate: 600, timeRemaining: 600 } : i),
+    activity: [...s.activity.filter(a => a.field !== 'timeRemaining'), { id: 'r1', issueId: members[0]!.id, actorId: '', text: 'x', field: 'timeRemaining', from: '600', to: '120', createdAt: t0 + 3_600_000 }] }
+  const b = burndown(timed, pay(timed), { ...sprint, estimation: 'time' }, t0 + 2 * 3_600_000, undefined, 'remaining')!
+  assert.equal(b.total, members.length * 600)
+  assert.ok(b.remaining[0]! <= b.total - 480, `logged work lowers the line: ${b.remaining[0]} of ${b.total}`)
+  // R3: days in a chosen time zone, also across a daylight-saving change
+  const t = Date.UTC(2026, 2, 8, 12)                                      // 8 Mar 2026, the US switch to summer time
+  assert.equal(new Date(startOfDay(t, 'America/New_York')).toISOString(), '2026-03-08T05:00:00.000Z')
+  assert.equal(new Date(endOfDay(t, 'America/New_York')).toISOString(), '2026-03-09T03:59:59.999Z')
+  assert.equal(isoDay(Date.UTC(2026, 0, 1, 23), 'Asia/Kolkata'), '2026-01-02')
+  assert.deepEqual(days(Date.UTC(2026, 2, 7, 12), Date.UTC(2026, 2, 9, 12), 'America/New_York').map(d => isoDay(d, 'America/New_York')), ['2026-03-07', '2026-03-08', '2026-03-09'])
+  assert.equal(isWorkingDay(Date.UTC(2026, 0, 2, 20), { weekdays: [1, 2, 3, 4, 5], nonWorking: [], timeZone: 'Asia/Tokyo' }), false)   // Friday evening in UTC is Saturday in Tokyo
+})

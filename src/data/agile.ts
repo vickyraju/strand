@@ -1,17 +1,14 @@
 // Jira's agile reports for epics, versions and sprints (spec 0411): burnup, epic and version reports, epic and release
 // burndowns. Worked out from the project's items and history, in the board's estimation statistic, with estimates as they
 // stood at each moment (as Jira's reports count them).
-import { categoryOf, statOf, type Activity, type Estimation, type Issue, type Project, type Sprint, type State } from './reducer.ts'
-import { DAY, dayLabel, guideline, resolvedAt, sprintMembers, statusHistory, type WorkingDays } from './analytics.ts'
-
-const endOfDay = (t: number) => { const d = new Date(t); d.setHours(23, 59, 59, 999); return d.getTime() }
-const startOfDay = (t: number) => { const d = new Date(t); d.setHours(0, 0, 0, 0); return d.getTime() }
-const daysFrom = (from: number, to: number) => { const out: number[] = []; for (let t = startOfDay(from); t <= to; t += DAY) out.push(t); return out }
+import { categoryOf, statField, statOf, type Activity, type Estimation, type Issue, type Project, type Sprint, type State } from './reducer.ts'
+import { DAY, dayLabel, days as daysFrom, endOfDay, guideline, resolvedAt, sprintMembers, statusHistory, type WorkingDays } from './analytics.ts'
 
 /** R5: an item's statistic as it stood at a moment, as Jira's reports count it: its estimate history replayed (the last
  *  change by then, else the value before its first change, else what it is now). Count is always 1. */
 export function estimatesAt(state: State, estimation?: Estimation) {
-  const field = estimation === 'time' ? 'timeEstimate' : 'estimate'
+  const f = statField(estimation)
+  const field = estimation === 'time' ? 'timeEstimate' : f ? `custom:${f}` : 'estimate'
   const changes = new Map<string, Activity[]>()
   for (const a of state.activity) if (a.field === field) (changes.get(a.issueId) ?? changes.set(a.issueId, []).get(a.issueId)!).push(a)
   for (const list of changes.values()) list.sort((x, y) => x.createdAt - y.createdAt)
@@ -38,14 +35,15 @@ export function burnup(state: State, project: Project, sprint: Sprint, now = Dat
   const members = sprintMembers(state, sprint)
   const at = estimatesAt(state, sprint.estimation)
   const done = doneTimes(state, project, members)
-  const timeline = daysFrom(sprint.startedAt, end)
+  const tz = working?.timeZone                                         // the team's days (spec 0412)
+  const timeline = daysFrom(sprint.startedAt, end, tz)
   const last = Math.min(now, end)
   // the scope moves when estimates change; work completed counts at its estimate when it was done
-  const scopeOn = (d: number) => members.reduce((n, i) => n + at(i, Math.min(endOfDay(d), last)), 0)
+  const scopeOn = (d: number) => members.reduce((n, i) => n + at(i, Math.min(endOfDay(d, tz), last)), 0)
   const startScope = members.reduce((n, i) => n + at(i, sprint.startedAt!), 0)
-  const completed = timeline.map(d => d > last ? NaN : members.reduce((n, i) => { const t = done.get(i.id); return n + (t !== undefined && t <= Math.min(endOfDay(d), last) ? at(i, t) : 0) }, 0))
+  const completed = timeline.map(d => d > last ? NaN : members.reduce((n, i) => { const t = done.get(i.id); return n + (t !== undefined && t <= Math.min(endOfDay(d, tz), last) ? at(i, t) : 0) }, 0))
   const ideal = guideline(timeline, startScope, working).map(v => startScope - v)
-  return { labels: timeline.map(dayLabel), scope: timeline.map(d => (d > last ? NaN : scopeOn(d))), completed, ideal }
+  return { labels: timeline.map(d => dayLabel(d, tz)), scope: timeline.map(d => (d > last ? NaN : scopeOn(d))), completed, ideal }
 }
 
 /** R6: when an item joined an epic (parentId) or a version (fixReleaseIds): the last time its history put it there, else its creation. */
@@ -59,7 +57,7 @@ export const itemsOf = (state: State, project: Project, of: { epic?: string; ver
   state.issues.filter(i => i.projectId === project.id && i.type !== 'epic' && (of.epic ? i.parentId === of.epic : !!of.version && !!i.fixReleaseIds?.includes(of.version)))
 
 /** R2, R3: total and completed work per day from `from` to `to`, and the three lists. */
-export function progressReport(state: State, project: Project, of: { epic?: string; version?: string }, o: { from?: number; to?: number; estimation?: Estimation; now?: number } = {}) {
+export function progressReport(state: State, project: Project, of: { epic?: string; version?: string }, o: { from?: number; to?: number; estimation?: Estimation; now?: number; timeZone?: string } = {}) {
   const now = o.now ?? Date.now()
   const items = itemsOf(state, project, of)
   const at = estimatesAt(state, o.estimation)
@@ -68,13 +66,15 @@ export function progressReport(state: State, project: Project, of: { epic?: stri
   const joined = new Map(items.map(i => [i.id, joinedAt(i, state.activity, field, (of.epic ?? of.version)!)]))
   const start = o.from ?? Math.min(now, ...items.map(i => joined.get(i.id)!))
   const end = Math.min(o.to ?? now, now)
-  const timeline = daysFrom(start, Math.max(start, end))
-  const total = timeline.map(d => items.reduce((n, i) => n + (joined.get(i.id)! <= endOfDay(d) ? at(i, Math.min(endOfDay(d), now)) : 0), 0))
-  const completed = timeline.map(d => items.reduce((n, i) => { const t = done.get(i.id); return n + (t !== undefined && t <= endOfDay(d) ? at(i, t) : 0) }, 0))
+  const tz = o.timeZone
+  const timeline = daysFrom(start, Math.max(start, end), tz)
+  const total = timeline.map(d => items.reduce((n, i) => n + (joined.get(i.id)! <= endOfDay(d, tz) ? at(i, Math.min(endOfDay(d, tz), now)) : 0), 0))
+  const completed = timeline.map(d => items.reduce((n, i) => { const t = done.get(i.id); return n + (t !== undefined && t <= endOfDay(d, tz) ? at(i, t) : 0) }, 0))
   const isDone = (i: Issue) => categoryOf(project, i.status) === 'done'
-  const unestimated = (i: Issue) => !isDone(i) && (o.estimation === 'time' ? i.timeEstimate == null : o.estimation === 'count' ? false : i.estimate == null)
+  const f = statField(o.estimation)
+  const unestimated = (i: Issue) => !isDone(i) && (o.estimation === 'time' ? i.timeEstimate == null : o.estimation === 'count' ? false : f ? typeof i.custom?.[f] !== 'number' : i.estimate == null)
   return {
-    labels: timeline.map(dayLabel), timeline, total, completed,
+    labels: timeline.map(d => dayLabel(d, tz)), timeline, total, completed,
     lists: { completed: items.filter(isDone), incomplete: items.filter(i => !isDone(i) && !unestimated(i)), unestimated: items.filter(unestimated) },
   }
 }

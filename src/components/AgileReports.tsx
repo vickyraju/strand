@@ -46,12 +46,12 @@ export function Burnup({ project, state }: { project: Project; state: State }) {
 
 /** R2: one epic's total and completed work over time, and its three lists. */
 export function EpicReport({ project, state }: { project: Project; state: State }) {
-  const { estimation } = useStatistic(project)
+  const { estimation, working } = useStatistic(project)
   const epics = state.issues.filter(i => !i.archivedAt && i.projectId === project.id && i.type === 'epic').sort((a, b) => a.rank - b.rank)
   const [id, setId] = useState(epics.find(e => categoryOf(project, e.status) !== 'done')?.id ?? epics[0]?.id)
   const epic = epics.find(e => e.id === id)
   if (!epic) return <NoData text="Create an epic and add work items to it to see its report." />
-  const r = progressReport(state, project, { epic: epic.id }, { estimation, from: epic.createdAt })
+  const r = progressReport(state, project, { epic: epic.id }, { estimation, from: epic.createdAt, timeZone: working?.timeZone })
   return <>
     <div className="report-tools">
       <Picker value={epic.id} options={epics.map(e => ({ value: e.id, label: `${e.key} ${e.title}` }))} onChange={setId} className="btn btn-secondary" title="Epic" trigger={epic.title} />
@@ -62,7 +62,7 @@ export function EpicReport({ project, state }: { project: Project; state: State 
 
 /** R3: one version's progress, with its predicted release date. */
 export function VersionReport({ project, state }: { project: Project; state: State }) {
-  const { estimation } = useStatistic(project)
+  const { estimation, working } = useStatistic(project)
   const { stat } = useDurations()
   const versions = project.releases.filter(r => !r.archived)
   const [id, setId] = useState(versions.find(v => !v.released)?.id ?? versions[0]?.id)
@@ -70,7 +70,7 @@ export function VersionReport({ project, state }: { project: Project; state: Sta
   if (!v) return <NoData text="Create a version on the Releases page and give work items that fix version to see its report." />
   const from = v.startDate ? new Date(`${v.startDate}T00:00`).getTime() : undefined
   const to = v.released && v.releasedAt ? v.releasedAt : undefined
-  const r = progressReport(state, project, { version: v.id }, { estimation, from, to })
+  const r = progressReport(state, project, { version: v.id }, { estimation, from, to, timeZone: working?.timeZone })
   const total = r.total.at(-1) ?? 0, done = r.completed.at(-1) ?? 0
   const forecast = v.released ? null : predictRelease({ start: r.timeline[0] ?? Date.now(), now: Date.now(), total, completed: done })
   const date = (t: number) => new Date(t).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })

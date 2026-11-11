@@ -91,7 +91,8 @@ export const Sprint = z.object({
   id, workspaceId: id, projectId: id, boardId: id.describe('The board it belongs to'), name: z.string(), goal: z.string(), state: z.enum(['planned', 'active', 'closed']),
   startedAt: nullable(ts), endsAt: nullable(ts), completedAt: nullable(ts), committed: nullable(z.number()), completed: nullable(z.number()),
   issueIds: nullable(z.array(id)), createdAt: ts,
-  estimation: nullable(z.enum(['points', 'time', 'count'])).describe('What its totals count, from its board when it started (spec 0404)'),
+  estimation: nullable(z.enum(['points', 'time', 'count', 'field'])).describe('What its totals count, from its board when it started (spec 0404)'),
+  estimationFieldId: nullable(id).describe('With estimation `field`: the number field it totals (spec 0412)'),
 })
 
 export const ProjectListItem = z.object({
@@ -132,8 +133,9 @@ const NamedQuery = z.object({ id: z.string(), name: z.string(), jql: z.string() 
 export const Board = z.object({
   id, projectId: id, projectKey: z.string(), name: z.string(), type: z.enum(['kanban', 'scrum']), jql: z.string().describe('The board filter'),
   columns: z.array(BoardColumn), swimlanes: z.object({ by: z.enum(['none', 'assignee', 'epic', 'priority', 'project', 'queries']), queries: z.array(NamedQuery).optional() }),
-  quickFilters: z.array(NamedQuery), cardFields: z.record(z.string(), z.boolean()), doneDays: nullable(z.number()), estimation: z.enum(['points', 'time', 'count']).describe('Scrum: what estimates count (spec 0404)'),
-  workingDays: z.object({ weekdays: z.array(z.number()), nonWorking: z.array(z.string()) }).describe('Working weekdays (0 is Sunday) and non-working dates (spec 0405)'),
+  quickFilters: z.array(NamedQuery), cardFields: z.record(z.string(), z.boolean()), doneDays: nullable(z.number()), estimation: z.enum(['points', 'time', 'count', 'field']).describe('Scrum: what estimates count (specs 0404, 0412)'),
+  estimationFieldId: nullable(id).describe('With estimation `field`: the number field (spec 0412)'), timeTracking: z.enum(['none', 'remaining']).describe('Remaining: the burndown follows the remaining estimate (spec 0412)'),
+  workingDays: z.object({ weekdays: z.array(z.number()), nonWorking: z.array(z.string()), timeZone: z.string().optional() }).describe('Working weekdays (0 is Sunday), non-working dates (spec 0405) and the team’s time zone (spec 0412)'),
   cardColors: z.object({ by: z.enum(['none', 'types', 'priorities', 'assignees', 'queries']) }).passthrough().describe('Card colours (spec 0409)'), position: z.number(),
   kanbanBacklog: z.array(id).describe('Kanban: the statuses in the Kanban backlog; empty when it is off (spec 0406)'),
   canManage: z.boolean().describe('I may change it'), canManageSprints: z.boolean().describe('I may create, start, complete and delete its sprints'), admins: z.array(z.object({ kind: z.enum(['user', 'group']), id, name: z.string() })),
@@ -220,7 +222,7 @@ export const ReportData = z.object({
   issues: z.array(IssueRow),
   statusChanges: z.array(z.object({ issueId: id, fromId: nullable(id), toId: id, at: ts })).describe('Every status change, oldest first'),
   joins: z.array(z.object({ issueId: id, field: z.enum(['parentId', 'fixReleaseIds']), value: z.string().describe('The epic, or the fix versions comma-separated'), at: ts })).describe('When items were put into an epic or versions, oldest first (spec 0411)'),
-  estimateChanges: z.array(z.object({ issueId: id, field: z.enum(['estimate', 'timeEstimate']), from: nullable(z.string()), to: nullable(z.string()), at: ts }))
+  estimateChanges: z.array(z.object({ issueId: id, field: z.string().describe('estimate, timeEstimate, timeRemaining or custom:<number field id>'), from: nullable(z.string()), to: nullable(z.string()), at: ts }))
     .describe('Every change of story points or original estimate (minutes), oldest first: reports count estimates as they stood (spec 0411 R5)'),
 })
 export const IssuePage = z.object({ items: z.array(IssueRow), next: nullable(z.string()).describe('Pass back as `cursor` for the next page; null on the last page') })

@@ -8,7 +8,7 @@ There are 65 specs: 63 are built and ported to both branches, 0101 is verified, 
 |---|---|---|---|---|
 | 1 | 0609 | `~` text search as Jira's: stemming, indexing language, phrases, wildcards, AND/OR/NOT, fuzzy, a `comment` field, comments in `text ~` | SR-03 | Done (ported 12 Nov) |
 | 2 | 0310 | Project templates beyond Scrum and Kanban: Basic and Business | PRJ-06 | Done (ported 12 Nov) |
-| 3 | 0412 | Estimation by business value or a custom field; remaining-estimate burndown; team time zone | AG-07, AG-08 | Queued |
+| 3 | 0412 | Estimation by business value or a custom field; remaining-estimate burndown; team time zone | AG-07, AG-08 | Done (ported 12 Nov) |
 | 4 | 0414 | Parallel sprints (Jira allows more than one active sprint) | AG-06 | Queued; also limits imports, see B4 |
 | 5 | 0717 | Global permissions (Browse users, Create shared objects, Bulk change…) | PRM-10 | Queued |
 | 6 | 0718 | Workflow triggers from development tools (a merged pull request moves an item) | WF-06 | Queued |
@@ -29,7 +29,7 @@ Today's importer (0802) brings projects, people, statuses, types, priorities, re
 | B6 | **Boards come in as Strand's default board** | Columns, swimlanes, quick filters and board filters are lost | Jira Software's REST has `board/{id}/configuration`: import columns (status mapping), the filter, estimation and ranking |
 | B7 | **Saved filters and subscriptions** aren't imported | People's searches are lost | Import the filters each person can see (REST `filter/{id}`, `filter/favourite`) with their sharing; translate JQL that refers to ids |
 | B8 | **Notification schemes** aren't imported | The defaults apply instead | REST `notificationscheme`: map to Strand's schemes (spec 0605) |
-| B9 | **Environment** and **issue security level** aren't imported | Lost fields (strand branch: levels) | Environment becomes a text custom field; security levels on the strand branch |
+| B9 | **Environment** and **issue security level** aren't imported; **custom fields' history** is imported as text only | Lost fields (strand branch: levels) | Environment becomes a text custom field; security levels on the strand branch; custom fields' changelog as `custom:<id>` rows with values, so number-field statistics (0412) read imported history |
 | B10 | **Throughput at scale**: one job, project after project | 6,000 projects and millions of items take a long time | Several projects in parallel, attachment copies in a pool, progress and an estimated time to finish |
 | B11 | **Apps' data** (Tempo, ScriptRunner, Structure, Service Management, Zephyr/Xray…) | Unknown until the inventory runs | Run the inventory (0801) on the real Jira; it decides what's needed |
 | B12 | **Rehearsal and sign-off** | Proves the import before cutover | Import a copy, compare counts (reconciliation, 0802 R7), spot-check with users, then cut over |

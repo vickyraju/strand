@@ -1,6 +1,7 @@
 // Limits an administrator sets in System settings that the web app needs too (so it can say "at most 25 MB" before an
 // upload starts, offer the right token lifetimes, and so on). Loaded once and shared; without a server, the built-in values.
 import { useEffect, useState } from 'react'
+import type { Estimation } from '../data/reducer.ts'
 import { api, apiEnabled } from './client'
 import { DEFAULT_PRIORITIES, DEFAULT_RESOLUTIONS, setLists, type PriorityDef, type ResolutionDef } from '../data/lists'
 import { DEFAULT_KEY_RULE, type KeyRule } from '../../server/src/shared/projectKeys.ts'
@@ -67,5 +68,5 @@ export function useDurations() {
   const t = usePublicSettings().timeTracking
   return { parse: (text: string) => parseDuration(text, t), format: (minutes: number) => formatDuration(minutes, t),
     /** A total in an estimation statistic, with its unit (spec 0404). */
-    stat: (total: number, e?: 'points' | 'time' | 'count') => statLabel(total, e, t) }
+    stat: (total: number, e?: Estimation) => statLabel(total, e, t) }
 }
