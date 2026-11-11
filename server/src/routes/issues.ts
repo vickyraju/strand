@@ -937,6 +937,49 @@ const plugin: FastifyPluginAsyncZod = async app => {
     requireAdmin(req)
     return tx(async d => ({ restored: await archive(d, req, [(await issueByKey(d, req, req.params.key, false, 'browse', { archivedOk: true })).id], false) }))
   })
+  // Jira's bulk Watch and Stop watching (spec 0510 R1): the items I can see
+  app.post('/issues/bulk/watch', { schema: { tags: ['Issues: bulk'], summary: 'Watch many work items, or stop watching them', body: z.object({ issues: refs, watching: z.boolean() }) } }, async req => {
+    await checkBulk(req)
+    return tx(async d => {
+      const ids: string[] = []
+      for (const ref of [...new Set(req.body.issues)]) ids.push((await issueByKey(d, req, ref, false, 'viewer')).id)
+      if (req.body.watching) await d.query('insert into issue_watchers (issue_id, user_id) select unnest($1::uuid[]), $2 on conflict do nothing', [ids, req.me.id])
+      else await d.query('delete from issue_watchers where issue_id = any($1::uuid[]) and user_id = $2', [ids, req.me.id])
+      return bulkResult(ids.length)
+    })
+  })
+  // Jira's bulk Transition (spec 0510 R2): each item through its own transition to a status of that name, with the same
+  // transition-screen fields and comment; each is done or not on its own, and the answer says which and why
+  app.post('/issues/bulk/transition', { schema: { tags: ['Issues: bulk'], summary: 'Move many work items to a status of this name, each through a transition its workflow allows, with the same fields and comment; every item’s outcome',
+    body: z.object({ issues: refs, toStatus: z.string().trim().min(1).max(100).describe('The status’s name'), fields: patchBody.omit({ statusId: true, rank: true }).partial().default({}),
+      comment: z.string().max(20000).optional(), sendNotifications }) } }, async req => {
+    await checkBulk(req)
+    const results: { key: string; outcome: 'done' | 'unchanged' | 'skipped' | 'failed'; reason?: string; errors?: Record<string, string> }[] = []
+    await tx(async d => {
+      await quietly(d, req)
+      for (const ref of [...new Set(req.body.issues)]) {
+        await d.query('savepoint bulk_item')
+        try {
+          const cur = await issueByKey(d, req, ref, false, 'transitionIssues')
+          const [st] = await d.query<{ name: string }>('select name from statuses where id = $1', [cur.statusId])
+          if (st?.name.toLowerCase() === req.body.toStatus.toLowerCase()) { results.push({ key: cur.key, outcome: 'unchanged', reason: `Already ${st.name}` }); continue }
+          const ctx = await ruleContext(d, cur, req.me)
+          const ts = await available(d, cur, ctx)
+          const names = new Map((await d.query<{ id: string; name: string }>('select id, name from statuses where project_id = $1', [cur.projectId])).map(s => [s.id, s.name.toLowerCase()]))
+          const t = ts.find(x => x.toId && names.get(x.toId) === req.body.toStatus.toLowerCase())
+          if (!t) { results.push({ key: cur.key, outcome: 'skipped', reason: `Its workflow has no transition from ${st?.name} to ${req.body.toStatus}` }); continue }
+          await applyPatch(d, req.me, cur, { ...req.body.fields, statusId: t.toId! }, { ifMatch: null, override: false, ip: req.ip, transition: t, comment: req.body.comment })
+          await d.query('release savepoint bulk_item')
+          results.push({ key: cur.key, outcome: 'done' })
+        } catch (e) {
+          await d.query('rollback to savepoint bulk_item')
+          if (!(e instanceof HttpError)) throw e
+          results.push({ key: ref, outcome: 'failed', reason: e.message, ...((e as any).errors ? { errors: (e as any).errors } : {}) })
+        }
+      }
+    })
+    return { results, done: results.filter(r => r.outcome === 'done').length }
+  })
   app.post('/issues/bulk/archive', { schema: { tags: ['Issues: bulk'], summary: 'Archive many work items with their sub-items (system administrators)', body: z.object({ issues: z.array(z.string()).min(1).max(5000) }) } }, async req => {
     requireAdmin(req)
     const { bulkMaxItems } = await getSetting(req.me.workspaceId, 'searchAndBulk')

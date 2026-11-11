@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
-import { X, Trash2, ArrowRightLeft, Archive } from 'lucide-react'
+import { X, Trash2, ArrowRightLeft, Archive, Eye, EyeOff, Shuffle } from 'lucide-react'
 import { api, apiEnabled, errorMessage } from '../api/client'
 import { issueSync, patchOf } from '../api/sync'
 import { mapIssue } from '../api/map'
 import { sprintDeps } from '../api/sprints'
 import { searchProjects, type ProjectOption } from '../api/work'
-import { useStore, type IssuePatch, type Priority } from '../data/store'
+import { useStore, type Issue, type IssuePatch, type Priority } from '../data/store'
+import { usePublicSettings } from '../api/settings-public'
 import { planMove } from './TransitionDialog'
 import { useApp } from '../appContext'
 import { Modal, Picker, statusOptions, priorityOptions, plural } from './ui'
@@ -20,6 +21,7 @@ export default function BulkBar({ ids, onClear }: { ids: string[]; onClear: () =
   const { toast } = useApp()
   const [confirm, setConfirm] = useState(false)
   const [moving, setMoving] = useState(false)
+  const [transitioning, setTransitioning] = useState(false)
   const [notify, setNotify] = useState(true)
   if (ids.length === 0) return null
 
@@ -58,6 +60,18 @@ export default function BulkBar({ ids, onClear }: { ids: string[]; onClear: () =
       toast(`Archived ${plural(r.archived.length, 'item')}`); onClear()
     } catch (e) { toast(errorMessage(e), { tone: 'warn' }) }
   }
+  // Jira's bulk Watch and Stop watching (spec 0510 R1)
+  const watchAll = async (watching: boolean) => {
+    try {
+      await issueSync.idle()
+      const r = await api<{ count: number }>('POST', '/api/issues/bulk/watch', { issues: items.map(i => issueSync.serverKey(i)), watching })
+      for (const i of items) {
+        const has = i.watcherIds.includes(state.me!.id)
+        if (has !== watching) dispatch({ type: 'mergeIssues', issues: [{ ...i, watcherIds: watching ? [...i.watcherIds, state.me!.id] : i.watcherIds.filter(w => w !== state.me!.id) }] })
+      }
+      toast(watching ? `Watching ${plural(r.count, 'item')}` : `Stopped watching ${plural(r.count, 'item')}`)
+    } catch (e) { toast(errorMessage(e), { tone: 'warn' }) }
+  }
   const apply = (patch: IssuePatch, what: string) => {
     let target = ids
     if (patch.status && project) {
@@ -87,9 +101,10 @@ export default function BulkBar({ ids, onClear }: { ids: string[]; onClear: () =
         <span className="bulk-count">{ids.length} selected</span>
         <button className="icon-btn sm" onClick={onClear} aria-label="Clear selection" title="Clear selection (Esc)"><X size={14} /></button>
         <span className="bulk-sep" />
-        {project && (
+        {project && !apiEnabled && (
           <Picker value="" options={statusOptions(project)} onChange={s => apply({ status: s }, 'status')} className="btn btn-ghost btn-sm" title="Change status" trigger="Status" />
         )}
+        {apiEnabled && <button className="btn btn-ghost btn-sm" onClick={() => setTransitioning(true)}><Shuffle size={14} />Transition</button>}
         <UserPicker value={undefined} onChange={a => apply({ assigneeId: a }, 'assignee')} className="btn btn-ghost btn-sm" title="Change assignee"
           trigger="Assignee" allowUnassigned projectId={project?.id} />
         <Picker value={'' as Priority | ''} options={priorityOptions()} onChange={p => apply({ priority: p as Priority }, 'priority')} className="btn btn-ghost btn-sm" title="Change priority" trigger="Priority" />
@@ -107,6 +122,8 @@ export default function BulkBar({ ids, onClear }: { ids: string[]; onClear: () =
             onChange={v => toVersion(v === '-' ? null : v)} className="btn btn-ghost btn-sm" title="Add fix version" trigger="Version" />
         )}
         {mayMove && <button className="btn btn-ghost btn-sm" onClick={() => setMoving(true)}><ArrowRightLeft size={14} />Move</button>}
+        {apiEnabled && <button className="btn btn-ghost btn-sm" title="Watch them all" onClick={() => void watchAll(true)}><Eye size={14} />Watch</button>}
+        {apiEnabled && <button className="btn btn-ghost btn-sm" title="Stop watching them all" onClick={() => void watchAll(false)}><EyeOff size={14} />Unwatch</button>}
         {mayQuiet && <label className="sm nowrap" title="Off: nobody is notified of these changes"><input type="checkbox" checked={notify} onChange={e => setNotify(e.target.checked)} /> Send notifications</label>}
         {apiEnabled && state.isAdmin === true && <button className="btn btn-ghost btn-sm" onClick={() => void archiveAll()}><Archive size={14} />Archive</button>}
         {mayDelete && <>
@@ -116,6 +133,7 @@ export default function BulkBar({ ids, onClear }: { ids: string[]; onClear: () =
       </div>
 
       {confirm && <DeleteItemsDialog ids={ids} onClose={() => setConfirm(false)} onDeleted={onClear} />}
+      {transitioning && <BulkTransition items={items} notify={notify} onClose={() => setTransitioning(false)} />}
       {moving && <BulkMove keys={items.map(i => issueSync.serverKey(i))} from={projectIds} notify={notify} onClose={() => setMoving(false)} onMoved={onClear} />}
     </>
   )
@@ -150,6 +168,63 @@ function BulkMove({ keys, from, notify, onClose, onMoved }: { keys: string[]; fr
       <datalist id="bmv-projects">{found.map(p => <option key={p.id} value={`${p.name} (${p.key})`} />)}</datalist>
       <p className="hint">Each item keeps its status where the target’s workflow has it, else one of the same kind. Versions and components go to those of the same name. Sub-items move with their parent; the old keys keep working.</p>
       {error && <p className="hint error" role="alert">{error}</p>}
+    </Modal>
+  )
+}
+
+/** Jira's bulk Transition (spec 0510 R2): a status by name, the same fields and comment for all; then each item's outcome. */
+function BulkTransition({ items, notify, onClose }: { items: Issue[]; notify: boolean; onClose: () => void }) {
+  const { state } = useStore()
+  const [to, setTo] = useState('')
+  const [resolution, setResolution] = useState('')
+  const [comment, setComment] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [results, setResults] = useState<{ key: string; outcome: string; reason?: string }[] | null>(null)
+  const [error, setError] = useState('')
+  const projects = [...new Set(items.map(i => i.projectId))].map(id => state.projects.find(p => p.id === id)).filter((p): p is NonNullable<typeof p> => !!p)
+  const names = [...new Set(projects.flatMap(p => p.statuses.map(s => s.name)))]
+  const toDone = projects.some(p => p.statuses.some(s => s.name === to && s.category === 'done'))
+  const go = async () => {
+    setBusy(true); setError('')
+    try {
+      await issueSync.idle()
+      const r = await api<{ results: { key: string; outcome: string; reason?: string }[] }>('POST', '/api/issues/bulk/transition', {
+        issues: items.map(i => issueSync.serverKey(i)), toStatus: to, fields: toDone && resolution ? { resolution } : {}, ...(comment.trim() ? { comment } : {}), sendNotifications: notify })
+      setResults(r.results)
+      for (const id of projects.map(p => p.id)) await sprintDeps.reloadProject(id)
+    } catch (e) { setError(errorMessage(e)) } finally { setBusy(false) }
+  }
+  const { resolutions } = usePublicSettings()
+  return (
+    <Modal title={`Transition ${plural(items.length, 'item')}`} onClose={onClose} width={560} footer={results ? <button className="btn btn-primary" onClick={onClose}>Close</button> : <>
+      <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
+      <button className="btn btn-primary" disabled={!to || busy} onClick={() => void go()}>{busy ? 'Moving…' : 'Transition'}</button>
+    </>}>
+      {results ? (
+        <table className="table">
+          <thead><tr><th>Item</th><th>Outcome</th></tr></thead>
+          <tbody>{results.map(r => (
+            <tr key={r.key} style={{ cursor: 'default' }}><td className="mono">{r.key}</td><td className="sm">{r.outcome === 'done' ? 'Moved' : r.outcome === 'unchanged' ? 'Already there' : r.outcome === 'skipped' ? 'Skipped' : 'Not moved'}{r.reason ? <span className="muted">: {r.reason}</span> : null}</td></tr>
+          ))}</tbody>
+        </table>
+      ) : <>
+        <label className="label" htmlFor="bt-to">Move to</label>
+        <select id="bt-to" className="input" value={to} onChange={e => setTo(e.target.value)}>
+          <option value="">Choose a status…</option>
+          {names.map(n => <option key={n} value={n}>{n}</option>)}
+        </select>
+        {toDone && resolutions.length > 0 && <>
+          <label className="label" htmlFor="bt-res" style={{ marginTop: 10 }}>Resolution</label>
+          <select id="bt-res" className="input" value={resolution} onChange={e => setResolution(e.target.value)}>
+            <option value="">The workflow’s default</option>
+            {resolutions.map((r: { name: string }) => <option key={r.name} value={r.name}>{r.name}</option>)}
+          </select>
+        </>}
+        <label className="label" htmlFor="bt-comment" style={{ marginTop: 10 }}>Comment (optional)</label>
+        <textarea id="bt-comment" className="input" rows={3} value={comment} onChange={e => setComment(e.target.value)} />
+        <p className="hint">Each item moves through a transition its own workflow allows. One that can’t, or whose transition needs something else, is reported and the others still move.</p>
+        {error && <p className="hint error" role="alert">{error}</p>}
+      </>}
     </Modal>
   )
 }

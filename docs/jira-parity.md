@@ -95,7 +95,7 @@ Checked against Atlassian's Data Center documentation on 5 November 2026 (Jira S
 | ISS-17 | Time tracking settings | Hours per day and days per week; `w` unit ([time](https://confluence.atlassian.com/adminjiraserver/configuring-time-tracking-938847808.html)) | System settings › Time tracking: hours per day, days per week, `w`, display format, default unit | match | match | 0306 | A bare number is now minutes (Jira's default); an admin can choose hours. |
 | ISS-18 | Log work: remaining-estimate modes | Auto, leave, set, reduce ([log work](https://confluence.atlassian.com/jirasoftwareserver111/logging-work-on-issues-1652921625.html)) | Same four (`server/src/shared/estimates.ts`) | match | match | — | |
 | ISS-19 | Clone | With links, sub-tasks, attachments | Children, links, sprint | match | match | — | |
-| ISS-20 | Bulk change | Edit, move, transition, delete, watch; "send notification" option | Edit, move, delete, restore; Send notifications (off: system administrators or project admins) | partial | match | 0501, 0605 | Bulk watch is open |
+| ISS-20 | Bulk change | Edit, move, transition, delete, watch; "send notification" option | Edit, move, transition (each item's outcome), watch and stop watching, delete, restore; Send notifications (off: system administrators or project admins) | match | match | 0501, 0605, 0510 | |
 | ISS-21 | Flagging (impediment) | Yes | Add/remove flag (with a comment) from card and item menus; yellow card, flag icon; flagged = Impediment | match | match | 0408 | |
 | ISS-22 | Edit presence | No | Who has the item open | better | diverge | — | Keep. |
 | ISS-23 | Link types | Admin-configurable | Admin-configurable; delete moves or removes links | match | match | — | |
