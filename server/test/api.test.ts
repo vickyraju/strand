@@ -6509,6 +6509,11 @@ test('[0802.R1][0802.R2][0802.R3][0802.R4][0802.R5][0802.R6][0802.R7] the Jira i
   base = `http://127.0.0.1:${(jiraServer.address() as any).port}`
   try {
     await call('GET', '/api/v1/me'); await call('GET', '/api/v1/me', undefined, 'mig.ann@x.com')   // Ann is in Strand already; Bob isn't
+    // R1: cloud metadata addresses in any spelling; private addresses (a company's Jira) are fine
+    const { metadataAddress } = await import('../src/jiraImport.ts')
+    for (const a of ['169.254.169.254', '::ffff:169.254.169.254', '::ffff:a9fe:a9fe', '0:0:0:0:0:ffff:a9fe:a9fe', 'fe80::1', 'fd00:ec2::254', '100.100.100.200', 'not-an-ip:::'])
+      assert.equal(metadataAddress(a), true, a)
+    for (const a of ['10.0.0.5', '192.168.1.10', '127.0.0.1', '2001:4860::1', '::ffff:10.0.0.5']) assert.equal(metadataAddress(a), false, a)
     // R1: Test; a cloud metadata address is never a Jira
     assert.deepEqual((await call('POST', '/api/v1/admin/jira-import/test', { url: base, token: 'pat-123' })).body, { ok: true, version: '9.12.4', title: 'Made-up Jira', user: 'Importer' })
     assert.deepEqual((await call('POST', '/api/v1/admin/jira-import/test', { url: 'http://169.254.169.254', token: 'pat-123' })).body, { ok: false, error: 'That address isn’t a Jira' })

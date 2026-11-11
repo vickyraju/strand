@@ -2,6 +2,10 @@
 // its projects into Strand, keeping keys, people, dates and history. A dry run reads the same and writes nothing. What was
 // imported is remembered (jira_import_map), so a run can be repeated: nothing is imported twice, links wait for their items.
 import { randomUUID } from 'node:crypto'
+import http from 'node:http'
+import https from 'node:https'
+import { isIP } from 'node:net'
+import { lookup as dnsLookup } from 'node:dns'
 import { PutObjectCommand } from '@aws-sdk/client-s3'
 import { db, tx, type Db } from './db.ts'
 import { registerJob } from './jobs.ts'
@@ -11,24 +15,50 @@ import { s3, filesBucket } from './storage.ts'
 import { applyScheme } from './workflows.ts'
 import { firstBoard } from './boards.ts'
 import { withOptionIds } from './fields.ts'
+import { ipv6Groups } from './webhooks.ts'
 
 export interface Conn { url: string; token: string }
 type J = any
 
-/** Cloud metadata services: never a Jira, whatever the address resolves to. (A company's Jira DC is usually on its private
- *  network, so private addresses are allowed: an administrator chooses the address.) */
-const METADATA = /^(169\.254\.\d+\.\d+|\[?fd00:ec2::254\]?|metadata\.google\.internal)$/i
+/** Cloud metadata services (link-local, fd00:ec2::254, 100.100.100.200), in any spelling, IPv4-mapped too: never a Jira.
+ *  A company's Jira DC is usually on its private network, so private addresses are allowed: an administrator chooses it. */
+export function metadataAddress(a: string): boolean {
+  const v4 = (x: string) => x.startsWith('169.254.') || x === '100.100.100.200'
+  if (isIP(a) === 4) return v4(a)
+  const g = ipv6Groups(a.toLowerCase())
+  if (!g) return true                                                          // can't be read: refused
+  if (g.slice(0, 5).every(x => x === 0) && (g[5] === 0xffff || g[5] === 0)) return v4(`${g[6]! >> 8}.${g[6]! & 255}.${g[7]! >> 8}.${g[7]! & 255}`)
+  return (g[0]! & 0xffc0) === 0xfe80 || (g[0] === 0xfd00 && g[1] === 0xec2 && g.slice(2, 7).every(x => x === 0) && g[7] === 0x254)
+}
 export async function checkJiraUrl(url: string) {
   const u = new URL(url)
   if (!/^https?:$/.test(u.protocol)) throw new Error('Jira’s address must be http or https')
-  const { lookup } = await import('node:dns/promises')
-  const hosts = METADATA.test(u.hostname) ? [u.hostname] : (await lookup(u.hostname, { all: true }).catch(() => [])).map(a => a.address)
-  if (hosts.some(h => METADATA.test(h))) throw new Error('That address isn’t a Jira')
+  const host = u.hostname.replace(/^\[|\]$/g, '')
+  if (host.toLowerCase() === 'metadata.google.internal' || (isIP(host) && metadataAddress(host))) throw new Error('That address isn’t a Jira')
 }
+
+/** A GET to Jira, connecting only to an address checked as it's resolved (so a name can't change between check and call);
+ *  redirects aren't followed. */
+const pinnedFetch = (url: string, init: { headers: Record<string, string> }): Promise<Response> => new Promise((ok, fail) => {
+  const u = new URL(url)
+  const req = (u.protocol === 'https:' ? https : http).request(u, { method: 'GET', headers: init.headers, timeout: 60_000,
+    lookup: (name, opts, cb) => dnsLookup(name, { ...opts, all: false }, (err, address, family) => {
+      if (!err && metadataAddress(address as string)) return (cb as any)(new Error(`${name} resolves to a cloud metadata address`))
+      ;(cb as any)(err, address, family)
+    }),
+  }, res => {
+    const parts: Buffer[] = []
+    res.on('data', c => parts.push(c)); res.on('error', fail)
+    res.on('end', () => ok(new Response([204, 304].includes(res.statusCode ?? 0) ? null : Buffer.concat(parts), { status: res.statusCode ?? 0 })))
+  })
+  req.on('timeout', () => req.destroy(new Error('Jira didn’t answer within 60 seconds')))
+  req.on('error', fail)
+  req.end()
+})
 
 /** Jira's REST, read-only. Only ever to the configured Jira: a URL in an answer from another origin is refused, and
  *  redirects aren't followed, so the token goes nowhere else. */
-export function jira(c: Conn, fetchImpl: typeof fetch = fetch) {
+export function jira(c: Conn, fetchImpl: (url: string, init: any) => Promise<Response> = pinnedFetch) {
   const base = c.url.replace(/\/+$/, ''), origin = new URL(base).origin
   const headers = { authorization: `Bearer ${c.token}`, accept: 'application/json' }
   const at = (path: string) => {
@@ -56,7 +86,7 @@ export function jira(c: Conn, fetchImpl: typeof fetch = fetch) {
 }
 type Jira = ReturnType<typeof jira>
 
-export async function testConnection(c: Conn, fetchImpl?: typeof fetch) {
+export async function testConnection(c: Conn, fetchImpl?: (url: string, init: any) => Promise<Response>) {
   await checkJiraUrl(c.url)
   const j = jira(c, fetchImpl)
   const [s, me] = await Promise.all([j.get('/rest/api/2/serverInfo'), j.get('/rest/api/2/myself')])
