@@ -1,6 +1,6 @@
 # 0801 Jira inventory tool, run by the product owner
 
-Status: Approved (PO, 10 Nov 2026: "yes go ahead and build complete everything whatever is pending")
+Status: Ported (aws-jira `81bce28`, strand `7b450f8`), approved by the PO on 10 Nov 2026; awaiting verification
 Parity rows: IN-03
 
 ## Context and Jira reference
