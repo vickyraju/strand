@@ -75,7 +75,7 @@ The roadmap, in order. Bugs come first, then the permission model, then the data
 | [0410](0410-control-chart.md) | Control chart | 4 | Ported |
 | [0411](0411-version-epic-release-reports.md) | Version, epic, epic burndown, release burndown and burnup reports | 4 | Ported |
 | [0412](0412-estimation-time-tracking-time-zone.md) | Estimation by any number field, remaining-estimate tracking, the team's time zone | 4 | Ported |
-| [0414](0414-parallel-sprints.md) | Parallel sprints | 4 | Approved |
+| [0414](0414-parallel-sprints.md) | Parallel sprints | 4 | Ported |
 | [0501](0501-move-items-between-projects.md) | Move items between projects; old keys redirect | 5 | Ported |
 | [0502](0502-more-custom-field-types.md) | More custom field types | 5 | Ported |
 | [0503](0503-global-custom-fields-contexts.md) | Global custom fields with contexts | 5 | Ported |

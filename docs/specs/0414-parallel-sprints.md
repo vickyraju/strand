@@ -1,6 +1,6 @@
 # 0414 Parallel sprints
 
-Status: Approved (pending work, 12 Nov 2026)
+Status: Ported (aws-jira `ee68bdc`, strand `df160ec`), pending work the PO asked to complete on 11 Nov 2026; awaiting verification
 Parity rows: AG-06
 
 ## Context and Jira reference
