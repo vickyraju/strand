@@ -20,6 +20,7 @@ import { TEST_TYPES } from './issues.ts'
 import { checkImport } from '../csvImport.ts'
 import { getSetting } from '../settings.ts'
 import { describeKeyRule, keyFits } from '../shared/projectKeys.ts'
+import { EXTRA_TYPES, TEMPLATES, TEMPLATE_IDS } from '../shared/templates.ts'
 import { KIND_LIST, type FieldKind } from '../shared/customFields.ts'
 import { carryOptions, clearValues, rulesFor, screensFor, withOptionIds, type Opt } from '../fields.ts'
 
@@ -320,7 +321,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
   })
 
   const createProject = projectBody.required({ name: true }).extend({
-    key: z.string().trim().min(1).max(255).transform(k => k.toUpperCase()).describe('Checked against System settings › Project keys (Jira’s default: two or more capital letters, at most 10)'), template: z.enum(['kanban', 'scrum']),
+    key: z.string().trim().min(1).max(255).transform(k => k.toUpperCase()).describe('Checked against System settings › Project keys (Jira’s default: two or more capital letters, at most 10)'), template: z.enum(TEMPLATE_IDS).describe('Software: kanban, scrum, basic; business: task, project, process (spec 0310)'),
     workflowSchemeId: uuid.optional().describe('Its workflow scheme (Administration › Workflows); by default the one named after the template'),
   })
   app.post('/projects', { schema: { tags: T.projects, summary: 'Create a project, with the workflows of a workflow scheme', body: createProject } }, async req => {
@@ -334,7 +335,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
       if ((await d.query('select 1 from project_key_history where workspace_id = $1 and key = $2', [req.me.workspaceId, b.key])).length)
         throw new HttpError(409, `${b.key} was another project’s key`, { key: 'Already used' })
       const [sc] = await d.query<{ id: string }>(`select id from workflow_schemes where workspace_id = $1 and ${b.workflowSchemeId ? 'id = $2' : 'lower(name) = $2'}`,
-        [req.me.workspaceId, b.workflowSchemeId ?? b.template])
+        [req.me.workspaceId, b.workflowSchemeId ?? TEMPLATES[b.template].scheme.toLowerCase()])
       if (!sc) throw new HttpError(400, 'Choose a workflow scheme', { workflowSchemeId: 'Not found' })
       const [p] = await d.query<{ id: string }>(
         `insert into projects (workspace_id, key, name, description, color, template, lead_id, workflow_scheme_id)
@@ -346,8 +347,13 @@ const plugin: FastifyPluginAsyncZod = async app => {
       for (const u of new Set([req.me.id, b.leadId ?? req.me.id]))
         await d.query(`insert into project_members (project_id, user_id, role, added_by) values ($1, $2, 'admin', $3) on conflict do nothing`, [p!.id, u, req.me.id])
       await audit(d, req, { action: 'project.created', type: 'project', id: p!.id, name: b.key, project: { id: p!.id, key: b.key }, after: { name: b.name, template: b.template, workflowSchemeId: sc.id } })
+      // the template's work types (spec 0310): Strand's four are seeded; others go, Basic's extra ones come
+      const tpl = TEMPLATES[b.template]
+      await d.query('delete from work_types where project_id = $1 and not (key = any($2::text[]))', [p!.id, tpl.types])
+      for (const [i, k] of tpl.types.entries()) if (EXTRA_TYPES[k])
+        await d.query('insert into work_types (project_id, key, name, color, icon, position) values ($1, $2, $3, $4, $5, $6) on conflict do nothing', [p!.id, k, EXTRA_TYPES[k].name, EXTRA_TYPES[k].color, EXTRA_TYPES[k].icon, i])
       await applyScheme(d, req, p!.id)
-      await firstBoard(d, { id: p!.id, workspaceId: req.me.workspaceId, key: b.key, template: b.template }, req.me.id)
+      await firstBoard(d, { id: p!.id, workspaceId: req.me.workspaceId, key: b.key, template: tpl.board }, req.me.id)
       return projectDetail(d, req.me.workspaceId, b.key, 'admin')
     })
   })

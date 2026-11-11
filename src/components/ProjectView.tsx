@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
 import WorkTypesPanel from './WorkTypesPanel'
+import { TEMPLATES, type Template } from '../../server/src/shared/templates.ts'
 import ComponentsPanel from './ComponentsPanel'
 import SecurityLevelsPanel from './SecurityLevelsPanel'
 import TestingPanel from './testing/TestingPanel'
@@ -74,7 +75,7 @@ function RemoteProjectSearch() {
   const [category, setCategory] = useState('')                                    // a category id, 'none', or '' for any (spec 0703)
   const [categories, setCategories] = useState<{ id: string; name: string }[]>([])
   useEffect(() => { api<{ id: string; name: string }[]>('GET', '/api/project-categories').then(setCategories, () => {}) }, [])
-  const [rows, setRows] = useState<{ id: string; key: string; name: string; template: string; openCount: number; color: string; avatar?: string | null; category?: { id: string; name: string } | null }[]>([])
+  const [rows, setRows] = useState<{ id: string; key: string; name: string; template: Template; openCount: number; color: string; avatar?: string | null; category?: { id: string; name: string } | null }[]>([])
   const [next, setNext] = useState<string | null>(null)
   const [status, setStatus] = useState<'idle' | 'loading' | 'error'>('idle')
   const term = q.trim()
@@ -126,7 +127,7 @@ function RemoteProjectSearch() {
                       <td><span className="cell-flex strong"><ProjectIcon project={p} size={20} />{p.name}</span></td>
                       <td className="mono">{p.key}</td>
                       <td className="muted">{p.category?.name ?? ''}</td>
-                      <td>{p.template === 'scrum' ? 'Scrum' : 'Kanban'}</td>
+                      <td>{TEMPLATES[p.template]?.name ?? 'Kanban'}</td>
                       <td className="muted">{p.openCount}</td>
                     </tr>
                   ))}
@@ -191,7 +192,7 @@ export function ProjectsView({ onCreate }: { onCreate: () => void }) {
                     <td><span className="cell-flex strong"><ProjectIcon project={p} size={24} />{p.name}</span></td>
                     <td className="mono">{p.key}</td>
                     <td className="muted">{p.category?.name ?? ''}</td>
-                    <td>{p.template === 'scrum' ? 'Scrum' : 'Kanban'}</td>
+                    <td>{TEMPLATES[p.template]?.name ?? 'Kanban'}</td>
                     <td>
                       <span className="cell-flex">
                         <span className="progress"><span style={{ width: `${items.length ? (done / items.length) * 100 : 0}%` }} /></span>

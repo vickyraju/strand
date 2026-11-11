@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { cardColor } from '../data/reducer'
+import { TEMPLATES } from '../../server/src/shared/templates.ts'
 import { priorityOf } from '../data/lists'
 import { typeMeta } from './ui'
 import { DndContext, DragOverlay, useDroppable, type DragEndEvent, type DragStartEvent } from '@dnd-kit/core'
@@ -42,7 +43,7 @@ interface Lane {
 /** A local workspace (no server) has one board, made from the project's statuses and its board settings. */
 function localBoard(project: Project): Board {
   return {
-    id: `local:${project.id}`, name: `${project.key} board`, type: project.template, jql: '', position: 0, projectId: project.id, projectKey: project.key,
+    id: `local:${project.id}`, name: `${project.key} board`, type: TEMPLATES[project.template].board, jql: '', position: 0, projectId: project.id, projectKey: project.key,
     columns: project.statuses.map(s => ({ id: s.id, name: s.name, statusIds: [s.globalStatusId ?? s.id], ...(s.wipLimit ? { max: s.wipLimit } : {}) })),
     swimlanes: { by: project.boardPrefs.groupBy }, quickFilters: [], cardFields: project.boardPrefs.fields, doneDays: null,
     canManage: canAdmin(project), admins: [],

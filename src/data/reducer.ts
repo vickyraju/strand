@@ -10,7 +10,8 @@ export type { FieldKind, FieldValue }
 
 // ── Types ──────────────────────────────────────────────────
 
-export type Template  = 'kanban' | 'scrum'
+export type { Template } from '../../server/src/shared/templates.ts'
+import type { Template } from '../../server/src/shared/templates.ts'
 export type LevelMember = { kind: 'role'; role: 'admin' | 'member' | 'viewer' } | { kind: 'group'; id: string } | { kind: 'user'; id: string } | { kind: 'reporter' } | { kind: 'assignee' }
 export interface SecurityLevel { id: string; name: string; description: string; members: LevelMember[]; items?: number }
 /** Am I in this level, for this item? (The server decides; this hides choices it would refuse.) */

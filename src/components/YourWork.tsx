@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { FolderPlus, Plus, Clock, Eye, UserCheck, Star, Columns2, CalendarClock, Ban, Inbox } from 'lucide-react'
+import { TEMPLATES } from '../../server/src/shared/templates.ts'
+import type { Template } from '../../server/src/shared/templates.ts'
 import { useStore, projectOf, isDone, blockersOf, type Issue, type Project } from '../data/store'
 import { usePublicSettings } from '../api/settings-public'
 import { useApp, useNavList } from '../appContext'
@@ -102,7 +104,7 @@ export default function YourWork({ onCreateProject }: { onCreateProject: () => v
 
   // The project cards: with an API the server says which projects were active last and counts their items;
   // without one they are worked out from the store
-  interface Card { id: string; key: string; name: string; color: string; template: 'kanban' | 'scrum'; open: number | null; done: number | null; total: number }
+  interface Card { id: string; key: string; name: string; color: string; template: Template; open: number | null; done: number | null; total: number }
   const lastTouch = (projectId: string) => Math.max(projectOf(state, projectId)!.createdAt, ...state.issues.filter(i => !i.archivedAt && i.projectId === projectId).map(i => i.updatedAt))
   const cards: Card[] = apiEnabled
     ? (serverProjects ?? []).map(p => ({ id: p.id, key: p.key, name: p.name, color: p.color, template: p.template, open: p.myOpen, done: p.done, total: p.total }))
@@ -195,7 +197,7 @@ export default function YourWork({ onCreateProject }: { onCreateProject: () => v
                 <ProjectIcon project={p} size={32} />
                 <span className="project-card-name">
                   <span className="strong">{p.name}</span>
-                  <span className="muted sm">{p.template === 'scrum' ? 'Scrum' : 'Kanban'} project</span>
+                  <span className="muted sm">{TEMPLATES[p.template]?.name ?? 'Kanban'} project</span>
                 </span>
               </button>
               <div className="project-card-stats">

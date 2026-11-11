@@ -2,6 +2,7 @@
 // OpenAPI document and are enforced when responses are serialized: a handler that returns the wrong shape fails a test
 // instead of leaking an unexpected field. Timestamps are ISO strings (db.ts), dates are YYYY-MM-DD.
 import { z } from 'zod'
+import { TEMPLATE_IDS } from './shared/templates.ts'
 import { KIND_LIST, type FieldKind } from './shared/customFields.ts'
 import { directoryConfig } from './directories.ts'
 
@@ -98,7 +99,7 @@ export const Sprint = z.object({
 })
 
 export const ProjectListItem = z.object({
-  id, key: z.string(), name: z.string(), description: z.string(), color: z.string(), template: z.enum(['kanban', 'scrum']),
+  id, key: z.string(), name: z.string(), description: z.string(), color: z.string(), template: z.enum(TEMPLATE_IDS),
   leadId: nullable(id), createdAt: ts, archivedAt: nullable(ts), starred: z.boolean(), openCount: z.number(),
   categoryId: nullable(id), category: nullable(z.object({ id, name: z.string() })).describe('Its project category (spec 0703)'), avatar: nullable(z.string()).describe('Its avatar’s address under the API'),
 })
@@ -142,7 +143,7 @@ export const Board = z.object({
   canManage: z.boolean().describe('I may change it'), canManageSprints: z.boolean().describe('I may create, start, complete and delete its sprints'), admins: z.array(z.object({ kind: z.enum(['user', 'group']), id, name: z.string() })),
 })
 export const ProjectDetail = z.object({
-  id, workspaceId: id, key: z.string(), name: z.string(), description: z.string(), color: z.string(), template: z.enum(['kanban', 'scrum']),
+  id, workspaceId: id, key: z.string(), name: z.string(), description: z.string(), color: z.string(), template: z.enum(TEMPLATE_IDS),
   leadId: nullable(id), archivedAt: nullable(ts), nextNumber: z.number(), testing: z.boolean().describe('Test management is on'), initiatives: z.boolean().optional().describe('The Initiative work type is on (spec 0803)'), requirementTypes: nullable(z.array(z.string())).describe('Work types counted as requirements (null: all but testing types and Bug)'), boardPrefs: z.record(z.string(), z.unknown()), layout: z.record(z.string(), z.unknown()),
   sample: z.boolean(), createdAt: ts, role: z.enum(['admin', 'member', 'viewer']).describe('My role in this project'),
   keys: z.array(z.string()).describe('Its key, then its earlier keys, which still find it (spec 0703)'), categoryId: nullable(id), category: nullable(z.object({ id, name: z.string() })),

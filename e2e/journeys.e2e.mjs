@@ -2330,3 +2330,22 @@ test('[0609.R1][0609.R2][0609.R3] JQL text search finds any form of a word, and 
   await o.waitForSelector('text=1 result')
   assert.deepEqual(o.problems, [])
 })
+
+test('[0310.R1][0310.R2] create a Process management project: its board has the process’s columns', { skip, timeout: 60_000 }, async () => {
+  const page = await signIn('owner@e2e.test')
+  await page.goto(url('/projects'))
+  await page.click('button:has-text("Create project")')
+  await page.fill('#cp-name', 'Purchasing')
+  await page.fill('#cp-key', 'PRCS')
+  await page.click('[role="radio"]:has-text("Process management")')
+  const scheme = await page.inputValue('#cp-scheme')
+  assert.equal(await page.locator(`#cp-scheme option[value="${scheme}"]`).innerText(), 'Process management')
+  await page.click('button[form="create-project"]')
+  await page.waitForURL(/\/project\/PRCS/)
+  await owner('POST', '/projects/PRCS/issues', { title: 'Order laptops' })        // an empty board shows its invitation instead of columns
+  await page.goto(url('/project/PRCS/board'))
+  await page.waitForSelector('.col-name:text-is("Under review")')
+  assert.deepEqual(await page.$$eval('.col-name', els => els.map(e => e.textContent)), ['Open', 'In progress', 'Under review', 'Approved', 'Done'])
+  assert.equal((await owner('GET', '/projects/PRCS')).body.template, 'process')
+  assert.deepEqual(page.problems, [])
+})

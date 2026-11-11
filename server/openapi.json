@@ -1873,7 +1873,11 @@
                         "type": "string",
                         "enum": [
                           "kanban",
-                          "scrum"
+                          "scrum",
+                          "basic",
+                          "task",
+                          "project",
+                          "process"
                         ]
                       },
                       "leadId": {
@@ -2060,8 +2064,13 @@
                     "type": "string",
                     "enum": [
                       "kanban",
-                      "scrum"
-                    ]
+                      "scrum",
+                      "basic",
+                      "task",
+                      "project",
+                      "process"
+                    ],
+                    "description": "Software: kanban, scrum, basic; business: task, project, process (spec 0310)"
                   },
                   "workflowSchemeId": {
                     "description": "Its workflow scheme (Administration › Workflows); by default the one named after the template",
@@ -2111,7 +2120,11 @@
                       "type": "string",
                       "enum": [
                         "kanban",
-                        "scrum"
+                        "scrum",
+                        "basic",
+                        "task",
+                        "project",
+                        "process"
                       ]
                     },
                     "leadId": {
@@ -3314,7 +3327,11 @@
                             "type": "string",
                             "enum": [
                               "kanban",
-                              "scrum"
+                              "scrum",
+                              "basic",
+                              "task",
+                              "project",
+                              "process"
                             ]
                           },
                           "leadId": {
@@ -3535,7 +3552,11 @@
                       "type": "string",
                       "enum": [
                         "kanban",
-                        "scrum"
+                        "scrum",
+                        "basic",
+                        "task",
+                        "project",
+                        "process"
                       ]
                     },
                     "leadId": {
@@ -4693,7 +4714,11 @@
                       "type": "string",
                       "enum": [
                         "kanban",
-                        "scrum"
+                        "scrum",
+                        "basic",
+                        "task",
+                        "project",
+                        "process"
                       ]
                     },
                     "leadId": {
@@ -6030,7 +6055,11 @@
                       "type": "string",
                       "enum": [
                         "kanban",
-                        "scrum"
+                        "scrum",
+                        "basic",
+                        "task",
+                        "project",
+                        "process"
                       ]
                     },
                     "leadId": {
@@ -7251,7 +7280,11 @@
                       "type": "string",
                       "enum": [
                         "kanban",
-                        "scrum"
+                        "scrum",
+                        "basic",
+                        "task",
+                        "project",
+                        "process"
                       ]
                     },
                     "leadId": {

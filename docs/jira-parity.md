@@ -64,7 +64,7 @@ Checked against Atlassian's Data Center documentation on 5 November 2026 (Jira S
 | PRJ-03 | Project key format | Uppercase letters by default ([key]) | System settings › Project keys: Jira's default pattern [A-Z][A-Z]+ and 10 characters; a new pattern must fit existing keys | match | match | 0308 | Digits need an admin to widen the pattern, as in Jira. |
 | PRJ-04 | Categories, avatars | Yes | Project categories (one per project, JQL `category`, list filter); uploaded avatars | match | match | 0703 | Jira's avatar gallery not built |
 | PRJ-05 | Delete a project | Permanent | Job with an S3 backup and restore | better | diverge | — | Keep: "project backups" test. |
-| PRJ-06 | Templates | Scrum, Kanban, Basic, Business templates | Scrum, Kanban | partial | open | — | |
+| PRJ-06 | Templates | Scrum, Kanban, Basic, Business templates | Software: Scrum, Kanban, Basic; Business: Task, Project and Process management, each with its workflow scheme, work types and a board (`shared/templates.ts`) | match | match | 0310 | Business projects also get a board (as in Jira Cloud); Create with shared configuration is proposal P1 |
 | PRJ-07 | Project roles to people and groups | Roles with default members | Admin, member and viewer, to people and groups | partial | diverge | 0201 | Fixed roles (PRM-01). |
 | PRJ-08 | Project names | Unique, case-insensitive ([JRASERVER-3582](https://jira.atlassian.com/browse/JRASERVER-3582)) | Unique in the workspace, ignoring case | match | match | 0309 | |
 | PRJ-09 | Who switches a project's workflow scheme | Jira admins ([managing workflows](https://confluence.atlassian.com/adminjiraserver/managing-your-workflows-938847410.html)) | Global admins | match | match | 0103 | |

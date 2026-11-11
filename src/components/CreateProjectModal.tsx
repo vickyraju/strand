@@ -1,17 +1,17 @@
 import { useEffect, useState } from 'react'
-import { Columns2, ListChecks, Check } from 'lucide-react'
+import { Columns2, ListChecks, Check, Code, ListTodo, FolderKanban, Workflow } from 'lucide-react'
 import { useStore, uid, suggestKey, PROJECT_COLORS, type Template } from '../data/store'
 import { describeKeyRule, keyFits } from '../../server/src/shared/projectKeys.ts'
+import { TEMPLATES, TEMPLATE_IDS } from '../../server/src/shared/templates.ts'
 import { usePublicSettings } from '../api/settings-public'
 import { Modal } from './ui'
 import { api, apiEnabled } from '../api/client'
 import { mapProject } from '../api/map'
 import { adoptProject } from '../api/settings'
 
-const TEMPLATES: { id: Template; name: string; desc: string; Icon: typeof Columns2 }[] = [
-  { id: 'kanban', name: 'Kanban', desc: 'Visualize work on a board and keep it flowing. Good for support, ops and continuous delivery.', Icon: Columns2 },
-  { id: 'scrum',  name: 'Scrum',  desc: 'Plan work in sprints from a prioritized backlog, with burndown and velocity reports.', Icon: ListChecks },
-]
+const ICONS: Record<Template, typeof Columns2> = { kanban: Columns2, scrum: ListChecks, basic: Code, task: ListTodo, project: FolderKanban, process: Workflow }
+// Jira's Software and Business templates (spec 0310); the browser-only demo has Kanban and Scrum
+const offered = (apiEnabled ? TEMPLATE_IDS : ['kanban', 'scrum'] as Template[]).map(id => ({ id, ...TEMPLATES[id], Icon: ICONS[id] }))
 
 export default function CreateProjectModal({ onClose, onCreated }: {
   onClose:   () => void
@@ -28,7 +28,7 @@ export default function CreateProjectModal({ onClose, onCreated }: {
   const [schemes, setSchemes]     = useState<{ id: string; name: string; description: string }[]>([])
   const [schemeId, setSchemeId]   = useState('')
   useEffect(() => { if (apiEnabled) api<typeof schemes>('GET', '/api/workflow-schemes').then(setSchemes, () => {}) }, [])
-  const scheme = schemes.find(s => s.id === schemeId) ?? schemes.find(s => s.name.toLowerCase() === template) ?? schemes[0]
+  const scheme = schemes.find(s => s.id === schemeId) ?? schemes.find(s => s.name.toLowerCase() === TEMPLATES[template].scheme.toLowerCase()) ?? schemes[0]
 
   // the projects loaded here are only some of them: the server has the final word (and says so when the key is taken)
   const keyTaken = state.projects.some(p => p.key === key)
@@ -92,14 +92,22 @@ export default function CreateProjectModal({ onClose, onCreated }: {
         {error && <p role="alert" className="text-danger" style={{ marginTop: 8 }}>{error}</p>}
 
         <label className="label" style={{ marginTop: 18 }}>Template</label>
-        <div className="template-grid" role="radiogroup" aria-label="Template">
-          {TEMPLATES.map(({ id, name: tName, desc, Icon }) => (
-            <button key={id} type="button" role="radio" aria-checked={template === id}
-              className={`template-card${template === id ? ' selected' : ''}`} onClick={() => setTemplate(id)}>
-              <span className="template-icon"><Icon size={18} strokeWidth={1.75} /></span>
-              <span className="template-name">{tName}</span>
-              <span className="template-desc">{desc}</span>
-            </button>
+        <div role="radiogroup" aria-label="Template">
+          {(['Software', 'Business'] as const).filter(g => offered.some(t => t.group === g)).map(g => (
+            <div key={g}>
+              <div className="muted sm" style={{ margin: '8px 0 6px' }}>{g}</div>
+              <div className="template-grid">
+                {offered.filter(t => t.group === g).map(({ id, name: tName, desc, statuses, Icon }) => (
+                  <button key={id} type="button" role="radio" aria-checked={template === id}
+                    className={`template-card${template === id ? ' selected' : ''}`} onClick={() => setTemplate(id)}>
+                    <span className="template-icon"><Icon size={18} strokeWidth={1.75} /></span>
+                    <span className="template-name">{tName}</span>
+                    <span className="template-desc">{desc}</span>
+                    <span className="template-desc muted">{statuses}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
           ))}
         </div>
 
