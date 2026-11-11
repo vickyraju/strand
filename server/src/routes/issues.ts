@@ -104,6 +104,13 @@ const note = (d: Db, to: string, me: Me, issueId: string, kind: string, text: st
                         or is_system_admin($1))`,
     [to, me.id, issueId, kind, text])
 
+/** Jira's Autowatch (spec 0606 R2): creating or commenting makes me a watcher, unless I turned it off (or the default is off). */
+async function autowatch(d: Db, me: Me, issueId: string) {
+  const [p] = await d.query<{ on: boolean | null }>('select autowatch as on from user_preferences where user_id = $1', [me.id])
+  if (p?.on ?? (await getSetting(me.workspaceId, 'userDefaults')).autowatch)
+    await d.query('insert into issue_watchers (issue_id, user_id) values ($1, $2) on conflict do nothing', [issueId, me.id])
+}
+
 /** True when `@name` appears in the text as a whole name (`@Ann` does not match inside `@Anna`). */
 const mentions = (text: string, name: string) => {
   for (let at = text.indexOf('@' + name); at >= 0; at = text.indexOf('@' + name, at + 1)) {
@@ -509,6 +516,7 @@ export async function insertIssue(d: Db, me: Me, projectId: string, b: Record<st
   const [row] = await d.query<{ id: string }>(
     `insert into issues (${cols.join(', ')}) values (${vals.map((_, i) => `$${i + 1}`).join(', ')}) returning id`, vals)
   await d.query(`insert into activity (issue_id, actor_id, text) values ($1, $2, $3)`, [row!.id, me.id, created])
+  await autowatch(d, me, row!.id)
   await runRules(d, { projectId, issueId: row!.id, reporterId: me.id, leadId: pr!.leadId, actorId: me.id }, { kind: 'created' })
   await publish(d, projectId, { type: 'issue.created', id: row!.id })
   await emit(d, me.workspaceId, 'jira:issue_created', { issueId: row!.id, projectId }, me.id)
@@ -1019,7 +1027,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
       // mentioned start watching. A restricted comment reaches only people who may read it.
       const mentioned = await readers(d, i.projectId, await mentionedIn(d, i.projectId, b.body, req.me.id), b.visibility)
       for (const u of mentioned) await note(d, u, req.me, i.id, 'mentioned', 'mentioned you in a comment')
-      for (const u of [req.me.id, ...mentioned]) await d.query('insert into issue_watchers (issue_id, user_id) values ($1, $2) on conflict do nothing', [i.id, u])
+      await autowatch(d, req.me, i.id)   // the commenter (Autowatch); a mention doesn't make a watcher (spec 0606 R3)
       await publish(d, i.projectId, { type: 'comment.created', key: i.key })
       await emit(d, req.me.workspaceId, 'comment_created', { issueId: i.id, projectId: i.projectId, commentId: c.id }, req.me.id)
       await emit(d, req.me.workspaceId, 'jira:issue_updated', { issueId: i.id, projectId: i.projectId, commentId: c.id, type: 'issue_commented', notifyExcept: mentioned }, req.me.id)   // as Jira's (spec 0715 R2)

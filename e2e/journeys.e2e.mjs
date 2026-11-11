@@ -2082,3 +2082,22 @@ test('[0605.R1][0605.R3] an admin adds a group to Issue Commented; a member of i
   assert.deepEqual(o.problems, [])
 })
 
+test('[0606.R2] with Autowatch turned off in Settings, commenting doesn\'t make you a watcher', { skip, timeout: 120_000 }, async () => {
+  await owner('POST', '/projects', { name: 'Autowatch journey', key: 'AWJ', template: 'kanban' })
+  await owner('POST', '/projects/AWJ/members', { userIds: [await idOf('maya@e2e.test')], role: 'member' })
+  const item = (await owner('POST', '/projects/AWJ/issues', { title: 'Commented on' })).body
+  const m = await signIn('maya@e2e.test')
+  await m.goto(url('/settings'))
+  const box = m.locator('[role="checkbox"][aria-label="Watch work I create or comment on"]')
+  await box.waitFor()
+  assert.equal(await box.getAttribute('aria-checked'), 'true')
+  await box.click()
+  await m.waitForSelector('text=Notification settings saved')
+  assert.equal(await box.getAttribute('aria-checked'), 'false')
+  await maya('POST', `/issues/${item.key}/comments`, { body: 'Just passing by' })
+  const mayaId = await idOf('maya@e2e.test')
+  assert.equal((await owner('GET', `/issues/${item.key}`)).body.watcherIds.includes(mayaId), false)
+  await maya('PUT', '/me/notification-prefs', { autowatch: null })
+  assert.deepEqual(m.problems, [])
+})
+

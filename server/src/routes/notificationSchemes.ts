@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { db, tx, type Db } from '../db.ts'
 import { HttpError, requireAdmin, type Me } from '../auth.ts'
 import { audit } from '../audit.ts'
+import { getSetting } from '../settings.ts'
 import { projectByKey } from './projects.ts'
 
 export const SCHEME_EVENTS = ['issue_created', 'issue_updated', 'issue_assigned', 'issue_resolved', 'issue_closed', 'issue_commented', 'issue_comment_edited',
@@ -32,6 +33,8 @@ export async function notifyEvent(d: Db, event: SchemeEvent, issueId: string, ac
   const [{ quiet }] = await d.query<{ quiet: boolean }>(`select coalesce(current_setting('strand.quiet', true), '') = 'on' as quiet`) as any
   if (quiet) return
   const v = o.visibility
+  const [{ ws }] = await d.query<{ ws: string }>('select workspace_id as ws from issues where id = $1', [issueId]) as any
+  const own = (await getSetting(ws, 'userDefaults')).notifyOwnChanges
   await d.query(
     `with i as (select i.*, p.lead_id, p.notification_scheme_id from issues i join projects p on p.id = i.project_id where i.id = $1),
           e as (select ne.* from notification_scheme_entries ne join i on ne.scheme_id = i.notification_scheme_id where ne.event = $2),
@@ -51,12 +54,13 @@ export async function notifyEvent(d: Db, event: SchemeEvent, issueId: string, ac
               and (i.custom -> e.value = to_jsonb(gm.group_id::text) or i.custom -> e.value @> to_jsonb(array[gm.group_id::text])))
      insert into notifications (user_id, actor_id, issue_id, kind, text)
      select distinct u.id, $3, $1, $4, case when $2 = 'issue_assigned' and u.id = i.assignee_id then 'assigned you a work item' else $5 end from r join users u on u.id = r.id, i
-      where u.active and u.id is distinct from $3 and not (u.id = any($6::uuid[]))
+      where u.active and not (u.id = any($6::uuid[]))
+        and (u.id is distinct from $3 or coalesce((select up.notify_own_changes from user_preferences up where up.user_id = u.id), $10))   -- My changes (spec 0606 R4)
         and (exists (select 1 from project_access pa where pa.project_id = i.project_id and pa.user_id = u.id) or is_system_admin(u.id))
         and ($7::text is null
           or $7 = 'group' and exists (select 1 from group_members gm where gm.group_id::text = $8 and gm.user_id = u.id)
           or $7 = 'role' and (exists (select 1 from project_access pa where pa.project_id = i.project_id and pa.user_id = u.id and pa.role = $9) or ($9 = 'admin' and is_system_admin(u.id))))`,
-    [issueId, event, actorId, KIND[event] ?? 'updated', TEXT[event], o.except ?? [], v?.kind ?? null, v?.id ?? null, v?.role ?? null])
+    [issueId, event, actorId, KIND[event] ?? 'updated', TEXT[event], o.except ?? [], v?.kind ?? null, v?.id ?? null, v?.role ?? null, own])
 }
 
 /** R5: a bulk change made without notifications: nothing this transaction does notifies (webhooks still go). */

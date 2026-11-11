@@ -18,7 +18,8 @@ import { Avatar, LoadError, Loading, Toggle } from './ui'
 export const SETTINGS_PAGES = [
   { id: 'announcement', label: 'Announcement banner' }, { id: 'look-and-feel', label: 'Look and feel' },
   { id: 'rate-limiting', label: 'Rate limiting' }, { id: 'attachments', label: 'Attachments' }, { id: 'access-tokens', label: 'Personal access tokens' },
-  { id: 'search-and-bulk', label: 'Search, export and bulk' }, { id: 'email', label: 'Email notifications' }, { id: 'groups', label: 'Group creation' },
+  { id: 'search-and-bulk', label: 'Search, export and bulk' }, { id: 'email', label: 'Email notifications' }, { id: 'email-batching', label: 'Batched email' }, { id: 'user-defaults', label: 'Default user preferences' },
+  { id: 'filter-subscriptions', label: 'Filter subscriptions' }, { id: 'groups', label: 'Group creation' },
   { id: 'testing', label: 'Testing' }, { id: 'due-dates', label: 'Due dates' }, { id: 'deleted-items', label: 'Deleted work items' },
   { id: 'time-tracking', label: 'Time tracking' }, { id: 'project-keys', label: 'Project keys' }, { id: 'sign-in', label: 'Sign-in' },
   { id: 'automation', label: 'Automation' }, { id: 'webhooks', label: 'Webhooks' }, { id: 'voting', label: 'Voting' },
@@ -96,6 +97,18 @@ export default function SystemSettings({ page = SETTINGS_PAGES[0].id }: { page?:
         { key: 'importMaxRows', label: 'Most rows in one CSV import', type: 'number', min: 10, max: 100_000 },
       ]} />}
       {page === 'email' && <EmailSection setting={of('email')} save={v => save('email', v)} />}
+      {page === 'email-batching' && <SimpleSection setting={of('emailBatching')} save={v => save('emailBatching', v)} fields={[
+        { key: 'enabled', label: 'Batch notification emails', type: 'toggle', hint: 'A person’s emails about one work item go as one; @mentions are sent at once' },
+        { key: 'minutes', label: 'Gather changes for this many minutes', type: 'number', min: 1, max: 1440 },
+      ]} />}
+      {page === 'user-defaults' && <SimpleSection setting={of('userDefaults')} save={v => save('userDefaults', v)} fields={[
+        { key: 'autowatch', label: 'Watch work you create or comment on (Autowatch)', type: 'toggle' },
+        { key: 'notifyOwnChanges', label: 'Notify people about their own changes', type: 'toggle' },
+      ]} />}
+      {page === 'filter-subscriptions' && <SimpleSection setting={of('filterSubscriptions')} save={v => save('filterSubscriptions', v)} fields={[
+        { key: 'groupSubscribers', label: 'Who may subscribe a group', type: 'select', options: [['everyone', 'Everyone'], ['admins', 'System administrators only']] },
+        { key: 'maxItems', label: 'Most work items in one email', type: 'number', min: 1, max: 1000 },
+      ]} />}
       {page === 'groups' && <SelectSection setting={of('groups')} save={v => save('groups', v)} field="whoCanCreate" label="Who may make groups"
         options={[['everyone', 'Everyone'], ['admins', 'System administrators only']]} />}
       {page === 'testing' && <SimpleSection setting={of('testing')} save={v => save('testing', v)} fields={[
