@@ -1,6 +1,6 @@
 # 0606 Batched email, autowatch, mentions don't make watchers
 
-Status: Approved (PO, 10 Nov 2026: "yes go ahead and build complete everything whatever is pending")
+Status: Ported (aws-jira `91fea6c`, strand `f51cda1`), approved by the PO on 10 Nov 2026; awaiting verification
 Parity rows: NT-02, NT-03
 
 ## Context and Jira reference
