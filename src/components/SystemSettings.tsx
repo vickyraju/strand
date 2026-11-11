@@ -21,7 +21,7 @@ export const SETTINGS_PAGES = [
   { id: 'search-and-bulk', label: 'Search, export and bulk' }, { id: 'email', label: 'Email notifications' }, { id: 'groups', label: 'Group creation' },
   { id: 'testing', label: 'Testing' }, { id: 'due-dates', label: 'Due dates' }, { id: 'deleted-items', label: 'Deleted work items' },
   { id: 'time-tracking', label: 'Time tracking' }, { id: 'project-keys', label: 'Project keys' }, { id: 'sign-in', label: 'Sign-in' },
-  { id: 'automation', label: 'Automation' }, { id: 'webhooks', label: 'Webhooks' },
+  { id: 'automation', label: 'Automation' }, { id: 'webhooks', label: 'Webhooks' }, { id: 'voting', label: 'Voting' },
 ] as const
 
 interface Setting<V = any> { key: string; label: string; description: string; value: V; default: V }
@@ -65,6 +65,9 @@ export default function SystemSettings({ page = SETTINGS_PAGES[0].id }: { page?:
       {page === 'look-and-feel' && <LookAndFeel />}
       {page === 'announcement' && <AnnouncementSection setting={of('announcement')} save={v => save('announcement', v)} />}
       {page === 'rate-limiting' && <RateLimitingSection setting={of<RateLimiting>('rateLimiting')} save={v => save('rateLimiting', v)} />}
+      {page === 'voting' && <SimpleSection setting={of('voting')} save={v => save('voting', v)} fields={[
+        { key: 'enabled', label: 'Allow voting', type: 'toggle', hint: 'Off: nobody can vote; votes already given are kept' },
+      ]} />}
       {page === 'automation' && <SimpleSection setting={of('automation')} save={v => save('automation', v)} fields={[
         { key: 'minScheduleMinutes', label: 'Shortest schedule', hint: 'Minutes between two runs of a scheduled rule, at least', type: 'number', min: 1, max: 1440 },
         { key: 'maxItemsPerRun', label: 'Work items a scheduled run acts on', hint: 'The rest wait for the next run', type: 'number', min: 1, max: 100000 },

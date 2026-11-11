@@ -169,7 +169,7 @@ export async function jiraIssue(d: Db, L: L, issueId: string) {
     })),
     comment: { comments: await Promise.all(comments.map(c => jiraComment(L, c, d))), maxResults: comments.length, total: commentTotal, startAt: Math.max(0, commentTotal - comments.length) },
     worklog: { startAt: Math.max(0, worklogTotal - worklogs.length), maxResults: worklogs.length, total: worklogTotal, worklogs: await Promise.all(worklogs.map(w => jiraWorklog(L, w))) },
-    watches: { self: null, watchCount: watchers!.n, isWatching: false }, votes: { self: null, votes: 0, hasVoted: false },
+    watches: { self: null, watchCount: watchers!.n, isWatching: false }, votes: { self: null, votes: (await many('select count(*)::int as n from issue_votes where issue_id = $1', [i.id]))[0]!.n, hasVoted: false },
     // Jira Software's fields, under the ids this instance gives them
     [ids.sprint]: sprints.length ? sprints.map(sprintString) : null,
     [ids.epicLink]: parent?.type === 'epic' ? parent.key : null,

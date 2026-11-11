@@ -26,7 +26,7 @@ const GROUPS: [string, [string, string][]][] = [
   ['Board', [['board_created', 'created'], ['board_updated', 'updated'], ['board_deleted', 'deleted'], ['board_configuration_changed', 'configuration changed']]],
 ]
 /** Chosen for webhooks moved from Jira, but nothing in Strand makes these changes. */
-const NEVER_SENT = new Set(['jira:version_moved', 'option_voting_changed', 'option_watching_changed', 'option_unassigned_issues_changed', 'option_subtasks_changed', 'option_issuelinks_changed', 'option_timetracking_changed'])
+const NEVER_SENT = new Set(['jira:version_moved', 'option_watching_changed', 'option_unassigned_issues_changed', 'option_subtasks_changed', 'option_issuelinks_changed', 'option_timetracking_changed'])
 
 export default function WebhooksAdmin() {
   const [rows, setRows] = useState<Hook[] | null>(null)

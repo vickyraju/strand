@@ -10,6 +10,7 @@ import { REF_KINDS, valueProblem, type FieldKind, type FieldValue, type Option }
 import { defaultsFor, enforceRules, enforceScreen, rulesFor } from '../fields.ts'
 import { isEmpty } from '../shared/fieldRules.ts'
 import { getSetting } from '../settings.ts'
+import { holds } from '../shared/permissions.ts'
 import { runRules, moveAllowed } from '../rules.ts'
 import { available, ruleContext, transitionById, transitionTo, type TransitionRow } from '../transitions.ts'
 import { statusesFor } from '../workflows.ts'
@@ -849,6 +850,30 @@ const plugin: FastifyPluginAsyncZod = async app => {
         entity: { sourceIssueId: a.id, destinationIssueId: t.id, issueLinkType: { name: q.type } } }, req.me.id)
     })
     reply.code(204).send()
+  })
+  // Voting (spec 0506), as Jira's: once per person, not the reporter, not once resolved; the workspace's switch
+  const voteFor = async (req: any) => {
+    const i = await issueByKey(db, req, req.params.key, false, 'viewer')
+    if (!(await getSetting(req.me.workspaceId, 'voting')).enabled) throw new HttpError(403, 'Voting is turned off (System settings › Voting)')
+    if (i.reporterId === req.me.id) throw new HttpError(400, 'You can’t vote for a work item you reported')
+    if (i.resolution) throw new HttpError(400, 'Votes on a resolved work item can’t change')
+    return i
+  }
+  app.put('/issues/:key/vote', { schema: { tags: ['Links & watchers'], summary: 'Vote for a work item (not one you reported, not a resolved one)', params: keyP } }, async (req, reply) => {
+    const i = await voteFor(req)
+    await db.query('insert into issue_votes (issue_id, user_id) values ($1, $2) on conflict do nothing', [i.id, req.me.id])
+    reply.code(204).send()
+  })
+  app.delete('/issues/:key/vote', { schema: { tags: ['Links & watchers'], summary: 'Take back your vote', params: keyP } }, async (req, reply) => {
+    const i = await voteFor(req)
+    await db.query('delete from issue_votes where issue_id = $1 and user_id = $2', [i.id, req.me.id])
+    reply.code(204).send()
+  })
+  app.get('/issues/:key/votes', { schema: { tags: ['Links & watchers'], summary: 'The votes: how many, whether I voted, and who (with View voters and watchers)', params: keyP } }, async req => {
+    const i = await issueByKey(db, req, req.params.key, false, 'viewer')
+    const voters = await db.query<{ id: string; name: string }>('select u.id, u.name from issue_votes v join users u on u.id = v.user_id where v.issue_id = $1 order by v.voted_at', [i.id])
+    const see = holds(await roleOf(db, req.me, i.projectId), 'viewWatchers')
+    return { votes: voters.length, hasVoted: voters.some(v => v.id === req.me.id), voters: see ? voters : [] }
   })
   app.put('/issues/:key/watch', { schema: { tags: ['Links & watchers'], summary: 'Watch an issue', params: keyP } }, async (req, reply) => {
     const i = await issueByKey(db, req, req.params.key, false, 'viewer')

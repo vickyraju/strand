@@ -29,7 +29,7 @@ export const EVENTS = [
 ] as const
 export type WebhookEvent = typeof EVENTS[number] | 'ping'
 /** Events Strand never sends: nothing in Strand makes these changes (versions are ordered by date; these options can't be switched off). */
-export const NEVER_SENT = new Set<string>(['jira:version_moved', 'option_voting_changed', 'option_watching_changed', 'option_unassigned_issues_changed',
+export const NEVER_SENT = new Set<string>(['jira:version_moved', 'option_watching_changed', 'option_unassigned_issues_changed',
   'option_subtasks_changed', 'option_issuelinks_changed', 'option_timetracking_changed'])
 /** Events about one work item: the JQL filter applies to them all (R4; Jira's filter misses comments and work logs). */
 const ISSUE_EVENTS = new Set<string>(['jira:issue_created', 'jira:issue_updated', 'jira:issue_deleted', 'jira:worklog_updated', 'comment_created', 'comment_updated', 'comment_deleted',
@@ -96,6 +96,7 @@ const FROM_AUDIT: Record<string, (after: any, before: any) => WebhookEvent[]> = 
   ],
   'user.created': () => ['user_created'], 'user.updated': () => ['user_updated'], 'user.anonymised': () => ['user_deleted'], 'sprint.deleted': () => ['sprint_deleted'],
   'settings.attachments.updated': (a, b) => (a?.enabled !== undefined && a.enabled !== b?.enabled ? ['option_attachments_changed'] : []),
+  'settings.voting.updated': (a, b) => (a?.enabled !== undefined && a.enabled !== b?.enabled ? ['option_voting_changed'] : []),
 }
 export async function emitFromAudit(d: Db, ws: string | null, actorId: string | null, e: { action: string; type: string; id?: string | null; project?: { id: string } | null; before?: unknown; after?: unknown }) {
   const events = FROM_AUDIT[e.action]?.(e.after, e.before) ?? []
@@ -108,6 +109,7 @@ export async function emitFromAudit(d: Db, ws: string | null, actorId: string | 
     else if (event.startsWith('sprint')) ref.sprintId = e.id ?? undefined
     else if (event.startsWith('project')) ref.projectId = e.id ?? e.project?.id
     else if (event === 'option_attachments_changed') ref.property = { key: 'jira.option.allowattachments', value: String((e.after as any).enabled) }
+    else if (event === 'option_voting_changed') ref.property = { key: 'jira.option.voting', value: String((e.after as any).enabled) }
     await emit(d, ws, event, ref, actorId)
   }
 }

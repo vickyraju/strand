@@ -85,7 +85,7 @@ Checked against Atlassian's Data Center documentation on 5 November 2026 (Jira S
 | ISS-25 | Version and component names | Unique per project | Unique per project, ignoring case | match | match | 0309 | |
 | ISS-09 | Screens and screen schemes | Create, edit and view screens | Screens with tabs, screen schemes (Create, Edit, View) and issue type screen schemes; the create dialog, edits and the item's view follow them; transition screens (0103) | match | match | 0505 | Better: the Default Screen shows every field, new ones included, until given tabs |
 | ISS-10 | Move between projects | Yes; the old key redirects | Move… with Jira's preview: type, status, versions and components by name, custom fields by name and kind; sub-items move along; every earlier key keeps opening it (address, API, JQL, search) | match | match | 0501 | The sprint is cleared (Strand's sprints belong to a board) |
-| ISS-11 | Voting | Yes | Absent | absent | match | 0506 | |
+| ISS-11 | Voting | Yes | Vote once, not the reporter, not once resolved; who voted (View voters and watchers); the Voting switch with its webhook; JQL votes, votedIssues(), ORDER BY votes | match | match | 0506 | Voting per project is a proposal |
 | ISS-12 | Remote links | Yes | Absent | absent | match | 0507 | |
 | ISS-13 | Archive single issues | DC 8.1+ ([dc]) | Absent | absent | match | 0508 | |
 | ISS-14 | Convert to and from sub-task | Yes | Absent | absent | match | 0509 | |

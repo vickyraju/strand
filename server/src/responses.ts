@@ -307,6 +307,7 @@ export const RESPONSES: Record<string, z.ZodType> = {
       'GET /admin/issue-type-screen-schemes': z.array(Its), 'GET /admin/issue-type-screen-schemes/:id': Its, 'POST /admin/issue-type-screen-schemes': Its, 'PATCH /admin/issue-type-screen-schemes/:id': Its,
     }
   })(),
+  'GET /issues/:key/votes': z.object({ votes: z.number(), hasVoted: z.boolean(), voters: z.array(z.object({ id, name: z.string() })).describe('Empty without View voters and watchers') }),
   'POST /issues/:key/move': z.union([
     z.object({ dryRun: z.literal(true), items: z.array(z.object({ id, key: z.string(), newKey: z.string(),
       changes: z.array(z.object({ field: z.string(), from: z.unknown(), to: z.unknown() })) })).describe('The item, then its sub-items: their new keys and every change (Jira’s confirmation page)') }),

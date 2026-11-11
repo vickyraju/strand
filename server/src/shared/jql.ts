@@ -32,6 +32,7 @@ export const FIELDS: Record<string, string> = {
   due: 'due', duedate: 'due', start: 'start', startdate: 'start',
   storypoints: 'estimate', 'story points': 'estimate', estimate: 'estimate', originalestimate: 'timeEstimate', remainingestimate: 'timeRemaining',
   // Jira's development fields (spec 0707); builds, deployments and reviews come from tools Strand doesn't connect yet
+  votes: 'votes',
   'development[commits].all': 'devCommits', 'development[branches].all': 'devBranches', 'development[pullrequests].all': 'devPrs',
   'development[pullrequests].open': 'devPrsOpen', 'development[pullrequests].merged': 'devPrsMerged', 'development[pullrequests].declined': 'devPrsDeclined',
   'development[pullrequests].status': 'devPrStatus',
@@ -40,7 +41,7 @@ export const FIELDS: Record<string, string> = {
   'development[reviews].all': 'devNone', 'development[reviews].open': 'devNone',
 }
 /** Fields people sort by. */
-export const SORTS = ['created', 'updated', 'priority', 'due', 'key', 'rank', 'status', 'resolved', 'summary', 'estimate']
+export const SORTS = ['created', 'updated', 'priority', 'due', 'key', 'rank', 'status', 'resolved', 'summary', 'estimate', 'votes']
 
 interface Tok { t: 'word' | 'str' | 'op' | '(' | ')' | ','; v: string; at: number }
 
