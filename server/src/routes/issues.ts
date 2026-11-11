@@ -7,6 +7,7 @@ import { publish } from '../events.ts'
 import { audit } from '../audit.ts'
 import { emit, triggerWebhook } from '../webhooks.ts'
 import { REF_KINDS, valueProblem, type FieldKind, type FieldValue, type Option } from '../shared/customFields.ts'
+import { defaultsFor } from '../fields.ts'
 import { getSetting } from '../settings.ts'
 import { runRules, moveAllowed } from '../rules.ts'
 import { available, ruleContext, transitionById, transitionTo, type TransitionRow } from '../transitions.ts'
@@ -177,17 +178,19 @@ async function editorsOf(d: Db, issueId: string) {
 /** Custom field values must belong to a field of this project and fit its kind: text (at most 5000 characters), a finite
  *  number, one of a select field's enabled options, or a YYYY-MM-DD date. Only values that change are checked, so an item
  *  keeps an option that was later disabled. A cleared field is simply left out. */
-async function checkCustom(d: Db, projectId: string, next: Record<string, FieldValue>, prev: Record<string, FieldValue> = {}) {
+async function checkCustom(d: Db, projectId: string, type: string, next: Record<string, FieldValue>, prev: Record<string, FieldValue> = {}) {
   const changed = Object.keys(next).filter(k => JSON.stringify(next[k]) !== JSON.stringify(prev[k]))
   const cleared = Object.keys(prev).filter(k => !(k in next))
   if (!changed.length && !cleared.length) return
-  const defs = new Map((await d.query<{ id: string; name: string; kind: FieldKind; options: Option[] | null }>(
-    'select id, name, kind, options from field_defs where project_id = $1', [projectId])).map(f => [f.id, f]))
+  const defs = new Map((await d.query<{ id: string; name: string; kind: FieldKind; options: Option[] | null; typeKeys: string[] | null }>(
+    'select id, name, kind, options, type_keys from field_defs where project_id = $1', [projectId])).map(f => [f.id, f]))
   const errors: Record<string, string> = {}
   for (const k of [...changed, ...cleared]) {
     const f = defs.get(k)
     if (!f) { if (changed.includes(k)) errors[k] = 'No such field in this project'; continue }
     if (!changed.includes(k)) continue
+    // a field applies to the work types its context names (spec 0503 R2)
+    if (f.typeKeys && !f.typeKeys.includes(type)) { errors[k] = `${f.name} isn’t used for this work type`; continue }
     const v = next[k]
     const problem = valueProblem(f, v)
     if (problem) { errors[k] = problem; continue }
@@ -280,7 +283,7 @@ async function applyPatch(d: Db, me: Me, cur: any, patch: z.infer<typeof patchBo
     throw new HttpError(400, retyping && !moving ? 'Its status isn’t in the workflow for that work type: choose a status too' : 'That status isn’t in the workflow for this work type', { statusId: 'Not in this type’s workflow' })
   await checkParts(d, cur.projectId, patch, cur)
   if (patch.sprintId !== undefined && patch.sprintId !== cur.sprintId) await checkSprint(d, me, patch.sprintId)
-  if (patch.custom) await checkCustom(d, cur.projectId, patch.custom, cur.custom)
+  if (patch.custom) await checkCustom(d, cur.projectId, patch.type ?? cur.type, patch.custom, cur.custom)
   checkSpec(patch.type ?? cur.type, patch.testSpec)
   if ((patch.testEnvironments?.length || patch.revision) && (patch.type ?? cur.type) !== 'test_execution') throw new HttpError(400, 'Only Test Executions have environments and a revision')
   await checkFolder(d, cur.projectId, patch.type ?? cur.type, patch.testFolderId)
@@ -464,7 +467,10 @@ async function landingFor(d: Db, cur: any, type: string) {
 export async function insertIssue(d: Db, me: Me, projectId: string, b: Record<string, any>, created = 'Created this work item') {
   const [pr] = await d.query<{ leadId: string | null }>('select lead_id from projects where id = $1', [projectId])
   if (b.assigneeId && !(await canJoinWork(d, projectId, b.assigneeId))) throw new HttpError(400, 'The assignee must be a member of this project')
-  if (b.custom) await checkCustom(d, projectId, b.custom)
+  if (b.custom) await checkCustom(d, projectId, b.type ?? 'task', b.custom)
+  // default values of the fields that apply to it (spec 0503 R3)
+  const defaults = await defaultsFor(d, projectId, b.type ?? 'task', b.custom ?? {})
+  if (Object.keys(defaults).length) b = { ...b, custom: { ...(b.custom ?? {}), ...defaults } }
   await checkType(d, projectId, b.type)
   checkSpec(b.type ?? 'task', b.testSpec)
   await checkFolder(d, projectId, b.type ?? 'task', b.testFolderId)

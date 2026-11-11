@@ -219,6 +219,11 @@ export interface FieldDef {
   /** Jira's custom field types (spec 0502) */
   kind:     FieldKind
   options?: FieldOption[]
+  /** Global fields (spec 0503): shared with other projects (changed in Administration), the work types it applies to, its default */
+  shared?:  boolean
+  typeKeys?: string[]
+  defaultValue?: FieldValue
+  description?: string
 }
 
 /** A select field's option (spec 0105, as Jira): an id that survives a rename; a disabled one is no longer offered, but
@@ -760,10 +765,12 @@ export function reducer(state: State, action: Action, now = Date.now()): State {
         type: 'task', description: '', priority: defaultPriority(), labels: [],
         ...action.issue, status,
         ...(action.issue.type === 'epic' ? { epicStatus: action.issue.epicStatus ?? 'To Do' } : {}),
+        // default values of the fields that apply to it (spec 0503 R3)
+        custom: { ...Object.fromEntries(project.fields.filter(f => f.defaultValue !== undefined && (!f.typeKeys || f.typeKeys.includes(action.issue.type ?? 'task'))).map(f => [f.id, f.defaultValue!])), ...(action.issue.custom ?? {}) },
         ...(!('assigneeId' in action.issue) && componentAssignee(project, action.issue.componentIds) ? { assigneeId: componentAssignee(project, action.issue.componentIds) } : {}),
         id: action.id, key: `${project.key}-${project.nextNumber}`, reporterId: actor,
         watcherIds: [...new Set([actor, action.issue.assigneeId].filter((x): x is string => !!x))],
-        links: [], attachments: [], worklogs: [], custom: action.issue.custom ?? {}, createdAt: now, updatedAt: now,
+        links: [], attachments: [], worklogs: [], createdAt: now, updatedAt: now,
         ...(action.issue.timeEstimate != null ? { timeRemaining: action.issue.timeEstimate } : {}),
         rank: state.issues.reduce((m, i) => Math.max(m, i.rank), 0) + 1,   // last of all, as the server will put it (spec 0302)
       }

@@ -26,7 +26,8 @@ const mapRule = (r: Row): Rule => ({
   id: r.id, name: r.name, enabled: r.enabled, trigger: r.trigger, actions: r.actions, runs: r.runs ?? 0, ...(r.condition ? { condition: r.condition } : {}),
   ...(r.failures ? { failures: r.failures } : {}), ...(r.ownerId ? { ownerId: r.ownerId } : {}),
 })
-const mapField = (f: Row): FieldDef => ({ id: f.id, name: f.name, kind: f.kind, ...(f.options ? { options: f.options } : {}) })
+const mapField = (f: Row): FieldDef => ({ id: f.id, name: f.name, kind: f.kind, ...(f.options ? { options: f.options } : {}),
+  ...(f.shared ? { shared: true } : {}), ...(f.typeKeys ? { typeKeys: f.typeKeys } : {}), ...(f.defaultValue != null ? { defaultValue: f.defaultValue } : {}), ...(f.description ? { description: f.description } : {}) })
 const mapRelease = (r: Row): Release => ({
   id: r.id, name: r.name, description: r.description ?? '', released: !!r.released,
   ...(r.startDate ? { startDate: r.startDate } : {}), ...(r.releaseDate ? { releaseDate: r.releaseDate } : {}),

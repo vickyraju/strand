@@ -62,7 +62,9 @@ export const AvailableTransition = z.object({
   id, name: z.string(), toId: nullable(id), screen: z.array(z.string()).describe('Fields to fill in (and "comment")'),
   problems: z.record(z.string(), z.string()).describe('What would stop the move if made now, by field'),
 })
-export const Field = z.object({ id, projectId: id, name: z.string(), kind: z.enum(KIND_LIST as [FieldKind, ...FieldKind[]]).describe('Jira’s custom field types (spec 0502)'), options: nullable(z.array(z.object({ id: z.string(), name: z.string(), disabled: z.boolean(), parentId: z.string().optional().describe('Cascading fields: the option it is under') }))), position: z.number() })
+export const Field = z.object({ id, projectId: id, name: z.string(), kind: z.enum(KIND_LIST as [FieldKind, ...FieldKind[]]).describe('Jira’s custom field types (spec 0502)'), options: nullable(z.array(z.object({ id: z.string(), name: z.string(), disabled: z.boolean(), parentId: z.string().optional().describe('Cascading fields: the option it is under') }))), position: z.number(),
+  description: z.string(), typeKeys: nullable(z.array(z.string())).describe('The work types it applies to (null: all; spec 0503)'), defaultValue: nullable(z.unknown()),
+  contextId: id.describe('The context that applies in this project'), shared: z.boolean().describe('Its context covers other projects too: changed in Administration › Custom fields') })
 export const Template = z.object({ id, projectId: id, name: z.string(), type: z.string(), title: z.string(), description: z.string(), priority: z.string(), labels: z.array(z.string()), estimate: nullable(z.number()) })
 export const Rule = z.object({ id, projectId: nullable(id).describe('Null: a global rule (spec 0709)'), name: z.string(), enabled: z.boolean(), trigger: z.record(z.string(), z.unknown()),
   actions: z.array(z.record(z.string(), z.unknown())), condition: nullable(z.string()).describe('JQL the item must match'), runs: z.number(), failures: z.number(), ownerId: nullable(id), lastRunAt: nullable(ts) })
@@ -261,6 +263,18 @@ export const RESPONSES: Record<string, z.ZodType> = {
     return {
       'GET /admin/automation/rules': z.array(GlobalRule), 'POST /admin/automation/rules': GlobalRule, 'PUT /admin/automation/rules/:id': GlobalRule,
       'GET /admin/automation/runs': z.array(Run), 'GET /projects/:key/automation/global': z.array(GlobalRule),
+    }
+  })(),
+  ...(() => {
+    const Context = z.object({ id, name: z.string(), description: z.string(), projectKeys: nullable(z.array(z.string())).describe('null: global'),
+      typeKeys: nullable(z.array(z.string())).describe('null: every work type'), options: nullable(z.array(z.object({ id: z.string(), name: z.string(), disabled: z.boolean(), parentId: z.string().optional() }))),
+      defaultValue: nullable(z.unknown()) })
+    const CustomField = z.object({ id, name: z.string(), kind: z.string(), description: z.string(), position: z.number(), createdAt: ts, contexts: z.array(Context),
+      items: z.number().optional().describe('Items with a value') })
+    return {
+      'GET /admin/custom-fields': z.object({ items: z.array(CustomField), next: nullable(z.string()) }),
+      'GET /admin/custom-fields/:id': CustomField, 'POST /admin/custom-fields': CustomField, 'PATCH /admin/custom-fields/:id': CustomField,
+      'POST /admin/custom-fields/:id/contexts': CustomField, 'PATCH /admin/custom-fields/:id/contexts/:contextId': CustomField,
     }
   })(),
   'POST /issues/:key/move': z.union([

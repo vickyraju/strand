@@ -176,7 +176,7 @@ export function FieldsPanel({ project }: { project: Project }) {
       <div className="panel-title-row">
         <div>
           <h2 className="panel-title">Fields</h2>
-          <p className="muted">Extra fields on every work item in {project.name}. They show in the details panel and can be added as list columns.</p>
+          <p className="muted">Extra fields on work items in {project.name}. A field you add here is for this project alone; shared fields come from Administration › Custom fields.</p>
         </div>
         <button className="btn btn-secondary" onClick={() => setEditing({ id: uid(), name: '', kind: 'text' })}><Plus size={14} />Add field</button>
       </div>
@@ -191,8 +191,12 @@ export function FieldsPanel({ project }: { project: Project }) {
                   <span className="strong">{f.name}</span>
                   <span className="muted sm">{FIELD_KIND[f.kind].label}{hasOptions(f.kind) ? `: ${(f.options ?? []).filter(o => !o.disabled && !o.parentId).map(o => o.name).join(', ')}` : ''} · set on {plural(usage(f.id), 'item')}</span>
                 </div>
-                <button className="btn btn-ghost btn-sm" onClick={() => setEditing(f)}>Edit</button>
-                <button className="icon-btn" onClick={() => setDeleting(f)} aria-label={`Delete ${f.name}`} title="Delete"><Trash2 size={14} /></button>
+                {f.shared
+                  ? <span className="muted sm" title="Shared with other projects: a system administrator changes it in Administration › Custom fields">Shared</span>
+                  : <>
+                    <button className="btn btn-ghost btn-sm" onClick={() => setEditing(f)}>Edit</button>
+                    <button className="icon-btn" onClick={() => setDeleting(f)} aria-label={`Delete ${f.name}`} title="Delete"><Trash2 size={14} /></button>
+                  </>}
               </div>
             )
           })}
