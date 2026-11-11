@@ -1849,3 +1849,32 @@ test('[0501.R5][0501.R6] Move: an item goes to another project from its actions,
   assert.deepEqual(o.problems, [])
 })
 
+test('[0502.R3] custom field types: an admin adds a checkboxes field and a user picker; the item’s details set both', { skip, timeout: 120_000 }, async () => {
+  await owner('POST', '/projects', { name: 'Typed fields', key: 'TYF', template: 'kanban' })
+  const item = (await owner('POST', '/projects/TYF/issues', { title: 'Has typed fields' })).body
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url('/project/TYF/settings'))
+  await o.click('button:has-text("Add field")')
+  await o.fill('#fd-name', 'Platforms')
+  await o.selectOption('.modal select[aria-label="Field type"]', 'checkboxes')
+  for (const n of ['iOS', 'Android']) { await o.fill('#fd-opt', n); await o.press('#fd-opt', 'Enter') }
+  await o.click('.modal button:has-text("Save field")')
+  await o.waitForSelector('text=Saved Platforms')
+  await o.click('button:has-text("Add field")')
+  await o.fill('#fd-name', 'Reviewer')
+  await o.selectOption('.modal select[aria-label="Field type"]', 'user')
+  await o.click('.modal button:has-text("Save field")')
+  await o.waitForSelector('text=Saved Reviewer')
+  await o.goto(url(`/i/${item.key}`))
+  const platforms = o.locator('.field:has-text("Platforms")')
+  await platforms.locator('label:has-text("Android") input').check()
+  await o.click('.field:has-text("Reviewer") button')
+  await o.click(`.picker-menu .picker-item:has-text("${PEOPLE['owner@e2e.test']}")`)
+  const fields = (await owner('GET', '/projects/TYF')).body.fields
+  let custom = {}
+  for (let n = 0; n < 50; n++) { custom = (await owner('GET', `/issues/${item.key}`)).body.custom; if (Object.keys(custom).length === 2) break; await new Promise(r => setTimeout(r, 200)) }
+  assert.deepEqual(custom[fields.find(f => f.name === 'Platforms').id], ['Android'])
+  assert.equal(custom[fields.find(f => f.name === 'Reviewer').id], await idOf('owner@e2e.test'))
+  assert.deepEqual(o.problems, [])
+})
+

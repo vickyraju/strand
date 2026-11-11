@@ -2467,11 +2467,28 @@
                           "kind": {
                             "type": "string",
                             "enum": [
-                              "text",
+                              "checkboxes",
+                              "date",
+                              "datetime",
+                              "labels",
                               "number",
+                              "radio",
+                              "cascading",
+                              "multiselect",
                               "select",
-                              "date"
-                            ]
+                              "textarea",
+                              "text",
+                              "url",
+                              "user",
+                              "groups",
+                              "group",
+                              "project",
+                              "readonly",
+                              "users",
+                              "versions",
+                              "version"
+                            ],
+                            "description": "Jira’s custom field types (spec 0502)"
                           },
                           "options": {
                             "nullable": true,
@@ -2487,6 +2504,10 @@
                                 },
                                 "disabled": {
                                   "type": "boolean"
+                                },
+                                "parentId": {
+                                  "description": "Cascading fields: the option it is under",
+                                  "type": "string"
                                 }
                               },
                               "required": [
@@ -3691,11 +3712,28 @@
                           "kind": {
                             "type": "string",
                             "enum": [
-                              "text",
+                              "checkboxes",
+                              "date",
+                              "datetime",
+                              "labels",
                               "number",
+                              "radio",
+                              "cascading",
+                              "multiselect",
                               "select",
-                              "date"
-                            ]
+                              "textarea",
+                              "text",
+                              "url",
+                              "user",
+                              "groups",
+                              "group",
+                              "project",
+                              "readonly",
+                              "users",
+                              "versions",
+                              "version"
+                            ],
+                            "description": "Jira’s custom field types (spec 0502)"
                           },
                           "options": {
                             "nullable": true,
@@ -3711,6 +3749,10 @@
                                 },
                                 "disabled": {
                                   "type": "boolean"
+                                },
+                                "parentId": {
+                                  "description": "Cascading fields: the option it is under",
+                                  "type": "string"
                                 }
                               },
                               "required": [
@@ -4649,11 +4691,28 @@
                           "kind": {
                             "type": "string",
                             "enum": [
-                              "text",
+                              "checkboxes",
+                              "date",
+                              "datetime",
+                              "labels",
                               "number",
+                              "radio",
+                              "cascading",
+                              "multiselect",
                               "select",
-                              "date"
-                            ]
+                              "textarea",
+                              "text",
+                              "url",
+                              "user",
+                              "groups",
+                              "group",
+                              "project",
+                              "readonly",
+                              "users",
+                              "versions",
+                              "version"
+                            ],
+                            "description": "Jira’s custom field types (spec 0502)"
                           },
                           "options": {
                             "nullable": true,
@@ -4669,6 +4728,10 @@
                                 },
                                 "disabled": {
                                   "type": "boolean"
+                                },
+                                "parentId": {
+                                  "description": "Cascading fields: the option it is under",
+                                  "type": "string"
                                 }
                               },
                               "required": [
@@ -5786,11 +5849,28 @@
                           "kind": {
                             "type": "string",
                             "enum": [
-                              "text",
+                              "checkboxes",
+                              "date",
+                              "datetime",
+                              "labels",
                               "number",
+                              "radio",
+                              "cascading",
+                              "multiselect",
                               "select",
-                              "date"
-                            ]
+                              "textarea",
+                              "text",
+                              "url",
+                              "user",
+                              "groups",
+                              "group",
+                              "project",
+                              "readonly",
+                              "users",
+                              "versions",
+                              "version"
+                            ],
+                            "description": "Jira’s custom field types (spec 0502)"
                           },
                           "options": {
                             "nullable": true,
@@ -5806,6 +5886,10 @@
                                 },
                                 "disabled": {
                                   "type": "boolean"
+                                },
+                                "parentId": {
+                                  "description": "Cascading fields: the option it is under",
+                                  "type": "string"
                                 }
                               },
                               "required": [
@@ -6793,11 +6877,28 @@
                           "kind": {
                             "type": "string",
                             "enum": [
-                              "text",
+                              "checkboxes",
+                              "date",
+                              "datetime",
+                              "labels",
                               "number",
+                              "radio",
+                              "cascading",
+                              "multiselect",
                               "select",
-                              "date"
-                            ]
+                              "textarea",
+                              "text",
+                              "url",
+                              "user",
+                              "groups",
+                              "group",
+                              "project",
+                              "readonly",
+                              "users",
+                              "versions",
+                              "version"
+                            ],
+                            "description": "Jira’s custom field types (spec 0502)"
                           },
                           "options": {
                             "nullable": true,
@@ -6813,6 +6914,10 @@
                                 },
                                 "disabled": {
                                   "type": "boolean"
+                                },
+                                "parentId": {
+                                  "description": "Cascading fields: the option it is under",
+                                  "type": "string"
                                 }
                               },
                               "required": [
@@ -7918,17 +8023,33 @@
                   "kind": {
                     "type": "string",
                     "enum": [
-                      "text",
+                      "checkboxes",
+                      "date",
+                      "datetime",
+                      "labels",
                       "number",
+                      "radio",
+                      "cascading",
+                      "multiselect",
                       "select",
-                      "date"
+                      "textarea",
+                      "text",
+                      "url",
+                      "user",
+                      "groups",
+                      "group",
+                      "project",
+                      "readonly",
+                      "users",
+                      "versions",
+                      "version"
                     ],
-                    "description": "Fixed once the field is made"
+                    "description": "Jira’s custom field types (spec 0502); fixed once the field is made"
                   },
                   "options": {
                     "nullable": true,
-                    "description": "A select field’s options, in order. In a PATCH: one left out is deleted (its value goes from every item); a new name for an id renames it on every item",
-                    "maxItems": 500,
+                    "description": "The options of a select, radio, multiple choice, checkboxes or cascading field, in order. In a PATCH: one left out is deleted (its value goes from every item); a new name for an id renames it on every item",
+                    "maxItems": 1000,
                     "type": "array",
                     "items": {
                       "type": "object",
@@ -7947,6 +8068,13 @@
                         "disabled": {
                           "description": "No longer offered; items keep it",
                           "type": "boolean"
+                        },
+                        "parentId": {
+                          "description": "Cascading fields: the option this one is under",
+                          "nullable": true,
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 64
                         }
                       },
                       "required": [
@@ -8007,11 +8135,28 @@
                     "kind": {
                       "type": "string",
                       "enum": [
-                        "text",
+                        "checkboxes",
+                        "date",
+                        "datetime",
+                        "labels",
                         "number",
+                        "radio",
+                        "cascading",
+                        "multiselect",
                         "select",
-                        "date"
-                      ]
+                        "textarea",
+                        "text",
+                        "url",
+                        "user",
+                        "groups",
+                        "group",
+                        "project",
+                        "readonly",
+                        "users",
+                        "versions",
+                        "version"
+                      ],
+                      "description": "Jira’s custom field types (spec 0502)"
                     },
                     "options": {
                       "nullable": true,
@@ -8027,6 +8172,10 @@
                           },
                           "disabled": {
                             "type": "boolean"
+                          },
+                          "parentId": {
+                            "description": "Cascading fields: the option it is under",
+                            "type": "string"
                           }
                         },
                         "required": [
@@ -8159,17 +8308,33 @@
                   "kind": {
                     "type": "string",
                     "enum": [
-                      "text",
+                      "checkboxes",
+                      "date",
+                      "datetime",
+                      "labels",
                       "number",
+                      "radio",
+                      "cascading",
+                      "multiselect",
                       "select",
-                      "date"
+                      "textarea",
+                      "text",
+                      "url",
+                      "user",
+                      "groups",
+                      "group",
+                      "project",
+                      "readonly",
+                      "users",
+                      "versions",
+                      "version"
                     ],
-                    "description": "Fixed once the field is made"
+                    "description": "Jira’s custom field types (spec 0502); fixed once the field is made"
                   },
                   "options": {
                     "nullable": true,
-                    "description": "A select field’s options, in order. In a PATCH: one left out is deleted (its value goes from every item); a new name for an id renames it on every item",
-                    "maxItems": 500,
+                    "description": "The options of a select, radio, multiple choice, checkboxes or cascading field, in order. In a PATCH: one left out is deleted (its value goes from every item); a new name for an id renames it on every item",
+                    "maxItems": 1000,
                     "type": "array",
                     "items": {
                       "type": "object",
@@ -8188,6 +8353,13 @@
                         "disabled": {
                           "description": "No longer offered; items keep it",
                           "type": "boolean"
+                        },
+                        "parentId": {
+                          "description": "Cascading fields: the option this one is under",
+                          "nullable": true,
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 64
                         }
                       },
                       "required": [
@@ -8248,11 +8420,28 @@
                     "kind": {
                       "type": "string",
                       "enum": [
-                        "text",
+                        "checkboxes",
+                        "date",
+                        "datetime",
+                        "labels",
                         "number",
+                        "radio",
+                        "cascading",
+                        "multiselect",
                         "select",
-                        "date"
-                      ]
+                        "textarea",
+                        "text",
+                        "url",
+                        "user",
+                        "groups",
+                        "group",
+                        "project",
+                        "readonly",
+                        "users",
+                        "versions",
+                        "version"
+                      ],
+                      "description": "Jira’s custom field types (spec 0502)"
                     },
                     "options": {
                       "nullable": true,
@@ -8268,6 +8457,10 @@
                           },
                           "disabled": {
                             "type": "boolean"
+                          },
+                          "parentId": {
+                            "description": "Cascading fields: the option it is under",
+                            "type": "string"
                           }
                         },
                         "required": [
@@ -17490,6 +17683,12 @@
                                 },
                                 {
                                   "type": "number"
+                                },
+                                {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
                                 }
                               ]
                             }
@@ -18044,6 +18243,12 @@
                                 },
                                 {
                                   "type": "number"
+                                },
+                                {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
                                 }
                               ]
                             }
@@ -18375,9 +18580,17 @@
                         },
                         {
                           "type": "number"
+                        },
+                        {
+                          "maxItems": 100,
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
                         }
                       ]
-                    }
+                    },
+                    "description": "Custom field values by field id: text, a number, or a list (multiple-value fields; a cascading field’s option and child option)"
                   },
                   "rank": {
                     "type": "number"
@@ -18700,6 +18913,12 @@
                           },
                           {
                             "type": "number"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
                           }
                         ]
                       }
@@ -19086,6 +19305,12 @@
                           },
                           {
                             "type": "number"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
                           }
                         ]
                       }
@@ -19434,6 +19659,12 @@
                           },
                           {
                             "type": "number"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
                           }
                         ]
                       }
@@ -19870,6 +20101,12 @@
                                 },
                                 {
                                   "type": "number"
+                                },
+                                {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
                                 }
                               ]
                             }
@@ -20236,9 +20473,17 @@
                         },
                         {
                           "type": "number"
+                        },
+                        {
+                          "maxItems": 100,
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
                         }
                       ]
-                    }
+                    },
+                    "description": "Custom field values by field id: text, a number, or a list (multiple-value fields; a cascading field’s option and child option)"
                   },
                   "rank": {
                     "type": "number"
@@ -20570,6 +20815,12 @@
                           },
                           {
                             "type": "number"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
                           }
                         ]
                       }
@@ -21805,9 +22056,17 @@
                             },
                             {
                               "type": "number"
+                            },
+                            {
+                              "maxItems": 100,
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
                             }
                           ]
-                        }
+                        },
+                        "description": "Custom field values by field id: text, a number, or a list (multiple-value fields; a cascading field’s option and child option)"
                       },
                       "testSpec": {
                         "nullable": true,
@@ -22136,6 +22395,12 @@
                           },
                           {
                             "type": "number"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
                           }
                         ]
                       }
@@ -22473,9 +22738,17 @@
                             },
                             {
                               "type": "number"
+                            },
+                            {
+                              "maxItems": 100,
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
                             }
                           ]
-                        }
+                        },
+                        "description": "Custom field values by field id: text, a number, or a list (multiple-value fields; a cascading field’s option and child option)"
                       },
                       "rank": {
                         "type": "number"
@@ -22792,6 +23065,12 @@
                                 },
                                 {
                                   "type": "number"
+                                },
+                                {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
                                 }
                               ]
                             }
@@ -23839,6 +24118,12 @@
                           },
                           {
                             "type": "number"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
                           }
                         ]
                       }
@@ -34757,6 +35042,12 @@
                             },
                             {
                               "type": "number"
+                            },
+                            {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
                             }
                           ]
                         }
@@ -35143,6 +35434,12 @@
                                 },
                                 {
                                   "type": "number"
+                                },
+                                {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
                                 }
                               ]
                             }
@@ -35528,6 +35825,12 @@
                             },
                             {
                               "type": "number"
+                            },
+                            {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
                             }
                           ]
                         }
@@ -37298,6 +37601,12 @@
                             },
                             {
                               "type": "number"
+                            },
+                            {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
                             }
                           ]
                         }
@@ -37691,6 +38000,12 @@
                           },
                           {
                             "type": "number"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
                           }
                         ]
                       }
@@ -39068,6 +39383,12 @@
                               },
                               {
                                 "type": "number"
+                              },
+                              {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
                               }
                             ]
                           }
@@ -49765,6 +50086,12 @@
                                 },
                                 {
                                   "type": "number"
+                                },
+                                {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
                                 }
                               ]
                             }
@@ -59939,6 +60266,12 @@
                               },
                               {
                                 "type": "number"
+                              },
+                              {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
                               }
                             ]
                           }

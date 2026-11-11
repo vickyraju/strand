@@ -203,7 +203,30 @@ export async function jqlToSql(d: Db, me: Me, q: Query, args: unknown[]): Promis
     if (c.field in NUMBERS) return `${NUMBERS[c.field]} = ${number(v)}`
     if (c.field === 'text' || c.field === 'summary' || c.field === 'description')
       throw new HttpError(400, `JQL: search ${c.field} with ~ (contains), for example ${c.field} ~ "login"`, { jql: `Use ~ with ${c.field}` })
-    return custom(c, `lower(i.custom->>(f.id::text)) = lower(${put(text(v, c.field))})`)
+    return custom(c, customEq(v, c.field))
+  }
+  /** "custom field = value" for every kind (spec 0502 R4): any of a list's values; people by email, name or currentUser();
+   *  groups, projects and versions by name; membersOf(); cascadeOption(parent[, child]). Reads f (the field) and i. */
+  const customEq = (v: Value, field: string): string => {
+    const val = `(i.custom -> (f.id::text))`
+    const each = (match: (col: string) => string) =>
+      `(case when jsonb_typeof(${val}) = 'array' then exists (select 1 from jsonb_array_elements_text(${val}) e(x) where ${match('e.x')}) else ${match(`(i.custom ->> (f.id::text))`)} end)`
+    if (v.kind === 'fn' && v.name === 'cascadeoption') {
+      const parts = v.args ?? (v.arg ? [v.arg] : [])
+      if (!parts.length) throw new HttpError(400, 'JQL: cascadeOption needs an option', { jql: 'cascadeOption("Parent", "Child")' })
+      return `(f.kind = 'cascading' and lower(${val} ->> 0) = lower(${put(parts[0])})${parts[1] ? ` and lower(${val} ->> 1) = lower(${put(parts[1])})` : ''})`
+    }
+    if (v.kind === 'fn' && v.name === 'currentuser') { const me1 = put(me.id); return each(col => `${col} = ${me1}::text`) }
+    if (v.kind === 'fn' && v.name === 'membersof' && v.arg) {
+      const g = put(v.arg)
+      return each(col => `${col} in (select gm.user_id::text from group_members gm join groups g on g.id = gm.group_id where lower(g.display_name) = lower(${g}))`)
+    }
+    const t = put(text(v, field))
+    return each(col => `(lower(${col}) = lower(${t})
+      or (f.kind in ('user', 'users') and ${col} in (select u.id::text from users u where lower(u.email) = lower(${t}) or lower(u.name) = lower(${t})))
+      or (f.kind in ('group', 'groups') and ${col} in (select g.id::text from groups g where lower(g.display_name) = lower(${t})))
+      or (f.kind = 'project' and ${col} in (select pj.id::text from projects pj where pj.workspace_id = i.workspace_id and (pj.key = upper(${t}) or lower(pj.name) = lower(${t}))))
+      or (f.kind in ('version', 'versions') and ${col} in (select r.id::text from releases r where r.project_id = i.project_id and lower(r.name) = lower(${t}))))`)
   }
   /** A condition on the item's value for a custom field (named in any of its project's fields), `cond` reading f.id. */
   const custom = (c: Clause, cond: string) => {
@@ -239,7 +262,8 @@ export async function jqlToSql(d: Db, me: Me, q: Query, args: unknown[]): Promis
       if (isCustom(c.field)) {
         const v0 = c.values[0]!
         const cmp = v0.kind === 'text' && Number.isFinite(Number(v0.text)) ? `(i.custom->>(f.id::text)) ~ '^-?[0-9.]+$' and (i.custom->>(f.id::text))::numeric ${c.op} ${number(v0)}`
-          : `(i.custom->>(f.id::text)) ~ '^[0-9]{4}-' and (i.custom->>(f.id::text))::date ${c.op} (${when(v0)})::timestamptz::date`
+          : `(i.custom->>(f.id::text)) ~ '^[0-9]{4}-' and (case when f.kind = 'datetime' then (i.custom->>(f.id::text))::timestamptz ${c.op} (${when(v0)})::timestamptz
+              else (i.custom->>(f.id::text))::date ${c.op} (${when(v0)})::timestamptz::date end)`   // a date-time field compares the time too (spec 0502)
         return custom(c, cmp)
       }
       throw new HttpError(400, `JQL: ${c.op} compares dates, numbers and priority, not ${c.field}`, { jql: `${c.op} not allowed with ${c.field}` })

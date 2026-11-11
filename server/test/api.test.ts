@@ -5472,6 +5472,79 @@ test('[0501.R1][0501.R2][0501.R3][0501.R4][0501.R5][0501.R6][0501.R7][0501.R8] m
   assert.ok(bulk.moved.every((m: any) => m.newKey.startsWith('MVB-')))
 })
 
+test('[0502.R1][0502.R2][0502.R4][0502.R5] custom field types: every one of Jira’s twenty, its values, options carried into lists, JQL, CSV import', { skip, timeout: 60_000 }, async () => {
+  await call('POST', '/api/v1/projects', { name: 'Field types', key: 'CFT', template: 'kanban' })
+  await call('POST', '/api/v1/projects', { name: 'Other place', key: 'CFO', template: 'kanban' })
+  await join('CFT', 'cft.ann@x.com')
+  const ann = (await call('GET', '/api/v1/me', undefined, 'cft.ann@x.com')).body, me = (await call('GET', '/api/v1/me')).body
+  const grp = (await call('POST', '/api/v1/groups', { name: 'cft-crew' })).body
+  const v1 = (await call('POST', '/api/v1/projects/CFT/releases', { name: '3.0' })).body
+  const other = (await call('GET', '/api/v1/projects/CFO')).body
+  const vOther = (await call('POST', '/api/v1/projects/CFO/releases', { name: '9.9' })).body
+  const opts = (names: string[]) => names.map(n => ({ id: `o-${n}`, name: n }))
+  const field = async (name: string, kind: string, options?: object[]) => {
+    const r = await call('POST', '/api/v1/projects/CFT/fields', { name, kind, ...(options ? { options } : {}) })
+    assert.equal(r.status, 201, `${kind}: ${JSON.stringify(r.body)}`)
+    return r.body.id as string
+  }
+  const f: Record<string, string> = {}
+  for (const k of ['text', 'textarea', 'readonly', 'number', 'date', 'datetime', 'url', 'labels', 'user', 'users', 'group', 'groups', 'project', 'version', 'versions'])
+    f[k] = await field(`F ${k}`, k)
+  for (const k of ['select', 'radio', 'multiselect', 'checkboxes']) f[k] = await field(`F ${k}`, k, opts(['Red', 'Green', 'Blue']))
+  f.cascading = await field('Region', 'cascading', [{ id: 'eu', name: 'Europe' }, { id: 'am', name: 'Americas' }, { id: 'de', name: 'Germany', parentId: 'eu' }, { id: 'fr', name: 'France', parentId: 'eu' }, { id: 'us', name: 'US', parentId: 'am' }])
+  // R2: a child option belongs under an option of a cascading field
+  assert.equal((await call('POST', '/api/v1/projects/CFT/fields', { name: 'Bad', kind: 'select', options: [{ id: 'a', name: 'A' }, { id: 'b', name: 'B', parentId: 'a' }] })).status, 400)
+  const good = {
+    [f.text]: 'Short', [f.textarea]: 'Line one\nLine two', [f.readonly]: 'Set by a script', [f.number]: 4.5, [f.date]: '2026-12-01', [f.datetime]: '2026-12-01T09:30:00.000Z',
+    [f.url]: 'https://example.com/a', [f.labels]: ['alpha', 'beta'], [f.user]: ann.id, [f.users]: [ann.id, me.id], [f.group]: grp.id, [f.groups]: [grp.id],
+    [f.project]: other.id, [f.version]: v1.id, [f.versions]: [v1.id], [f.select]: 'Red', [f.radio]: 'Green', [f.multiselect]: ['Red', 'Blue'], [f.checkboxes]: ['Green'],
+    [f.cascading]: ['Europe', 'Germany'],
+  }
+  const item = (await call('POST', '/api/v1/projects/CFT/issues', { title: 'Every type', custom: good })).body
+  assert.deepEqual(item.custom, good)
+  // R1: what each refuses
+  const bad: [string, unknown][] = [[f.text, 'x'.repeat(256)], [f.number, '4'], [f.date, '2026-13-40'], [f.datetime, 'soon'], [f.url, 'ftp://x'], [f.labels, ['two words']],
+    [f.user, 'not-an-id'], [f.users, [ann.id, ann.id]], [f.version, vOther.id], [f.select, 'Purple'], [f.multiselect, ['Red', 'Pink']], [f.checkboxes, 'Green'],
+    [f.cascading, ['Europe', 'US']], [f.cascading, ['Asia']]]
+  for (const [k, v] of bad) assert.equal((await call('PATCH', `/api/v1/issues/${item.key}`, { custom: { ...good, [k]: v } })).status, 400, JSON.stringify(v))
+  // R2: renaming options carries into single, multiple and cascading values
+  const cur = (await call('GET', '/api/v1/projects/CFT')).body.fields
+  const rename = (id: string, from: string, to: string) => call('PATCH', `/api/v1/projects/CFT/fields/${id}`, { options: cur.find((x: any) => x.id === id).options.map((o: any) => (o.name === from ? { ...o, name: to } : o)) })
+  await rename(f.multiselect, 'Blue', 'Navy'); await rename(f.cascading, 'Germany', 'Deutschland')
+  await call('PATCH', `/api/v1/projects/CFT/fields/${f.checkboxes}`, { options: cur.find((x: any) => x.id === f.checkboxes).options.filter((o: any) => o.name !== 'Green') })
+  const after = (await call('GET', `/api/v1/issues/${item.key}`)).body.custom
+  assert.deepEqual([after[f.multiselect], after[f.cascading], after[f.checkboxes]], [['Red', 'Navy'], ['Europe', 'Deutschland'], undefined])
+  const usage = (await call('GET', `/api/v1/projects/CFT/fields/${f.multiselect}/usage`)).body.options
+  assert.deepEqual([usage['o-Red'], usage['o-Blue']], [1, 1])
+  // R4: JQL on each kind of value
+  const keys = async (q: string) => {
+    const r = await call('GET', `/api/v1/search?jql=${encodeURIComponent(`project = CFT AND ${q}`)}`)
+    assert.equal(r.status, 200, `${q}: ${JSON.stringify(r.body)}`)
+    return r.body.items.map((i: any) => i.key)
+  }
+  const plain = (await call('POST', '/api/v1/projects/CFT/issues', { title: 'Plain' })).body
+  assert.deepEqual(await keys('"F multiselect" = Navy'), [item.key])
+  assert.deepEqual(await keys('"F multiselect" in (Pink, red)'), [item.key])
+  assert.deepEqual(await keys('"F labels" = beta'), [item.key])
+  assert.deepEqual(await keys('"F users" = currentUser()'), [item.key])
+  assert.deepEqual(await keys('"F user" = "cft.ann@x.com"'), [item.key])
+  assert.deepEqual(await keys('"F group" = "cft-crew"'), [item.key])
+  assert.deepEqual(await keys('"F version" = "3.0"'), [item.key])
+  assert.deepEqual(await keys('"F project" = CFO'), [item.key])
+  assert.deepEqual(await keys('Region in cascadeOption("Europe")'), [item.key])
+  assert.deepEqual(await keys('Region in cascadeOption("Europe", "Deutschland")'), [item.key])
+  assert.deepEqual(await keys('Region in cascadeOption("Europe", "France")'), [])
+  assert.deepEqual(await keys('"F datetime" > "2026-12-01 09:00"'), [item.key])
+  assert.deepEqual(await keys('"F number" >= 4'), [item.key])
+  assert.deepEqual(await keys('"F url" ~ "example.com"'), [item.key])
+  assert.deepEqual(await keys('"F checkboxes" is empty').then(k => k.sort()), [item.key, plain.key].sort())
+  // R5: the CSV importer reads every kind
+  const csv = ['Summary,Multi,Users,Region,Versions,When', 'From CSV,"Red, Navy","cft.ann@x.com, owner@x.com",Europe › Deutschland,3.0,2026-12-02T10:00:00Z'].join('\n')
+  const mapping = { title: 0, [`custom.${f.multiselect}`]: 1, [`custom.${f.users}`]: 2, [`custom.${f.cascading}`]: 3, [`custom.${f.versions}`]: 4, [`custom.${f.datetime}`]: 5 }
+  const dry = (await call('POST', '/api/v1/projects/CFT/import', { csv, mapping })).body
+  assert.deepEqual(dry.report[0].warnings, [])
+})
+
 test('[0705.R2] a webhook never reaches private addresses, whatever its name resolves to', { skip }, async () => {
   const { privateAddress, urlProblem, fillUrl } = await import('../src/webhooks.ts')
   for (const a of ['127.0.0.1', '10.1.2.3', '172.20.0.1', '192.168.1.1', '169.254.169.254', '100.64.0.1', '0.0.0.0', '::1', 'fd00::1', 'fe80::1', '::ffff:127.0.0.1',

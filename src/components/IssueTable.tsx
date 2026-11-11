@@ -319,7 +319,7 @@ export default function IssueTable({ issues, id, groupBy, onGroupBy, project, sh
                       {cols.estimate && <td className="col-num">{i.estimate ?? ''}</td>}
                       {cols.logged && <td className="col-time muted">{loggedMinutes(i) ? `${format(loggedMinutes(i))}${i.timeEstimate ? ` / ${format(i.timeEstimate)}` : ''}` : ''}</td>}
                       {cols.due && <td className={`col-due${i.dueDate && isOverdue(i.dueDate) && !done ? ' text-danger' : ''}`}>{i.dueDate ? formatDate(i.dueDate) : ''}</td>}
-                      {customCols.map(f => <td key={f.id} className={`col-custom${f.kind === 'number' ? ' col-num' : ''}`}><span className="cell-ellipsis">{fieldText(f, i.custom[f.id])}</span></td>)}
+                      {customCols.map(f => <td key={f.id} className={`col-custom${f.kind === 'number' ? ' col-num' : ''}`}><span className="cell-ellipsis">{fieldText(f, i.custom[f.id], state)}</span></td>)}
                       {cols.updated && <td className="col-updated muted">{timeAgo(i.updatedAt)}</td>}
                     </tr>
                   )

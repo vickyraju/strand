@@ -78,12 +78,17 @@ async function planFor(d: Db, item: any, tgt: { id: string; key: string; nextNum
   }
   // custom fields: kept under the target's field of the same name and kind
   if (item.custom && Object.keys(item.custom).length) {
-    const map = await d.query<{ src: string; dst: string | null; name: string }>(`select s.id as src, t.id as dst, s.name from field_defs s
+    const map = await d.query<{ src: string; dst: string | null; name: string; kind: string }>(`select s.id as src, t.id as dst, s.name, s.kind from field_defs s
         left join field_defs t on t.project_id = $2 and lower(t.name) = lower(s.name) and t.kind = s.kind where s.project_id = $1`, [item.projectId, tgt.id])
     const custom: Record<string, unknown> = {}
     for (const [k, v] of Object.entries(item.custom)) {
       const m = map.find(x => x.src === k)
-      if (m?.dst) custom[m.dst] = v
+      // version pickers name the target's versions of the same names (spec 0502)
+      if (m?.dst && (m.kind === 'version' || m.kind === 'versions')) {
+        const ids = await sameNames(d, 'releases', (Array.isArray(v) ? v : [v]) as string[], tgt.id)
+        if (ids.length) custom[m.dst] = m.kind === 'version' ? ids[0]! : ids
+        else changes.push({ field: m.name, from: (await names(d, 'releases', (Array.isArray(v) ? v : [v]) as string[])).join(', '), to: null })
+      } else if (m?.dst) custom[m.dst] = v
       else changes.push({ field: m?.name ?? 'A custom field', from: v, to: null })
     }
     patch.custom = JSON.stringify(custom)

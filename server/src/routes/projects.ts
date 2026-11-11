@@ -20,6 +20,7 @@ import { TEST_TYPES } from './issues.ts'
 import { checkImport } from '../csvImport.ts'
 import { getSetting } from '../settings.ts'
 import { describeKeyRule, keyFits } from '../shared/projectKeys.ts'
+import { KIND_LIST, type FieldKind } from '../shared/customFields.ts'
 
 const uuid = z.string().uuid()
 const color = z.string().regex(/^#[0-9a-fA-F]{6}$/)
@@ -41,28 +42,48 @@ export async function projectByKey(d: Db, req: { me: Me; method: string }, ref: 
   return { ...p, role: a.role }
 }
 
-type Opt = { id?: string; name: string; disabled?: boolean }
-/** A select field's options with ids (a new one gets one), names unique ignoring case (spec 0105 R2, R6). */
-function withOptionIds(options: Opt[]) {
+type Opt = { id?: string; name: string; disabled?: boolean; parentId?: string | null }
+/** A field's options with ids (a new one gets one), names unique ignoring case under the same parent (spec 0105 R2, R6);
+ *  a cascading field's child options name an option of the field as their parent (spec 0502 R2). */
+function withOptionIds(options: Opt[], kind?: string) {
   const seen = new Set<string>()
-  return options.map(o => {
-    const key = o.name.trim().toLowerCase()
+  const out = options.map(o => {
+    const key = `${o.parentId ?? ''}|${o.name.trim().toLowerCase()}`
     if (seen.has(key)) throw new HttpError(400, `“${o.name.trim()}” is an option twice`, { options: 'Each option once' })
     seen.add(key)
-    return { id: o.id ?? randomUUID(), name: o.name.trim(), disabled: !!o.disabled }
+    return { id: o.id ?? randomUUID(), name: o.name.trim(), disabled: !!o.disabled, ...(o.parentId ? { parentId: o.parentId } : {}) }
   })
+  for (const o of out) if (o.parentId && (kind !== 'cascading' || !out.some(p => p.id === o.parentId && !p.parentId)))
+    throw new HttpError(400, 'Only a cascading field’s options have child options, under one of its options', { options: 'Child options belong under an option' })
+  return out
 }
-/** Items take an option's new name, and lose an option that was deleted, in one statement (renames may swap names). */
-async function carryOptions(d: Db, projectId: string, fieldId: string, before: Opt[], after: Opt[]) {
+/** Items take an option's new name, and lose an option that was deleted, single and multiple values and cascading
+ *  pairs alike (renames may swap names, so every value is worked out from the names before). */
+async function carryOptions(d: Db, projectId: string, fieldId: string, kind: string, before: Opt[], after: Opt[]) {
   const next = new Map(after.map(o => [o.id, o.name]))
-  const change: Record<string, string | null> = {}
-  for (const o of before) { const n = next.get(o.id); if (n !== o.name) change[o.name] = n ?? null }
-  if (!Object.keys(change).length) return
-  const r = await d.query(
-    `update issues set custom = case when $3::jsonb ->> (custom ->> $2) is null then custom - $2 else jsonb_set(custom, array[$2], to_jsonb($3::jsonb ->> (custom ->> $2))) end,
-            version = version + 1, updated_at = now()
-      where project_id = $1 and custom ? $2 and $3::jsonb ? (custom ->> $2) returning id`, [projectId, fieldId, JSON.stringify(change)])
-  if (r.length) await publish(d, projectId, { type: 'issues.reranked' })          // open boards and lists load them again
+  if (before.every(o => next.get(o.id) === o.name)) return
+  const renamed = (name: unknown, parentId: string | null): string | null => {
+    const o = before.find(x => x.name === name && (x.parentId ?? null) === parentId)
+    return o ? next.get(o.id) ?? null : String(name)
+  }
+  const rows = await d.query<{ id: string; v: any }>('select id, custom -> $2 as v from issues where project_id = $1 and custom ? $2', [projectId, fieldId])
+  const ids: string[] = [], values: string[] = []
+  for (const r of rows) {
+    let nv: unknown
+    if (kind === 'cascading' && Array.isArray(r.v)) {
+      const p = renamed(r.v[0], null)
+      const parent = before.find(x => x.name === r.v[0] && !x.parentId)
+      const c = r.v[1] === undefined ? undefined : parent ? renamed(r.v[1], parent.id!) : null
+      nv = p === null ? null : c ? [p, c] : [p]
+    } else if (Array.isArray(r.v)) { const l = r.v.map(x => renamed(x, null)).filter(x => x !== null); nv = l.length ? l : null }
+    else nv = renamed(r.v, null)
+    if (JSON.stringify(nv) !== JSON.stringify(r.v)) { ids.push(r.id); values.push(JSON.stringify(nv)) }
+  }
+  if (!ids.length) return
+  await d.query(
+    `update issues i set custom = case when x.v = 'null'::jsonb then i.custom - $1 else jsonb_set(i.custom, array[$1], x.v) end, version = version + 1, updated_at = now()
+       from (select unnest($2::uuid[]) as id, unnest($3::jsonb[]) as v) x where i.id = x.id`, [fieldId, ids, values])
+  await publish(d, projectId, { type: 'issues.reranked' })          // open boards and lists load them again
 }
 
 /** Project settings (workflow, fields, rules, people…) are for project admins. */
@@ -80,9 +101,10 @@ const CHILD = {
 type Kind = keyof typeof CHILD
 
 const childPatch = {
-  fields: z.object({ name: z.string().min(1), kind: z.enum(['text', 'number', 'select', 'date']).describe('Fixed once the field is made'),
-    options: z.array(z.object({ id: z.string().min(1).max(64).optional().describe('Kept when renamed; leave out for a new option'), name: z.string().trim().min(1).max(100), disabled: z.boolean().optional().describe('No longer offered; items keep it') })).max(500).nullable()
-      .describe('A select field’s options, in order. In a PATCH: one left out is deleted (its value goes from every item); a new name for an id renames it on every item'),
+  fields: z.object({ name: z.string().min(1), kind: z.enum(KIND_LIST as [FieldKind, ...FieldKind[]]).describe('Jira’s custom field types (spec 0502); fixed once the field is made'),
+    options: z.array(z.object({ id: z.string().min(1).max(64).optional().describe('Kept when renamed; leave out for a new option'), name: z.string().trim().min(1).max(100), disabled: z.boolean().optional().describe('No longer offered; items keep it'),
+      parentId: z.string().min(1).max(64).nullable().optional().describe('Cascading fields: the option this one is under') })).max(1000).nullable()
+      .describe('The options of a select, radio, multiple choice, checkboxes or cascading field, in order. In a PATCH: one left out is deleted (its value goes from every item); a new name for an id renames it on every item'),
     position: z.number().int() }).partial(),
   templates: z.object({
     name: z.string().min(1), type: z.string().min(1).max(40), title: z.string(), description: z.string(),
@@ -415,12 +437,15 @@ const plugin: FastifyPluginAsyncZod = async app => {
   // How many live items have each option of a select field: what deleting one would clear (spec 0105 R5)
   app.get('/projects/:key/fields/:id/usage', { schema: { tags: T.config, summary: 'How many work items have each option of a select field (by option id)', params: keyIdP } }, async req => {
     const p = await projectByKey(db, req, req.params.key)
-    const [f] = await db.query<{ options: Opt[] | null }>('select options from field_defs where id = $1 and project_id = $2', [req.params.id, p.id])
+    const [f] = await db.query<{ options: Opt[] | null; kind: string }>('select options, kind from field_defs where id = $1 and project_id = $2', [req.params.id, p.id])
     if (!f) throw new HttpError(404, 'Not found')
-    const rows = await db.query<{ name: string; n: number }>(
-      `select custom ->> $2 as name, count(*)::int as n from issues where project_id = $1 and deleted_at is null and custom ? $2 group by 1`, [p.id, req.params.id])
-    const by = new Map(rows.map(r => [r.name, r.n]))
-    return { options: Object.fromEntries((f.options ?? []).map(o => [o.id!, by.get(o.name) ?? 0])) }
+    // every value counts, in multiple-value fields too; a cascading pair counts its option and its child option (spec 0502)
+    const rows = await db.query<{ name: string; at: number; n: number }>(
+      `select e.name, e.at, count(*)::int as n from issues i,
+              jsonb_array_elements_text(case jsonb_typeof(i.custom -> $2) when 'array' then i.custom -> $2 else jsonb_build_array(i.custom -> $2) end) with ordinality e(name, at)
+        where i.project_id = $1 and i.deleted_at is null and i.custom ? $2 group by 1, 2`, [p.id, req.params.id])
+    const count = (o: Opt) => rows.filter(r => r.name === o.name && (o.parentId ? r.at === 2 : r.at === 1 || f.kind !== 'cascading')).reduce((n, r) => n + r.n, 0)
+    return { options: Object.fromEntries((f.options ?? []).map(o => [o.id!, count(o)])) }
   })
 
   // ── Child collections: POST/PATCH/DELETE /projects/:key/<kind>[/:id] ──
@@ -433,7 +458,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
       const p = await projectByKey(db, req, req.params.key)
       await requireProjectAdmin(req, p)
       const body = req.body as Record<string, unknown>
-      if (kind === 'fields' && body.options) body.options = withOptionIds(body.options as Opt[])
+      if (kind === 'fields' && body.options) body.options = withOptionIds(body.options as Opt[], body.kind as string)
       await checkPriorities(req.me.workspaceId, kind, body)
       if (kind === 'rules') await checkRule(db, req.me, body)
       const w = pick(body, [...cfg.cols], json)
@@ -459,7 +484,10 @@ const plugin: FastifyPluginAsyncZod = async app => {
       const p = await projectByKey(db, req, req.params.key)
       await requireProjectAdmin(req, p)
       const patch = req.body as Record<string, unknown>
-      if (kind === 'fields' && patch.options) patch.options = withOptionIds(patch.options as Opt[])
+      if (kind === 'fields' && patch.options) {
+        const [def] = await db.query<{ kind: string }>('select kind from field_defs where id = $1 and project_id = $2', [req.params.id, p.id])
+        patch.options = withOptionIds(patch.options as Opt[], (patch.kind as string | undefined) ?? def?.kind)
+      }
       await checkPriorities(req.me.workspaceId, kind, patch)
       if (kind === 'rules') await checkRule(db, req.me, patch)
       const w = pick(patch, [...cfg.cols], json)
@@ -476,7 +504,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
           `update ${cfg.table} set ${w.cols.map((c, i) => `${c} = $${i + 3}`).join(', ')}${kind === 'releases' && patch.released === false ? ', released_at = null' : ''} where id = $1 and project_id = $2 returning *`,
           [req.params.id, p.id, ...w.vals])
         // renamed and deleted options carry through to every item that has them, as in Jira (spec 0105 R3, R5)
-        if (kind === 'fields' && patch.options) await carryOptions(d, p.id, before.id, before.options ?? [], patch.options as Opt[])
+        if (kind === 'fields' && patch.options) await carryOptions(d, p.id, before.id, before.kind, before.options ?? [], patch.options as Opt[])
         const c = changes(before, req.body as Record<string, unknown>)
         if (c.changed) await audit(d, req, { action: `project.${what.replace(' ', '_')}.updated`, type: what, id: row.id, name: row.name ?? null, project: p, before: c.before, after: c.after })
         if (kind === 'rules' && (patch.trigger !== undefined || patch.enabled !== undefined)) await scheduleRule(d, row, req.me.workspaceId)
