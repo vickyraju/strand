@@ -103,3 +103,22 @@ test('[0603.R1] jql: the start and end of a day, week, month or year, moved by J
   assert.throws(() => periodBound('startOfDay', 'soon', now), /isn’t an increment/)
 })
 
+
+test('[0609.R2] text queries: words joined by AND, phrases, wildcards, fuzzy, operators in capitals, parentheses; mistakes say where', async () => {
+  const { parseTextQuery: t, wildcardRegex } = await import('../src/shared/textQuery.ts')
+  assert.deepEqual(t('login page'), { k: 'and', items: [{ k: 'word', w: 'login' }, { k: 'word', w: 'page' }] })
+  assert.deepEqual(t('"full screen"~10^2 OR roam~ OR win* OR te?t^4'), { k: 'or', items: [{ k: 'phrase', w: 'full screen' }, { k: 'fuzzy', w: 'roam' }, { k: 'wild', w: 'win*' }, { k: 'wild', w: 'te?t' }] })
+  assert.deepEqual(t('bugs AND (atlassian || jira) -legacy NOT old !gone +must'), { k: 'and', items: [{ k: 'word', w: 'bugs' },
+    { k: 'or', items: [{ k: 'word', w: 'atlassian' }, { k: 'word', w: 'jira' }] }, { k: 'not', item: { k: 'word', w: 'legacy' } },
+    { k: 'not', item: { k: 'word', w: 'old' } }, { k: 'not', item: { k: 'word', w: 'gone' } }, { k: 'word', w: 'must' }] })
+  assert.deepEqual(t('jira-software and [x]'), { k: 'and', items: [{ k: 'word', w: 'jira-software' }, { k: 'word', w: 'and' }, { k: 'word', w: 'x' }] })   // lower-case and is a word
+  assert.equal(t('   '), null)
+  for (const [q, msg, at] of [['"open', /quote is not closed/, 0], ['(a OR b', /Expected “\)”/, 0], ['a)', /has no “\(”/, 1], ['a AND', /word after/, 2], ['OR a', /needs a word before/, 0]] as const) {
+    assert.throws(() => t(q), (e: any) => msg.test(e.message) && e.at === at, q)
+  }
+  assert.equal(wildcardRegex('*cula*'), '\\m\\w*cula\\w*\\M')
+  assert.equal(wildcardRegex('te?t'), '\\mte\\wt\\M')
+  // in JQL: the mistake's place in the whole query
+  assert.throws(() => parseJql('summary ~ "a AND"'), (e: any) => e instanceof JqlError && /word after/.test(e.message) && e.at === 13)
+  assert.equal(parseJql('comment ~ "deploy"').where!.kind, 'clause')
+})

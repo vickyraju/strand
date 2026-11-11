@@ -93,6 +93,15 @@ export const SETTINGS = {
     schema: z.object({ maxItems: z.number().int().min(100).max(20_000).describe('Most work items in one plan') }),
     default: { maxItems: 5000 },
   },
+  search: {
+    label: 'Search',
+    description: 'The indexing language of text search (~), as Jira’s: words are found in any of their forms (customize finds customized) and common words are left out. Other: exact words, no common words left out. A change re-indexes every work item and comment in the background (spec 0609).',
+    public: false,
+    schema: z.object({ indexingLanguage: z.enum(['arabic', 'armenian', 'basque', 'catalan', 'danish', 'dutch', 'english', 'finnish', 'french', 'german', 'greek', 'hindi', 'hungarian',
+      'indonesian', 'irish', 'italian', 'lithuanian', 'nepali', 'norwegian', 'portuguese', 'romanian', 'russian', 'serbian', 'spanish', 'swedish', 'tamil', 'turkish', 'yiddish', 'other'])
+      .describe('Jira’s Indexing language; Other turns stemming off') }),
+    default: { indexingLanguage: 'english' },
+  },
   signIn: {
     label: 'Sign-in',
     description: 'Sign-ins through the login form: how long one lasts, and how many wrong passwords lock a username for a while (Administration › Authentication methods).',

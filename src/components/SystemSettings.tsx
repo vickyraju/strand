@@ -14,11 +14,14 @@ import { Avatar, LoadError, Loading, Toggle } from './ui'
 // page each. Each page edits one setting as a whole and saves it in one go; the server checks it and records the change
 // in the audit log.
 
+/** Text search's languages (spec 0609): Postgres's, as Jira's Indexing language. */
+const LANGUAGES = ['arabic', 'armenian', 'basque', 'catalan', 'danish', 'dutch', 'english', 'finnish', 'french', 'german', 'greek', 'hindi', 'hungarian', 'indonesian', 'irish',
+  'italian', 'lithuanian', 'nepali', 'norwegian', 'portuguese', 'romanian', 'russian', 'serbian', 'spanish', 'swedish', 'tamil', 'turkish', 'yiddish']
 /** System settings' pages, in menu order (the first is shown at /admin/settings). */
 export const SETTINGS_PAGES = [
   { id: 'announcement', label: 'Announcement banner' }, { id: 'look-and-feel', label: 'Look and feel' },
   { id: 'rate-limiting', label: 'Rate limiting' }, { id: 'attachments', label: 'Attachments' }, { id: 'access-tokens', label: 'Personal access tokens' },
-  { id: 'search-and-bulk', label: 'Search, export and bulk' }, { id: 'email', label: 'Email notifications' }, { id: 'email-batching', label: 'Batched email' }, { id: 'user-defaults', label: 'Default user preferences' },
+  { id: 'search-and-bulk', label: 'Search, export and bulk' }, { id: 'text-search', label: 'Text search' }, { id: 'email', label: 'Email notifications' }, { id: 'email-batching', label: 'Batched email' }, { id: 'user-defaults', label: 'Default user preferences' },
   { id: 'filter-subscriptions', label: 'Filter subscriptions' }, { id: 'groups', label: 'Group creation' },
   { id: 'testing', label: 'Testing' }, { id: 'due-dates', label: 'Due dates' }, { id: 'deleted-items', label: 'Deleted work items' },
   { id: 'time-tracking', label: 'Time tracking' }, { id: 'project-keys', label: 'Project keys' }, { id: 'sign-in', label: 'Sign-in' },
@@ -105,6 +108,10 @@ export default function SystemSettings({ page = SETTINGS_PAGES[0].id }: { page?:
       {page === 'user-defaults' && <SimpleSection setting={of('userDefaults')} save={v => save('userDefaults', v)} fields={[
         { key: 'autowatch', label: 'Watch work you create or comment on (Autowatch)', type: 'toggle' },
         { key: 'notifyOwnChanges', label: 'Notify people about their own changes', type: 'toggle' },
+      ]} />}
+      {page === 'text-search' && <SimpleSection setting={of('search')} save={v => save('search', v)} fields={[
+        { key: 'indexingLanguage', label: 'Indexing language', type: 'select', hint: 'Words are found in any of their forms in this language (customize finds customized). Other: exact words only. A change re-indexes every work item and comment in the background.',
+          options: [...LANGUAGES.map(l => [l, l[0]!.toUpperCase() + l.slice(1)] as [string, string]), ['other', 'Other']] },
       ]} />}
       {page === 'filter-subscriptions' && <SimpleSection setting={of('filterSubscriptions')} save={v => save('filterSubscriptions', v)} fields={[
         { key: 'groupSubscribers', label: 'Who may subscribe a group', type: 'select', options: [['everyone', 'Everyone'], ['admins', 'System administrators only']] },

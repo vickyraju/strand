@@ -8,6 +8,7 @@ import { audit } from '../audit.ts'
 import { getSetting } from '../settings.ts'
 import { jqlToSql, parseOr400 } from '../jqlSql.ts'
 import { csvCell } from '../shared/csv.ts'
+import { parseTextQuery } from '../shared/textQuery.ts'
 import '../email.ts'   // sends notification emails (a background job)
 export { csvCell }
 
@@ -50,7 +51,13 @@ export async function searchWhere(me: Me, q: SearchFilters, args: unknown[]): Pr
     if (key) { args.push(key[1]!.toUpperCase(), Number(key[2])); const k = `$${args.length - 1}`, n = `$${args.length}`; where.push(`(((p.key = ${k} or p.id in (select project_id from project_key_history where key = ${k} and workspace_id = p.workspace_id)) and i.number = ${n})
       or i.id in (select mk.issue_id from moved_issue_keys mk join projects op on op.id = mk.project_id where mk.number = ${n} and mk.workspace_id = p.workspace_id
         and (op.key = ${k} or op.id in (select project_id from project_key_history where key = ${k} and workspace_id = p.workspace_id))))`) }   // a key it had before a move (spec 0501)
-    else add(`(i.search @@ websearch_to_tsquery('simple', ?) or i.title ilike '%' || ? || '%')`, text.replace(/[%_\\]/g, '\\$&'))
+    else {
+      // the same words as text ~ (spec 0609 R4); what isn't Jira's syntax is taken as plain words
+      let src = text
+      try { parseTextQuery(src) } catch { src = text.replace(/[^\p{L}\p{N}*?\s]/gu, ' ').toLowerCase() }
+      const sql = await jqlToSql(db, me, { where: { kind: 'clause', field: 'text', op: '~', values: [{ kind: 'text', text: src }] }, orderBy: [] }, args)
+      where.push(sql.where!)
+    }
   }
   if (q.project) add('i.project_id = ?', q.project)
   if (q.assignee === 'none') where.push('i.assignee_id is null')

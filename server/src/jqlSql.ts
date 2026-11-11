@@ -3,6 +3,8 @@ import type { Db } from './db.ts'
 import { HttpError, type Me } from './auth.ts'
 import { parseJql, relative, periodBound, JqlError, type Clause, type Node, type Query, type Value } from './shared/jql.ts'
 import { PERMISSIONS, rolesWith, type Permission, type Role } from './shared/permissions.ts'
+import { parseTextQuery, wildcardRegex, type TextNode } from './shared/textQuery.ts'
+import { commentShownIn } from './access.ts'
 
 const CATEGORY: Record<string, string> = { 'to do': 'todo', todo: 'todo', 'in progress': 'in-progress', 'in-progress': 'in-progress', done: 'done' }
 /** Higher for higher priorities: the list's order (Administration › Priorities, spec 0305 R4), first is highest. */
@@ -61,6 +63,63 @@ async function checkFieldNames(d: Db, me: Me, n: Node | null) {
     [me.workspaceId, [...names]])).map(r => r.name))
   const missing = [...names].filter(x => !found.has(x))
   if (missing.length) throw new HttpError(400, `JQL: there is no field called “${missing[0]}”`, { jql: `Unknown field ${missing[0]}` })
+}
+
+// ── Text search (spec 0609): Jira's Lucene syntax over words in the workspace's indexing language ──
+const TEXT_FIELDS = new Set(['text', 'summary', 'description', 'comment'])
+const textNode = (src: string): TextNode | null => {
+  try { return parseTextQuery(src) } catch (e: any) { throw new HttpError(400, `JQL: ${e.message}`, { jql: e.message }) }
+}
+const leaves = (n: TextNode | null, out: string[] = []): string[] => {
+  if (!n) return out
+  if ('items' in n) n.items.forEach(x => leaves(x, out))
+  else if ('item' in n) leaves(n.item, out)
+  else if (n.k !== 'wild') out.push(n.w)
+  return out
+}
+/** The workspace's language and each word's roots in it (none: a common word, left out as Jira's index does). */
+export async function textWords(d: Db, ws: string, words: string[]) {
+  const rows = await d.query<{ x: string; l: string[]; cfg: string }>(
+    `select x, tsvector_to_array(to_tsvector(search_config($1), x)) as l, search_config($1)::text as cfg from unnest($2::text[]) x`, [ws, [...new Set(words)]])
+  const [{ cfg }] = rows.length ? rows : await d.query<{ cfg: string }>('select search_config($1)::text as cfg', [ws])
+  return { cfg: cfg!, roots: new Map(rows.map(r => [r.x, r.l])) }
+}
+async function prepareText(d: Db, me: Me, n: Node | null) {
+  const words: string[] = []
+  let any = false
+  const walk = (x: Node) => {
+    if (x.kind === 'clause') { if ((x.op === '~' || x.op === '!~') && x.field !== 'labels' && x.values[0]?.kind === 'text') { any = true; leaves(textNode(x.values[0].text), words) } }
+    else if (x.kind === 'not') walk(x.item); else x.items.forEach(walk)
+  }
+  if (n) walk(n)
+  return any ? textWords(d, me.workspaceId, words) : null
+}
+/** Where a text query looks: the words (`vec`, maybe in the workspace's language `cfg`), the text as written (`raw`), and
+ *  indexed supersets of both to narrow the rows first (`pre`, `preRaw`). */
+export interface TextTarget { vec: (cfg: () => string) => string; raw: string; pre?: string; preRaw?: string }
+/** A text query as an SQL condition on one target. Words and phrases match in the workspace's language (stemmed, common
+ *  words left out); wildcards the text as written; fuzzy words a root within two edits. A NOT alone, or only common
+ *  words, finds nothing, as in Jira. `cfg` puts the language as a parameter the first time it's needed. */
+export function textSql(n: TextNode | null, t: TextTarget, roots: Map<string, string[]>, cfg: () => string, put: (v: unknown) => string): string {
+  const live = (x: TextNode): boolean => 'items' in x ? x.items.some(live) : 'item' in x ? live(x.item) : x.k === 'wild' || !!roots.get(x.w)?.length
+  const go = (x: TextNode): string => {
+    switch (x.k) {
+      case 'word': case 'phrase': {
+        const q = `${x.k === 'word' ? 'plainto' : 'phraseto'}_tsquery(${cfg()}, ${put(x.w)})`
+        return `(${t.pre ? `${t.pre} @@ ${q} and ` : ''}${t.vec(cfg)} @@ ${q})`
+      }
+      case 'fuzzy': return `exists (select 1 from unnest(${t.vec(cfg)}) u where levenshtein_less_equal(u.lexeme, ${put(roots.get(x.w)![0])}, 2) <= 2)`
+      case 'wild': { const re = put(wildcardRegex(x.w)); return `(${t.preRaw ? `${t.preRaw} ~* ${re} and ` : ''}${t.raw} ~* ${re})` }
+      case 'not': return 'false'
+      case 'or': return `(${x.items.filter(live).map(go).join(' or ')})`
+      case 'and': {
+        const yes = x.items.filter(y => y.k !== 'not' && live(y)), no = x.items.filter(y => y.k === 'not' && live(y))
+        if (!yes.length) return 'false'
+        return `(${[...yes.map(go), ...no.map(y => `not ${go((y as { item: TextNode }).item)}`)].join(' and ')})`
+      }
+    }
+  }
+  return n && live(n) ? go(n) : 'false'
 }
 
 // ── Xray's test functions: issue in requirementTests("REQ-1", …), testRequirements("TEST-1", …), testSetTests("SET-1"),
@@ -163,6 +222,7 @@ async function prepareTestFns(d: Db, me: Me, n: Node | null): Promise<Map<string
 export async function jqlToSql(d: Db, me: Me, q: Query, args: unknown[]): Promise<{ where: string | null; order: string | null }> {
   await checkFieldNames(d, me, q.where)
   const testFnIds = await prepareTestFns(d, me, q.where)
+  const words = await prepareText(d, me, q.where)
   const put = (v: unknown) => { args.push(v); return `$${args.length}` }
   const text = (v: Value, field: string): string => {
     if (v.kind === 'text') return v.text
@@ -297,7 +357,7 @@ export async function jqlToSql(d: Db, me: Me, q: Query, args: unknown[]): Promis
     }
     if (c.field in DATES) return `${DATES[c.field]}::date = (${when(v)})::timestamptz::date`
     if (c.field in NUMBERS) return `${NUMBERS[c.field]} = ${number(v)}`
-    if (c.field === 'text' || c.field === 'summary' || c.field === 'description')
+    if (TEXT_FIELDS.has(c.field))
       throw new HttpError(400, `JQL: search ${c.field} with ~ (contains), for example ${c.field} ~ "login"`, { jql: `Use ~ with ${c.field}` })
     return custom(c, customEq(v, c.field))
   }
@@ -330,6 +390,23 @@ export async function jqlToSql(d: Db, me: Me, q: Query, args: unknown[]): Promis
     return `exists (select 1 from field_defs f where f.project_id = i.project_id and ${match} and ${cond})`
   }
   const isCustom = (f: string) => f.startsWith('custom:') || f.startsWith('cf:')
+  /** field ~ "query" (spec 0609): the item's own text, the comments I can read (each on its own, as Jira's index), or a custom field */
+  const textClause = (c: Clause, n: TextNode | null): string => {
+    let lang: string | undefined
+    const cfg = () => lang ??= `${put(words!.cfg)}::regconfig`
+    const on = (t: TextTarget) => textSql(n, t, words!.roots, cfg, put)
+    const comments = () => {
+      const w = on({ vec: () => 'c.search', raw: 'c.body' })
+      return w === 'false' ? w : `exists (select 1 from comments c where c.issue_id = i.id and ${w} and ${commentShownIn(me, 'i.project_id', Number(put(me.id).slice(1)))})`
+    }
+    switch (c.field) {
+      case 'summary': return on({ vec: l => `to_tsvector(${l()}, i.title)`, pre: 'i.search', raw: 'i.title' })
+      case 'description': return on({ vec: l => `to_tsvector(${l()}, i.description)`, pre: 'i.search', raw: 'i.description', preRaw: 'i.search_text' })
+      case 'comment': return comments()
+      case 'text': { const a = on({ vec: () => 'i.search', raw: 'i.search_text' }), b = comments(); return a === 'false' ? b : b === 'false' ? a : `(${a} or ${b})` }
+      default: { const w = on({ vec: l => `to_tsvector(${l()}, coalesce(i.custom ->> (f.id::text), ''))`, raw: `coalesce(i.custom ->> (f.id::text), '')` }); return w === 'false' ? w : custom(c, w) }
+    }
+  }
 
   const clause = (c: Clause): string => {
     if (c.op === 'is empty' || c.op === 'is not empty') {
@@ -338,13 +415,13 @@ export async function jqlToSql(d: Db, me: Me, q: Query, args: unknown[]): Promis
       return c.op === 'is empty' ? `(${empty})` : `not (${empty})`
     }
     if (c.op === '~' || c.op === '!~') {
-      const t = put(text(c.values[0]!, c.field))
-      const like = `'%' || replace(replace(replace(${t}, '\\', '\\\\'), '%', '\\%'), '_', '\\_') || '%'`
-      const cond = c.field === 'text' ? `(i.search @@ websearch_to_tsquery('simple', ${t}) or i.title ilike ${like})`
-        : c.field === 'summary' ? `i.title ilike ${like}` : c.field === 'description' ? `i.description ilike ${like}`
-        : c.field === 'labels' ? `exists (select 1 from unnest(i.labels) l where l ilike ${like})`
-        : isCustom(c.field) ? custom(c, `(i.custom->>(f.id::text)) ilike ${like}`) : null
-      if (!cond) throw new HttpError(400, `JQL: ~ searches text: summary, description, text, labels or a text field`, { jql: `~ not allowed with ${c.field}` })
+      const src = text(c.values[0]!, c.field)
+      let cond: string | null = null
+      if (c.field === 'labels') {                             // a substring, as before (Jira has no ~ on labels)
+        const t = put(src)
+        cond = `exists (select 1 from unnest(i.labels) l where l ilike '%' || replace(replace(replace(${t}, '\\', '\\\\'), '%', '\\%'), '_', '\\_') || '%')`
+      } else if (TEXT_FIELDS.has(c.field) || isCustom(c.field)) cond = textClause(c, textNode(src))
+      if (!cond) throw new HttpError(400, `JQL: ~ searches text: summary, description, comment, text, labels or a text field`, { jql: `~ not allowed with ${c.field}` })
       return c.op === '~' ? cond : `not ${cond}`
     }
     if (c.op === '>' || c.op === '>=' || c.op === '<' || c.op === '<=') {

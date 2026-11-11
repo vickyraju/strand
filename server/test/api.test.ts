@@ -3946,7 +3946,7 @@ test('system settings: admins change policies at runtime (validated, audited); e
   const { clearSettingsCache } = await import('../src/settings.ts')
   const put = (key: string, value: object, who = 'owner@x.com') => call('PUT', `/api/v1/admin/settings/${key}`, value, who)
   const all = (await call('GET', '/api/v1/admin/settings')).body
-  assert.deepEqual(all.map((s: any) => s.key), ['rateLimiting', 'announcement', 'attachments', 'accessTokens', 'searchAndBulk', 'filterSubscriptions', 'plans', 'signIn', 'groups', 'voting', 'webhooks', 'automation', 'testing', 'dueReminders', 'email', 'emailBatching', 'userDefaults', 'deletedItems', 'projectKeys', 'timeTracking'])
+  assert.deepEqual(all.map((s: any) => s.key), ['rateLimiting', 'announcement', 'attachments', 'accessTokens', 'searchAndBulk', 'filterSubscriptions', 'plans', 'search', 'signIn', 'groups', 'voting', 'webhooks', 'automation', 'testing', 'dueReminders', 'email', 'emailBatching', 'userDefaults', 'deletedItems', 'projectKeys', 'timeTracking'])
   assert.equal(all.find((s: any) => s.key === 'rateLimiting').value.enabled, false)                  // no limit unless an admin sets one
   assert.equal((await call('GET', '/api/v1/admin/settings', undefined, 'set.member@x.com')).status, 403)
   assert.equal((await put('attachments', { enabled: true, maxSizeMb: 5 }, 'set.member@x.com')).status, 403)
@@ -6738,4 +6738,62 @@ test('[0106.R1][0106.R2][0106.R3] deleting a group its comments are restricted t
   // a group nobody restricted comments to deletes as before
   const empty = (await call('POST', '/api/v1/groups', { name: 'swp-empty' })).body
   assert.equal((await call('DELETE', `/api/v1/groups/${empty.id}`)).status, 204)
+})
+
+test('[0609.R1][0609.R2][0609.R3][0609.R4][0609.R5] text search as Jira’s: stemmed words, common words left out, phrases, wildcards, AND OR NOT, fuzzy; comments as each reader may see them; a custom field; quick search; another language re-indexes', { skip }, async () => {
+  const { runJobs } = await import('../src/jobs.ts')
+  await call('POST', '/api/v1/projects', { name: 'Text search', key: 'TXS', template: 'kanban' })
+  await join('TXS', 'txs.dev@x.com')
+  const cause = (await call('POST', '/api/v1/admin/custom-fields', { name: 'Root cause', kind: 'text', context: { projectKeys: ['TXS'] } })).body
+  const mk = async (title: string, description: string, custom = {}) => (await call('POST', '/api/v1/projects/TXS/issues', { title, description, custom })).body
+  const a = await mk('Customized login page', 'The page crashes when VSX will not start')
+  await mk('Calculate totals', 'Roaming users see foam')
+  const c = await mk('Deploy pipeline', 'Nothing here')
+  await mk('Slow search', '', { [cause.id]: 'memory leak in the parser' })
+  await call('POST', `/api/v1/issues/${c.key}/comments`, { body: 'Hotfix shipped' })
+  await call('POST', `/api/v1/issues/${c.key}/comments`, { body: 'Secret rollout plan', visibility: { kind: 'role', role: 'admin' } })
+  const find = async (jql: string, who?: string) => {
+    const r = await call('GET', `/api/v1/search?jql=${encodeURIComponent(`project = TXS AND ${jql} ORDER BY key`)}&limit=50`, undefined, who)
+    assert.equal(r.status, 200, `${jql}: ${JSON.stringify(r.body)}`)
+    return r.body.items.map((x: any) => x.title)
+  }
+  // R1: any form of a word; common words left out ("will" in "VSX will crash" too); only common words find nothing
+  assert.deepEqual(await find('summary ~ "customize"'), ['Customized login page'])
+  assert.deepEqual(await find('text ~ "VSX will crash"'), ['Customized login page'])
+  assert.deepEqual(await find('text ~ "the"'), [])
+  assert.deepEqual(await find('summary ~ "page CRASH"'), [])                      // crash is in the description, not the summary
+  // R2: phrases, wildcards anywhere (the words as written), OR, NOT and only-exclusions, fuzzy
+  assert.deepEqual(await find('description ~ "\\"page crashes\\""'), ['Customized login page'])
+  assert.deepEqual(await find('description ~ "\\"crashes page\\""'), [])
+  assert.deepEqual(await find('summary ~ "*cula*"'), ['Calculate totals'])
+  assert.deepEqual(await find('summary ~ "customiz*"'), ['Customized login page'])
+  assert.deepEqual(await find('summary ~ "calculate OR deploy"'), ['Calculate totals', 'Deploy pipeline'])
+  assert.deepEqual(await find('summary ~ "page -login"'), [])
+  assert.deepEqual(await find('summary ~ "pipeline NOT login"'), ['Deploy pipeline'])
+  assert.deepEqual(await find('summary ~ "-login"'), [])
+  assert.deepEqual(await find('description ~ "roam~"'), ['Calculate totals'])
+  assert.deepEqual(await find('description ~ "foem~"'), ['Calculate totals'])
+  assert.equal((await call('GET', `/api/v1/search?jql=${encodeURIComponent('summary ~ "(login"')}`)).status, 400)
+  // R3: comments, each as its reader may see it; text covers them; a custom field; !~
+  assert.deepEqual(await find('comment ~ "hotfix"', 'txs.dev@x.com'), ['Deploy pipeline'])
+  assert.deepEqual(await find('comment ~ "rollout"'), ['Deploy pipeline'])
+  assert.deepEqual(await find('comment ~ "rollout"', 'txs.dev@x.com'), [])
+  assert.deepEqual(await find('text ~ "rollout"', 'txs.dev@x.com'), [])
+  assert.deepEqual(await find('"Root cause" ~ "leaks"'), ['Slow search'])
+  assert.deepEqual(await find('text ~ "parser"'), ['Slow search'])
+  assert.deepEqual(await find('summary !~ "customize"'), ['Calculate totals', 'Deploy pipeline', 'Slow search'])
+  // R4: quick search, and what isn't Jira's syntax taken as words
+  const quick = async (q: string) => (await call('GET', `/api/v1/search?q=${encodeURIComponent(q)}&limit=50`)).body.items.filter((x: any) => x.key.startsWith('TXS-')).map((x: any) => x.title)
+  assert.deepEqual(await quick('customizing'), ['Customized login page'])
+  assert.deepEqual(await quick('login ('), ['Customized login page'])
+  assert.deepEqual(await quick(a.key), ['Customized login page'])
+  // R5: Other: exact words; the change re-indexes in the background
+  assert.equal((await call('PUT', '/api/v1/admin/settings/search', { indexingLanguage: 'other' })).status, 200)
+  await runJobs()
+  assert.deepEqual(await find('summary ~ "customize"'), [])
+  assert.deepEqual(await find('summary ~ "customized"'), ['Customized login page'])
+  assert.deepEqual(await find('comment ~ "shipped"'), ['Deploy pipeline'])
+  await call('PUT', '/api/v1/admin/settings/search', { indexingLanguage: 'english' })
+  await runJobs()
+  assert.deepEqual(await find('comment ~ "ship"'), ['Deploy pipeline'])
 })

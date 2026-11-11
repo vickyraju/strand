@@ -2278,3 +2278,24 @@ test('[0106.R1] deleting a group a comment is restricted to: the comment moves t
   assert.deepEqual(c.visibility, { kind: 'group', id: next.id })
   assert.deepEqual(o.problems, [])
 })
+
+test('[0609.R1][0609.R2][0609.R3] JQL text search finds any form of a word, and a comment; a broken text query shows where', { skip, timeout: 60_000 }, async () => {
+  await owner('POST', '/projects', { name: 'Words', key: 'WRD', template: 'kanban' })
+  const a = (await owner('POST', '/projects/WRD/issues', { title: 'Customized login' })).body
+  const b = (await owner('POST', '/projects/WRD/issues', { title: 'Other work' })).body
+  await owner('POST', `/issues/${b.key}/comments`, { body: 'Rollback deployed' })
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url('/search?q='))
+  await o.click('button:has-text("Switch to JQL")')
+  await o.fill('textarea[aria-label="JQL query"]', 'project = WRD AND text ~ "(customize"')
+  assert.match(await o.locator('.jql .hint.error').innerText(), /Expected “\)”/)
+  await o.fill('textarea[aria-label="JQL query"]', 'project = WRD AND text ~ "customize"')
+  await o.press('textarea[aria-label="JQL query"]', 'Enter')
+  await o.waitForSelector(`text=${a.key}`)
+  await o.waitForSelector('text=1 result')
+  await o.fill('textarea[aria-label="JQL query"]', 'project = WRD AND comment ~ "deploying"')
+  await o.press('textarea[aria-label="JQL query"]', 'Enter')
+  await o.waitForSelector(`text=${b.key}`)
+  await o.waitForSelector('text=1 result')
+  assert.deepEqual(o.problems, [])
+})
