@@ -64,8 +64,8 @@ export const jiraSprint = (s: any) => s && {
   endDate: jiraTime(s.ends_at ?? s.endsAt), completeDate: jiraTime(s.completed_at ?? s.completedAt), originBoardId: s.board_id ?? s.boardId, goal: s.goal ?? '',
 }
 /** Jira DC's Sprint field value: the sprint as Jira Software prints it. */
-const sprintString = (s: any) => `com.atlassian.greenhopper.service.sprint.Sprint@${s.id.slice(0, 8)}[id=${s.id},rapidViewId=${s.board_id},state=${(SPRINT_STATE[s.state] ?? s.state).toUpperCase()},`
-  + `name=${s.name},startDate=${jiraTime(s.started_at) ?? '<null>'},endDate=${jiraTime(s.ends_at) ?? '<null>'},completeDate=${jiraTime(s.completed_at) ?? '<null>'},sequence=${s.id},goal=${s.goal ?? ''}]`
+const sprintString = (s: any) => `com.atlassian.greenhopper.service.sprint.Sprint@${s.id.slice(0, 8)}[id=${s.id},rapidViewId=${s.boardId ?? s.board_id},state=${(SPRINT_STATE[s.state] ?? s.state).toUpperCase()},`
+  + `name=${s.name},startDate=${jiraTime(s.startedAt ?? s.started_at) ?? '<null>'},endDate=${jiraTime(s.endsAt ?? s.ends_at) ?? '<null>'},completeDate=${jiraTime(s.completedAt ?? s.completed_at) ?? '<null>'},sequence=${s.id},goal=${s.goal ?? ''}]`
 
 /** A linked, parent or sub-item, as Jira nests it: key, summary, status, priority, type. */
 async function brief(L: L, i: any) {
@@ -162,9 +162,9 @@ export async function jiraIssue(d: Db, L: L, issueId: string) {
     ...(parent && parent.type !== 'epic' ? { parent: await brief(L, parent) } : {}),
     subtasks: await Promise.all(subs.map(s => brief(L, s))),
     issuelinks: await Promise.all(links.map(async l => {
-      const outward = l.issue_id === i.id
-      const other = await L.issue(outward ? l.target_id : l.issue_id)
-      return { id: `${l.issue_id}:${l.target_id}:${l.type}`, self: null, type: { id: l.type, name: l.name ?? l.type, inward: l.inward ?? l.type, outward: l.outward ?? l.type, self: null },
+      const outward = l.issueId === i.id                                     // the database's rows come camelCased
+      const other = await L.issue(outward ? l.targetId : l.issueId)
+      return { id: `${l.issueId}:${l.targetId}:${l.type}`, self: null, type: { id: l.type, name: l.name ?? l.type, inward: l.inward ?? l.type, outward: l.outward ?? l.type, self: null },
         [outward ? 'outwardIssue' : 'inwardIssue']: await brief(L, other) }
     })),
     comment: { comments: await Promise.all(comments.map(c => jiraComment(L, c, d))), maxResults: comments.length, total: commentTotal, startAt: Math.max(0, commentTotal - comments.length) },
