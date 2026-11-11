@@ -1,6 +1,6 @@
 # 0718 Workflow triggers from development tools
 
-Status: Approved (pending work, 12 Nov 2026)
+Status: Ported (aws-jira `9561e0f`, strand `7fa1d52`), pending work the PO asked to complete on 11 Nov 2026; awaiting verification
 Parity rows: WF-06
 
 ## Context and Jira reference
