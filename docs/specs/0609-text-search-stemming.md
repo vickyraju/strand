@@ -1,6 +1,6 @@
 # 0609 Text search as Jira's: words, stemming and Lucene syntax
 
-Status: Approved (pending work, 11 Nov 2026)
+Status: Ported (aws-jira `a8d8cc6`, strand `ddb021c`), pending work the PO asked to complete on 11 Nov 2026; awaiting verification
 Parity rows: SR-03
 
 ## Context and Jira reference
