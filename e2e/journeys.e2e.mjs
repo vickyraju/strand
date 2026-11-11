@@ -2243,7 +2243,7 @@ test('[0510.R1][0510.R2][0510.R3] the selection bar watches two items, then move
   await o.waitForSelector('text=Stopped watching 2 items')
   assert.equal((await owner('GET', `/issues/${a.key}`)).body.watcherIds.includes(me), false)
   await o.click('.bulk-bar button:has-text("Watch")')
-  await o.waitForSelector('text=Watching 2 items')
+  await o.waitForSelector('text="Watching 2 items"')   // exact: "Stopped watching 2 items" may still be showing
   assert.equal((await owner('GET', `/issues/${b.key}`)).body.watcherIds.includes(me), true)
   // R2, R3: transition both to Done with a comment; the dialog lists each item's outcome
   await o.click('.bulk-bar button:has-text("Transition")')
