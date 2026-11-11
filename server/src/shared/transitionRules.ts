@@ -50,7 +50,7 @@ const LISTS = ['labels', 'fixReleaseIds']
 export const isRuleField = (f: string) => f in RULE_FIELDS || /^custom\.[0-9a-f-]{36}$/i.test(f)
 
 /** A work item as rules read it: the issue's fields by name (server and web use the same names), custom values by id. */
-export type Item = Record<string, unknown> & { custom?: Record<string, string | number> }
+export type Item = Record<string, unknown> & { custom?: Record<string, string | number | string[]> }
 
 /** Who is moving the item, or null for automation. */
 export interface Mover { id: string; role?: 'admin' | 'member' | 'viewer' | null; groupIds: string[] }
@@ -134,7 +134,7 @@ export const today = (now = new Date()) => now.toISOString().slice(0, 10)
 export function actionChanges(r: TransitionRules | undefined, ctx: RuleCtx, after: Item, now = new Date()): { patch: Item; comments: string[] } {
   const patch: Item = {}
   const comments: string[] = []
-  let custom: Record<string, string | number> | undefined
+  let custom: Record<string, string | number | string[]> | undefined
   const put = (field: string, value: unknown) => {
     if (!field.startsWith('custom.')) { patch[field] = LISTS.includes(field) && !Array.isArray(value) ? (value == null || value === '' ? [] : [value]) : value; return }
     custom ??= { ...(after.custom ?? {}) }

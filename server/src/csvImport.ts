@@ -10,6 +10,7 @@ import { parseCsv } from './shared/csv.ts'
 import { registerJob } from './jobs.ts'
 import { statusesFor } from './workflows.ts'
 import { canJoinWork } from './access.ts'
+import { valueProblem, type FieldKind, type FieldValue, type Option } from './shared/customFields.ts'
 
 export const IMPORT_FIELDS = ['title', 'description', 'type', 'status', 'priority', 'assignee', 'labels', 'estimate', 'dueDate', 'startDate', 'components', 'fixVersion', 'flagged', 'epicColor'] as const
 export type ImportField = typeof IMPORT_FIELDS[number] | `custom.${string}`
@@ -47,7 +48,7 @@ export async function checkImport(d: Db, projectId: string, csv: string, mapping
     named<{ id: string }>('select lower(name) as k, id from components where project_id = $1'),
     named<{ id: string }>('select lower(name) as k, id from releases where project_id = $1'),
     named<{ key: string }>('select lower(pr.name) as k, pr.key from priorities pr join projects p on p.workspace_id = pr.workspace_id where p.id = $1'),
-    named<{ id: string; kind: string; options: { name: string; disabled?: boolean }[] | null; name: string }>('select id::text as k, id, kind, options, name from field_defs where project_id = $1'),
+    named<{ id: string; kind: FieldKind; options: Option[] | null; name: string }>('select id::text as k, id, kind, options, name from field_defs where project_id = $1'),
   ])
   const items: Record<string, unknown>[] = []
   const report: RowReport[] = []
@@ -95,14 +96,42 @@ export async function checkImport(d: Db, projectId: string, csv: string, mapping
       const hit = components.get(c.toLowerCase()); if (!hit) warnings.push(`Component “${c}” isn’t in this project: left out`); return hit ? [hit.id] : []
     })
     const fix = pick('fixVersion', releases, 'Release'); if (fix) item.fixReleaseIds = [(fix as any).id]
-    const custom: Record<string, string | number> = {}
+    const custom: Record<string, FieldValue> = {}
     for (const k of Object.keys(mapping).filter(k => k.startsWith('custom.'))) {
       const v = get(k), f = fields.get(k.slice(7))
       if (!v || !f) continue
-      if (f.kind === 'number') { if (Number.isFinite(Number(v))) custom[f.id] = Number(v); else warnings.push(`${f.name} “${v}” isn’t a number: left empty`) }
-      else if (f.kind === 'select') { const o = (f.options ?? []).find(x => !x.disabled && x.name.toLowerCase() === v.toLowerCase())?.name; if (o) custom[f.id] = o; else warnings.push(`${f.name} “${v}” isn’t one of its options: left empty`) }
-      else if (f.kind === 'date') { const dd = toDate(v); if (dd) custom[f.id] = dd; else warnings.push(`${f.name} “${v}” isn’t a date: left empty`) }
-      else custom[f.id] = v.slice(0, 5000)
+      // every type as Jira's importer reads it (spec 0502 R5): several values separated by commas, people by email or name
+      const parts = v.split(',').map(x => x.trim()).filter(Boolean)
+      const opt = (name: string, parentId: string | null = null) => (f.options ?? []).find(x => !x.disabled && (x.parentId ?? null) === parentId && x.name.toLowerCase() === name.toLowerCase())
+      const leftOut = (why: string) => warnings.push(`${f.name} “${v}” ${why}: left empty`)
+      const refs = async (table: string, match: string, names: string[]) => {
+        const out: string[] = []
+        for (const n of names) { const [r] = await d.query<{ id: string }>(`select id from ${table} where ${match} limit 1`, [n, projectId]); if (r) out.push(r.id) }
+        return out.length === names.length ? out : null
+      }
+      const people = (names: string[]) => refs('users', `(lower(email) = lower($1) or lower(name) = lower($1)) and $2::uuid is not null`, names)
+      const groups = (names: string[]) => refs('groups', `lower(display_name) = lower($1) and $2::uuid is not null`, names)
+      const versions = (names: string[]) => refs('releases', `lower(name) = lower($1) and project_id = $2`, names)
+      switch (f.kind) {
+        case 'number': if (Number.isFinite(Number(v))) custom[f.id] = Number(v); else leftOut('isn’t a number'); break
+        case 'date': { const dd = toDate(v); if (dd) custom[f.id] = dd; else leftOut('isn’t a date'); break }
+        case 'datetime': if (!Number.isNaN(Date.parse(v))) custom[f.id] = new Date(v).toISOString(); else leftOut('isn’t a date and time'); break
+        case 'select': case 'radio': { const o = opt(v); if (o) custom[f.id] = o.name; else leftOut('isn’t one of its options'); break }
+        case 'multiselect': case 'checkboxes': { const os = parts.map(x => opt(x)); if (os.every(Boolean)) custom[f.id] = os.map(o => o!.name); else leftOut('has a value that isn’t one of its options'); break }
+        case 'cascading': { const [a, b] = v.split(/\s*(?:›|->)\s*/); const p = a ? opt(a) : undefined; const c = p && b ? opt(b, p.id) : undefined
+          if (p && (!b || c)) custom[f.id] = c ? [p.name, c.name] : [p.name]; else leftOut('isn’t one of its options'); break }
+        case 'labels': custom[f.id] = [...new Set(v.split(/[\s,]+/).filter(Boolean))]; break
+        case 'user': { const r = await people([v]); if (r) custom[f.id] = r[0]!; else leftOut('isn’t someone in Strand'); break }
+        case 'users': { const r = await people(parts); if (r) custom[f.id] = r; else leftOut('names someone not in Strand'); break }
+        case 'group': { const r = await groups([v]); if (r) custom[f.id] = r[0]!; else leftOut('isn’t a group'); break }
+        case 'groups': { const r = await groups(parts); if (r) custom[f.id] = r; else leftOut('names a group that doesn’t exist'); break }
+        case 'version': { const r = await versions([v]); if (r) custom[f.id] = r[0]!; else leftOut('isn’t a version of this project'); break }
+        case 'versions': { const r = await versions(parts); if (r) custom[f.id] = r; else leftOut('names a version not of this project'); break }
+        case 'project': { const [r] = await d.query<{ id: string }>('select id from projects where workspace_id = (select workspace_id from projects where id = $2) and (key = upper($1) or lower(name) = lower($1))', [v, projectId]); if (r) custom[f.id] = r.id; else leftOut('isn’t a project'); break }
+        case 'url': { const problem = valueProblem(f, v); if (!problem) custom[f.id] = v; else leftOut('isn’t an http or https address'); break }
+        case 'textarea': custom[f.id] = v.slice(0, 32_767); break
+        default: custom[f.id] = v.slice(0, 255)
+      }
     }
     if (Object.keys(custom).length) item.custom = custom
     report.push({ row, title: String(item.title ?? ''), ok: !errors.length, errors, warnings })

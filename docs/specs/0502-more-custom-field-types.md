@@ -67,7 +67,7 @@ Checked 11 Nov 2026 on [jira.atlassian.com](https://jira.atlassian.com/issues/?j
 
 ## Permissions
 
-Unchanged: project admins define fields; Edit issues sets values. A read-only field only through the API (any token with Edit issues) or automation.
+Unchanged: project admins define fields; Edit issues sets values. A read-only field isn't editable in the app: scripts set it through the API (with Edit issues), as Jira's.
 
 ## Data model and migration
 

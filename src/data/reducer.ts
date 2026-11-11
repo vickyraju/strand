@@ -3,6 +3,8 @@ import { defaultPriority, defaultResolution } from './lists.ts'
 import { RULE_FIELDS, actionChanges, allows, problems, type Item, type RuleCtx, type TransitionRules } from './transitionRules.ts'
 import { can } from './access.ts'
 import { adjustRemaining, type Adjust } from '../../server/src/shared/estimates.ts'
+import type { FieldKind, FieldValue } from '../../server/src/shared/customFields.ts'
+export type { FieldKind, FieldValue }
 
 // ── Types ──────────────────────────────────────────────────
 
@@ -214,13 +216,14 @@ export const AUTOMATION = 'automation'
 export interface FieldDef {
   id:       string
   name:     string
-  kind:     'text' | 'number' | 'select' | 'date'
+  /** Jira's custom field types (spec 0502) */
+  kind:     FieldKind
   options?: FieldOption[]
 }
 
 /** A select field's option (spec 0105, as Jira): an id that survives a rename; a disabled one is no longer offered, but
  *  items keep it. Items store the option's name. */
-export interface FieldOption { id: string; name: string; disabled?: boolean }
+export interface FieldOption { id: string; name: string; disabled?: boolean; /** cascading fields: the option it is under */ parentId?: string }
 
 /** Options as stored before spec 0105 (names only) or after (objects), as objects. */
 export const optionsOf = (raw: unknown): FieldOption[] =>
@@ -331,7 +334,7 @@ export interface Issue {
   links:       IssueLink[]
   attachments: Attachment[]
   /** Values for the project's custom fields, by field id. */
-  custom:      Record<string, string | number>
+  custom:      Record<string, FieldValue>
   /** Jira's flag (Flagged = Impediment): blocked or needs attention (spec 0408). */
   flagged?:    boolean
   /** Epics: Jira's Epic Colour, ghx-label-1 … 14 (spec 0407) */

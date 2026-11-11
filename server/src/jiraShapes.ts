@@ -95,6 +95,27 @@ export async function jiraWorklog(L: L, w: any) {
   }
 }
 
+/** A custom field's value in Jira's REST shape, for its type (spec 0502 R5). */
+async function jiraCustom(L: L, d: Db, kind: string, v: any): Promise<unknown> {
+  if (v == null || (Array.isArray(v) && !v.length)) return null
+  const option = (x: string) => ({ self: null, value: x, id: x })
+  const group = async (id: string) => ({ name: (await d.query<{ name: string }>('select display_name as name from groups where id = $1', [id]))[0]?.name ?? id, self: null })
+  switch (kind) {
+    case 'select': case 'radio': return option(v)
+    case 'multiselect': case 'checkboxes': return v.map(option)
+    case 'cascading': return { ...option(v[0]), ...(v[1] ? { child: option(v[1]) } : {}) }
+    case 'user': return L.user(v)
+    case 'users': return Promise.all(v.map((x: string) => L.user(x)))
+    case 'group': return group(v)
+    case 'groups': return Promise.all(v.map(group))
+    case 'project': { const [p] = await d.query<any>('select id, key, name from projects where id = $1', [v]); return p ? { self: null, id: p.id, key: p.key, name: p.name, projectTypeKey: 'software' } : null }
+    case 'version': return jiraVersion(await L.version(v))
+    case 'versions': return (await Promise.all(v.map((x: string) => L.version(x)))).filter(Boolean).map(jiraVersion)
+    case 'datetime': return jiraTime(v)
+    default: return v
+  }
+}
+
 /** Jira Software's custom field ids (System settings › Webhooks). */
 const fieldIds = async (ws: string) => (await getSetting(ws, 'webhooks')).fieldIds as Record<'sprint' | 'epicLink' | 'epicName' | 'epicStatus' | 'epicColour' | 'storyPoints' | 'rank' | 'flagged', string>
 
@@ -157,10 +178,7 @@ export async function jiraIssue(d: Db, L: L, issueId: string) {
     [ids.flagged]: i.flagged ? [{ self: null, value: 'Impediment', id: 'impediment' }] : null,
     ...(i.type === 'epic' ? { [ids.epicName]: i.title, [ids.epicStatus]: i.epicStatus ? { self: null, value: i.epicStatus, id: i.epicStatus } : null, [ids.epicColour]: i.epicColor ?? null } : {}),
   }
-  for (const f of custom) {
-    const v = i.custom?.[f.id]
-    fields[`customfield_${f.id}`] = v == null ? null : f.kind === 'select' ? { self: null, value: v, id: v } : v
-  }
+  for (const f of custom) fields[`customfield_${f.id}`] = await jiraCustom(L, d, f.kind, i.custom?.[f.id])
   return { id: i.id, self: self(`/issues/${i.key}`), key: i.key, fields }
 }
 export const briefIssue = async (L: L, issueId?: string) => (issueId ? brief(L, await L.issue(issueId)) : null)

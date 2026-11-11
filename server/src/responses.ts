@@ -2,6 +2,7 @@
 // OpenAPI document and are enforced when responses are serialized: a handler that returns the wrong shape fails a test
 // instead of leaking an unexpected field. Timestamps are ISO strings (db.ts), dates are YYYY-MM-DD.
 import { z } from 'zod'
+import { KIND_LIST, type FieldKind } from './shared/customFields.ts'
 import { directoryConfig } from './directories.ts'
 
 const id = z.string().describe('uuid')
@@ -61,7 +62,7 @@ export const AvailableTransition = z.object({
   id, name: z.string(), toId: nullable(id), screen: z.array(z.string()).describe('Fields to fill in (and "comment")'),
   problems: z.record(z.string(), z.string()).describe('What would stop the move if made now, by field'),
 })
-export const Field = z.object({ id, projectId: id, name: z.string(), kind: z.enum(['text', 'number', 'select', 'date']), options: nullable(z.array(z.object({ id: z.string(), name: z.string(), disabled: z.boolean() }))), position: z.number() })
+export const Field = z.object({ id, projectId: id, name: z.string(), kind: z.enum(KIND_LIST as [FieldKind, ...FieldKind[]]).describe('Jira’s custom field types (spec 0502)'), options: nullable(z.array(z.object({ id: z.string(), name: z.string(), disabled: z.boolean(), parentId: z.string().optional().describe('Cascading fields: the option it is under') }))), position: z.number() })
 export const Template = z.object({ id, projectId: id, name: z.string(), type: z.string(), title: z.string(), description: z.string(), priority: z.string(), labels: z.array(z.string()), estimate: nullable(z.number()) })
 export const Rule = z.object({ id, projectId: nullable(id).describe('Null: a global rule (spec 0709)'), name: z.string(), enabled: z.boolean(), trigger: z.record(z.string(), z.unknown()),
   actions: z.array(z.record(z.string(), z.unknown())), condition: nullable(z.string()).describe('JQL the item must match'), runs: z.number(), failures: z.number(), ownerId: nullable(id), lastRunAt: nullable(ts) })
@@ -137,7 +138,7 @@ const issueFields = {
   testSpec: nullable(z.unknown()).describe('Test steps, Gherkin or definition (Tests and Pre-Conditions)'), testFolderId: nullable(id).describe('Test repository folder'),
   testEnvironments: z.array(z.string()).describe('Test Executions: what it ran against'), revision: z.string().describe('Test Executions: build or revision'),
   dueDate: nullable(day), startDate: nullable(day), sprintId: nullable(id), fixReleaseIds: z.array(id), parentId: nullable(id),
-  custom: z.record(z.string(), z.union([z.string(), z.number()])), rank: z.number(), version: z.number().describe('Send as If-Match to reject stale edits'),
+  custom: z.record(z.string(), z.union([z.string(), z.number(), z.array(z.string())])), rank: z.number(), version: z.number().describe('Send as If-Match to reject stale edits'),
   resolution: nullable(z.string()).describe('A resolution name (GET /resolutions), set while the item is in a Done status'),
   resolvedAt: nullable(ts).describe('When the item last reached a Done status'),
   createdAt: ts, updatedAt: ts,

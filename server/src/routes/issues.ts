@@ -6,6 +6,7 @@ import { canJoinWork, commentShown, minFor, need, roleOf, visible, visibleAs, ty
 import { publish } from '../events.ts'
 import { audit } from '../audit.ts'
 import { emit, triggerWebhook } from '../webhooks.ts'
+import { REF_KINDS, valueProblem, type FieldKind, type FieldValue, type Option } from '../shared/customFields.ts'
 import { getSetting } from '../settings.ts'
 import { runRules, moveAllowed } from '../rules.ts'
 import { available, ruleContext, transitionById, transitionTo, type TransitionRow } from '../transitions.ts'
@@ -51,7 +52,7 @@ const patchBody = z.object({
   dueDate: date.nullable(), startDate: date.nullable(),
   sprintId: uuid.nullable(), fixReleaseIds: z.array(uuid).max(50).describe('Fix versions: releases of the project that fix it'), parentId: uuid.nullable(),
   componentIds: z.array(uuid).max(50).describe('Components of the project'), affectsReleaseIds: z.array(uuid).max(50).describe('Affects versions: releases of the project where it was found'),
-  custom: z.record(z.string(), z.union([z.string(), z.number()])), rank: z.number(), testSpec: testSpec.nullable(),
+  custom: z.record(z.string(), z.union([z.string(), z.number(), z.array(z.string()).max(100)])).describe('Custom field values by field id: text, a number, or a list (multiple-value fields; a cascading field’s option and child option)'), rank: z.number(), testSpec: testSpec.nullable(),
   testFolderId: uuid.nullable().describe('Test repository folder (Tests only; null: the top)'),
   testEnvironments: z.array(z.string().trim().min(1).max(100)).max(20).describe('What a Test Execution ran against (Test Executions only)'), revision: z.string().max(200).describe('Build or revision a Test Execution ran against'),
   resolution: z.string().min(1).max(100).nullable().describe('How a finished item ended: a name from GET /resolutions. Only for items in a Done status; a workflow that resolves on reaching Done sets the default unless you say otherwise'),
@@ -176,20 +177,28 @@ async function editorsOf(d: Db, issueId: string) {
 /** Custom field values must belong to a field of this project and fit its kind: text (at most 5000 characters), a finite
  *  number, one of a select field's enabled options, or a YYYY-MM-DD date. Only values that change are checked, so an item
  *  keeps an option that was later disabled. A cleared field is simply left out. */
-async function checkCustom(d: Db, projectId: string, next: Record<string, string | number>, prev: Record<string, string | number> = {}) {
-  const changed = Object.keys(next).filter(k => next[k] !== prev[k])
-  if (!changed.length) return
-  const defs = new Map((await d.query<{ id: string; name: string; kind: string; options: { name: string; disabled?: boolean }[] | null }>(
+async function checkCustom(d: Db, projectId: string, next: Record<string, FieldValue>, prev: Record<string, FieldValue> = {}) {
+  const changed = Object.keys(next).filter(k => JSON.stringify(next[k]) !== JSON.stringify(prev[k]))
+  const cleared = Object.keys(prev).filter(k => !(k in next))
+  if (!changed.length && !cleared.length) return
+  const defs = new Map((await d.query<{ id: string; name: string; kind: FieldKind; options: Option[] | null }>(
     'select id, name, kind, options from field_defs where project_id = $1', [projectId])).map(f => [f.id, f]))
   const errors: Record<string, string> = {}
-  for (const k of changed) {
-    const f = defs.get(k), v = next[k]
-    if (!f) { errors[k] = 'No such field in this project'; continue }
-    const ok = f.kind === 'number' ? typeof v === 'number' && Number.isFinite(v)
-      : f.kind === 'select' ? typeof v === 'string' && (f.options ?? []).some(o => o.name === v && !o.disabled)   // a disabled option is kept, not chosen (spec 0105 R4)
-      : f.kind === 'date' ? typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v))
-      : typeof v === 'string' && v.length <= 5000
-    if (!ok) errors[k] = f.kind === 'select' ? `${f.name} must be one of: ${(f.options ?? []).filter(o => !o.disabled).map(o => o.name).join(', ')}` : `${f.name} must be a valid ${f.kind}`
+  for (const k of [...changed, ...cleared]) {
+    const f = defs.get(k)
+    if (!f) { if (changed.includes(k)) errors[k] = 'No such field in this project'; continue }
+    if (!changed.includes(k)) continue
+    const v = next[k]
+    const problem = valueProblem(f, v)
+    if (problem) { errors[k] = problem; continue }
+    // what a value names must exist: people, groups and projects of the workspace, versions of this project
+    const table = REF_KINDS[f.kind]
+    if (table) {
+      const ids = (Array.isArray(v) ? v : [v]) as string[]
+      const where = table === 'releases' ? 'project_id = $2' : table === 'projects' ? 'workspace_id = (select workspace_id from projects where id = $2)' : '$2::uuid is not null'   // one workspace's people and groups
+      const found = (await d.query<{ n: number }>(`select count(*)::int as n from ${table} where id = any($1::uuid[]) and ${where}`, [ids, projectId]))[0]!.n
+      if (found !== ids.length) errors[k] = `${f.name}: ${table === 'releases' ? 'a version not of this project' : table === 'users' ? 'someone not in Strand' : table === 'groups' ? 'a group not in Strand' : 'a project not in Strand'}`
+    }
   }
   if (Object.keys(errors).length) throw new HttpError(400, 'Some custom field values are not valid', Object.fromEntries(Object.entries(errors).map(([k, m]) => [`custom.${k}`, m])))
 }
