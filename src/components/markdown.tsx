@@ -1,17 +1,34 @@
-import { useRef, useState, type ReactNode } from 'react'
-import type { User } from '../data/store'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import type { Attachment, User } from '../data/store'
+import { apiEnabled } from '../api/client'
+import { attachmentUrl } from '../api/attachments'
 import { Avatar } from './ui'
 
 // ── Rendering: a safe Markdown subset, built as React nodes (no innerHTML) ──
 
-const INLINE = /(`[^`]+`|\*\*[^*]+\*\*|\*[^*\s][^*]*\*|\[[^\]]+\]\(https?:\/\/[^\s)]+\)|https?:\/\/[^\s)]+|@[A-Z][\w'-]*(?: [A-Z][\w'-]*)?)/g
+const INLINE = /(`[^`]+`|\*\*[^*]+\*\*|\*[^*\s][^*]*\*|~~[^~]+~~|!\[[^\]]*\]\(attachment:[^)\s]+\)|\[[^\]]+\]\((?:https?:\/\/[^\s)]+|attachment:[^)\s]+)\)|https?:\/\/[^\s)]+|@[A-Z][\w'-]*(?: [A-Z][\w'-]*)?)/g
 
-function inline(text: string, users: User[], key: string): ReactNode[] {
+/** One of the item's attachments, by name (spec 0805: imported text points at them as attachment:<name>). */
+const attachmentNamed = (files: Attachment[] | undefined, ref: string) => { const name = decodeURI(ref); return files?.find(a => a.name === name) }
+/** A picture of the item's own attachment, through the same short-lived link as the Attachments section. */
+function AttachmentImage({ file, alt }: { file: Attachment; alt: string }) {
+  const [url, setUrl] = useState<string>()
+  useEffect(() => { let live = true; if (apiEnabled) attachmentUrl(file.id).then(u => { if (live) setUrl(u) }, () => {}); return () => { live = false } }, [file.id])
+  return url ? <img className="md-image" src={url} alt={alt} /> : <span className="muted">{alt}</span>
+}
+const openAttachment = (file: Attachment) => { void attachmentUrl(file.id).then(u => window.open(u, '_blank', 'noopener'), () => {}) }
+
+function inlineOf(text: string, users: User[], key: string, files?: Attachment[]): ReactNode[] {
   return text.split(INLINE).filter(Boolean).map((part, i) => {
     const k = `${key}-${i}`
     if (part.startsWith('`') && part.endsWith('`') && part.length > 1) return <code key={k}>{part.slice(1, -1)}</code>
     if (part.startsWith('**') && part.endsWith('**')) return <strong key={k}>{part.slice(2, -2)}</strong>
     if (part.startsWith('*') && part.endsWith('*') && part.length > 2) return <em key={k}>{part.slice(1, -1)}</em>
+    if (part.startsWith('~~') && part.endsWith('~~') && part.length > 4) return <del key={k}>{part.slice(2, -2)}</del>
+    const image = part.match(/^!\[([^\]]*)\]\(attachment:([^)\s]+)\)$/)
+    if (image) { const f = attachmentNamed(files, image[2]!); return f && f.type.startsWith('image/') ? <AttachmentImage key={k} file={f} alt={image[1] || f.name} /> : <span key={k} className="muted">{image[1]}</span> }
+    const file = part.match(/^\[([^\]]+)\]\(attachment:([^)\s]+)\)$/)
+    if (file) { const f = attachmentNamed(files, file[2]!); return f ? <button key={k} type="button" className="link-btn" onClick={() => openAttachment(f)}>{file[1]}</button> : <span key={k}>{file[1]}</span> }
     const link = part.match(/^\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)$/)
     if (link) return <a key={k} href={link[2]} target="_blank" rel="noreferrer noopener">{link[1]}</a>
     if (/^https?:\/\//.test(part)) return <a key={k} href={part} target="_blank" rel="noreferrer noopener">{part}</a>
@@ -23,7 +40,9 @@ function inline(text: string, users: User[], key: string): ReactNode[] {
   })
 }
 
-export function Markdown({ text, users }: { text: string; users: User[] }) {
+/** `attachments`: the item's own, for imported text's pictures and links (spec 0805). */
+export function Markdown({ text, users, attachments }: { text: string; users: User[]; attachments?: Attachment[] }) {
+  const inline = (t: string, u: User[], k: string) => inlineOf(t, u, k, attachments)
   const lines = text.replace(/\r/g, '').split('\n')
   const out: ReactNode[] = []
   let i = 0
@@ -55,9 +74,20 @@ export function Markdown({ text, users }: { text: string; users: User[] }) {
       continue
     }
     if (line.startsWith('> ')) { out.push(<blockquote key={i}>{inline(line.slice(2), users, `q${i}`)}</blockquote>); i++; continue }
+    if (/^\s*-{3,}\s*$/.test(line)) { out.push(<hr key={i} />); i++; continue }
+    // a table: a heading row, a |---| row, then rows (spec 0805)
+    if (/^\s*\|.*\|\s*$/.test(line) && /^\s*\|[\s:|-]+\|\s*$/.test(lines[i + 1] ?? '')) {
+      const cells = (l: string) => l.trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim())
+      const head = cells(line), rows: string[][] = []
+      i += 2
+      while (i < lines.length && /^\s*\|/.test(lines[i])) rows.push(cells(lines[i++]))
+      out.push(<div key={`t${i}`} className="md-table"><table><thead><tr>{head.map((c, k) => <th key={k}>{inline(c, users, `th${i}-${k}`)}</th>)}</tr></thead>
+        <tbody>{rows.map((r, n) => <tr key={n}>{head.map((_, k) => <td key={k}>{inline(r[k] ?? '', users, `td${i}-${n}-${k}`)}</td>)}</tr>)}</tbody></table></div>)
+      continue
+    }
     if (!line.trim()) { i++; continue }
-    const para: string[] = []
-    while (i < lines.length && lines[i].trim() && !/^(```|#{1,3}\s|\s*[-*]\s|\s*\d+\.\s|> )/.test(lines[i])) para.push(lines[i++])
+    const para: string[] = [lines[i++]]                                    // at least this line, so a stray | line can't stall
+    while (i < lines.length && lines[i].trim() && !/^(```|#{1,3}\s|\s*[-*]\s|\s*\d+\.\s|> |\s*-{3,}\s*$|\s*\|)/.test(lines[i])) para.push(lines[i++])
     out.push(<p key={`p${i}`}>{para.flatMap((l, k) => k ? [<br key={`br${k}`} />, ...inline(l, users, `p${i}-${k}`)] : inline(l, users, `p${i}-${k}`))}</p>)
   }
   return <div className="md">{out}</div>

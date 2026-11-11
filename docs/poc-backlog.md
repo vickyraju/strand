@@ -21,7 +21,7 @@ Today's importer (0802) brings projects, people, statuses, types, priorities, re
 
 | # | Gap | Why it matters | Proposed fix |
 |---|---|---|---|
-| B1 | **Wiki markup isn't converted.** Jira DC descriptions and comments are wiki markup (`h1.`, `*bold*`, `{code}`, `[text\|url]`, `!image.png!`, `[~user]` mentions, tables) | Every imported description and comment shows raw markup | Convert wiki markup to Strand's Markdown on import: inline images point to the imported attachments, mentions to the people |
+| B1 | ~~Wiki markup isn't converted~~ | Done: spec 0805 (descriptions, comments and multi-line fields as Markdown; tables, strike, pictures of attachments in Strand's view) | — |
 | B2 | **Old Jira links break.** `https://jira…/browse/KEY-1` in bookmarks, emails, Confluence and code | Links everywhere stop working at cutover | A `/browse/:key` route in Strand, plus a redirect rule for the old Jira host (an infrastructure step) |
 | B3 | **No delta import for cutover.** A re-run skips what it already imported, so later changes in Jira aren't picked up | A large migration can't freeze Jira for the whole import | "Update since last run": re-read items changed after the last run (`updated >= …`) and apply their changes. Then a short freeze for the final delta |
 | B4 | ~~Only one active sprint survives~~ | Done with spec 0414: every active sprint stays when parallel sprints are on | — |
