@@ -2032,3 +2032,31 @@ test('[0603.R3] JQL: watchedIssues() finds the items you watch', { skip, timeout
   assert.deepEqual(o.problems, [])
 })
 
+test('[0604.R1][0604.R5] a saved view is subscribed to daily; Run now sends the email', { skip, timeout: 120_000 }, async () => {
+  assert.equal((await owner('PUT', '/admin/settings/email', { enabled: true, from: 'Strand <strand@e2e.test>', appUrl: 'https://strand.e2e.test' })).status, 200)
+  await owner('POST', '/projects', { name: 'Subscription journey', key: 'SBJ', template: 'kanban' })
+  await owner('POST', '/projects/SBJ/issues', { title: 'In the email' })
+  const view = (await owner('POST', '/views', { name: 'Mailed view', filters: { q: '', resolution: 'open', jql: 'project = SBJ' } })).body
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url(`/search?view=${view.id}`))
+  await o.click('button:has-text("Subscribe")')
+  await o.click('.modal button:has-text("New subscription")')
+  await o.selectOption('#sub-mode', 'daily')
+  await o.click('.modal button:has-text("Subscribe")')
+  await o.waitForSelector('.modal td:has-text("Just me")')
+  assert.equal(await o.locator('.modal code').innerText(), '0 0 7 ? * *')
+  await o.click('.modal [aria-label="Run now"]')
+  await o.waitForSelector('text=Sending it now')
+  const pg = (await import('node:module')).createRequire(new URL('../server/package.json', import.meta.url))('pg')
+  const c = new pg.Client({ connectionString: process.env.E2E_DATABASE_URL }); await c.connect()
+  let sent
+  for (let i = 0; i < 40 && !sent; i++) {
+    sent = (await c.query(`select result->>'sent' as sent from jobs where kind = 'email.filter-subscription' and status = 'done' and payload->>'id' in (select id::text from filter_subscriptions where view_id = $1)`, [view.id])).rows[0]?.sent
+    if (!sent) await new Promise(r => setTimeout(r, 500))
+  }
+  await c.end()
+  assert.equal(sent, 'owner@e2e.test')
+  await owner('PUT', '/admin/settings/email', { enabled: false, from: '', appUrl: '' })
+  assert.deepEqual(o.problems, [])
+})
+

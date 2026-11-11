@@ -75,6 +75,16 @@ export const SETTINGS = {
     }),
     default: { exportMaxRows: 20_000, bulkMaxItems: 200, importMaxRows: 10_000 },
   },
+  filterSubscriptions: {
+    label: 'Filter subscriptions',
+    description: 'Saved views emailed on a schedule (spec 0604): who may subscribe a group (Jira’s Manage group filter subscriptions), and how many work items one email lists.',
+    public: true,
+    schema: z.object({
+      groupSubscribers: z.enum(['everyone', 'admins']).describe('Who may subscribe a group: everyone (Jira’s default) or system administrators'),
+      maxItems: z.number().int().min(1).max(1000).describe('Most work items listed in one email'),
+    }),
+    default: { groupSubscribers: 'everyone', maxItems: 200 },
+  },
   signIn: {
     label: 'Sign-in',
     description: 'Sign-ins through the login form: how long one lasts, and how many wrong passwords lock a username for a while (Administration › Authentication methods).',

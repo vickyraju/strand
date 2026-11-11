@@ -40,6 +40,7 @@ import customFieldRoutes from './routes/customFields.ts'
 import fieldConfigRoutes from './routes/fieldConfigs.ts'
 import screenRoutes from './routes/screens.ts'
 import remoteLinkRoutes, { jiraRemoteLinks } from './routes/remoteLinks.ts'
+import subscriptionRoutes, { startSubscriptions } from './routes/subscriptions.ts'
 import { startDirectories } from './directories.ts'
 import { startAuth } from './authConfig.ts'
 import { githubWebhook } from './routes/github.ts'
@@ -176,6 +177,7 @@ export async function build() {
       await v1.register(fieldConfigRoutes)
       await v1.register(screenRoutes)
       await v1.register(remoteLinkRoutes)
+      await v1.register(subscriptionRoutes)
     }, { prefix: '/api/v1' })
     // Xray's addresses for importing CI results: same sign-in and rate limits as the API
     await api.register(raven, { prefix: '/rest/raven/1.0' })
@@ -193,6 +195,8 @@ export async function build() {
   // every workspace removes its long-deleted work items daily (spec 0202)
   if (process.env.DATABASE_URL)
     for (const w of (await pool.query<{ id: string }>('select id from workspaces')).rows) await schedulePurge(db, w.id).catch(e => app.log.error(e))
+  // every filter subscription has its next run queued (spec 0604)
+  if (process.env.DATABASE_URL) await startSubscriptions().catch(e => app.log.error(e))
   app.addHook('onClose', async () => stopJobs())
   app.addHook('onClose', async () => { await stopListener(); await pool.end() })
   return app
