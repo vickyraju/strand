@@ -6188,6 +6188,17 @@ test('[0605.R1][0605.R2][0605.R3][0605.R4][0605.R5][0605.R6] notification scheme
   assert.ok((await pool.query(`select 1 from audit_log where action = 'project.notification_scheme_changed'`)).rows.length >= 3)
 })
 
+test('projects list: the open count leaves out items behind a security level I\'m not in', { skip }, async () => {
+  await call('POST', '/api/v1/projects', { name: 'Counted', key: 'CNT', template: 'kanban' })
+  await join('CNT', 'cnt.bob@x.com')
+  const lvl = (await call('POST', '/api/v1/projects/CNT/security-levels', { name: 'Admins', members: [{ kind: 'role', role: 'admin' }] })).body
+  await call('POST', '/api/v1/projects/CNT/issues', { title: 'Open to all' })
+  await call('POST', '/api/v1/projects/CNT/issues', { title: 'Hidden', securityLevelId: lvl.id })
+  const count = async (who?: string) => Number((await call('GET', '/api/v1/projects', undefined, who)).body.find((p: any) => p.key === 'CNT').openCount)
+  assert.deepEqual([await count(), await count('cnt.bob@x.com')], [2, 1])
+  assert.equal(Number((await call('GET', '/api/v1/projects/search?query=Counted', undefined, 'cnt.bob@x.com')).body.items[0].openCount), 1)
+})
+
 test('[0605.R3] a notification scheme never tells someone outside an item\'s security level', { skip }, async () => {
   await call('POST', '/api/v1/projects', { name: 'Scheme levels', key: 'NSL', template: 'kanban' })
   await join('NSL', 'nsl.ann@x.com'); await join('NSL', 'nsl.bob@x.com')

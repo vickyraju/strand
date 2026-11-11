@@ -242,18 +242,19 @@ const plugin: FastifyPluginAsyncZod = async app => {
     return { items, next: more ? cursorOf(items.at(-1).name, items.at(-1).id) : null }
   })
 
-  const PROJECT_ROW = `p.id, p.key, p.name, p.description, p.color, p.template, p.lead_id, p.created_at, p.archived_at,
+  /** A project as lists show it; `$2` is me: its open count leaves out items behind a security level I'm not in. */
+  const PROJECT_ROW = (me: Me) => `p.id, p.key, p.name, p.description, p.color, p.template, p.lead_id, p.created_at, p.archived_at,
               p.category_id, (select jsonb_build_object('id', c.id, 'name', c.name) from project_categories c where c.id = p.category_id) as category,
               case when p.avatar_hash is not null then '/project-avatars/' || p.id || '/' || p.avatar_hash end as avatar,
             (s.user_id is not null) as starred,
             (select count(*) from issues i join statuses st on st.id = i.status_id
-              where i.project_id = p.id and i.deleted_at is null and i.archived_at is null and st.category <> 'done') as open_count`
+              where i.project_id = p.id and i.deleted_at is null and i.archived_at is null and st.category <> 'done' and ${levelOk(me, 2)}) as open_count`
   // First 1000 only: use /projects/search for more. Archived projects are hidden unless asked for.
   app.get('/projects', { schema: { tags: T.projects, summary: 'List the active projects I can see, with star flag and open-issue count (first 1000 by name; use /projects/search for more)' } }, async req => {
     const args: unknown[] = [req.me.workspaceId, req.me.id]
     const see = visible(req.me, 'p.id', args)
     return db.query(
-      `select ${PROJECT_ROW} from projects p left join stars s on s.project_id = p.id and s.user_id = $2
+      `select ${PROJECT_ROW(req.me)} from projects p left join stars s on s.project_id = p.id and s.user_id = $2
         where p.workspace_id = $1 and p.archived_at is null and ${see} order by lower(p.name), p.id limit 1000`, args)
   })
 
@@ -271,7 +272,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     if (cur) { args.push(cur[0].toLowerCase(), cur[1]); where.push(`(lower(p.name), p.id) > ($${args.length - 1}, $${args.length}::uuid)`) }
     args.push(limit + 1)
     const rows = await db.query<any>(
-      `select ${PROJECT_ROW} from projects p left join stars s on s.project_id = p.id and s.user_id = $2
+      `select ${PROJECT_ROW(req.me)} from projects p left join stars s on s.project_id = p.id and s.user_id = $2
         where ${where.join(' and ')} order by lower(p.name), p.id limit $${args.length}`, args)
     const more = rows.length > limit, items = more ? rows.slice(0, limit) : rows
     return { items, next: more ? cursorOf(items.at(-1).name, items.at(-1).id) : null }
