@@ -77,7 +77,7 @@ The roadmap, in order. Bugs come first, then the permission model, then the data
 | [0503](0503-global-custom-fields-contexts.md) | Global custom fields with contexts | 5 | Ported |
 | [0504](0504-field-configurations.md) | Field configurations: required and hidden | 5 | Ported |
 | [0505](0505-screens.md) | Screens | 5 | Ported |
-| [0506](0506-voting.md) | Voting | 5 | Approved |
+| [0506](0506-voting.md) | Voting | 5 | Ported |
 | 0507 | Remote links | 5 | Planned |
 | 0508 | Archive single items | 5 | Planned |
 | 0509 | Convert to and from sub-items | 5 | Planned |
