@@ -2422,3 +2422,25 @@ test('[0717.R1][0717.R3] an admin takes Bulk change from the default users group
     await owner('POST', '/admin/global-permissions', { permission: 'bulk-change', groupId: users })
   }
 })
+
+test('[0718.R1] a system admin adds the “Pull request merged” trigger to a transition in the workflow editor', { skip, timeout: 90_000 }, async () => {
+  const p = (await owner('POST', '/projects', { name: 'Triggers', key: 'TRJ', template: 'kanban' })).body
+  const [todo, doing, done] = [p.statuses[0], p.statuses[1], p.statuses.find(s => s.category === 'done')]
+  const wf = await flow(p, [
+    { name: 'Start', fromIds: [todo.id], toId: doing.id },
+    { name: 'Merge', fromIds: [doing.id], toId: done.id },
+  ])
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url(`/admin/workflows/${wf}`))
+  await o.click('.wf-tools [role="tab"]:has-text("List")')
+  await o.click('.wf-list tr:has-text("Merge")')
+  await o.click('.wf-panel [role="tab"]:has-text("Rules")')
+  await o.check('section[aria-label="Triggers"] label:has-text("Pull request merged") input')
+  await o.click('.wf-bar button:has-text("Update workflow")')
+  await o.waitForSelector('.modal >> text=Applies to 1 project')
+  await o.click('.modal button:has-text("Update workflow")')
+  await o.waitForSelector('text=Workflow updated')
+  const saved = (await owner('GET', '/projects/TRJ')).body.transitions.find(t => t.name === 'Merge')
+  assert.deepEqual(saved.rules.triggers, ['pr_merged'])
+  assert.deepEqual(o.problems, [])
+})

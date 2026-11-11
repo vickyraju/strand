@@ -109,7 +109,7 @@ Checked against Atlassian's Data Center documentation on 5 November 2026 (Jira S
 | WF-03 | Conditions, validators, post functions | Conditions and post functions; core validators are permission only ([wfadv]) | Nested all/any conditions, required/changed/parent validators, post functions | better | diverge | — | Keep: transition rules tests. |
 | WF-04 | Workflow schemes per issue type | Yes | Yes | match | match | — | |
 | WF-05 | Versions | Draft and publish, with a backup copy | Versions that can be loaded back; changes applied to every project as a job | better | diverge | — | Keep: "shared workflows" test. |
-| WF-06 | Triggers from development tools | Branch, commit, PR | Absent (GitHub data is received) | absent | open | — | |
+| WF-06 | Triggers from development tools | Branch, commit, PR | A transition's Triggers: branch created, commit created, pull request created, merged, declined, reopened (from GitHub); conditions, validators and permissions skipped, post functions run, once per event | match | match | 0718 | Declined and reopened are offered for GitHub too (Jira: Bitbucket only) |
 
 ## Boards and agile
 

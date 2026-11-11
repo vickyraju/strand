@@ -30,7 +30,14 @@ export type Action =
   | { kind: 'comment'; body: string }
   | { kind: 'webhook'; webhookId: string }                        // Jira's "Trigger a webhook" post function (spec 0715 R6)
 
-export interface TransitionRules { restrict?: ConditionGroup; validate?: Validator[]; screen?: string[]; actions?: Action[] }
+/** Jira's workflow triggers (spec 0718): development events that move an item through the transition. */
+export const TRIGGERS = ['branch_created', 'commit_created', 'pr_created', 'pr_merged', 'pr_declined', 'pr_reopened'] as const
+export type Trigger = typeof TRIGGERS[number]
+export const TRIGGER_LABELS: Record<Trigger, string> = {
+  branch_created: 'branch created', commit_created: 'commit created', pr_created: 'pull request created',
+  pr_merged: 'pull request merged', pr_declined: 'pull request declined', pr_reopened: 'pull request reopened',
+}
+export interface TransitionRules { restrict?: ConditionGroup; validate?: Validator[]; screen?: string[]; actions?: Action[]; triggers?: Trigger[] }
 
 /** Jira's limits per transition. */
 export const LIMITS = { groups: 10, rulesPerGroup: 50, validators: 50, actions: 50, depth: 3 }

@@ -5,7 +5,7 @@ import type { Db } from './db.ts'
 import { HttpError, type Me } from './auth.ts'
 import { roleOf } from './access.ts'
 import {
-  LIMITS, SETTABLE, allows, conditionsIn, depthOf, groupsIn, isRuleField, type ConditionGroup, type RuleCtx, type TransitionRules,
+  LIMITS, SETTABLE, TRIGGERS, allows, conditionsIn, depthOf, groupsIn, isRuleField, type ConditionGroup, type RuleCtx, type TransitionRules,
 } from './shared/transitionRules.ts'
 
 const uuid = z.string().uuid()
@@ -25,6 +25,7 @@ const group: z.ZodType<ConditionGroup> = z.lazy(() => z.object({
 }))
 export const rulesSchema = z.object({
   restrict: group.optional(),
+  triggers: z.array(z.enum(TRIGGERS)).max(TRIGGERS.length).optional().describe('Development events that move an item through this transition, skipping its conditions and validators (spec 0718)'),
   validate: z.array(z.discriminatedUnion('kind', [
     z.object({ kind: z.literal('required'), fields: z.array(z.union([field, z.literal('comment')])).min(1) }),
     z.object({ kind: z.literal('changed'), field }),

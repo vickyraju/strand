@@ -49677,6 +49677,22 @@
                                 }
                               ]
                             },
+                            "triggers": {
+                              "description": "Development events that move an item through this transition, skipping its conditions and validators (spec 0718)",
+                              "maxItems": 6,
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "enum": [
+                                  "branch_created",
+                                  "commit_created",
+                                  "pr_created",
+                                  "pr_merged",
+                                  "pr_declined",
+                                  "pr_reopened"
+                                ]
+                              }
+                            },
                             "validate": {
                               "maxItems": 50,
                               "type": "array",
