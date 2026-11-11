@@ -25,6 +25,11 @@ const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
 const type = z.string().min(1).max(40).describe('A work type key of the project (GET /projects/:key: types): epic, story, task, bug, or one the project added')
 const priority = z.string().min(1).max(40).describe('A priority key from GET /priorities (urgent, high, medium, low, none, or one an admin added)')
 
+/** A field as the history names it: statusId → status, fixReleaseIds → fix versions. */
+const FIELD_WORDS: Record<string, string> = { statusId: 'status', assigneeId: 'assignee', reporterId: 'reporter', sprintId: 'sprint', parentId: 'parent',
+  fixReleaseIds: 'fix versions', affectsReleaseIds: 'affects versions', componentIds: 'components', title: 'summary' }
+const fieldWords = (f: string) => FIELD_WORDS[f] ?? f.replace(/([A-Z])/g, ' $1').toLowerCase()
+
 export const ISSUE_ROW = `
   select i.id, p.key || '-' || i.number as key, i.project_id, i.number, i.type, i.title, i.description,
          i.status_id, i.priority, i.flagged, i.epic_color, i.epic_status, i.assignee_id, i.reporter_id, i.labels, i.estimate, i.time_estimate, i.time_remaining, i.component_ids, i.affects_release_ids, i.test_spec, i.test_folder_id, i.test_environments, i.revision,
@@ -152,7 +157,7 @@ export async function runActions(d: Db, me: Me | null, issueId: string, t: Trans
     await d.query(`update issues set ${w.cols.map((c, i) => `${c} = $${i + 2}`).join(', ')}, version = version + 1, updated_at = now() where id = $1`, [issueId, ...w.vals])
     for (const f of changed)
       await d.query('insert into activity (issue_id, actor_id, field, from_value, to_value, text) values ($1, $2, $3, $4, $5, $6)',
-        [issueId, me?.id ?? null, f, now[f] == null ? null : String(now[f]), patch[f] == null ? null : String(patch[f]), `“${t.name}” changed ${f.replace(/([A-Z])/g, ' $1').toLowerCase()}`])
+        [issueId, me?.id ?? null, f, now[f] == null ? null : String(now[f]), patch[f] == null ? null : String(patch[f]), `“${t.name}” changed ${fieldWords(f)}`])
     if (changed.includes('assigneeId') && patch.assigneeId && me) await note(d, patch.assigneeId as string, me, issueId, 'assigned', 'assigned you a work item')
   }
   for (const body of comments) await d.query('insert into comments (issue_id, author_id, body) values ($1, $2, $3)', [issueId, me?.id ?? null, body])
@@ -318,7 +323,7 @@ async function applyPatch(d: Db, me: Me, cur: any, patch: z.infer<typeof patchBo
     const to = (patch as any)[f], from = cur[f]
     if (f === 'testSpec') { await d.query('insert into activity (issue_id, actor_id, field, text) values ($1, $2, $3, $4)', [cur.id, me.id, f, 'Changed the test steps']); continue }
     await d.query('insert into activity (issue_id, actor_id, field, from_value, to_value, text) values ($1, $2, $3, $4, $5, $6)',
-      [cur.id, me.id, f, from == null ? null : String(from), to == null ? null : String(to), `Changed ${f.replace(/([A-Z])/g, ' $1').toLowerCase()}`])
+      [cur.id, me.id, f, from == null ? null : String(from), to == null ? null : String(to), `Changed ${fieldWords(f)}`])
   }
   if (t) {
     if (!moving) await d.query('insert into activity (issue_id, actor_id, text) values ($1, $2, $3)', [cur.id, me.id, `“${t.name}”`])   // a loop: the action itself is the history

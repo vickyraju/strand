@@ -19607,6 +19607,14 @@
                             "nullable": true,
                             "type": "string"
                           },
+                          "fromString": {
+                            "nullable": true,
+                            "type": "string"
+                          },
+                          "toString": {
+                            "nullable": true,
+                            "type": "string"
+                          },
                           "text": {
                             "type": "string"
                           },
@@ -21390,6 +21398,14 @@
                             "type": "string"
                           },
                           "toValue": {
+                            "nullable": true,
+                            "type": "string"
+                          },
+                          "fromString": {
+                            "nullable": true,
+                            "type": "string"
+                          },
+                          "toString": {
                             "nullable": true,
                             "type": "string"
                           },

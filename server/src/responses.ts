@@ -186,7 +186,7 @@ const BackupSettings = z.object({
 export const Comment = z.object({ id, issueId: id, authorId: nullable(id), body: z.string(), createdAt: ts, editedAt: nullable(ts),
   visibility: nullable(z.object({ kind: z.enum(['role', 'group']), role: z.string().optional(), id: id.optional() })).describe('Who can read it; null: everyone who sees the item') })
 export const Worklog = z.object({ id, issueId: id, userId: nullable(id), minutes: z.number(), date: day, note: z.string(), createdAt: ts })
-export const Activity = z.object({ id, issueId: id, actorId: nullable(id), field: nullable(z.string()), fromValue: nullable(z.string()), toValue: nullable(z.string()), text: z.string(), createdAt: ts })
+export const Activity = z.object({ id, issueId: id, actorId: nullable(id), field: nullable(z.string()), fromValue: nullable(z.string()), toValue: nullable(z.string()), fromString: nullable(z.string()).optional(), toString: nullable(z.string()).optional(), text: z.string(), createdAt: ts })
 export const IssueDetail = z.object({
   ...issueFields,
   // present unless left out with ?expand=

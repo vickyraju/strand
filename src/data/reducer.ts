@@ -422,6 +422,8 @@ export interface Activity {
   field?:    string
   from?:     string
   to?:       string
+  fromName?: string
+  toName?:   string
   text:      string
   createdAt: number
 }

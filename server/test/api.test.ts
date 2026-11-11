@@ -5806,6 +5806,31 @@ test('[0509.R1][0509.R2][0509.R3] converting to and from sub-items: the parent d
   assert.deepEqual(hist, [`Converted to a sub-item of ${parent.key}`, 'Converted to an item'])
 })
 
+test('[0601.R1][0601.R2][0601.R3][0601.R4][0601.R5] every change keeps its names as they read then, a list change per value, indexed for history search', { skip }, async () => {
+  await call('POST', '/api/v1/projects', { name: 'History', key: 'HIS', template: 'kanban' })
+  const [todo, doing] = (await call('GET', '/api/v1/projects/HIS')).body.statuses
+  await call('POST', '/api/v1/projects/HIS/rules', { name: 'Escalate', trigger: { kind: 'status', to: doing.id }, actions: [{ kind: 'priority', value: 'high' }] })
+  const me = (await call('GET', '/api/v1/me')).body
+  const i = (await call('POST', '/api/v1/projects/HIS/issues', { title: 'Tracked', priority: 'low' })).body
+  const v1 = (await call('POST', '/api/v1/projects/HIS/releases', { name: '1.0' })).body, v2 = (await call('POST', '/api/v1/projects/HIS/releases', { name: '2.0' })).body
+  await call('PATCH', `/api/v1/issues/${i.key}`, { assigneeId: me.id })
+  await call('PATCH', `/api/v1/issues/${i.key}`, { statusId: doing.id })            // the rule raises the priority (automation)
+  await call('PATCH', `/api/v1/issues/${i.key}`, { fixReleaseIds: [v1.id, v2.id] })
+  await call('PATCH', `/api/v1/issues/${i.key}`, { fixReleaseIds: [v2.id] })
+  // a write straight into the history (as a bulk workflow change does) is named too
+  await pool.query(`insert into activity (issue_id, field, from_value, to_value, text) values ($1, 'statusId', $2, $3, 'Changed status (workflow change)')`, [i.id, doing.id, todo.id])
+  await pool.query('update statuses set name = $2 where id = $1', [doing.id, 'Doing now'])   // a later rename doesn't change the history
+  const rows = (await call('GET', `/api/v1/issues/${i.key}/activity?limit=100`)).body.items
+  const of = (f: string) => rows.filter((r: any) => r.field === f).map((r: any) => [r.fromString, r.toString])
+  assert.deepEqual(of('statusId'), [[doing.name, todo.name], [todo.name, doing.name]])
+  assert.deepEqual(of('assigneeId'), [[null, me.name]])
+  assert.deepEqual(of('priority'), [['Low', 'High']])
+  assert.deepEqual(of('fixReleaseIds').map(String).sort(), [',1.0', ',2.0', '1.0,'])
+  assert.ok(rows.find((r: any) => r.field === 'statusId').text.startsWith('Changed status'))
+  const plan = await pool.query(`set enable_seqscan = off; explain select issue_id from activity where field = 'statusId' and to_value = '${doing.id}'; explain select issue_id from activity where field = 'assigneeId' and lower(to_string) = 'x'; reset enable_seqscan`) as any
+  for (const r of [plan[1], plan[2]]) assert.match(r.rows.map((x: any) => x['QUERY PLAN']).join(' '), /Index.* activity_history_/)
+})
+
 test('[0705.R2] a webhook never reaches private addresses, whatever its name resolves to', { skip }, async () => {
   const { privateAddress, urlProblem, fillUrl } = await import('../src/webhooks.ts')
   for (const a of ['127.0.0.1', '10.1.2.3', '172.20.0.1', '192.168.1.1', '169.254.169.254', '100.64.0.1', '0.0.0.0', '::1', 'fd00::1', 'fe80::1', '::ffff:127.0.0.1',

@@ -180,7 +180,8 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
   const events = state.activity.filter(a => a.issueId === issue.id)
   const comments = state.comments.filter(c => c.issueId === issue.id)
   const timeline = [
-    ...(tab !== 'comments' ? events.map(a => ({ kind: 'event' as const, id: a.id, at: a.createdAt, who: a.actorId, text: a.text })) : []),
+    ...(tab !== 'comments' ? events.map(a => ({ kind: 'event' as const, id: a.id, at: a.createdAt, who: a.actorId, text: a.text,
+      change: a.fromName != null || a.toName != null ? `${a.fromName ?? 'None'} → ${a.toName ?? 'None'}` : undefined })) : []),
     ...(tab !== 'history' ? comments.map(c => ({ kind: 'comment' as const, id: c.id, at: c.createdAt, who: c.authorId, text: c.body, edited: c.editedAt, limited: c.visibility })) : []),
   ].sort((a, b) => a.at - b.at)
 
@@ -405,7 +406,7 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
                   return (
                     <li key={t.id} className="event">
                       <Avatar user={who} size={20} />
-                      <span><b>{who?.name ?? 'Someone'}</b> {t.text}</span>
+                      <span><b>{who?.name ?? 'Someone'}</b> {t.text}{t.change && <span className="muted">: {t.change}</span>}</span>
                       <span className="muted sm nowrap" title={new Date(t.at).toLocaleString()}>{timeAgo(t.at)}</span>
                     </li>
                   )
