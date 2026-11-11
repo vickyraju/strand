@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Trash2, FolderPlus } from 'lucide-react'
 import { useStore, type Status } from '../../data/store'
 import {
-  LIMITS, RULE_FIELDS, SETTABLE, DATE_FIELDS, isGroup,
+  LIMITS, RULE_FIELDS, SETTABLE, DATE_FIELDS, TRIGGERS, TRIGGER_LABELS, isGroup,
   type Action, type Condition, type ConditionGroup, type TransitionRules, type Validator,
 } from '../../data/transitionRules'
 import { api, apiEnabled } from '../../api/client'
@@ -67,6 +67,18 @@ export default function RulesEditor({ rules, onChange, statuses }: Props) {
           add={hooks.length ? [...ACTIONS, ['Trigger a webhook', { kind: 'webhook', webhookId: hooks[0]!.id }]] : ACTIONS}
           render={(a, put) => <ActionRow a={a} put={put} ctx={ctx} />} />
       </section>
+
+      {apiEnabled && <section aria-label="Triggers">
+        <h3 className="subhead">Triggers</h3>
+        <p className="hint">GitHub events that move a work item through this transition when its key is in the branch, commit or pull request. A triggered move skips the restrictions and checks above, as in Jira; the actions still run.</p>
+        <div className="btn-row" style={{ flexWrap: 'wrap' }}>
+          {TRIGGERS.map(t => (
+            <label key={t} className="cell-flex"><input type="checkbox" checked={!!rules.triggers?.includes(t)}
+              onChange={e => set({ triggers: e.target.checked ? [...(rules.triggers ?? []), t] : (rules.triggers ?? []).filter(x => x !== t) })} />
+              {TRIGGER_LABELS[t][0]!.toUpperCase() + TRIGGER_LABELS[t].slice(1)}</label>
+          ))}
+        </div>
+      </section>}
     </div>
   )
 }
@@ -78,6 +90,7 @@ function clean(r: TransitionRules): TransitionRules {
   if (r.validate?.length) out.validate = r.validate
   if (r.screen?.length) out.screen = r.screen
   if (r.actions?.length) out.actions = r.actions
+  if (r.triggers?.length) out.triggers = r.triggers
   return out
 }
 
@@ -272,6 +285,7 @@ export function rulesSummary(r: TransitionRules | undefined): string {
   if (r.validate?.length) parts.push(n(r.validate.length, 'check', 'checks'))
   if (r.screen?.length) parts.push(n(r.screen.length, 'field to fill in', 'fields to fill in'))
   if (r.actions?.length) parts.push(n(r.actions.length, 'action', 'actions'))
+  if (r.triggers?.length) parts.push(n(r.triggers.length, 'trigger', 'triggers'))
   return parts.join(' · ')
 }
 const countConditions = (g: ConditionGroup): number => g.items.reduce((s, x) => s + (isGroup(x) ? countConditions(x) : 1), 0)

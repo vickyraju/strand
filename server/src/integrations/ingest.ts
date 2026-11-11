@@ -3,6 +3,7 @@ import type { Db } from '../db.ts'
 import { extractLinks } from './links.ts'
 import { parseEvent, type Norm, type Repo } from './github.ts'
 import { publish } from '../events.ts'
+import { fireTrigger, triggerOf } from './triggers.ts'
 
 interface Integration { id: string; workspaceId: string; status: string }
 
@@ -22,6 +23,8 @@ async function ensureRepo(d: Db, integrationId: string, repo: Repo) {
 
 /** Apply one record: upsert it (only if not older than what we hold) and replace its issue links. Returns affected project ids. */
 async function apply(d: Db, workspaceId: string, repo: { id: string; projectIds: string[] }, n: Norm): Promise<string[]> {
+  // the state it had, for workflow triggers (spec 0718): undefined when this record is new
+  const [prev] = await d.query<{ state: string | null }>('select state from dev_entities where repo_id = $1 and kind = $2 and external_id = $3', [repo.id, n.kind, n.externalId])
   const [row] = await d.query<{ id: string }>(
     `insert into dev_entities (workspace_id, repo_id, kind, external_id, url, title, state, author, branch_from, branch_to, review_state, payload, source_updated_at)
      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
@@ -65,6 +68,9 @@ async function apply(d: Db, workspaceId: string, repo: { id: string; projectIds:
       `delete from dev_links l using issues i where l.entity_id = $1 and i.id = l.issue_id and l.issue_id <> all($2::uuid[]) returning i.project_id`, [row.id, keepIssueIds])
     for (const g of gone) affected.add(g.projectId)
   }
+  // workflow triggers (spec 0718): each linked item, once per event
+  const trigger = triggerOf(n.kind, prev ? prev.state : undefined, n.state)
+  if (trigger) for (const id of new Set(keepIssueIds)) await fireTrigger(d, id, trigger)
   return [...affected]
 }
 

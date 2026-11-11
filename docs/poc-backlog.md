@@ -11,7 +11,7 @@ There are 65 specs: 63 are built and ported to both branches, 0101 is verified, 
 | 3 | 0412 | Estimation by business value or a custom field; remaining-estimate burndown; team time zone | AG-07, AG-08 | Done (ported 12 Nov) |
 | 4 | 0414 | Parallel sprints (Jira allows more than one active sprint) | AG-06 | Done (ported 12 Nov); B4 fixed with it |
 | 5 | 0717 | Global permissions (Browse users, Create shared objects, Bulk change…) | PRM-10 | Done (ported 12 Nov) |
-| 6 | 0718 | Workflow triggers from development tools (a merged pull request moves an item) | WF-06 | Queued |
+| 6 | 0718 | Workflow triggers from development tools (a merged pull request moves an item) | WF-06 | Done (ported 12 Nov) |
 | 7 | 0713 | Incremental directory sync (LDAP uSNChanged), "manage user status locally" | DIR-04 | Queued |
 | 8 | 0804 | Xray test data import (steps, runs, results) | — | Queued |
 

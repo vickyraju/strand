@@ -6955,3 +6955,49 @@ test('[0717.R1][0717.R2][0717.R3][0717.R4] global permissions: granted to groups
   const audited = (await call('GET', '/api/v1/audit?action=global_permission')).body.items.map((e: any) => e.action)
   assert.ok(audited.includes('global_permission.granted') && audited.includes('global_permission.revoked'))
 })
+
+test('[0718.R1][0718.R2][0718.R3] workflow triggers: a branch starts an item, a merged pull request finishes it past its conditions and checks, each event once', { skip }, async () => {
+  const p = (await call('POST', '/api/v1/projects', { name: 'Triggered', key: 'TRG', template: 'kanban' })).body
+  const [todo, doing, done] = [p.statuses[0], p.statuses[1], p.statuses.find((s: any) => s.category === 'done')]
+  await flow('TRG', [
+    { name: 'Start', fromIds: [todo.id], toId: doing.id, rules: { triggers: ['branch_created'] } },
+    { name: 'Merge', fromIds: [doing.id], toId: done.id, rules: { triggers: ['pr_merged'], restrict: { op: 'all', items: [{ kind: 'childrenDone' }] },
+      validate: [{ kind: 'required', fields: ['dueDate'] }], actions: [{ kind: 'comment', body: 'Shipped by the workflow' }] } },
+    { name: 'Back', fromIds: null, toId: todo.id },
+  ])
+  const a = (await call('POST', '/api/v1/projects/TRG/issues', { title: 'Login' })).body
+  const b = (await call('POST', '/api/v1/projects/TRG/issues', { title: 'Other' })).body
+  await call('POST', '/api/v1/projects/TRG/issues', { title: 'Open child', parentId: a.id })            // the Merge condition fails for people
+  const ws = (await pool.query(`select workspace_id from projects where key = 'TRG'`)).rows[0].workspace_id
+  await pool.query(`insert into integrations (workspace_id, provider, installation_id, account_login) values ($1, 'github', 778, 'trg')`, [ws])
+  const repo = { id: 4343, full_name: 'acme/trg', default_branch: 'main', html_url: 'https://github.com/acme/trg' }
+  const status = async (key: string) => (await call('GET', `/api/v1/issues/${key}`)).body.statusId
+  // R2: a new branch naming the item starts it
+  assert.equal((await hook('create', { ref: `${a.key}-login`, ref_type: 'branch', repository: repo, installation: { id: 778 } })).status, 200)
+  assert.equal(await status(a.key), doing.id)
+  // once per event: the same branch again doesn't move it a second time
+  await call('PATCH', `/api/v1/issues/${a.key}`, { statusId: todo.id })
+  await hook('create', { ref: `${a.key}-login`, ref_type: 'branch', repository: repo, installation: { id: 778 } })
+  assert.equal(await status(a.key), todo.id)
+  await call('PATCH', `/api/v1/issues/${a.key}`, { statusId: doing.id })
+  // a pull request opened: no transition from In progress has that trigger, so it stays
+  const pr = (state: string, merged: boolean, at: string) => ({ action: merged || state === 'closed' ? 'closed' : 'opened', number: 9, repository: repo, installation: { id: 778 },
+    pull_request: { number: 9, html_url: 'https://github.com/acme/trg/pull/9', title: `${a.key} Login`, body: '', state, draft: false, merged, merged_at: merged ? at : null,
+      updated_at: at, user: { login: 'vicky' }, head: { ref: `${a.key}-login`, sha: 'abc' }, base: { ref: 'main' } } })
+  await hook('pull_request', pr('open', false, '2026-11-12T10:00:00Z'))
+  assert.equal(await status(a.key), doing.id)
+  assert.equal((await call('PATCH', `/api/v1/issues/${a.key}`, { statusId: done.id })).status, 403)   // people can't: a child is open
+  // merged: Done, past the condition and the check; its post function runs; Issue Resolved; history says why
+  await hook('pull_request', pr('closed', true, '2026-11-12T11:00:00Z'))
+  const after = (await call('GET', `/api/v1/issues/${a.key}?expand=comments`)).body
+  assert.deepEqual([after.statusId, after.resolution, after.comments.at(-1).body], [done.id, 'Done', 'Shipped by the workflow'])
+  const history = (await call('GET', `/api/v1/issues/${a.key}/activity`)).body
+  assert.ok((history.items ?? history).some((x: any) => x.text === '“Done” by GitHub: pull request merged' && x.actorId == null))
+  // an item whose status has no such transition stays
+  await hook('pull_request', { ...pr('closed', true, '2026-11-12T12:00:00Z'), number: 10, pull_request: { ...pr('closed', true, '2026-11-12T12:00:00Z').pull_request, number: 10, title: `${b.key} Other`, head: { ref: 'other', sha: 'def' } } })
+  assert.equal(await status(b.key), todo.id)
+  // R1: a trigger Strand doesn't know is refused when the workflow is saved
+  const wf = (await call('GET', '/api/v1/projects/TRG')).body.workflows[0].workflowId
+  const cur = (await call('GET', `/api/v1/workflows/${wf}`)).body
+  assert.equal((await call('POST', `/api/v1/admin/workflows/${wf}/publish`, { statuses: cur.statuses, transitions: [{ id: 'x', name: 'x', fromIds: null, toId: cur.statuses[0].id, rules: { triggers: ['deployed'] } }] })).status, 400)
+})
