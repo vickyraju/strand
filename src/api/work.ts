@@ -2,6 +2,7 @@
 // "Your work" (assigned / recently worked on) and the inbox. Without an API these return the empty,
 // already-loaded shape, so the screens keep working off the local store.
 import { useEffect, useRef, useState } from 'react'
+import type { Template } from '../../server/src/shared/templates.ts'
 import { api, apiEnabled, ApiError, API_URL, buildRequest, withPrefix } from './client'
 import { accessToken } from './auth.ts'
 import { mapSearchRow, type Row } from './map'
@@ -178,7 +179,7 @@ export const searchLabels = (query: string) => api<string[]>('GET', `/api/labels
 /** The numbers on the Your work cards, counted by the database (so they stay right past the first page of items). */
 export interface WorkSummary { assigned: number; dueSoon: number; overdue: number; blocked: number }
 /** One of the most recently active projects, with the person's open items and how much is done. */
-export interface RecentProject { id: string; key: string; name: string; color: string; template: 'kanban' | 'scrum'; myOpen: number; done: number; total: number }
+export interface RecentProject { id: string; key: string; name: string; color: string; template: Template; myOpen: number; done: number; total: number }
 
 /** Fetch once when the screen opens; `undefined` until it arrives (or without an API, or if it fails: the screen then shows nothing rather than a wrong number). */
 function useServerValue<T>(path: string): T | undefined {

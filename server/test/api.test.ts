@@ -6797,3 +6797,34 @@ test('[0609.R1][0609.R2][0609.R3][0609.R4][0609.R5] text search as Jira’s: ste
   await runJobs()
   assert.deepEqual(await find('comment ~ "ship"'), ['Deploy pipeline'])
 })
+
+test('[0310.R1][0310.R2][0310.R3] project templates: Basic software and the business templates bring their workflow, work types and a board; every workspace has their schemes', { skip }, async () => {
+  const expect: Record<string, [string, string[], string[]]> = {
+    basic:   ['Basic software development', ['To do', 'In progress', 'In review', 'Done'], ['epic', 'task', 'bug', 't-improvement', 't-newfeature']],
+    task:    ['Task management', ['To do', 'Done'], ['task']],
+    project: ['Project management', ['To do', 'In progress', 'Done'], ['task']],
+    process: ['Process management', ['Open', 'In progress', 'Under review', 'Approved', 'Done'], ['task']],
+  }
+  for (const [template, [scheme, statuses, types]] of Object.entries(expect)) {
+    const key = `TP${template.slice(0, 4).toUpperCase()}`
+    const made = await call('POST', '/api/v1/projects', { name: `Template ${template}`, key, template })
+    assert.equal(made.status, 201, JSON.stringify(made.body))
+    const p = made.body
+    assert.equal(p.template, template)
+    assert.deepEqual(p.statuses.map((s: any) => s.name), statuses, template)
+    assert.deepEqual(p.types.map((t: any) => t.key), types, template)
+    assert.equal(p.boards.map((b: any) => b.type).join(), 'kanban', template)                       // R2: a board, never sprints
+    const schemes = (await call('GET', '/api/v1/workflow-schemes')).body
+    assert.equal(schemes.find((s: any) => s.id === p.workflowSchemeId)?.name, scheme, template)
+    // an item of the template's types, in its first status
+    const item = (await call('POST', `/api/v1/projects/${key}/issues`, { title: 'First', type: types.at(-1) })).body
+    assert.equal(p.statuses.find((s: any) => s.id === item.statusId)?.name, statuses[0])
+  }
+  assert.equal((await call('POST', '/api/v1/projects', { name: 'Nope', key: 'TPNO', template: 'service' })).status, 400)
+  // R3: a new workspace gets the schemes too
+  const { db } = await import('../src/db.ts')
+  const [ws] = await db.query<{ id: string }>(`insert into workspaces (name) values ('Templates test') returning id`)
+  const names = (await db.query<{ name: string }>('select name from workflow_schemes where workspace_id = $1 order by name', [ws!.id])).map(r => r.name)
+  assert.deepEqual(names, ['Basic software development', 'Kanban', 'Process management', 'Project management', 'Scrum', 'Task management'])
+  await db.query('delete from workspaces where id = $1', [ws!.id])
+})

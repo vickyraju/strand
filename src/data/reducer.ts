@@ -10,7 +10,8 @@ export type { FieldKind, FieldValue }
 
 // ── Types ──────────────────────────────────────────────────
 
-export type Template  = 'kanban' | 'scrum'
+export type { Template } from '../../server/src/shared/templates.ts'
+import type { Template } from '../../server/src/shared/templates.ts'
 export interface Component { id: string; name: string; description: string; leadId?: string; defaultAssignee: 'none' | 'component_lead' | 'project_lead' }
 
 /** Jira's component default assignee: new work in a component, with nobody chosen, goes to its lead or the project's. */

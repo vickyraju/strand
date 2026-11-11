@@ -1,6 +1,7 @@
 // Create board (Jira's "Create board"): a name, Scrum or Kanban (fixed once made), and which work items it shows: this
 // project's, or whatever a filter (JQL, any projects) finds, with a count of matches while it is written.
 import { useState } from 'react'
+import { TEMPLATES } from '../../../server/src/shared/templates.ts'
 import { Columns2, ListChecks } from 'lucide-react'
 import type { Board, Project } from '../../data/store'
 import { api, errorMessage } from '../../api/client'
@@ -15,7 +16,7 @@ const TYPES = [
 
 export default function CreateBoard({ project, onClose, onCreated }: { project: Project; onClose: () => void; onCreated: (b: Board) => void }) {
   const [name, setName] = useState('')
-  const [type, setType] = useState<Board['type']>(project.template)
+  const [type, setType] = useState<Board['type']>(TEMPLATES[project.template].board)
   const [source, setSource] = useState<'project' | 'filter'>('project')
   const [jql, setJql] = useState(`project = ${project.key}`)
   const [busy, setBusy] = useState(false)

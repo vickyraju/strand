@@ -1,5 +1,6 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
+import { TEMPLATES, type Template } from '../shared/templates.ts'
 import { randomUUID } from 'node:crypto'
 import { tx, type Db } from '../db.ts'
 import { requireAdmin } from '../auth.ts'
@@ -45,7 +46,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
           id: pid, workspace_id: me.workspaceId, key: p.key, name: p.name, description: p.description ?? '', color: p.color,
           template: p.template, lead_id: me.id, next_number: p.nextNumber ?? 1, board_prefs: JSON.stringify(p.boardPrefs ?? {}),
           layout: JSON.stringify(p.layout ?? {}), sample: !!p.sample, created_at: ms(p.createdAt) ?? new Date().toISOString(),
-          workflow_scheme_id: (await d.query<{ id: string }>('select id from workflow_schemes where workspace_id = $1 and lower(name) = $2', [me.workspaceId, p.template === 'scrum' ? 'scrum' : 'kanban']))[0]!.id,
+          workflow_scheme_id: (await d.query<{ id: string }>('select id from workflow_schemes where workspace_id = $1 and lower(name) = $2', [me.workspaceId, (TEMPLATES[p.template as Template] ?? TEMPLATES.kanban).scheme.toLowerCase()]))[0]!.id,
         })
         await ins('project_members', { project_id: pid, user_id: me.id, role: 'admin', added_by: me.id })   // the importer administers what they imported
         for (const [i, st] of (p.statuses ?? []).entries())
@@ -71,7 +72,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
           await ins('rules', { id: nid(r.id), project_id: pid, name: r.name, enabled: r.enabled, trigger: JSON.stringify(trigger), actions: JSON.stringify(actions), runs: r.runs ?? 0 })
         }
         // a board for it (columns follow once its workflow scheme applies, below), holding its sprints
-        const boardId = await firstBoard(d, { id: pid, workspaceId: me.workspaceId, key: p.key, template: p.template === 'scrum' ? 'scrum' : 'kanban' }, me.id)
+        const boardId = await firstBoard(d, { id: pid, workspaceId: me.workspaceId, key: p.key, template: (TEMPLATES[p.template as Template] ?? TEMPLATES.kanban).board }, me.id)
         boardOf.set(pid, boardId)
         for (const sp of (s.sprints ?? []).filter((x: any) => x.projectId === p.id))
           await ins('sprints', {

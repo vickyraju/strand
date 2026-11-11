@@ -3,6 +3,7 @@
 // Both deleting and restoring run as background jobs (jobs.ts): they can take a while and must survive restarts.
 // ponytail: the whole project is held in memory while it is written; stream it table by table if projects get very large.
 import { createHash } from 'node:crypto'
+import { TEMPLATES, type Template } from './shared/templates.ts'
 import { CopyObjectCommand, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3'
 import { db, pool, wrap, type Db } from './db.ts'
 import { HttpError } from './auth.ts'
@@ -189,7 +190,7 @@ async function restoreProject(p: { backupId: string; actorId: string | null; act
         if (table === 'projects' && r.notification_scheme_id && !(await c.query('select 1 from notification_schemes where id = $1 and workspace_id = $2', [r.notification_scheme_id, b.workspace_id])).rows.length)
           r.notification_scheme_id = (await c.query('select id from notification_schemes where workspace_id = $1 and is_default', [b.workspace_id])).rows[0]?.id ?? null
         if (table === 'projects' && !schemes.has(String(r.workflow_scheme_id)))
-          r.workflow_scheme_id = (await c.query('select id from workflow_schemes where workspace_id = $1 order by (lower(name) = $2) desc, id limit 1', [b.workspace_id, r.template])).rows[0]?.id
+          r.workflow_scheme_id = (await c.query('select id from workflow_schemes where workspace_id = $1 order by (lower(name) = $2) desc, id limit 1', [b.workspace_id, (TEMPLATES[r.template as Template] ?? TEMPLATES.kanban).scheme.toLowerCase()])).rows[0]?.id
         if (table === 'statuses' && !globals.has(String(r.global_status_id))) r.global_status_id = null
         if (table === 'transitions') continue                          // the scheme applied below makes them
         if (table === 'issues' || table === 'test_folders') r.parent_id = null   // set below, once every row exists
