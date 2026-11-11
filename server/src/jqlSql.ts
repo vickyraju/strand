@@ -107,7 +107,8 @@ async function prepareTestFns(d: Db, me: Me, n: Node | null): Promise<Map<string
     if (v.name === 'updatedby' || v.name === 'componentsleadbyuser' || v.name === 'projectsleadbyuser') {   // a person (you when left out)
       if (v.name === 'updatedby' ? !args.length || args.length > 3 : args.length > 1) throw new HttpError(400, `JQL: ${v.name === 'updatedby' ? 'updatedBy(person[, from[, to]])' : `${v.name}([person])`} takes ${v.name === 'updatedby' ? 'a person and up to two dates' : 'at most one person'}`, { jql: 'Wrong arguments' })
       if (!args.length) { out.set(key, [me.id]); continue }
-      const [u] = await d.query<{ id: string }>('select id from users where lower(email) = lower($1) or lower(name) = lower($1) or id::text = $1 limit 1', [args[0]])
+      const [u] = await d.query<{ id: string }>(`select u.id from users u join memberships m on m.user_id = u.id and m.workspace_id = $2
+        where lower(u.email) = lower($1) or lower(u.name) = lower($1) or u.id::text = $1 limit 1`, [args[0], me.workspaceId])   // people of this workspace only
       if (!u) throw new HttpError(400, `JQL: there is no person “${args[0]}”`, { jql: `Unknown person ${args[0]}` })
       out.set(key, [u.id]); continue
     }
