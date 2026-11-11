@@ -2,7 +2,8 @@
 //   project = PAY AND (status = "In progress" OR priority in (high, urgent)) AND assignee = currentUser() ORDER BY created DESC
 // Clauses: field op value. Ops: = != in, not in, ~ !~ (text contains), > >= < <= (numbers and dates), is empty, is not empty.
 // Values: words, "quoted text", numbers, dates (2026-10-01), relative dates (-7d, 2w, 1h), and functions: currentUser(),
-// now(), startOfDay(), endOfDay(), startOfWeek(), openSprints(), closedSprints(), membersOf("group"), and Xray's test functions:
+// now(), currentLogin(), lastLogin(), startOf/endOf Day, Week, Month, Year (with Jira's increment, startOfMonth(-1)), open, closed and
+// future sprints, released and unreleased versions, linkedIssues(), watchedIssues(), issueHistory(), updatedBy(), membersOf("group"), and Xray's test functions:
 // issue in requirementTests("PAY-1"), testRequirements(…), testSetTests(…), testPlanTests("PAY-9", "FAIL"), testExecutionTests(…).
 // History (spec 0602): status WAS "In Progress", WAS IN (…), WAS NOT, WAS NOT IN, assignee CHANGED, each followed by
 // AFTER d, BEFORE d, ON d, DURING (d1, d2), BY person or BY (p1, p2); CHANGED also takes FROM v and TO v.
@@ -37,7 +38,7 @@ export const FIELDS: Record<string, string> = {
   due: 'due', duedate: 'due', start: 'start', startdate: 'start',
   storypoints: 'estimate', 'story points': 'estimate', estimate: 'estimate', originalestimate: 'timeEstimate', remainingestimate: 'timeRemaining',
   // Jira's development fields (spec 0707); builds, deployments and reviews come from tools Strand doesn't connect yet
-  votes: 'votes',
+  votes: 'votes', voter: 'voter', voters: 'voter', watcher: 'watcher', watchers: 'watchers',
   'development[commits].all': 'devCommits', 'development[branches].all': 'devBranches', 'development[pullrequests].all': 'devPrs',
   'development[pullrequests].open': 'devPrsOpen', 'development[pullrequests].merged': 'devPrsMerged', 'development[pullrequests].declined': 'devPrsDeclined',
   'development[pullrequests].status': 'devPrStatus',
@@ -241,3 +242,33 @@ export function filterProjects(jql: string): string[] | null {
   const cover = walk(parseJql(jql).where)
   return cover && [...cover]
 }
+
+const PERIODS = { day: 'd', week: 'w', month: 'M', year: 'y' } as const
+/** Jira's startOfDay(), endOfMonth("-1"), startOfWeek("+2w")… (spec 0603 R1): the start or end of this day, week (from Monday),
+ *  month or year, moved by the increment `(+/-)nn(y|M|w|d|h|m)` (no unit: the function's own period). Null: not one of them. */
+export function periodBound(name: string, inc: string | undefined, now = new Date()): Date | null {
+  const m = /^(start|end)of(day|week|month|year)$/.exec(name.toLowerCase())
+  if (!m) return null
+  const period = m[2] as keyof typeof PERIODS
+  const d = new Date(now); d.setHours(0, 0, 0, 0)
+  if (period === 'week') d.setDate(d.getDate() - ((d.getDay() + 6) % 7))
+  if (period === 'month' || period === 'year') d.setDate(1)
+  if (period === 'year') d.setMonth(0)
+  const add = (n: number, unit: string) => {
+    if (unit === 'y') d.setFullYear(d.getFullYear() + n)
+    else if (unit === 'M') d.setMonth(d.getMonth() + n)
+    else if (unit === 'w') d.setDate(d.getDate() + 7 * n)
+    else if (unit === 'd') d.setDate(d.getDate() + n)
+    else if (unit === 'h') d.setTime(d.getTime() + n * 3_600_000)
+    else d.setTime(d.getTime() + n * 60_000)
+  }
+  if (m[1] === 'end') add(1, PERIODS[period])                      // the next period's start, less a millisecond
+  if (inc != null && inc.trim() !== '') {
+    const i = /^([+-]?)(\d+)([yMwdhm]?)$/.exec(inc.trim())
+    if (!i) throw new JqlError(`“${inc}” isn’t an increment: use one like -1, +2w or -3d`, 0)
+    add((i[1] === '-' ? -1 : 1) * Number(i[2]), i[3] || PERIODS[period])
+  }
+  if (m[1] === 'end') d.setTime(d.getTime() - 1)
+  return d
+}
+

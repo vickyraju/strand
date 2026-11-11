@@ -1,7 +1,8 @@
 // JQL (shared/jql.ts) to SQL over `issues i join projects p join statuses st`. Every value is a query parameter.
 import type { Db } from './db.ts'
 import { HttpError, type Me } from './auth.ts'
-import { parseJql, relative, JqlError, type Clause, type Node, type Query, type Value } from './shared/jql.ts'
+import { parseJql, relative, periodBound, JqlError, type Clause, type Node, type Query, type Value } from './shared/jql.ts'
+import { PERMISSIONS, rolesWith, type Permission, type Role } from './shared/permissions.ts'
 
 const CATEGORY: Record<string, string> = { 'to do': 'todo', todo: 'todo', 'in progress': 'in-progress', 'in-progress': 'in-progress', done: 'done' }
 /** Higher for higher priorities: the list's order (Administration › Priorities, spec 0305 R4), first is highest. */
@@ -16,10 +17,12 @@ const NUMBERS: Record<string, string> = {
   devPrsOpen: dev(`de.kind = 'pull_request' and de.state = 'open'`), devPrsMerged: dev(`de.kind = 'pull_request' and de.state = 'merged'`),
   devPrsDeclined: dev(`de.kind = 'pull_request' and de.state = 'closed'`), devNone: '0',
   votes: '(select count(*) from issue_votes vv where vv.issue_id = i.id)',   // Jira's votes (spec 0506)
+  watchers: '(select count(*) from issue_watchers ww where ww.issue_id = i.id)',
 }
 const EMPTY: Record<string, string> = {
   flagged: 'not i.flagged', epicStatus: 'i.epic_status is null', assignee: 'i.assignee_id is null', reporter: 'i.reporter_id is null', labels: 'cardinality(i.labels) = 0', component: 'cardinality(i.component_ids) = 0',
   fixVersion: 'cardinality(i.fix_release_ids) = 0', affectedVersion: 'cardinality(i.affects_release_ids) = 0', sprint: 'i.sprint_id is null', parent: 'i.parent_id is null',
+  voter: 'not exists (select 1 from issue_votes vv where vv.issue_id = i.id)', watcher: 'not exists (select 1 from issue_watchers ww where ww.issue_id = i.id)',
   resolution: 'i.resolution is null', category: 'p.category_id is null', description: `coalesce(i.description, '') = ''`,
   due: 'i.due_date is null', start: 'i.start_date is null', resolved: 'i.resolved_at is null',
   estimate: 'i.estimate is null', timeEstimate: 'i.time_estimate is null', timeRemaining: 'i.time_remaining is null',
@@ -64,10 +67,12 @@ async function checkFieldNames(d: Db, me: Me, n: Node | null) {
 // testPlanTests("PLAN-1"[, status…]) (each test's status in the plan, by Xray's rules), testExecutionTests("EXEC-1"[, status…]).
 // The items named must be ones the searcher can see (a hidden one is "not found", like a missing one). ──
 const TEST_FNS = new Set(['requirementtests', 'testrequirements', 'testsettests', 'testplantests', 'testexecutiontests'])
+/** Worked out before the query too (spec 0603): one item's links, and the people some functions name. */
+const PREPARED = new Set([...TEST_FNS, 'linkedissues', 'updatedby', 'componentsleadbyuser', 'projectsleadbyuser'])
 const fnKey = (v: Extract<Value, { kind: 'fn' }>) => `${v.name}(${(v.args ?? (v.arg ? [v.arg] : [])).join('\u0000')})`
 async function prepareTestFns(d: Db, me: Me, n: Node | null): Promise<Map<string, string[]>> {
   const fns: Extract<Value, { kind: 'fn' }>[] = []
-  const walk = (x: Node) => { if (x.kind === 'clause') { for (const v of x.values) if (v.kind === 'fn' && TEST_FNS.has(v.name)) fns.push(v) } else if (x.kind === 'not') walk(x.item); else x.items.forEach(walk) }
+  const walk = (x: Node) => { if (x.kind === 'clause') { for (const v of x.values) if (v.kind === 'fn' && PREPARED.has(v.name)) fns.push(v) } else if (x.kind === 'not') walk(x.item); else x.items.forEach(walk) }
   if (n) walk(n)
   const out = new Map<string, string[]>()
   if (!fns.length) return out
@@ -99,6 +104,28 @@ async function prepareTestFns(d: Db, me: Me, n: Node | null): Promise<Map<string
     if (out.has(key)) continue
     const args = v.args ?? (v.arg ? [v.arg] : [])
     let ids: string[]
+    if (v.name === 'updatedby' || v.name === 'componentsleadbyuser' || v.name === 'projectsleadbyuser') {   // a person (you when left out)
+      if (v.name === 'updatedby' ? !args.length || args.length > 3 : args.length > 1) throw new HttpError(400, `JQL: ${v.name === 'updatedby' ? 'updatedBy(person[, from[, to]])' : `${v.name}([person])`} takes ${v.name === 'updatedby' ? 'a person and up to two dates' : 'at most one person'}`, { jql: 'Wrong arguments' })
+      if (!args.length) { out.set(key, [me.id]); continue }
+      const [u] = await d.query<{ id: string }>('select id from users where lower(email) = lower($1) or lower(name) = lower($1) or id::text = $1 limit 1', [args[0]])
+      if (!u) throw new HttpError(400, `JQL: there is no person “${args[0]}”`, { jql: `Unknown person ${args[0]}` })
+      out.set(key, [u.id]); continue
+    }
+    if (v.name === 'linkedissues') {                 // linkedIssues(KEY[, link type]): by the type's name, or one of its directions
+      if (!args.length || args.length > 2) throw new HttpError(400, 'JQL: linkedIssues(KEY[, link type])', { jql: 'Wrong arguments' })
+      const [it] = await items(args.slice(0, 1))
+      let outTypes: string[] | null = null, inTypes: string[] | null = null   // null: any type
+      if (args[1]) {
+        const lt = await d.query<{ id: string; name: string; outward: string; inward: string }>('select id, name, outward, inward from link_types where workspace_id = $1', [me.workspaceId])
+        const t = args[1].toLowerCase(), named = lt.filter(l => l.name.toLowerCase() === t || l.id === t).map(l => l.id)
+        outTypes = [...named, ...lt.filter(l => l.outward.toLowerCase() === t).map(l => l.id)]
+        inTypes = [...named, ...lt.filter(l => l.inward.toLowerCase() === t).map(l => l.id)]
+        if (!outTypes.length && !inTypes.length) throw new HttpError(400, `JQL: there is no link type “${args[1]}”`, { jql: `Unknown link type ${args[1]}` })
+      }
+      ids = (await d.query<{ id: string }>(`select target_id as id from issue_links where issue_id = $1 and ($2::text[] is null or type = any($2::text[]))
+        union select issue_id from issue_links where target_id = $1 and ($3::text[] is null or type = any($3::text[]))`, [it!.id, outTypes, inTypes])).map(r => r.id)
+      out.set(key, ids); continue
+    }
     if (v.name === 'requirementtests' || v.name === 'testrequirements') {
       const its = await items(args)
       const [from, to] = v.name === 'requirementtests' ? ['target_id', 'issue_id'] : ['issue_id', 'target_id']
@@ -144,11 +171,12 @@ export async function jqlToSql(d: Db, me: Me, q: Query, args: unknown[]): Promis
   const when = (v: Value): string => {
     if (v.kind === 'fn') {
       const now = new Date()
-      const day = new Date(now); day.setHours(0, 0, 0, 0)
       if (v.name === 'now') return put(now.toISOString())
-      if (v.name === 'startofday') return put(day.toISOString())
-      if (v.name === 'endofday') return put(new Date(day.getTime() + 86_400_000 - 1).toISOString())
-      if (v.name === 'startofweek') { const w = new Date(day); w.setDate(w.getDate() - ((w.getDay() + 6) % 7)); return put(w.toISOString()) }
+      // when you signed in this time and the time before (spec 0603 R1)
+      if (v.name === 'currentlogin') return `(select coalesce(last_sign_in_at, now()) from users where id = ${put(me.id)})`
+      if (v.name === 'lastlogin') return `(select previous_sign_in_at from users where id = ${put(me.id)})`
+      try { const b = periodBound(v.name, v.arg, now); if (b) return put(b.toISOString()) }
+      catch (e) { if (e instanceof JqlError) throw new HttpError(400, `JQL: ${e.message}`, { jql: e.message }); throw e }
       throw new HttpError(400, `JQL: ${v.name}() isn’t a date`, { jql: `${v.name}() is not a date` })
     }
     const rel = relative(v.text)
@@ -174,6 +202,54 @@ export async function jqlToSql(d: Db, me: Me, q: Query, args: unknown[]): Promis
       return `i.id in (select issue_id from remote_links where global_id = any(${put(ids)}::text[]))`
     }
     if (c.field === 'key' && v.kind === 'fn' && v.name === 'votedissues') return `i.id in (select issue_id from issue_votes where user_id = ${put(me.id)})`   // spec 0506
+    if (v.kind === 'fn') {                                                         // spec 0603
+      const args = v.args ?? (v.arg ? [v.arg] : [])
+      const inProject = (col: string) => args[0] ? ` and ${col} in (select pj.id from projects pj where pj.workspace_id = i.workspace_id and (pj.key = upper(${put(args[0])}) or lower(pj.name) = lower(${put(args[0])})))` : ''
+      const version = c.field === 'fixVersion' ? 'i.fix_release_ids' : c.field === 'affectedVersion' ? 'i.affects_release_ids' : null
+      if (c.field === 'key' && v.name === 'issuehistory') return `i.id in (select issue_id from issue_views where user_id = ${put(me.id)} order by viewed_at desc limit 60)`
+      if (c.field === 'key' && v.name === 'watchedissues') return `i.id in (select issue_id from issue_watchers where user_id = ${put(me.id)})`
+      if (c.field === 'key' && v.name === 'issueswithremotelinksbyglobalid') {
+        if (!args.length || args.length > 100) throw new HttpError(400, 'JQL: issuesWithRemoteLinksByGlobalId takes 1 to 100 global ids', { jql: '1 to 100 global ids' })
+        return `i.id in (select issue_id from remote_links where global_id = any(${put(args)}::text[]))`
+      }
+      if (c.field === 'key' && v.name === 'linkedissues') return `i.id = any(${put(testFnIds.get(fnKey(v)))}::uuid[])`
+      if (c.field === 'key' && v.name === 'updatedby') {
+        const u = put(testFnIds.get(fnKey(v))![0]), day = (x: string) => when({ kind: 'text', text: x.replace(/\//g, '-') })
+        const from = args[1] ? `(${day(args[1])})::timestamptz::date` : null, to = args[2] ? `(${day(args[2])})::timestamptz::date + 1` : null   // whole days, as Jira's
+        const within = (col: string) => `${from ? ` and ${col} >= ${from}` : ''}${to ? ` and ${col} < ${to}` : ''}`
+        return `(i.reporter_id = ${u}::uuid${within('i.created_at')} or exists (select 1 from activity a where a.issue_id = i.id and a.actor_id = ${u}::uuid${within('a.created_at')})
+          or exists (select 1 from comments cm where cm.issue_id = i.id and cm.author_id = ${u}::uuid${within('coalesce(cm.edited_at, cm.created_at)')}))`
+      }
+      if (version && (v.name === 'releasedversions' || v.name === 'unreleasedversions'))
+        return `exists (select 1 from releases r where r.id = any(${version}) and ${v.name === 'releasedversions' ? '' : 'not '}r.released${inProject('r.project_id')})`
+      if (version && (v.name === 'earliestunreleasedversion' || v.name === 'latestreleasedversion')) {
+        if (args.length !== 1) throw new HttpError(400, `JQL: ${v.name === 'latestreleasedversion' ? 'latestReleasedVersion' : 'earliestUnreleasedVersion'}(project)`, { jql: 'Name a project' })
+        // in the order the Releases page lists them: by release date, then name
+        const pick = v.name === 'latestreleasedversion' ? 'r.released order by r.release_date desc nulls last, lower(r.name) desc' : 'not r.released order by r.release_date nulls last, lower(r.name)'
+        return `(select r.id from releases r where true${inProject('r.project_id')} and ${pick} limit 1) = any(${version})`
+      }
+      if (c.field === 'component' && v.name === 'componentsleadbyuser')
+        return `exists (select 1 from components cl where cl.id = any(i.component_ids) and cl.lead_id = ${put(testFnIds.get(fnKey(v))![0])}::uuid)`
+      if (c.field === 'project' && v.name === 'projectsleadbyuser') return `p.lead_id = ${put(testFnIds.get(fnKey(v))![0])}::uuid`
+      if (c.field === 'project' && (v.name === 'projectswhereuserhaspermission' || v.name === 'projectswhereuserhasrole')) {
+        if (args.length !== 1) throw new HttpError(400, `JQL: ${v.name === 'projectswhereuserhasrole' ? 'projectsWhereUserHasRole(role)' : 'projectsWhereUserHasPermission(permission)'}`, { jql: 'Wrong arguments' })
+        const a = args[0]!.toLowerCase()
+        let roles: Role[]
+        if (v.name === 'projectswhereuserhasrole') {
+          const r = ({ admin: 'admin', admins: 'admin', administrators: 'admin', member: 'member', members: 'member', developers: 'member', users: 'member', viewer: 'viewer', viewers: 'viewer' } as Record<string, Role>)[a]
+          if (!r) throw new HttpError(400, `JQL: there is no project role “${args[0]}” (Admin, Member or Viewer)`, { jql: `Unknown role ${args[0]}` })
+          roles = (['viewer', 'member', 'admin'] as Role[]).slice((['viewer', 'member', 'admin'] as Role[]).indexOf(r))   // a role includes the ones above it
+        } else {
+          const perm = (Object.keys(PERMISSIONS) as Permission[]).find(k => k.toLowerCase() === a || PERMISSIONS[k].name.toLowerCase() === a || PERMISSIONS[k].name.toUpperCase().replace(/ /g, '_') === args[0])
+          if (!perm) throw new HttpError(400, `JQL: there is no permission “${args[0]}”`, { jql: `Unknown permission ${args[0]}` })
+          roles = rolesWith(perm)
+        }
+        return me.admin && roles.length ? 'true' : `p.id in (select pa.project_id from project_access pa where pa.user_id = ${put(me.id)} and pa.role = any(${put(roles)}::text[]))`
+      }
+      if (c.field === 'type' && (v.name === 'standardissuetypes' || v.name === 'subtaskissuetypes'))   // Strand's types serve both: a sub-item is one whose parent isn't an epic
+        return `${v.name === 'standardissuetypes' ? 'not ' : ''}exists (select 1 from issues sp where sp.id = i.parent_id and sp.type <> 'epic')`
+      if (c.field === 'sprint' && v.name === 'futuresprints') return `i.sprint_id in (select id from sprints where state = 'planned')`
+    }
     switch (c.field) {
       // a project's earlier keys still find it (spec 0703 R2)
       case 'project': { const t = put(text(v, 'project')); return `(p.key = upper(${t}) or lower(p.name) = lower(${t}) or p.id in (select h.project_id from project_key_history h where h.workspace_id = p.workspace_id and h.key = upper(${t})))` }
@@ -190,6 +266,8 @@ export async function jqlToSql(d: Db, me: Me, q: Query, args: unknown[]): Promis
       }
       case 'priority': { const t = put(text(v, 'priority')); return `i.priority in (select pr.key from priorities pr where pr.workspace_id = i.workspace_id and (lower(pr.name) = lower(${t}) or pr.key = lower(${t})))` }
       case 'assignee': return person('i.assignee_id', v)
+      case 'voter': return `exists (select 1 from issue_votes vv where vv.issue_id = i.id and ${person('vv.user_id', v)})`
+      case 'watcher': return `exists (select 1 from issue_watchers ww where ww.issue_id = i.id and ${person('ww.user_id', v)})`
       case 'reporter': return person('i.reporter_id', v)
       case 'labels': return `${put(text(v, 'labels'))} = any(i.labels)`
       case 'flagged': {                                                // Jira's Flagged field has one value: Impediment (spec 0408)
