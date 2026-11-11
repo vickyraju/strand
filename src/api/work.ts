@@ -35,15 +35,39 @@ function searchParams(f: ViewFilters, limit: number, cursor?: string | null): UR
 }
 
 /** Downloads the search as a CSV file (every match, up to the server's limit), named by the server. */
-export async function exportSearchCsv(f: ViewFilters) {
-  const q = searchParams(f, 1); q.delete('limit')
-  const res = await fetch(...buildRequest(API_URL!, await accessToken(), 'GET', withPrefix(`/api/search/export.csv?${q}`)))
+/** A file from the API, signed in, as the browser's download. */
+async function fetchExport(path: string) {
+  const res = await fetch(...buildRequest(API_URL!, await accessToken(), 'GET', withPrefix(path)))
   if (!res.ok) throw new ApiError(res.status, (await res.json().catch(() => null))?.error ?? `Export failed (${res.status})`)
-  const name = /filename="([^"]+)"/.exec(res.headers.get('content-disposition') ?? '')?.[1] ?? 'strand-export.csv'
+  return res
+}
+export async function download(path: string, fallback: string) {
+  const res = await fetchExport(path)
+  const name = /filename="([^"]+)"/.exec(res.headers.get('content-disposition') ?? '')?.[1] ?? fallback
   const url = URL.createObjectURL(await res.blob())
   const a = Object.assign(document.createElement('a'), { href: url, download: name })
   document.body.append(a); a.click(); a.remove()
   setTimeout(() => URL.revokeObjectURL(url), 10_000)
+}
+/** A printable page from the API in a new tab, ready to print (spec 0608 R3). The tab opens first, so it isn't blocked. */
+export async function openPrintable(path: string) {
+  const w = window.open('', '_blank')
+  try {
+    const html = await (await fetchExport(path)).text()
+    if (!w) return
+    w.location.href = URL.createObjectURL(new Blob([html], { type: 'text/html' }))
+    w.addEventListener('load', () => w.print(), { once: true })
+  } catch (e) { w?.close(); throw e }
+}
+const exportQuery = (f: ViewFilters) => { const q = searchParams(f, 1); q.delete('limit'); return q }
+export const exportSearchCsv = (f: ViewFilters) => download(`/api/search/export.csv?${exportQuery(f)}`, 'strand-export.csv')
+/** Jira's search views (spec 0608): XML, RSS (with comments), Word, Printable, Full content. */
+export function exportSearch(f: ViewFilters, kind: 'xml' | 'rss' | 'rss-comments' | 'doc' | 'printable' | 'full') {
+  const q = exportQuery(f)
+  if (kind === 'rss-comments') q.set('comments', '1')
+  if (kind === 'full') q.set('full', '1')
+  if (kind === 'printable' || kind === 'full') return openPrintable(`/api/search/export.html?${q}`)
+  return download(`/api/search/export.${kind === 'rss-comments' ? 'rss' : kind}?${q}`, `strand-search.${kind === 'doc' ? 'doc' : 'xml'}`)
 }
 
 /** Cross-project search: `GET /api/search` for the view's filters, with "load more" by cursor. */

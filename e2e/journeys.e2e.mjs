@@ -2132,3 +2132,20 @@ test('[0607.R1][0607.R2] an admin sets up incoming mail; an email becomes a work
   assert.deepEqual(o.problems, [])
 })
 
+test('[0608.R1][0608.R3] a search is exported as XML; an item\'s Printable opens in a new tab', { skip, timeout: 120_000 }, async () => {
+  await owner('POST', '/projects', { name: 'Export journey', key: 'XPJ', template: 'kanban' })
+  const item = (await owner('POST', '/projects/XPJ/issues', { title: 'Print me' })).body
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url(`/search?q=${encodeURIComponent('Print me')}`))
+  await o.waitForSelector(`text=${item.key}`)
+  await o.click('button[title="Export"]')
+  const [file] = await Promise.all([o.waitForEvent('download'), o.click('[role="menu"] button:has-text("XML")')])
+  const xml = await (await import('node:fs')).promises.readFile(await file.path(), 'utf8')
+  assert.match(xml, new RegExp(`<key id="[^"]+">${item.key}</key>`))
+  await o.goto(url(`/i/${item.key}`))
+  await o.click('[aria-label="More actions"]')
+  const [tab] = await Promise.all([o.context().waitForEvent('page'), o.click('[role="menu"] button:has-text("Printable")')])
+  await tab.waitForSelector(`h2:has-text("${item.key} Print me")`)
+  assert.deepEqual(o.problems, [])
+})
+

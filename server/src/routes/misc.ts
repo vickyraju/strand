@@ -25,13 +25,13 @@ const viewFilters = z.object({
 }).passthrough()
 
 /** Search filters, shared by the result pages and the CSV export so an export is exactly what the search shows. */
-const searchFilters = {
+export const searchFilters = {
   q: z.string().default('').describe('Free text or an issue key'), project: uuid.optional(), assignee: z.string().optional().describe('User id, "me", or "none" for unassigned work'),
   type: z.string().optional(), priority: z.string().optional(), label: z.string().optional(),
   resolution: z.enum(['open', 'done', 'all']).default('open'),
   jql: z.string().max(5000).optional().describe('JQL, as in Jira: replaces the filters above, e.g. project = PAY AND status != Done ORDER BY priority DESC'),
 }
-type SearchFilters = { q: string; project?: string; assignee?: string; type?: string; priority?: string; label?: string; resolution: 'open' | 'done' | 'all'; jql?: string }
+export type SearchFilters = { q: string; project?: string; assignee?: string; type?: string; priority?: string; label?: string; resolution: 'open' | 'done' | 'all'; jql?: string }
 
 /** The SQL conditions for a search, limited to projects I can see (the parameters go into `args`), and its JQL ORDER BY.
  *  With JQL, the query replaces the simple filters, as switching to JQL does in Jira. */

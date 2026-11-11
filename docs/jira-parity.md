@@ -141,7 +141,7 @@ Checked against Atlassian's Data Center documentation on 5 November 2026 (Jira S
 | SR-04 | Saved filters and sharing | View and edit sharing; admins change the owner | Same (`misc.ts`) | match | match | 0203 | Sharing limited to your own groups and projects (PRM-06). |
 | SR-07 | Filter names and owner change | Unique per owner; a new owner must be able to see it and not already have one of that name ([shared filters](https://confluence.atlassian.com/adminjiraserver089/managing-shared-filters-1005347206.html)) | Unique per owner, ignoring case; the new owner must see it and not have one by that name | match | match | 0309 | |
 | SR-05 | Filter subscriptions | Scheduled email | Yourself or a group; Daily, Days per week, Days per month or Advanced (Jira's Quartz cron); each recipient gets what they may see; empty results only if asked; Run now; the next run shown | match | match | 0604 | An all-subscriptions admin page, only-when-changed, attachments, opting out and project roles are proposals |
-| SR-06 | Export | CSV, Excel, XML, Word, RSS, print | CSV, capped by a setting | partial | match | 0608 | |
+| SR-06 | Export | CSV, Excel, XML, Word, RSS, print | CSV; Printable, Full content, Jira's XML, RSS (with comments) and Word for a search; XML, Word and Printable for an item; capped by settings; restricted comments left out | match | match | 0608 | CSV (current fields) is out (fixed columns). Excel, pictures and a work log export are proposals |
 
 ## Notifications
 

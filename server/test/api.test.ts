@@ -3733,7 +3733,9 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     'POST /issues/{key}/worklogs': ['write', `/issues/${I}/worklogs`, { minutes: 5, date: '2026-10-01' }],
     'PATCH /worklogs/{id}': ['own', `/worklogs/${worklog}`, { note: 'x' }],
     'DELETE /worklogs/{id}': ['own', `/worklogs/${worklog}`],
-    'GET /search/export.csv': ['any', '/search/export.csv'], 'GET /search': ['any', '/search'], 'GET /labels': ['any', '/labels'],
+    'GET /search/export.csv': ['any', '/search/export.csv'], 'GET /search/export.{format}': ['any', '/search/export.xml'],   // 0608.R1
+    'GET /issues/{key}/export.{format}': ['read', `/issues/${I}/export.xml`],
+    'GET /search': ['any', '/search'], 'GET /labels': ['any', '/labels'],
     'GET /me/work': ['any', '/me/work'], 'GET /me/recent': ['any', '/me/recent'], 'GET /me/work/summary': ['any', '/me/work/summary'],
     'GET /me/projects/recent': ['any', '/me/projects/recent'], 'GET /me/viewed': ['any', '/me/viewed'],
     'GET /projects/{key}/summary': ['read', `/projects/${K}/summary`],
@@ -6294,6 +6296,59 @@ test('[0607.R3][0607.R4] mail: who is verified, and what a handler keeps of an e
   assert.equal(bodyFor('create_or_comment', { stripQuotes: true }, 'A\n>b'), 'A')
   assert.equal(bodyFor('comment_before_marker', { splitRegex: '/^--$/m' }, 'Top\n--\nsig'), 'Top')
   assert.equal(bodyFor('comment_before_marker', { splitRegex: '/[/' }, 'Broken regex keeps all'), 'Broken regex keeps all')
+})
+
+test('[0608.R1][0608.R2][0608.R3][0608.R4][0608.R5] print and XML export: Jira\'s XML, RSS, Printable, Full content and Word, as each person may read them', { skip }, async () => {
+  await call('POST', '/api/v1/projects', { name: 'Exports', key: 'XPT', template: 'kanban' })
+  await join('XPT', 'xp.mia@x.com')
+  const [, doing] = (await call('GET', '/api/v1/projects/XPT')).body.statuses
+  const a = (await call('POST', '/api/v1/projects/XPT/issues', { title: 'Export me & you', description: 'The <whole> story', labels: ['api'] })).body
+  const b = (await call('POST', '/api/v1/projects/XPT/issues', { title: 'Second' })).body
+  await call('PATCH', `/api/v1/issues/${a.key}`, { statusId: doing.id })
+  await call('POST', `/api/v1/issues/${a.key}/comments`, { body: 'Everyone sees this' })
+  await call('POST', `/api/v1/issues/${a.key}/comments`, { body: 'Admins only note', visibility: { kind: 'role', role: 'admin' } })
+  await call('POST', `/api/v1/issues/${a.key}/remote-links`, { url: 'https://docs.example.com/spec', title: 'The spec' })
+  const get = async (url: string, who = 'owner@x.com') => app.inject({ method: 'GET', url: `/api/v1${url}`, headers: await bearer(who) })
+  const jql = encodeURIComponent('project = XPT ORDER BY key')
+  // R2: Jira's XML: rss 0.92, an item per work item with Jira's elements; a restricted comment only for those who may read it
+  const xml = await get(`/search/export.xml?jql=${jql}`)
+  assert.equal(xml.statusCode, 200)
+  assert.match(String(xml.headers['content-type']), /application\/xml/)
+  assert.match(xml.body, /^<\?xml version="1.0" encoding="UTF-8"\?>\n<rss version="0.92">/)
+  assert.equal(xml.body.match(/<item>/g)?.length, 2)
+  assert.match(xml.body, new RegExp(`<key id="${a.id}">${a.key}</key>`))
+  assert.match(xml.body, /<summary>Export me &amp; you<\/summary>/)
+  assert.match(xml.body, /<description>The &lt;whole&gt; story<\/description>/)
+  assert.match(xml.body, new RegExp(`<status id="${doing.id}" description="">${doing.name}</status>`))
+  assert.match(xml.body, /<labels><label>api<\/label><\/labels>/)
+  assert.match(xml.body, /<created>\w{3}, \d{2} \w{3} \d{4} \d{2}:\d{2}:\d{2} \+0000<\/created>/)
+  assert.match(xml.body, /Admins only note/)
+  const mia = await get(`/search/export.xml?jql=${jql}`, 'xp.mia@x.com')
+  assert.ok(mia.body.includes('Everyone sees this') && !mia.body.includes('Admins only note'))
+  // RSS, with and without comments
+  const rss = await get(`/search/export.rss?jql=${jql}`), rssC = await get(`/search/export.rss?jql=${jql}&comments=1`)
+  assert.ok(rss.body.includes(`<guid>${a.key}</guid>`) && !rss.body.includes('Everyone sees this'))
+  assert.ok(rssC.body.includes('Everyone sees this'))
+  // R3: Printable lists; Full content has description, comments, web links and history
+  const printable = await get(`/search/export.html?jql=${jql}`)
+  assert.match(String(printable.headers['content-type']), /text\/html/)
+  assert.ok(printable.body.includes(a.key) && printable.body.includes(b.key) && !printable.body.includes('Everyone sees this'))
+  const full = await get(`/search/export.html?jql=${jql}&full=1`)
+  for (const t of ['The &lt;whole&gt; story', 'Everyone sees this', 'The spec', `To do → ${doing.name}`]) assert.ok(full.body.includes(t), t)
+  // R4: Word
+  const doc = await get(`/issues/${a.key}/export.doc`)
+  assert.match(String(doc.headers['content-type']), /application\/msword/)
+  assert.match(String(doc.headers['content-disposition']), new RegExp(`${a.key}.doc`))
+  assert.ok(doc.body.includes('urn:schemas-microsoft-com:office:word') && doc.body.includes('The spec'))
+  assert.equal((await get(`/issues/${a.key}/export.xml`)).body.match(/<item>/g)?.length, 1)
+  assert.equal((await get(`/issues/${a.key}/export.html`, 'outsider@x.com')).statusCode, 404)
+  // R1: the limit
+  await call('PUT', '/api/v1/admin/settings/searchAndBulk', { exportMaxRows: 20000, bulkMaxItems: 200, importMaxRows: 10000, viewsMaxItems: 1 })
+  assert.equal((await get(`/search/export.xml?jql=${jql}`)).statusCode, 400)
+  await call('PUT', '/api/v1/admin/settings/searchAndBulk', { exportMaxRows: 20000, bulkMaxItems: 200, importMaxRows: 10000, viewsMaxItems: 1000 })
+  // R5: audited
+  const actions = (await pool.query(`select action from audit_log where action like 'export.%' and action <> 'export.csv'`)).rows.map(r => r.action)
+  for (const x of ['export.xml', 'export.rss', 'export.printable', 'export.full-content', 'export.doc']) assert.ok(actions.includes(x), x)
 })
 
 test('[0705.R2] a webhook never reaches private addresses, whatever its name resolves to', { skip }, async () => {

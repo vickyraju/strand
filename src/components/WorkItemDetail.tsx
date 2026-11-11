@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { useFlagActions } from './FlagActions'
 import { usePresence } from '../api/presence'
-import { recordView } from '../api/work'
+import { recordView, download, openPrintable } from '../api/work'
 import {
   Maximize2, Minimize2, X, Link2, Trash2, Plus, Eye, EyeOff, ChevronUp, ChevronDown, MoreHorizontal, RefreshCw, CopyPlus, Lock,
-  Ban, Unlink, Pencil, UserCheck, Copy, Paperclip, FileText, Archive, Flag, ArrowRightLeft, ThumbsUp, CornerDownRight, CornerUpLeft } from 'lucide-react'
+  Ban, Unlink, Pencil, UserCheck, Copy, Paperclip, FileText, Archive, Flag, ArrowRightLeft, ThumbsUp, CornerDownRight, CornerUpLeft, Download, Printer } from 'lucide-react'
 import {
   useStore, userOf, projectOf, timeAgo, transitionsFrom, loopsFrom, moveContext, linkWords, DEFAULT_LINK_TYPES,
   type Issue, type IssuePatch,
@@ -236,6 +236,12 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
             ? [{ label: 'Convert to item', icon: <CornerUpLeft size={14} />, onClick: () => void convert(null) }] : []),
           // Jira DC's Archive (spec 0508): system administrators
           ...(apiEnabled && state.isAdmin === true && !issue.archivedAt && !archived ? [{ label: 'Archive', icon: <Archive size={14} />, onClick: () => void archiveItem(true) }] : []),
+          // Jira's Export (spec 0608): XML, Word, Printable
+          ...(apiEnabled ? [
+            { label: 'Export XML', icon: <Download size={14} />, divider: true, onClick: () => void download(`/api/issues/${encodeURIComponent(issueSync.serverKey(issue))}/export.xml`, `${issue.key}.xml`).catch(e => toast(errorMessage(e), { tone: 'warn' })) },
+            { label: 'Export Word', icon: <Download size={14} />, onClick: () => void download(`/api/issues/${encodeURIComponent(issueSync.serverKey(issue))}/export.doc`, `${issue.key}.doc`).catch(e => toast(errorMessage(e), { tone: 'warn' })) },
+            { label: 'Printable', icon: <Printer size={14} />, onClick: () => void openPrintable(`/api/issues/${encodeURIComponent(issueSync.serverKey(issue))}/export.html`).catch(e => toast(errorMessage(e), { tone: 'warn' })) },
+          ] : []),
           ...(can(project, 'deleteIssues') && !project?.archivedAt ? [{ label: 'Delete', icon: <Trash2 size={14} />, danger: true, divider: true, onClick: () => setConfirmDel(true) }] : []),
         ]} />
         <button className="icon-btn" onClick={() => mode === 'peek' ? openIssue(issue.id, { full: true }) : navigate(href({ name: 'project', key: project.key }, issue.key))}

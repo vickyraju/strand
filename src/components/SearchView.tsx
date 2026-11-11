@@ -13,7 +13,7 @@ import { Picker, Menu, Modal, Toggle, typeMeta, priorityLabel, typeOptions, prio
 import { ProjectIcon } from './ProjectView'
 import { api, apiEnabled } from '../api/client'
 import type { Row } from '../api/map'
-import { useSearch, searchProjects, searchLabels, exportSearchCsv } from '../api/work'
+import { useSearch, searchProjects, searchLabels, exportSearchCsv, exportSearch } from '../api/work'
 import { useUserSearch } from '../api/users'
 import { useRemoteList } from '../api/remoteList'
 import { useEnsureProjects, projectKeyOf } from '../api/useEnsureProjects'
@@ -91,13 +91,22 @@ export default function SearchView({ query, viewId }: { query: string; viewId?: 
           </>
         ) : <h1 className="page-title">Search</h1>}
         <div style={{ flex: 1 }} />
-        {apiEnabled && results.length > 0 && (
-          <button className="btn btn-secondary" disabled={exporting} onClick={() => {
+        {apiEnabled && results.length > 0 && (() => {
+          // Jira's Export menu (spec 0608): CSV, Printable, Full content, XML, RSS, RSS with comments, Word
+          const run = (what: string, go: () => Promise<unknown>) => {
             setExporting(true)
-            exportSearchCsv(f).then(() => toast('Exported to CSV'), e => toast(e instanceof Error ? e.message : 'Export failed', { tone: 'warn' }))
-              .finally(() => setExporting(false))
-          }}><Download size={15} />{exporting ? 'Exporting…' : 'Export CSV'}</button>
-        )}
+            go().then(() => toast(`Exported: ${what}`), e => toast(e instanceof Error ? e.message : 'Export failed', { tone: 'warn' })).finally(() => setExporting(false))
+          }
+          return <Menu title="Export" className="btn btn-secondary" trigger={<><Download size={15} />{exporting ? 'Exporting…' : 'Export'}</>} items={[
+            { label: 'CSV', onClick: () => run('CSV', () => exportSearchCsv(f)) },
+            { label: 'Printable', onClick: () => run('Printable', () => exportSearch(f, 'printable')) },
+            { label: 'Full content', onClick: () => run('Full content', () => exportSearch(f, 'full')) },
+            { label: 'XML', onClick: () => run('XML', () => exportSearch(f, 'xml')) },
+            { label: 'RSS', onClick: () => run('RSS', () => exportSearch(f, 'rss')) },
+            { label: 'RSS with comments', onClick: () => run('RSS with comments', () => exportSearch(f, 'rss-comments')) },
+            { label: 'Word', onClick: () => run('Word', () => exportSearch(f, 'doc')) },
+          ]} />
+        })()}
         {view && dirty && canEdit && (
           <>
             <button className="btn btn-ghost" onClick={() => setF(view.filters)}>Discard changes</button>
