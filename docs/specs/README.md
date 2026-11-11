@@ -81,6 +81,7 @@ The roadmap, in order. Bugs come first, then the permission model, then the data
 | [0507](0507-remote-links.md) | Remote links | 5 | Ported |
 | [0508](0508-archive-single-items.md) | Archive single items | 5 | Ported |
 | [0509](0509-convert-sub-items.md) | Convert to and from sub-items | 5 | Ported |
+| [0510](0510-bulk-transition-watch.md) | Bulk transition, watch and stop watching | 5 | Approved |
 | [0601](0601-field-change-history.md) | Field change history, indexed | 6 | Ported |
 | [0602](0602-jql-history-operators.md) | JQL history operators | 6 | Ported |
 | [0603](0603-jql-functions.md) | Missing JQL functions | 6 | Ported |
