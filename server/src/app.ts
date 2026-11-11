@@ -41,6 +41,7 @@ import fieldConfigRoutes from './routes/fieldConfigs.ts'
 import screenRoutes from './routes/screens.ts'
 import remoteLinkRoutes, { jiraRemoteLinks } from './routes/remoteLinks.ts'
 import subscriptionRoutes, { startSubscriptions } from './routes/subscriptions.ts'
+import notificationSchemeRoutes from './routes/notificationSchemes.ts'
 import { startDirectories } from './directories.ts'
 import { startAuth } from './authConfig.ts'
 import { githubWebhook } from './routes/github.ts'
@@ -178,6 +179,7 @@ export async function build() {
       await v1.register(screenRoutes)
       await v1.register(remoteLinkRoutes)
       await v1.register(subscriptionRoutes)
+      await v1.register(notificationSchemeRoutes)
     }, { prefix: '/api/v1' })
     // Xray's addresses for importing CI results: same sign-in and rate limits as the API
     await api.register(raven, { prefix: '/rest/raven/1.0' })

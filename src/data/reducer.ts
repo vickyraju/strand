@@ -428,7 +428,7 @@ export interface Activity {
   createdAt: number
 }
 
-export type NotificationKind = 'assigned' | 'mentioned' | 'commented' | 'status' | 'due' | 'automation'
+export type NotificationKind = 'assigned' | 'mentioned' | 'commented' | 'status' | 'updated' | 'due' | 'automation'
 
 export interface Notification {
   id:        string

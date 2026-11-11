@@ -6,11 +6,11 @@ import { Checkbox } from './ui'
 // Settings › Notifications (Jira's notification settings): for each kind of notification, whether it reaches me in the
 // Inbox and by email. Email appears once a workspace admin turns it on.
 
-type Kind = 'assigned' | 'mentioned' | 'commented' | 'status' | 'due' | 'automation'
+type Kind = 'assigned' | 'mentioned' | 'commented' | 'status' | 'updated' | 'due' | 'automation'
 interface Pref { kind: Kind; inbox: boolean; email: boolean }
 const LABEL: Record<Kind, string> = {
-  assigned: 'Someone assigns me a work item', mentioned: 'Someone @mentions me', commented: 'Someone comments on work I watch',
-  status: 'Work I watch changes status', due: 'Work assigned to me is due', automation: 'An automation rule I own fails',
+  assigned: 'Someone assigns me a work item', mentioned: 'Someone @mentions me', commented: 'Someone comments on work I hear about',
+  status: 'Work I hear about changes status', updated: 'Other changes to work I hear about (its project’s notification scheme)', due: 'Work assigned to me is due', automation: 'An automation rule I own fails',
 }
 
 export default function NotificationPrefs() {

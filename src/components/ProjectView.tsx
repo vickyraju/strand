@@ -3,6 +3,7 @@ import WorkTypesPanel from './WorkTypesPanel'
 import ComponentsPanel from './ComponentsPanel'
 import TestingPanel from './testing/TestingPanel'
 import { WorkflowPanel } from './ProjectWorkflow'
+import { NotificationsPanel } from './NotificationSchemes'
 const TestRepository = lazy(() => import('./testing/TestRepository'))
 import { Plus, Star, FolderPlus, Columns2, List, ListChecks, Settings, Gauge, BarChart3, GanttChart, CalendarDays, Rocket, Check, Info, Zap, Users, FlaskConical, Archive } from 'lucide-react'
 import { useStore, userOf, isDone, timeAgo, PROJECT_COLORS, type Project, type ProjectPatch } from '../data/store'
@@ -409,6 +410,7 @@ function ProjectSettings({ project }: { project: Project }) {
       </ConfirmDialog>}
       <WorkflowPanel project={project} />
       {apiEnabled && <BoardsPanel project={project} />}
+      {apiEnabled && canAdmin(project) && <NotificationsPanel project={project} />}
       {apiEnabled && can(project, 'deleteIssues') && <DeletedItems project={project} />}
 
       {apiEnabled && <TestingPanel project={project} admin={canAdmin(project)} />}

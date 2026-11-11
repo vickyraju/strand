@@ -185,6 +185,9 @@ async function restoreProject(p: { backupId: string; actorId: string | null; act
       for (const r0 of rows) {
         const r = { ...r0 }
         if (table === 'projects') r.deleting_at = null
+        // a notification scheme removed since: the default instead (spec 0605); None stays None
+        if (table === 'projects' && r.notification_scheme_id && !(await c.query('select 1 from notification_schemes where id = $1 and workspace_id = $2', [r.notification_scheme_id, b.workspace_id])).rows.length)
+          r.notification_scheme_id = (await c.query('select id from notification_schemes where workspace_id = $1 and is_default', [b.workspace_id])).rows[0]?.id ?? null
         if (table === 'projects' && !schemes.has(String(r.workflow_scheme_id)))
           r.workflow_scheme_id = (await c.query('select id from workflow_schemes where workspace_id = $1 order by (lower(name) = $2) desc, id limit 1', [b.workspace_id, r.template])).rows[0]?.id
         if (table === 'statuses' && !globals.has(String(r.global_status_id))) r.global_status_id = null
@@ -200,6 +203,7 @@ async function restoreProject(p: { backupId: string; actorId: string | null; act
         const use = names.filter(n => n in r)
         await c.query(`insert into ${table} (${use.join(', ')}) values (${use.map((_, i) => `$${i + 1}`).join(', ')}) on conflict do nothing`,
           use.map(n => (json.has(n) && r[n] != null ? JSON.stringify(r[n]) : r[n])))
+        if (table === 'projects' && r0.notification_scheme_id === null) await c.query('update projects set notification_scheme_id = null where id = $1', [r.id])   // None (the insert gives the default)
       }
     }
     await applyScheme(d, { me: { id: p.actorId, email: p.actorEmail, workspaceId: b.workspace_id } as any, ip: p.ip }, doc.project.id)       // today's workflows, with items moved where needed

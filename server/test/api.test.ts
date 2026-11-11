@@ -1002,7 +1002,7 @@ test('mentions: @Full Name notifies that person (not twice), watchers hear "comm
   const c1 = await call('POST', '/api/v1/issues/MEN-1/comments', { body: `Thanks @${bob}, can you look?` }, `${ann}@x.com`)
   assert.equal(c1.status, 201)
   assert.deepEqual((await inbox(`${bob}@x.com`)).filter(n => n.issueKey === 'MEN-1').map(n => n.kind), ['mentioned'])
-  assert.deepEqual((await inbox(`${cy}@x.com`)).filter(n => n.issueKey === 'MEN-1' && n.kind !== 'assigned').map(n => n.kind), ['commented'])   // the assignee watches, was not mentioned
+  assert.deepEqual((await inbox(`${cy}@x.com`)).filter(n => n.issueKey === 'MEN-1' && n.kind !== 'updated').map(n => n.kind), ['commented'])   // the assignee hears, was not mentioned (creating it was "updated")
   assert.deepEqual((await inbox(`${ann}@x.com`)).filter(n => n.issueKey === 'MEN-1'), [])                                                       // never notified about their own comment
   // the commenter and the mentioned person now watch: a later comment by someone else reaches them as "commented"
   await call('POST', '/api/v1/issues/MEN-1/comments', { body: 'a later comment' }, `${cy}@x.com`)
@@ -2293,7 +2293,10 @@ test('notification settings: each kind in the Inbox and/or by email; email only 
   const prefs = (await call('GET', '/api/v1/me/notification-prefs', undefined, 'mal.ann@x.com')).body
   assert.equal(prefs.emailEnabled, false)
   assert.ok(prefs.prefs.every((p: any) => p.inbox && p.email))
-  const assign = async (title: string) => { const i = (await call('POST', '/api/v1/projects/MAL/issues', { title, assigneeId: ann })).body; await runJobs(); return i }
+  const assign = async (title: string) => {   // Issue Assigned (spec 0605): an edit that only changes the assignee
+    const i = (await call('POST', '/api/v1/projects/MAL/issues', { title })).body
+    await call('PATCH', `/api/v1/issues/${i.key}`, { assigneeId: ann }); await runJobs(); return i
+  }
   const inbox = async () => (await call('GET', '/api/v1/notifications', undefined, 'mal.ann@x.com')).body.map((n: any) => n.issueKey)
   // email off for the workspace: Inbox only
   const a = await assign('First')
@@ -3737,6 +3740,12 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     'POST /notifications/read-all': ['any', '/notifications/read-all'],
     'GET /views': ['any', '/views'], 'POST /views': ['any', '/views', { name: 'v', filters: {} }],
     'PATCH /views/{id}': ['own', `/views/${view}`, { name: 'x' }], 'DELETE /views/{id}': ['own', `/views/${view}`],
+    'GET /admin/notification-schemes': ['gadmin', '/admin/notification-schemes'], 'POST /admin/notification-schemes': ['gadmin', '/admin/notification-schemes', { name: 'x' }],   // 0605.R1
+    'GET /admin/notification-schemes/{id}': ['gadmin', `/admin/notification-schemes/${none}`], 'PATCH /admin/notification-schemes/{id}': ['gadmin', `/admin/notification-schemes/${none}`, { name: 'x' }],
+    'DELETE /admin/notification-schemes/{id}': ['gadmin', `/admin/notification-schemes/${none}`], 'POST /admin/notification-schemes/{id}/copy': ['gadmin', `/admin/notification-schemes/${none}/copy`, {}],
+    'POST /admin/notification-schemes/{id}/entries': ['gadmin', `/admin/notification-schemes/${none}/entries`, { event: 'issue_created', recipient: 'reporter' }],
+    'DELETE /admin/notification-schemes/{id}/entries/{entryId}': ['gadmin', `/admin/notification-schemes/${none}/entries/${none}`],
+    'GET /projects/{key}/notification-scheme': ['padmin', `/projects/${K}/notification-scheme`], 'PUT /projects/{key}/notification-scheme': ['gadmin', `/projects/${K}/notification-scheme`, { schemeId: none }],   // 0605.R2
     'GET /views/{id}/subscriptions': ['own', `/views/${view}/subscriptions`], 'POST /views/{id}/subscriptions': ['own', `/views/${view}/subscriptions`, { cron: '0 0 7 ? * *' }],   // 0604.R1
     'PATCH /subscriptions/{id}': ['own', `/subscriptions/${subscription}`, { emailWhenEmpty: true }], 'DELETE /subscriptions/{id}': ['own', `/subscriptions/${subscription}`],
     'POST /subscriptions/{id}/run': ['own', `/subscriptions/${subscription}/run`],
@@ -6042,6 +6051,84 @@ test('[0604.R1][0604.R2][0604.R3][0604.R4][0604.R5][0604.R6] filter subscription
   assert.ok((await pool.query('select next_run_at > now() as later from filter_subscriptions where id = $1', [mine.id])).rows[0].later)
   await call('PUT', '/api/v1/admin/settings/filterSubscriptions', { groupSubscribers: 'everyone', maxItems: 200 })
   await call('PUT', '/api/v1/admin/settings/email', { enabled: false, from: '', appUrl: '' })
+})
+
+test('[0605.R1][0605.R2][0605.R3][0605.R4][0605.R5][0605.R6] notification schemes: each event reaches the recipients its project\'s scheme gives it', { skip }, async () => {
+  await call('POST', '/api/v1/projects', { name: 'Schemes', key: 'NSA', template: 'kanban' })
+  for (const n of ['ns.ann', 'ns.bob', 'ns.dan']) await join('NSA', `${n}@x.com`)
+  await join('NSA', 'ns.cy@x.com', 'viewer')
+  const id = async (e: string) => (await call('GET', '/api/v1/me', undefined, e)).body.id
+  const [ann, bob, cy, dan] = [await id('ns.ann@x.com'), await id('ns.bob@x.com'), await id('ns.cy@x.com'), await id('ns.dan@x.com')]
+  const box = async (who: string, key: string) => (await inbox(`${who}@x.com`)).filter(n => n.issueKey === key).map(n => `${n.kind}:${n.text}`)
+  // R1, R2: Jira's default scheme, and every project has it
+  const list = (await call('GET', '/api/v1/admin/notification-schemes')).body
+  const def = list.find((x: any) => x.isDefault)
+  assert.equal(def.name, 'Default Notification Scheme')
+  const full = (await call('GET', `/api/v1/admin/notification-schemes/${def.id}`)).body
+  assert.equal(full.entries.length, 51)
+  assert.deepEqual((await call('GET', '/api/v1/projects/NSA/notification-scheme')).body.scheme, { id: def.id, name: def.name })
+  // the default sends Issue Created to the assignee (not the actor, who is the reporter)
+  const a = (await call('POST', '/api/v1/projects/NSA/issues', { title: 'First', assigneeId: bob }, 'ns.ann@x.com')).body
+  assert.deepEqual(await box('ns.bob', a.key), ['updated:created a work item'])
+  assert.deepEqual(await box('ns.ann', a.key), [])
+  // a scheme of our own: comments go to a group only; creation to the viewers too; updates to the component lead
+  const team = (await call('POST', '/api/v1/groups', { name: 'ns-team' })).body
+  await call('POST', `/api/v1/groups/${team.id}/members`, { userIds: [dan] })
+  const mine = (await call('POST', `/api/v1/admin/notification-schemes/${def.id}/copy`, { name: 'Team scheme' })).body
+  for (const e of mine.entries.filter((x: any) => x.event === 'issue_commented')) await call('DELETE', `/api/v1/admin/notification-schemes/${mine.id}/entries/${e.id}`)
+  await call('POST', `/api/v1/admin/notification-schemes/${mine.id}/entries`, { event: 'issue_commented', recipient: 'group', value: team.id })
+  await call('POST', `/api/v1/admin/notification-schemes/${mine.id}/entries`, { event: 'issue_created', recipient: 'project_role', value: 'viewer' })
+  await call('POST', `/api/v1/admin/notification-schemes/${mine.id}/entries`, { event: 'issue_updated', recipient: 'component_lead' })
+  assert.equal((await call('POST', `/api/v1/admin/notification-schemes/${mine.id}/entries`, { event: 'issue_updated', recipient: 'group', value: null })).status, 400)
+  assert.equal((await call('PUT', '/api/v1/projects/NSA/notification-scheme', { schemeId: mine.id })).status, 200)
+  const b = (await call('POST', '/api/v1/projects/NSA/issues', { title: 'Second', assigneeId: bob }, 'ns.ann@x.com')).body
+  assert.deepEqual([await box('ns.bob', b.key), await box('ns.cy', b.key)], [['updated:created a work item'], ['updated:created a work item']])
+  // R3: Issue Commented reaches the group, not the reporter; a restricted comment only those who may read it
+  await call('POST', `/api/v1/issues/${b.key}/comments`, { body: 'Looks good' }, 'ns.bob@x.com')
+  assert.deepEqual([await box('ns.dan', b.key), await box('ns.ann', b.key)], [['commented:commented on a work item'], []])
+  await call('POST', `/api/v1/issues/${b.key}/comments`, { body: 'Admins only', visibility: { kind: 'role', role: 'admin' } })
+  assert.equal((await box('ns.dan', b.key)).length, 1)
+  // R4: Issue Assigned says so to the assignee; a transition into Done is Issue Resolved, out of it Issue Reopened
+  const [todo, , done] = (await call('GET', '/api/v1/projects/NSA')).body.statuses
+  await call('PATCH', `/api/v1/issues/${b.key}`, { assigneeId: ann })
+  assert.ok((await box('ns.ann', b.key)).includes('assigned:assigned you a work item'))
+  assert.ok((await box('ns.bob', b.key)).includes('assigned:assigned a work item'))   // Bob watches: he commented
+  await call('PATCH', `/api/v1/issues/${b.key}`, { statusId: done.id }, 'ns.bob@x.com')
+  assert.ok((await box('ns.ann', b.key)).includes('status:resolved a work item'))
+  await call('PATCH', `/api/v1/issues/${b.key}`, { statusId: todo.id }, 'ns.bob@x.com')
+  assert.ok((await box('ns.ann', b.key)).includes('status:reopened a work item'))
+  // the component lead hears about updates
+  const comp = (await call('POST', '/api/v1/projects/NSA/components', { name: 'Core', leadId: dan })).body
+  await call('PATCH', `/api/v1/issues/${b.key}`, { componentIds: [comp.id] }, 'ns.ann@x.com')
+  assert.ok((await box('ns.dan', b.key)).includes('updated:updated a work item'))
+  // R5: a bulk change without notifications: project admins and system administrators only; then nobody hears
+  assert.equal((await call('POST', '/api/v1/issues/bulk/edit', { issues: [b.key], patch: { priority: 'high' }, sendNotifications: false }, 'ns.ann@x.com')).status, 403)
+  const before = (await box('ns.dan', b.key)).length
+  assert.equal((await call('POST', '/api/v1/issues/bulk/edit', { issues: [b.key], patch: { priority: 'low' }, sendNotifications: false })).status, 200)
+  assert.equal((await box('ns.dan', b.key)).length, before)
+  await call('POST', '/api/v1/issues/bulk/edit', { issues: [b.key], patch: { priority: 'high' } })
+  assert.equal((await box('ns.dan', b.key)).length, before + 1)
+  // R2: None sends nothing; @mentions still go
+  await call('PUT', '/api/v1/projects/NSA/notification-scheme', { schemeId: null })
+  assert.equal((await call('GET', '/api/v1/projects/NSA/notification-scheme')).body.scheme, null)
+  const n = (await box('ns.ann', b.key)).length
+  await call('POST', `/api/v1/issues/${b.key}/comments`, { body: 'ping @ns.ann' }, 'ns.bob@x.com')
+  assert.deepEqual((await box('ns.ann', b.key)).slice(0, (await box('ns.ann', b.key)).length - n), ['mentioned:mentioned you in a comment'])
+  await call('PATCH', `/api/v1/issues/${b.key}`, { title: 'Quiet' }, 'ns.bob@x.com')
+  assert.equal((await box('ns.ann', b.key)).length, n + 1)
+  // R1: deleting a scheme in use or the default is refused; another can become the default, and new projects get it
+  await call('PUT', '/api/v1/projects/NSA/notification-scheme', { schemeId: mine.id })
+  assert.equal((await call('DELETE', `/api/v1/admin/notification-schemes/${mine.id}`)).status, 409)
+  assert.equal((await call('DELETE', `/api/v1/admin/notification-schemes/${def.id}`)).status, 409)
+  await call('PATCH', `/api/v1/admin/notification-schemes/${mine.id}`, { isDefault: true })
+  await call('POST', '/api/v1/projects', { name: 'Schemes two', key: 'NSB', template: 'kanban' })
+  assert.equal((await call('GET', '/api/v1/projects/NSB/notification-scheme')).body.scheme.id, mine.id)
+  await call('PATCH', `/api/v1/admin/notification-schemes/${def.id}`, { isDefault: true })
+  const spare = (await call('POST', '/api/v1/admin/notification-schemes', { name: 'Spare' })).body
+  assert.equal((await call('DELETE', `/api/v1/admin/notification-schemes/${spare.id}`)).status, 204)
+  assert.equal((await call('POST', '/api/v1/admin/notification-schemes', { name: 'team SCHEME' })).status, 409)
+  // R6: audited
+  assert.ok((await pool.query(`select 1 from audit_log where action = 'project.notification_scheme_changed'`)).rows.length >= 3)
 })
 
 test('[0705.R2] a webhook never reaches private addresses, whatever its name resolves to', { skip }, async () => {

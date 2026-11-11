@@ -5,6 +5,7 @@ import { HttpError, requireAdmin, type Me } from '../auth.ts'
 import { canJoinWork, commentShown, minFor, need, roleOf, visible, visibleAs, type ProjectRole, ARCHIVED, READS, accessTo, notArchived, type Permission, canSee } from '../access.ts'
 import { publish } from '../events.ts'
 import { audit } from '../audit.ts'
+import { withoutNotifications } from './notificationSchemes.ts'
 import { emit, triggerWebhook } from '../webhooks.ts'
 import { REF_KINDS, valueProblem, type FieldKind, type FieldValue, type Option } from '../shared/customFields.ts'
 import { defaultsFor, enforceRules, enforceScreen, rulesFor } from '../fields.ts'
@@ -123,11 +124,6 @@ export async function mentionedIn(d: Db, projectId: string, text: string, author
   return candidates.filter(c => mentions(text, c.name)).map(c => c.id)
 }
 
-async function watchersOf(d: Db, issue: { id: string; assigneeId: string | null; reporterId: string | null }) {
-  const w = await d.query<{ userId: string }>('select user_id from issue_watchers where issue_id = $1', [issue.id])
-  return [...new Set([...w.map(x => x.userId), issue.assigneeId, issue.reporterId].filter((x): x is string => !!x))]
-}
-
 /** A transition's actions, after the move, in the same transaction: field changes (recorded as made by the transition)
  *  and comments by the mover. An assignee who isn't in the project is skipped, as automation does. */
 /** Jira's `transition` in a post function's webhook (spec 0715 R6): the workflow the item's type uses, the transition, and the statuses. */
@@ -158,7 +154,6 @@ export async function runActions(d: Db, me: Me | null, issueId: string, t: Trans
     for (const f of changed)
       await d.query('insert into activity (issue_id, actor_id, field, from_value, to_value, text) values ($1, $2, $3, $4, $5, $6)',
         [issueId, me?.id ?? null, f, now[f] == null ? null : String(now[f]), patch[f] == null ? null : String(patch[f]), `“${t.name}” changed ${fieldWords(f)}`])
-    if (changed.includes('assigneeId') && patch.assigneeId && me) await note(d, patch.assigneeId as string, me, issueId, 'assigned', 'assigned you a work item')
   }
   for (const body of comments) await d.query('insert into comments (issue_id, author_id, body) values ($1, $2, $3)', [issueId, me?.id ?? null, body])
 }
@@ -334,19 +329,18 @@ async function applyPatch(d: Db, me: Me, cur: any, patch: z.infer<typeof patchBo
     await runActions(d, me, cur.id, t, ctx!)
   }
   const rctx = { projectId: cur.projectId, issueId: cur.id, reporterId: cur.reporterId, leadId: lead?.leadId ?? null, actorId: me.id }
-  if (changed.includes('assigneeId') && patch.assigneeId) {
-    await note(d, patch.assigneeId, me, cur.id, 'assigned', 'assigned you a work item')
-    await runRules(d, rctx, { kind: 'assigned' })
-  }
-  if (changed.includes('statusId')) {
-    for (const u of await watchersOf(d, cur)) await note(d, u, me, cur.id, 'status', 'changed the status')
-    await runRules(d, rctx, { kind: 'status', to: patch.statusId! })
-  }
+  // who hears about it is the project's notification scheme (spec 0605), through emit() below
+  if (changed.includes('assigneeId') && patch.assigneeId) await runRules(d, rctx, { kind: 'assigned' })
+  if (changed.includes('statusId')) await runRules(d, rctx, { kind: 'status', to: patch.statusId! })
   if (patch.rank !== undefined) for (const p of await keepRanksApart(d, me.workspaceId, cur.id, patch.rank)) await publish(d, p, { type: 'issues.reranked' })
   await publish(d, cur.projectId, { type: 'issue.updated', id: cur.id, key: cur.key, editors: await editorsOf(d, cur.id) })
   // webhooks (spec 0705): Jira's changelog, one item per changed field
-  // as Jira's (spec 0715 R3): an assignee change alone is issue_assigned, a transition issue_generic, anything else issue_updated
-  const type = moving || t ? 'issue_generic' as const : changed.length === 1 && changed[0] === 'assigneeId' ? 'issue_assigned' as const : 'issue_updated' as const
+  // as Jira's (spec 0715 R3): an assignee change alone is issue_assigned, anything else issue_updated; a transition into a Done status
+  // is Issue Resolved, out of one Issue Reopened, otherwise Generic Event (spec 0605 R4)
+  const [cat] = moving || t ? await d.query<{ before: string; after: string }>('select (select category from statuses where id = $1) as before, (select category from statuses where id = $2) as after',
+    [cur.statusId, patch.statusId ?? cur.statusId]) : []
+  const type = cat ? (cat.before !== 'done' && cat.after === 'done' ? 'issue_resolved' as const : cat.before === 'done' && cat.after !== 'done' ? 'issue_reopened' as const : 'issue_generic' as const)
+    : changed.length === 1 && changed[0] === 'assigneeId' ? 'issue_assigned' as const : 'issue_updated' as const
   const changelog = changed.map(f => ({ field: f, from: cur[f] ?? null, to: (patch as any)[f] ?? null }))
   if (changed.length || t) await emit(d, me.workspaceId, 'jira:issue_updated', { issueId: cur.id, projectId: cur.projectId, type }, me.id, changelog)
   // a transition's "Trigger a webhook" post functions (spec 0715 R6)
@@ -515,11 +509,18 @@ export async function insertIssue(d: Db, me: Me, projectId: string, b: Record<st
   const [row] = await d.query<{ id: string }>(
     `insert into issues (${cols.join(', ')}) values (${vals.map((_, i) => `$${i + 1}`).join(', ')}) returning id`, vals)
   await d.query(`insert into activity (issue_id, actor_id, text) values ($1, $2, $3)`, [row!.id, me.id, created])
-  if (b.assigneeId) await note(d, b.assigneeId, me, row!.id, 'assigned', 'assigned you a work item')
   await runRules(d, { projectId, issueId: row!.id, reporterId: me.id, leadId: pr!.leadId, actorId: me.id }, { kind: 'created' })
   await publish(d, projectId, { type: 'issue.created', id: row!.id })
   await emit(d, me.workspaceId, 'jira:issue_created', { issueId: row!.id, projectId }, me.id)
   return row!.id
+}
+
+/** Bulk change's "Send notifications" (spec 0605 R5): on by default; off needs system administrator or project admin rights for every item. */
+export const sendNotifications = z.boolean().default(true).describe('Off: nobody is notified of this change (system administrators, or project admins of every item)')
+export async function quietly(d: Db, req: Parameters<typeof issueByKey>[1] & { body: { issues: string[]; sendNotifications?: boolean } }) {
+  if (req.body.sendNotifications !== false) return
+  if (!req.me.admin) for (const ref of new Set(req.body.issues)) await issueByKey(d, req, ref, false, 'administer')
+  await withoutNotifications(d)
 }
 
 const plugin: FastifyPluginAsyncZod = async app => {
@@ -720,17 +721,19 @@ const plugin: FastifyPluginAsyncZod = async app => {
     const n = new Set(req.body.issues).size
     if (n > max) throw new HttpError(400, `A bulk change can include at most ${max} work items (you sent ${n})`, { issues: `At most ${max}` })
   }
-  app.post('/issues/bulk/edit', { schema: { tags: ['Issues: bulk'], summary: 'Apply the same field changes to many issues (workflow rules apply to each)', body: z.object({ issues: refs, patch: patchBody }) } }, async req => {
+  app.post('/issues/bulk/edit', { schema: { tags: ['Issues: bulk'], summary: 'Apply the same field changes to many issues (workflow rules apply to each)', body: z.object({ issues: refs, patch: patchBody, sendNotifications }) } }, async req => {
     await checkBulk(req)
     return tx(async d => {
+      await quietly(d, req)
       const out: any[] = []
       for (const ref of [...new Set(req.body.issues)]) out.push(await applyPatch(d, req.me, await issueByKey(d, req, ref), req.body.patch, { ifMatch: null, override: false }))
       return { count: out.length, issues: out }
     })
   })
-  app.post('/issues/bulk/delete', { schema: { tags: ['Issues: bulk'], summary: 'Delete many work items with their sub-items (project admins; restorable for the period in System settings)', body: z.object({ issues: refs }) } }, async req => {
+  app.post('/issues/bulk/delete', { schema: { tags: ['Issues: bulk'], summary: 'Delete many work items with their sub-items (project admins; restorable for the period in System settings)', body: z.object({ issues: refs, sendNotifications }) } }, async req => {
     await checkBulk(req)
     return tx(async d => {
+      await quietly(d, req)
       let n = 0
       for (const ref of [...new Set(req.body.issues)]) n += await deleteItem(d, req, await issueByKey(d, req, ref, true, 'deleteIssues'))
       return bulkResult(n)
@@ -1012,15 +1015,14 @@ const plugin: FastifyPluginAsyncZod = async app => {
       await checkVisibility(d, req.me, i.projectId, b.visibility)
       const [c] = await d.query('insert into comments (id, issue_id, author_id, body, visibility) values (coalesce($4::uuid, uuid_v7()), $1, $2, $3, $5) returning *',
         [i.id, req.me.id, b.body, b.id ?? null, b.visibility ? JSON.stringify(b.visibility) : null])
-      // A mention tells that person; everyone already watching hears "commented" (not both); the commenter and the mentioned start watching.
-      // A restricted comment reaches only people who may read it.
+      // A mention tells that person; the scheme's recipients hear "commented" (not both, spec 0605 R3); the commenter and the
+      // mentioned start watching. A restricted comment reaches only people who may read it.
       const mentioned = await readers(d, i.projectId, await mentionedIn(d, i.projectId, b.body, req.me.id), b.visibility)
       for (const u of mentioned) await note(d, u, req.me, i.id, 'mentioned', 'mentioned you in a comment')
-      for (const u of await readers(d, i.projectId, (await watchersOf(d, i)).filter(w => !mentioned.includes(w)), b.visibility)) await note(d, u, req.me, i.id, 'commented', 'commented on a work item')
       for (const u of [req.me.id, ...mentioned]) await d.query('insert into issue_watchers (issue_id, user_id) values ($1, $2) on conflict do nothing', [i.id, u])
       await publish(d, i.projectId, { type: 'comment.created', key: i.key })
       await emit(d, req.me.workspaceId, 'comment_created', { issueId: i.id, projectId: i.projectId, commentId: c.id }, req.me.id)
-      await emit(d, req.me.workspaceId, 'jira:issue_updated', { issueId: i.id, projectId: i.projectId, commentId: c.id, type: 'issue_commented' }, req.me.id)   // as Jira's (spec 0715 R2)
+      await emit(d, req.me.workspaceId, 'jira:issue_updated', { issueId: i.id, projectId: i.projectId, commentId: c.id, type: 'issue_commented', notifyExcept: mentioned }, req.me.id)   // as Jira's (spec 0715 R2)
       return c
     })
   })

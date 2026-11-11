@@ -2060,3 +2060,25 @@ test('[0604.R1][0604.R5] a saved view is subscribed to daily; Run now sends the 
   assert.deepEqual(o.problems, [])
 })
 
+test('[0605.R1][0605.R3] an admin adds a group to Issue Commented; a member of it hears about a comment', { skip, timeout: 120_000 }, async () => {
+  await owner('POST', '/projects', { name: 'Scheme journey', key: 'NSJ', template: 'kanban' })
+  await owner('POST', '/projects/NSJ/members', { userIds: [await idOf('maya@e2e.test')], role: 'member' })
+  const group = (await owner('POST', '/groups', { name: 'nsj-listeners' })).body
+  await owner('POST', `/groups/${group.id}/members`, { userIds: [await idOf('maya@e2e.test')] })
+  const scheme = (await owner('POST', '/admin/notification-schemes', { name: 'Journey scheme' })).body
+  await owner('PUT', '/projects/NSJ/notification-scheme', { schemeId: scheme.id })
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url('/admin/notification-schemes'))
+  await o.click('tr:has-text("Journey scheme")')
+  await o.click('[aria-label="Add a recipient to Issue Commented"]')
+  await o.selectOption('#nr-kind', 'group')
+  await o.selectOption('.modal [aria-label="Group"]', group.id)
+  await o.click('.modal button:has-text("Add")')
+  await o.waitForSelector('tr:has-text("Issue Commented") .chip:has-text("nsj-listeners")')
+  const item = (await owner('POST', '/projects/NSJ/issues', { title: 'Talked about' })).body
+  await owner('POST', `/issues/${item.key}/comments`, { body: 'Hello listeners' })
+  const heard = (await maya('GET', '/notifications')).body.filter(n => n.issueKey === item.key).map(n => n.kind)
+  assert.deepEqual(heard, ['commented'])
+  assert.deepEqual(o.problems, [])
+})
+
