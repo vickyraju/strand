@@ -44723,6 +44723,13 @@
                         "additionalProperties": false
                       },
                       "description": "Projects you can see where the group has a role"
+                    },
+                    "restrictedComments": {
+                      "nullable": true,
+                      "description": "Comments restricted to the group, which a delete moves to another group (spec 0106); null unless you may delete it",
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
                     }
                   },
                   "required": [
@@ -44739,7 +44746,8 @@
                     "createdAt",
                     "people",
                     "morePeople",
-                    "projects"
+                    "projects",
+                    "restrictedComments"
                   ],
                   "additionalProperties": false
                 }
@@ -45041,11 +45049,22 @@
         }
       },
       "delete": {
-        "summary": "Delete a group made here (its owners and system administrators): everyone loses the project roles it gave them",
+        "summary": "Delete a group made here (its owners and system administrators): everyone loses the project roles it gave them; comments restricted to it move to `swapGroupId`, as in Jira",
         "tags": [
           "Groups"
         ],
         "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "query",
+            "name": "swapGroupId",
+            "required": false,
+            "description": "The group that comments restricted to this one move to: required when there are any (spec 0106)"
+          },
           {
             "schema": {
               "type": "string",

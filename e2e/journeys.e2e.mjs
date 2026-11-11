@@ -2256,3 +2256,25 @@ test('[0510.R1][0510.R2][0510.R3] the selection bar watches two items, then move
   assert.deepEqual([after.statusId, after.comments.at(-1).body], [done.id, 'Done in bulk'])
   assert.deepEqual(o.problems, [])
 })
+
+test('[0106.R1] deleting a group a comment is restricted to: the comment moves to the group chosen', { skip, timeout: 120_000 }, async () => {
+  await owner('POST', '/projects', { name: 'Swap journey', key: 'SWJ', template: 'kanban' })
+  const old = (await owner('POST', '/groups', { name: 'swj-old' })).body
+  const next = (await owner('POST', '/groups', { name: 'swj-next' })).body
+  const item = (await owner('POST', '/projects/SWJ/issues', { title: 'Quiet item' })).body
+  await owner('POST', `/issues/${item.key}/comments`, { body: 'Only for the old group', visibility: { kind: 'group', id: old.id } })
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url(`/admin/groups/${old.id}`))
+  await o.click('[aria-label="Delete group"]')
+  assert.match(await o.locator('.modal').innerText(), /1 comment is restricted to this group/)
+  await o.click('.modal button:has-text("Delete group")')
+  await o.waitForSelector('.modal [role="alert"]:has-text("choose a group to move it to")')   // the server refuses without one
+  await o.click('.modal button[title="Move comments to"]')
+  await o.fill('.picker-menu input', 'swj-next')
+  await o.click('.picker-menu .picker-item:has-text("swj-next")')
+  await o.click('.modal button:has-text("Delete group")')
+  await o.waitForSelector('text=Deleted swj-old')
+  const [c] = (await owner('GET', `/issues/${item.key}/comments`)).body.items
+  assert.deepEqual(c.visibility, { kind: 'group', id: next.id })
+  assert.deepEqual(o.problems, [])
+})

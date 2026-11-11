@@ -5,7 +5,7 @@ import { usePublicSettings } from '../../api/settings-public'
 import { useStore } from '../../data/store'
 import { useApp } from '../../appContext'
 import { href } from '../../router'
-import { Avatar, ConfirmDialog, Empty, Loading, LoadError, Modal } from '../ui'
+import { Avatar, ConfirmDialog, Empty, Loading, LoadError, Modal, Picker } from '../ui'
 import { PageAction } from '../admin/AdminShell'
 
 const people = (n: number) => `${n} ${n === 1 ? 'person' : 'people'}`
@@ -17,7 +17,7 @@ import { UserSelect } from '../UserPicker'
 
 interface Group { id: string; name: string; description: string; kind: 'system' | 'directory' | 'strand'; systemRole: string | null; members: number; owners: { id: string; name: string }[]; isMember: boolean; isOwner: boolean; canManage: boolean }
 type Member = { id: string; name: string; email: string; initials: string; color: string; active: boolean }
-interface Detail extends Group { people: Member[]; morePeople: string | null; projects: { key: string; name: string; role: string }[] }
+interface Detail extends Group { people: Member[]; morePeople: string | null; projects: { key: string; name: string; role: string }[]; restrictedComments: number | null }
 const KIND = { system: { label: 'System', Icon: Lock, hint: 'Built in: only system administrators change it' }, directory: { label: 'Directory', Icon: Cloud, hint: 'From Entra: change its members there' }, strand: { label: 'Made here', Icon: UsersRound, hint: 'Managed by its owners' } } as const
 
 export default function GroupsView({ admin = false, openId, onOpen }: { admin?: boolean; openId: string | null; onOpen: (id: string | null) => void }) {
@@ -82,6 +82,7 @@ function GroupDetail({ id, onChanged, onDeleted }: { id: string; onChanged: () =
   const [adding, setAdding] = useState<'member' | 'owner' | null>(null)
   const [error, setError] = useState('')
   const [confirm, setConfirm] = useState<null | { kind: 'delete' } | { kind: 'member' | 'owner'; id: string; name: string }>(null)
+  const [swap, setSwap] = useState<{ id: string; name: string } | null>(null)
   const load = () => { setError(''); setMembers(null); return api<Detail>('GET', `/api/groups/${encodeURIComponent(id)}`).then(setG, e => setError(errorMessage(e))) }
   useEffect(() => { void load() }, [id])   // eslint-disable-line react-hooks/exhaustive-deps
   // members past the first page, or found by search (a group can hold thousands)
@@ -158,11 +159,12 @@ function GroupDetail({ id, onChanged, onDeleted }: { id: string; onChanged: () =
         <ul className="test-members">{g.projects.map(p => <li key={p.key} className="test-member"><a href={href({ name: 'project', key: p.key, tab: 'settings', sub: 'people' })} className="mono">{p.key}</a><span className="test-member-title">{p.name}</span><span className="muted sm">{p.role}</span></li>)}</ul>
       )}
       {confirm?.kind === 'delete' && (
-        <ConfirmDialog title={`Delete ${g.name}?`} action="Delete group" typeToConfirm={g.projects.length ? g.name : undefined} onClose={() => setConfirm(null)}
-          onConfirm={() => api('DELETE', `/api/groups/${g.id}`).then(() => { toast(`Deleted ${g.name}`); onDeleted() })}>
+        <ConfirmDialog title={`Delete ${g.name}?`} action="Delete group" typeToConfirm={g.projects.length ? g.name : undefined} onClose={() => { setConfirm(null); setSwap(null) }}
+          onConfirm={() => api('DELETE', `/api/groups/${g.id}${swap ? `?swapGroupId=${swap.id}` : ''}`).then(() => { toast(`Deleted ${g.name}`); onDeleted() })}>
           <p>{g.projects.length
             ? <>Its {people(g.members)} lose the roles it gives in {g.projects.length === 1 ? '1 project' : `${g.projects.length} projects`} ({g.projects.slice(0, 3).map(p => p.key).join(', ')}{g.projects.length > 3 ? ` and ${g.projects.length - 3} more` : ''}), unless they have a role there another way.</>
             : <>No project gives it a role, so nobody loses access.</>} This can’t be undone.</p>
+          {!!g.restrictedComments && <SwapGroup count={g.restrictedComments} not={g.id} value={swap} onChange={setSwap} />}
         </ConfirmDialog>
       )}
       {confirm && confirm.kind !== 'delete' && (
@@ -218,3 +220,22 @@ function MakeGroup({ onClose, onMade }: { onClose: () => void; onMade: (g: Group
     </Modal>
   )
 }
+
+/** Spec 0106: comments restricted to a group being deleted move to another group, as Jira's swap group. Searched on the server. */
+function SwapGroup({ count, not, value, onChange }: { count: number; not: string; value: { id: string; name: string } | null; onChange: (g: { id: string; name: string }) => void }) {
+  const [query, setQuery] = useState('')
+  const [found, setFound] = useState<{ id: string; name: string }[]>([])
+  const [busy, setBusy] = useState(false)
+  useEffect(() => {
+    const t = setTimeout(() => { setBusy(true); api<{ items: { id: string; name: string }[] }>('GET', `/api/groups?limit=50&query=${encodeURIComponent(query)}`).then(r => setFound(r.items.filter(g => g.id !== not)), () => {}).finally(() => setBusy(false)) }, 200)
+    return () => clearTimeout(t)
+  }, [query, not])
+  return <>
+    <p>{count === 1 ? '1 comment is' : `${count} comments are`} restricted to this group. Choose the group {count === 1 ? 'it moves' : 'they move'} to:</p>
+    <Picker value={value?.id} search remote={{ onSearch: setQuery, searching: busy }} className="btn btn-secondary btn-sm" title="Move comments to"
+      options={found.map(g => ({ value: g.id as string | undefined, label: g.name }))}
+      onChange={id => { const g = found.find(x => x.id === id); if (g) onChange(g) }}
+      trigger={value ? value.name : 'Choose a group…'} />
+  </>
+}
+
