@@ -400,8 +400,8 @@ export async function checkLevels(d: Db, me: Me, projectId: string, item: { id: 
 export async function checkParentLink(d: Db, me: Me, type: string, parentLinkId: string | null | undefined) {
   if (!parentLinkId) return
   if (type !== 'epic') throw new HttpError(400, 'Only an epic has a Parent Link (an epic in an initiative stays an epic: take it out first)', { parentLinkId: 'Epics only' })
-  const args: unknown[] = [parentLinkId, me.workspaceId]
-  const [p] = await d.query<{ type: string }>(`select i.type from issues i where i.id = $1 and i.workspace_id = $2 and i.deleted_at is null and ${visible(me, 'i.project_id', args)}`, args)
+  const args: unknown[] = [parentLinkId, me.workspaceId, me.id]
+  const [p] = await d.query<{ type: string }>(`select i.type from issues i where i.id = $1 and i.workspace_id = $2 and i.deleted_at is null and ${levelOk(me, 3)} and ${visible(me, 'i.project_id', args)}`, args)
   if (!p) throw new HttpError(400, 'No such initiative', { parentLinkId: 'No such initiative' })
   if (p.type !== 'initiative') throw new HttpError(400, 'An epic’s Parent Link is an initiative', { parentLinkId: 'Not an initiative' })
 }

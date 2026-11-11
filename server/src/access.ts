@@ -88,4 +88,5 @@ export const commentShown = (me: Me, projectId: string, userParam: number): stri
 
 /** Like `visible`, for a query that already passes my user id as parameter number `userParam` (so no new parameter is needed). */
 export const visibleAs = (me: Me, col: string, userParam: number): string =>
-  me.admin ? `${col} in (${LIVE})` : `${col} in (select project_id from project_access where user_id = $${userParam} and project_id in (${LIVE}))`
+  // an admin's condition still names the parameter, so a query that passes my id for this alone stays valid
+  me.admin ? `(${col} in (${LIVE}) and $${userParam}::uuid is not null)` : `${col} in (select project_id from project_access where user_id = $${userParam} and project_id in (${LIVE}))`

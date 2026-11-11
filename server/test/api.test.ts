@@ -6205,6 +6205,21 @@ test('[0501.R1] a move is refused when a sub-item is behind a security level the
   assert.equal((await call('GET', `/api/v1/issues/${parent.key}`)).body.key, parent.key)   // nothing moved
 })
 
+test('[0803.R1][0803.R3] plans and the initiative picker leave out work behind a security level I\'m not in', { skip }, async () => {
+  await call('POST', '/api/v1/projects', { name: 'Level plans', key: 'LVP', template: 'kanban' })
+  await join('LVP', 'lvp.dev@x.com')
+  await call('PUT', '/api/v1/projects/LVP/initiatives', { enabled: true })
+  const lvl = (await call('POST', '/api/v1/projects/LVP/security-levels', { name: 'Owner only', members: [{ kind: 'user', id: (await call('GET', '/api/v1/me')).body.id }] })).body
+  await call('POST', '/api/v1/projects/LVP/issues', { title: 'Secret initiative', type: 'initiative', securityLevelId: lvl.id })
+  await call('POST', '/api/v1/projects/LVP/issues', { title: 'Secret task', securityLevelId: lvl.id })
+  await call('POST', '/api/v1/projects/LVP/issues', { title: 'Open task' })
+  const plan = (await call('POST', '/api/v1/plans', { name: 'Level plan', projectKeys: ['LVP'] })).body
+  const titles = async (who?: string) => (await call('GET', `/api/v1/plans/${plan.id}/timeline`, undefined, who)).body.items.map((i: any) => i.title).sort()
+  assert.deepEqual(await titles(), ['Open task', 'Secret initiative', 'Secret task'])
+  assert.deepEqual(await titles('lvp.dev@x.com'), ['Open task'])
+  assert.deepEqual((await call('GET', '/api/v1/initiatives?query=Secret', undefined, 'lvp.dev@x.com')).body, [])
+})
+
 test('projects list: the open count leaves out items behind a security level I\'m not in', { skip }, async () => {
   await call('POST', '/api/v1/projects', { name: 'Counted', key: 'CNT', template: 'kanban' })
   await join('CNT', 'cnt.bob@x.com')

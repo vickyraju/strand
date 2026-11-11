@@ -6,7 +6,7 @@ import { z } from 'zod'
 import { db, tx, type Db } from '../db.ts'
 import { HttpError, type Me } from '../auth.ts'
 import { audit } from '../audit.ts'
-import { visible, visibleAs } from '../access.ts'
+import { levelOk, visible, visibleAs } from '../access.ts'
 import { getSetting } from '../settings.ts'
 import { searchWhere, viewSeenBy } from './misc.ts'
 
@@ -107,6 +107,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     } else {
       args.push(req.me.workspaceId)
       where = [`i.workspace_id = $${args.length}`, 'i.deleted_at is null', 'i.archived_at is null', visible(req.me, 'i.project_id', args)]
+      args.push(req.me.id); where.push(levelOk(req.me, args.length))                // within my security levels
       args.push(allIds ?? []); where.push(`i.project_id = any($${args.length}::uuid[])`)
     }
     args.push(p.doneDays); where.push(`(st.category <> 'done' or coalesce(i.resolved_at, i.updated_at) > now() - make_interval(days => $${args.length}))`)
@@ -121,8 +122,8 @@ const plugin: FastifyPluginAsyncZod = async app => {
     const have = new Set(items.map(i => i.id))
     const wanted = [...new Set(items.map(i => i.parentLinkId).filter((x: string | null) => x && !have.has(x)))]
     if (wanted.length) {
-      const a2: unknown[] = [wanted]
-      items.push(...await db.query<any>(`select ${ROW} ${FROM} where i.id = any($1::uuid[]) and i.deleted_at is null and i.archived_at is null and ${visible(req.me, 'i.project_id', a2)}`, a2))
+      const a2: unknown[] = [wanted, req.me.id]
+      items.push(...await db.query<any>(`select ${ROW} ${FROM} where i.id = any($1::uuid[]) and i.deleted_at is null and i.archived_at is null and ${levelOk(req.me, 2)} and ${visible(req.me, 'i.project_id', a2)}`, a2))
     }
     const ids = items.map(i => i.id), projectIds = [...new Set(items.map(i => i.projectId))]
     const [dependencies, releases, sprints] = await Promise.all([
@@ -137,9 +138,9 @@ const plugin: FastifyPluginAsyncZod = async app => {
 
   // the Parent Link picker (R1): initiatives I can see, by key or title
   app.get('/initiatives', { schema: { tags: T, summary: 'Initiatives I can see, by key or title (the first 50)', querystring: z.object({ query: z.string().max(100).default('') }) } }, async req => {
-    const args: unknown[] = [req.me.workspaceId, `%${req.query.query.replace(/[%_\\]/g, '\\$&')}%`]
+    const args: unknown[] = [req.me.workspaceId, `%${req.query.query.replace(/[%_\\]/g, '\\$&')}%`, req.me.id]
     return db.query(`select i.id, p.key || '-' || i.number as key, i.title, p.key as project_key from issues i join projects p on p.id = i.project_id
-      where i.workspace_id = $1 and i.type = 'initiative' and i.deleted_at is null and i.archived_at is null and ${visible(req.me, 'i.project_id', args)}
+      where i.workspace_id = $1 and i.type = 'initiative' and i.deleted_at is null and i.archived_at is null and ${levelOk(req.me, 3)} and ${visible(req.me, 'i.project_id', args)}
         and (i.title ilike $2 or p.key || '-' || i.number ilike $2) order by lower(i.title), i.id limit 50`, args)
   })
 }
