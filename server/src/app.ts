@@ -44,6 +44,8 @@ import subscriptionRoutes, { startSubscriptions } from './routes/subscriptions.t
 import notificationSchemeRoutes from './routes/notificationSchemes.ts'
 import incomingMailRoutes from './routes/incomingMail.ts'
 import exportRoutes from './routes/exports.ts'
+import jiraImportRoutes from './routes/jiraImport.ts'
+import './jiraImport.ts'   // the jira.import job (spec 0802)
 import { startMailHandlers } from './mail.ts'
 import { startDirectories } from './directories.ts'
 import { startAuth } from './authConfig.ts'
@@ -185,6 +187,7 @@ export async function build() {
       await v1.register(notificationSchemeRoutes)
       await v1.register(incomingMailRoutes)
       await v1.register(exportRoutes)
+      await v1.register(jiraImportRoutes)
     }, { prefix: '/api/v1' })
     // Xray's addresses for importing CI results: same sign-in and rate limits as the API
     await api.register(raven, { prefix: '/rest/raven/1.0' })
