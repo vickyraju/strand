@@ -95,6 +95,7 @@ export default function SystemSettings({ page = SETTINGS_PAGES[0].id }: { page?:
         { key: 'exportMaxRows', label: 'Most work items in one CSV export', type: 'number', min: 100, max: 1_000_000 },
         { key: 'bulkMaxItems', label: 'Most work items in one bulk change', type: 'number', min: 1, max: 5000 },
         { key: 'importMaxRows', label: 'Most rows in one CSV import', type: 'number', min: 10, max: 100_000 },
+        { key: 'viewsMaxItems', label: 'Most work items in an XML, RSS, Word or printable export', type: 'number', min: 1, max: 10_000 },
       ]} />}
       {page === 'email' && <EmailSection setting={of('email')} save={v => save('email', v)} />}
       {page === 'email-batching' && <SimpleSection setting={of('emailBatching')} save={v => save('emailBatching', v)} fields={[

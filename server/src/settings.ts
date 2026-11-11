@@ -72,8 +72,9 @@ export const SETTINGS = {
       exportMaxRows: z.number().int().min(100).max(1_000_000).describe('Most work items in one CSV export'),
       bulkMaxItems: z.number().int().min(1).max(5000).describe('Most work items in one bulk change'),
       importMaxRows: z.number().int().min(10).max(100_000).describe('Most rows in one CSV import'),
+      viewsMaxItems: z.number().int().min(1).max(10_000).default(1000).describe('Most work items in an XML, RSS, Word or printable export (Jira’s jira.search.views.default.max)'),
     }),
-    default: { exportMaxRows: 20_000, bulkMaxItems: 200, importMaxRows: 10_000 },
+    default: { exportMaxRows: 20_000, bulkMaxItems: 200, importMaxRows: 10_000, viewsMaxItems: 1000 },
   },
   filterSubscriptions: {
     label: 'Filter subscriptions',

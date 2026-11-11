@@ -43,6 +43,7 @@ import remoteLinkRoutes, { jiraRemoteLinks } from './routes/remoteLinks.ts'
 import subscriptionRoutes, { startSubscriptions } from './routes/subscriptions.ts'
 import notificationSchemeRoutes from './routes/notificationSchemes.ts'
 import incomingMailRoutes from './routes/incomingMail.ts'
+import exportRoutes from './routes/exports.ts'
 import { startMailHandlers } from './mail.ts'
 import { startDirectories } from './directories.ts'
 import { startAuth } from './authConfig.ts'
@@ -184,6 +185,7 @@ export async function build() {
       await v1.register(subscriptionRoutes)
       await v1.register(notificationSchemeRoutes)
       await v1.register(incomingMailRoutes)
+      await v1.register(exportRoutes)
     }
     await api.register(routes, { prefix: '/api/v1' })
     // ponytail: the unversioned /api is kept as a hidden alias so clients built before /api/v1 keep working;
