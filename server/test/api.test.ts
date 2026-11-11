@@ -6822,6 +6822,8 @@ test('[0106.R1][0106.R2][0106.R3] deleting a group its comments are restricted t
   const refused = await call('DELETE', `/api/v1/groups/${old.id}`, undefined, 'swp.ann@x.com')
   assert.deepEqual([refused.status, refused.body.error], [409, '1 comment is restricted to swp-old: choose a group to move it to'])
   assert.equal((await call('DELETE', `/api/v1/groups/${old.id}?swapGroupId=${old.id}`, undefined, 'swp.ann@x.com')).status, 400)
+  assert.equal((await call('DELETE', `/api/v1/groups/${old.id}?swapGroupId=${next.id}`, undefined, 'swp.ann@x.com')).status, 403)   // not her group
+  await call('POST', `/api/v1/groups/${next.id}/members`, { userIds: [(await call('GET', '/api/v1/me', undefined, 'swp.ann@x.com')).body.id] })
   // moved: swp-next's people read it now
   assert.equal((await call('DELETE', `/api/v1/groups/${old.id}?swapGroupId=${next.id}`, undefined, 'swp.ann@x.com')).status, 204)
   assert.deepEqual(await bodies('swp.bob@x.com'), ['old group only'])

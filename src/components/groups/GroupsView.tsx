@@ -223,13 +223,14 @@ function MakeGroup({ onClose, onMade }: { onClose: () => void; onMade: (g: Group
 
 /** Spec 0106: comments restricted to a group being deleted move to another group, as Jira's swap group. Searched on the server. */
 function SwapGroup({ count, not, value, onChange }: { count: number; not: string; value: { id: string; name: string } | null; onChange: (g: { id: string; name: string }) => void }) {
+  const mine = useStore().state.isAdmin !== true      // an owner moves them only to a group they're in or own
   const [query, setQuery] = useState('')
   const [found, setFound] = useState<{ id: string; name: string }[]>([])
   const [busy, setBusy] = useState(false)
   useEffect(() => {
-    const t = setTimeout(() => { setBusy(true); api<{ items: { id: string; name: string }[] }>('GET', `/api/groups?limit=50&query=${encodeURIComponent(query)}`).then(r => setFound(r.items.filter(g => g.id !== not)), () => {}).finally(() => setBusy(false)) }, 200)
+    const t = setTimeout(() => { setBusy(true); api<{ items: { id: string; name: string }[] }>('GET', `/api/groups?limit=50${mine ? '&mine=1' : ''}&query=${encodeURIComponent(query)}`).then(r => setFound(r.items.filter(g => g.id !== not)), () => {}).finally(() => setBusy(false)) }, 200)
     return () => clearTimeout(t)
-  }, [query, not])
+  }, [query, not, mine])
   return <>
     <p>{count === 1 ? '1 comment is' : `${count} comments are`} restricted to this group. Choose the group {count === 1 ? 'it moves' : 'they move'} to:</p>
     <Picker value={value?.id} search remote={{ onSearch: setQuery, searching: busy }} className="btn btn-secondary btn-sm" title="Move comments to"
