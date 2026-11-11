@@ -9,7 +9,7 @@ There are 65 specs: 63 are built and ported to both branches, 0101 is verified, 
 | 1 | 0609 | `~` text search as Jira's: stemming, indexing language, phrases, wildcards, AND/OR/NOT, fuzzy, a `comment` field, comments in `text ~` | SR-03 | Done (ported 12 Nov) |
 | 2 | 0310 | Project templates beyond Scrum and Kanban: Basic and Business | PRJ-06 | Done (ported 12 Nov) |
 | 3 | 0412 | Estimation by business value or a custom field; remaining-estimate burndown; team time zone | AG-07, AG-08 | Done (ported 12 Nov) |
-| 4 | 0414 | Parallel sprints (Jira allows more than one active sprint) | AG-06 | Queued; also limits imports, see B4 |
+| 4 | 0414 | Parallel sprints (Jira allows more than one active sprint) | AG-06 | Done (ported 12 Nov); B4 fixed with it |
 | 5 | 0717 | Global permissions (Browse users, Create shared objects, Bulk change…) | PRM-10 | Queued |
 | 6 | 0718 | Workflow triggers from development tools (a merged pull request moves an item) | WF-06 | Queued |
 | 7 | 0713 | Incremental directory sync (LDAP uSNChanged), "manage user status locally" | DIR-04 | Queued |
@@ -24,7 +24,7 @@ Today's importer (0802) brings projects, people, statuses, types, priorities, re
 | B1 | **Wiki markup isn't converted.** Jira DC descriptions and comments are wiki markup (`h1.`, `*bold*`, `{code}`, `[text\|url]`, `!image.png!`, `[~user]` mentions, tables) | Every imported description and comment shows raw markup | Convert wiki markup to Strand's Markdown on import: inline images point to the imported attachments, mentions to the people |
 | B2 | **Old Jira links break.** `https://jira…/browse/KEY-1` in bookmarks, emails, Confluence and code | Links everywhere stop working at cutover | A `/browse/:key` route in Strand, plus a redirect rule for the old Jira host (an infrastructure step) |
 | B3 | **No delta import for cutover.** A re-run skips what it already imported, so later changes in Jira aren't picked up | A large migration can't freeze Jira for the whole import | "Update since last run": re-read items changed after the last run (`updated >= …`) and apply their changes. Then a short freeze for the final delta |
-| B4 | **Only one active sprint survives** | Boards with parallel sprints lose sprint state | Spec 0414 (A4) |
+| B4 | ~~Only one active sprint survives~~ | Done with spec 0414: every active sprint stays when parallel sprints are on | — |
 | B5 | **Workflows arrive without transitions**: every status reachable from any, because Jira DC's REST doesn't expose transitions | Workflow rules are lost | Import the workflow XML an admin exports from Jira (Administration › Workflows › Export as XML): transitions, conditions, validators and post functions Strand has |
 | B6 | **Boards come in as Strand's default board** | Columns, swimlanes, quick filters and board filters are lost | Jira Software's REST has `board/{id}/configuration`: import columns (status mapping), the filter, estimation and ranking |
 | B7 | **Saved filters and subscriptions** aren't imported | People's searches are lost | Import the filters each person can see (REST `filter/{id}`, `filter/favourite`) with their sharing; translate JQL that refers to ids |

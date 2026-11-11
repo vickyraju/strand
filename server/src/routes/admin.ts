@@ -304,6 +304,12 @@ const plugin: FastifyPluginAsyncZod = async app => {
         .filter(k => !keyFits(k, { pattern, maxLength }))
       if (misfits.length) throw new HttpError(400, `Existing projects would not fit: ${misfits.slice(0, 10).join(', ')}${misfits.length > 10 ? ` and ${misfits.length - 10} more` : ''}`, { pattern: 'Existing keys don’t fit' })
     }
+    // Jira: parallel sprints stay on while a board has more than one active sprint (spec 0414 R1)
+    if (key === 'sprints' && !(parsed.data as { parallel: boolean }).parallel) {
+      const busy = await db.query<{ name: string; key: string }>(`select b.name, p.key from boards b join projects p on p.id = b.project_id
+        where b.workspace_id = $1 and (select count(*) from sprints s where s.board_id = b.id and s.state = 'active') > 1 order by p.key, b.name limit 6`, [req.me.workspaceId])
+      if (busy.length) throw new HttpError(409, `Complete sprints first: ${busy.slice(0, 5).map(b => `${b.name} (${b.key})`).join(', ')}${busy.length > 5 ? ' and more' : ''} ${busy.length === 1 ? 'has' : 'have'} more than one active sprint`, { parallel: 'Boards have parallel sprints' })
+    }
     await tx(async d => {
       const before = await getSetting(req.me.workspaceId, key, d)
       await setSetting(d, req.me.workspaceId, key, parsed.data, req.me.id)

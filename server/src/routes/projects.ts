@@ -157,6 +157,15 @@ const STAT = `case coalesce(sprints.estimation, (select estimation from boards w
                        from custom_fields f where f.id = coalesce(sprints.estimation_field_id, (select estimation_field_id from boards where id = sprints.board_id)))
   else i.estimate end`
 
+/** Spec 0414: without parallel sprints a board has one active sprint. Checked under a lock on the board. */
+async function checkParallel(d: Db, ws: string, boardId: string | null, doing: string) {
+  if (!boardId) return
+  await d.query('select 1 from boards where id = $1 for update', [boardId])
+  if ((await getSetting(ws, 'sprints')).parallel) return
+  const [active] = await d.query<{ name: string }>(`select name from sprints where board_id = $1 and state = 'active'`, [boardId])
+  if (active) throw new HttpError(409, `${active.name} is active on this board: complete it before ${doing} another sprint, or turn on parallel sprints (System settings › Sprints)`)
+}
+
 /** The statuses of a board's rightmost column that has any: what "completed" means for its sprints (Jira's; spec 0401). */
 async function doneColumnOf(d: Db, boardId: string | null) {
   const [b] = boardId ? await d.query<{ columns: { statusIds: string[] }[] }>('select columns from boards where id = $1', [boardId]) : []
@@ -955,8 +964,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
       const { p, s } = await managedSprint(d, req, true)
       const [cur] = await d.query<any>('select state, name, board_id, issue_ids from sprints where id = $1', [s.id])
       if (cur.state !== 'closed') throw new HttpError(409, 'Only a completed sprint can be reopened')
-      const [active] = await d.query<{ name: string }>(`select name from sprints where board_id = $1 and state = 'active'`, [cur.boardId])
-      if (active) throw new HttpError(409, `${active.name} is active on this board: complete it before reopening another sprint`)
+      await checkParallel(d, req.me.workspaceId, cur.boardId, 'reopening')
       const [row] = await d.query(`update sprints set state = 'active', completed_at = null, completed = null where id = $1 returning *`, [s.id])
       await d.query(
         `update issues set sprint_id = $1, version = version + 1, updated_at = now()
@@ -973,6 +981,8 @@ const plugin: FastifyPluginAsyncZod = async app => {
     const { endsAt } = req.body
     return tx(async d => {
       const { p } = await managedSprint(d, req, true)
+      const [cur] = await d.query<{ boardId: string | null; state: string }>('select board_id, state from sprints where id = $1 and project_id = $2', [req.params.id, p.id])
+      if (cur?.state === 'planned') await checkParallel(d, req.me.workspaceId, cur.boardId, 'starting')
       const [s] = await d.query(
         `update sprints set state = 'active', started_at = now(), ends_at = $3,
                 estimation = (select estimation from boards where id = sprints.board_id),
@@ -980,7 +990,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
                 committed = (select coalesce(sum(${STAT}), 0) from issues i where sprint_id = sprints.id and deleted_at is null),
                 start_estimates = (select coalesce(jsonb_object_agg(id, ${STAT}), '{}') from issues i where sprint_id = sprints.id and deleted_at is null)   -- for the Sprint Report (0402)
           where id = $1 and project_id = $2 and state = 'planned' returning *`, [req.params.id, p.id, endsAt])
-      if (!s) throw new HttpError(409, 'Sprint is not planned, or another sprint is already active on its board')
+      if (!s) throw new HttpError(409, 'Sprint is not planned')
       await emit(d, req.me.workspaceId, 'sprint_started', { sprintId: s.id, projectId: p.id }, req.me.id)
       return s
     })

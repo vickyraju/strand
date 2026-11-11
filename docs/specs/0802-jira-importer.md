@@ -77,3 +77,5 @@ Same rules; security levels aren't imported (Jira's issue security schemes): a p
 None.
 
 ## Changelog
+
+- 12 Nov 2026: with parallel sprints on (spec 0414), every active sprint of a board stays active.

@@ -534,7 +534,7 @@ export type Action =
   | { type: 'markViewed'; issueId: string }
   | { type: 'createSprint'; projectId: string; boardId?: string; id?: string }
   | { type: 'updateSprint'; id: string; patch: Partial<Pick<Sprint, 'name' | 'goal' | 'endsAt'>> }
-  | { type: 'startSprint'; id: string; endsAt: number }
+  | { type: 'startSprint'; id: string; endsAt: number; parallel?: boolean }
   | { type: 'completeSprint'; id: string; moveTo?: string; doneStatusIds?: string[] }   // the board's rightmost column (spec 0401)
   | { type: 'deleteSprint'; id: string }
   | { type: 'reopenSprint'; id: string }                                    // a completed sprint, active again (spec 0403)
@@ -1009,7 +1009,8 @@ export function reducer(state: State, action: Action, now = Date.now()): State {
     case 'startSprint': {
       const sprint = state.sprints.find(s => s.id === action.id)
       // one active sprint per board (a local workspace's sprints have no board: one per project)
-      if (!sprint || state.sprints.some(s => (s.boardId ?? s.projectId) === (sprint.boardId ?? sprint.projectId) && s.state === 'active')) return state
+      // one active sprint per board, unless parallel sprints are on (spec 0414)
+      if (!sprint || !action.parallel && state.sprints.some(s => (s.boardId ?? s.projectId) === (sprint.boardId ?? sprint.projectId) && s.state === 'active')) return state
       const committed = state.issues.filter(i => i.sprintId === sprint.id).reduce((n, i) => n + (i.estimate ?? 0), 0)
       return {
         ...state,

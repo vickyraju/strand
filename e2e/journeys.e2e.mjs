@@ -2337,3 +2337,33 @@ test('[0412.R1] a board admin estimates with a number field: the sprint totals i
   assert.equal((await o.locator('.pts-summary .pt-todo').first().innerText()).trim(), '13')
   assert.deepEqual(o.problems, [])
 })
+
+test('[0414.R2][0414.R3] with parallel sprints on, a second sprint starts from the backlog; the board’s picker shows one sprint’s work', { skip, timeout: 90_000 }, async () => {
+  await owner('PUT', '/admin/settings/sprints', { parallel: true })
+  await owner('POST', '/projects', { name: 'Parallel', key: 'PRL', template: 'scrum' })
+  const s1 = (await owner('POST', '/projects/PRL/sprints', { name: 'Team A sprint' })).body
+  const s2 = (await owner('POST', '/projects/PRL/sprints', { name: 'Team B sprint' })).body
+  await owner('POST', '/projects/PRL/issues', { title: 'Alpha task', sprintId: s1.id })
+  await owner('POST', '/projects/PRL/issues', { title: 'Beta task', sprintId: s2.id })
+  await owner('POST', `/projects/PRL/sprints/${s1.id}/start`, { endsAt: new Date(Date.now() + 864e5).toISOString() })
+  try {
+    const o = await signIn('owner@e2e.test')
+    await o.goto(url(`/project/PRL/backlog/${s1.boardId}`))
+    await o.click('button:has-text("Start sprint"):not([disabled])')
+    await o.click('.modal button:has-text("Start sprint")')
+    const state = async () => (await owner('GET', '/projects/PRL')).body.sprints.find(s => s.id === s2.id).state
+    for (let i = 0; i < 40 && (await state()) !== 'active'; i++) await new Promise(r => setTimeout(r, 250))
+    assert.equal(await state(), 'active')
+    await o.goto(url(`/project/PRL/board/${s1.boardId}`))
+    await o.waitForSelector('.card:has-text("Beta task")')
+    assert.equal(await o.locator('.card:has-text("Alpha task")').count(), 1)          // all active sprints at first
+    await o.click('button[title="Sprint"]')
+    await o.click('.picker-menu .picker-item:has-text("Team B sprint")')
+    await o.waitForSelector('.card:has-text("Alpha task")', { state: 'detached' })
+    assert.equal(await o.locator('.card:has-text("Beta task")').count(), 1)
+    assert.deepEqual(o.problems, [])
+  } finally {
+    for (const s of [s1, s2]) await owner('POST', `/projects/PRL/sprints/${s.id}/complete`, { moveTo: null })
+    await owner('PUT', '/admin/settings/sprints', { parallel: false })
+  }
+})

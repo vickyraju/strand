@@ -139,7 +139,7 @@ export async function boardWhere(d: Db, me: Me, b: Board, o: { quick?: string[];
   args.push(b.id)
   const boardArg = `$${args.length}`
   const kanbanBacklog = b.type === 'kanban' && b.kanbanBacklog.length > 0
-  if (o.scope === 'board' && b.type === 'scrum') where.push(`i.sprint_id = (select id from sprints where board_id = ${boardArg} and state = 'active')`)
+  if (o.scope === 'board' && b.type === 'scrum') where.push(`i.sprint_id in (select id from sprints where board_id = ${boardArg} and state = 'active')`)   // every active sprint (spec 0414)
   // a Kanban backlog (spec 0406): its items stay off the board; its Backlog tab has them and the board's first column's
   else if (kanbanBacklog && o.scope !== 'all') {
     args.push(o.scope === 'board' ? b.kanbanBacklog : [...b.kanbanBacklog, ...(b.columns[0]?.statusIds ?? [])])

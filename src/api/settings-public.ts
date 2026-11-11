@@ -17,6 +17,7 @@ export interface PublicSettings {
   groups: { whoCanCreate: 'everyone' | 'admins' }
   filterSubscriptions: { groupSubscribers: 'everyone' | 'admins'; maxItems: number }
   dueReminders: { enabled: boolean; daysAhead: number; daysLate: number; dueSoonDays: number }
+  sprints: { parallel: boolean }
   timeTracking: TimeSettings
   projectKeys: KeyRule
   priorities: PriorityDef[]
@@ -34,6 +35,7 @@ export const DEFAULT_SETTINGS: PublicSettings = {
   groups: { whoCanCreate: 'everyone' },
   filterSubscriptions: { groupSubscribers: 'everyone', maxItems: 200 },
   dueReminders: { enabled: true, daysAhead: 1, daysLate: 3, dueSoonDays: 3 },
+  sprints: { parallel: false },
   timeTracking: DEFAULT_TIME,
   projectKeys: DEFAULT_KEY_RULE,
   priorities: DEFAULT_PRIORITIES,
