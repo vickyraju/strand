@@ -36,6 +36,7 @@ import projectExtras, { publicAvatars } from './routes/projectExtras.ts'
 import webhookRoutes, { jiraRest as jiraWebhooks } from './routes/webhooks.ts'
 import automationRoutes from './routes/automation.ts'
 import moveRoutes from './routes/move.ts'
+import customFieldRoutes from './routes/customFields.ts'
 import { startDirectories } from './directories.ts'
 import { startAuth } from './authConfig.ts'
 import { githubWebhook } from './routes/github.ts'
@@ -169,6 +170,7 @@ export async function build() {
       await v1.register(webhookRoutes)
       await v1.register(automationRoutes)
       await v1.register(moveRoutes)
+      await v1.register(customFieldRoutes)
     }
     await api.register(routes, { prefix: '/api/v1' })
     // ponytail: the unversioned /api is kept as a hidden alias so clients built before /api/v1 keep working;

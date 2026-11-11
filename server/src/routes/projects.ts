@@ -21,6 +21,7 @@ import { checkImport } from '../csvImport.ts'
 import { getSetting } from '../settings.ts'
 import { describeKeyRule, keyFits } from '../shared/projectKeys.ts'
 import { KIND_LIST, type FieldKind } from '../shared/customFields.ts'
+import { carryOptions, clearValues, withOptionIds, type Opt } from '../fields.ts'
 
 const uuid = z.string().uuid()
 const color = z.string().regex(/^#[0-9a-fA-F]{6}$/)
@@ -42,48 +43,48 @@ export async function projectByKey(d: Db, req: { me: Me; method: string }, ref: 
   return { ...p, role: a.role }
 }
 
-type Opt = { id?: string; name: string; disabled?: boolean; parentId?: string | null }
-/** A field's options with ids (a new one gets one), names unique ignoring case under the same parent (spec 0105 R2, R6);
- *  a cascading field's child options name an option of the field as their parent (spec 0502 R2). */
-function withOptionIds(options: Opt[], kind?: string) {
-  const seen = new Set<string>()
-  const out = options.map(o => {
-    const key = `${o.parentId ?? ''}|${o.name.trim().toLowerCase()}`
-    if (seen.has(key)) throw new HttpError(400, `“${o.name.trim()}” is an option twice`, { options: 'Each option once' })
-    seen.add(key)
-    return { id: o.id ?? randomUUID(), name: o.name.trim(), disabled: !!o.disabled, ...(o.parentId ? { parentId: o.parentId } : {}) }
-  })
-  for (const o of out) if (o.parentId && (kind !== 'cascading' || !out.some(p => p.id === o.parentId && !p.parentId)))
-    throw new HttpError(400, 'Only a cascading field’s options have child options, under one of its options', { options: 'Child options belong under an option' })
-  return out
+// ── A project's own fields (spec 0503 R5): project admins add a field for their project alone, and change or delete the
+// fields used by it alone; a shared field (global, or several projects) is a system administrator's, in Administration ──
+type ProjectRef = { id: string; key: string; role: ProjectRole }
+async function ownField(d: Db, p: ProjectRef, id: string) {
+  const [f] = await d.query<any>('select * from field_defs where id = $1 and project_id = $2', [id, p.id])
+  if (!f) throw new HttpError(404, 'Not found')
+  if (f.shared) throw new HttpError(403, `${f.name} is shared with other projects: a system administrator changes it in Administration › Custom fields`)
+  return f
 }
-/** Items take an option's new name, and lose an option that was deleted, single and multiple values and cascading
- *  pairs alike (renames may swap names, so every value is worked out from the names before). */
-async function carryOptions(d: Db, projectId: string, fieldId: string, kind: string, before: Opt[], after: Opt[]) {
-  const next = new Map(after.map(o => [o.id, o.name]))
-  if (before.every(o => next.get(o.id) === o.name)) return
-  const renamed = (name: unknown, parentId: string | null): string | null => {
-    const o = before.find(x => x.name === name && (x.parentId ?? null) === parentId)
-    return o ? next.get(o.id) ?? null : String(name)
+async function addProjectField(d: Db, req: any, p: ProjectRef, b: Record<string, any>) {
+  const options = b.options ? withOptionIds(b.options as Opt[], b.kind) : null
+  const [n] = await d.query<{ next: number }>('select coalesce(max(position), -1) + 1 as next from field_defs where project_id = $1', [p.id])
+  const [f] = await d.query<{ id: string }>(
+    `insert into custom_fields (id, workspace_id, name, kind, position, created_by) values (coalesce($1::uuid, uuid_v7()), $2, $3, $4, $5, $6) returning id`,
+    [b.id ?? null, req.me.workspaceId, b.name, b.kind, b.position ?? n!.next, req.me.id])
+  await d.query('insert into field_contexts (field_id, name, project_ids, options) values ($1, $2, $3, $4)', [f!.id, `Default context for ${b.name}`, [p.id], options ? JSON.stringify(options) : null])
+  await audit(d, req, { action: 'project.custom_field.created', type: 'custom field', id: f!.id, name: b.name, project: p, after: { ...b, options } })
+  return (await d.query('select * from field_defs where id = $1 and project_id = $2', [f!.id, p.id]))[0]
+}
+async function changeProjectField(d: Db, req: any, p: ProjectRef, id: string, patch: Record<string, any>) {
+  const before = await ownField(d, p, id)
+  // Jira: a custom field's type can't change once it is made (spec 0105 R1)
+  if (patch.kind !== undefined && patch.kind !== before.kind) throw new HttpError(400, 'A field’s type can’t change. Make a new field of the type you need.', { kind: 'Fixed once made' })
+  if (!['name', 'options', 'position'].some(k => patch[k] !== undefined)) throw new HttpError(400, 'Nothing to update')
+  if (patch.name !== undefined || patch.position !== undefined)
+    await d.query('update custom_fields set name = coalesce($2, name), position = coalesce($3, position) where id = $1', [id, patch.name ?? null, patch.position ?? null])
+  if (patch.options !== undefined) {
+    const options = patch.options ? withOptionIds(patch.options as Opt[], before.kind) : null
+    await d.query('update field_contexts set options = $2 where id = $1', [before.contextId, options ? JSON.stringify(options) : null])
+    // renamed and deleted options carry through to every item that has them, as in Jira (spec 0105 R3, R5)
+    await carryOptions(d, before.contextId, id, before.kind, before.options ?? [], options ?? [])
   }
-  const rows = await d.query<{ id: string; v: any }>('select id, custom -> $2 as v from issues where project_id = $1 and custom ? $2', [projectId, fieldId])
-  const ids: string[] = [], values: string[] = []
-  for (const r of rows) {
-    let nv: unknown
-    if (kind === 'cascading' && Array.isArray(r.v)) {
-      const p = renamed(r.v[0], null)
-      const parent = before.find(x => x.name === r.v[0] && !x.parentId)
-      const c = r.v[1] === undefined ? undefined : parent ? renamed(r.v[1], parent.id!) : null
-      nv = p === null ? null : c ? [p, c] : [p]
-    } else if (Array.isArray(r.v)) { const l = r.v.map(x => renamed(x, null)).filter(x => x !== null); nv = l.length ? l : null }
-    else nv = renamed(r.v, null)
-    if (JSON.stringify(nv) !== JSON.stringify(r.v)) { ids.push(r.id); values.push(JSON.stringify(nv)) }
-  }
-  if (!ids.length) return
-  await d.query(
-    `update issues i set custom = case when x.v = 'null'::jsonb then i.custom - $1 else jsonb_set(i.custom, array[$1], x.v) end, version = version + 1, updated_at = now()
-       from (select unnest($2::uuid[]) as id, unnest($3::jsonb[]) as v) x where i.id = x.id`, [fieldId, ids, values])
-  await publish(d, projectId, { type: 'issues.reranked' })          // open boards and lists load them again
+  const c = changes(before, patch)
+  if (c.changed) await audit(d, req, { action: 'project.custom_field.updated', type: 'custom field', id, name: patch.name ?? before.name, project: p, before: c.before, after: c.after })
+  return (await d.query('select * from field_defs where id = $1 and project_id = $2', [id, p.id]))[0]
+}
+async function deleteProjectField(d: Db, req: any, p: ProjectRef, id: string) {
+  const gone = await ownField(d, p, id)
+  await d.query('delete from custom_fields where id = $1', [id])
+  // a deleted custom field takes its values with it, so no item keeps a value for a field that no longer exists
+  await clearValues(d, id, [p.id])
+  await audit(d, req, { action: 'project.custom_field.deleted', type: 'custom field', id, name: gone.name, project: p, before: gone })
 }
 
 /** Project settings (workflow, fields, rules, people…) are for project admins. */
@@ -458,7 +459,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
       const p = await projectByKey(db, req, req.params.key)
       await requireProjectAdmin(req, p)
       const body = req.body as Record<string, unknown>
-      if (kind === 'fields' && body.options) body.options = withOptionIds(body.options as Opt[], body.kind as string)
+      if (kind === 'fields') return tx(d => addProjectField(d, req, p, body))
       await checkPriorities(req.me.workspaceId, kind, body)
       if (kind === 'rules') await checkRule(db, req.me, body)
       const w = pick(body, [...cfg.cols], json)
@@ -484,10 +485,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
       const p = await projectByKey(db, req, req.params.key)
       await requireProjectAdmin(req, p)
       const patch = req.body as Record<string, unknown>
-      if (kind === 'fields' && patch.options) {
-        const [def] = await db.query<{ kind: string }>('select kind from field_defs where id = $1 and project_id = $2', [req.params.id, p.id])
-        patch.options = withOptionIds(patch.options as Opt[], (patch.kind as string | undefined) ?? def?.kind)
-      }
+      if (kind === 'fields') return tx(d => changeProjectField(d, req, p, req.params.id, patch))
       await checkPriorities(req.me.workspaceId, kind, patch)
       if (kind === 'rules') await checkRule(db, req.me, patch)
       const w = pick(patch, [...cfg.cols], json)
@@ -495,16 +493,11 @@ const plugin: FastifyPluginAsyncZod = async app => {
       return tx(async d => {
         const [before] = await d.query(`select * from ${cfg.table} where id = $1 and project_id = $2 for update`, [req.params.id, p.id])
         if (!before) throw new HttpError(404, 'Not found')
-        // Jira: a custom field's type can't change once it is made (spec 0105 R1)
-        if (kind === 'fields' && patch.kind !== undefined && patch.kind !== before.kind)
-          throw new HttpError(400, 'A field’s type can’t change. Make a new field of the type you need.', { kind: 'Fixed once made' })
         // Jira: an archived version can't be changed until it is unarchived (spec 0304 R4)
         if (kind === 'releases' && before.archived && patch.archived !== false) throw new HttpError(400, `Version ${before.name} is archived`)
         const [row] = await d.query(   // unreleasing (Jira's Unrelease) clears the release date it was given
           `update ${cfg.table} set ${w.cols.map((c, i) => `${c} = $${i + 3}`).join(', ')}${kind === 'releases' && patch.released === false ? ', released_at = null' : ''} where id = $1 and project_id = $2 returning *`,
           [req.params.id, p.id, ...w.vals])
-        // renamed and deleted options carry through to every item that has them, as in Jira (spec 0105 R3, R5)
-        if (kind === 'fields' && patch.options) await carryOptions(d, p.id, before.id, before.kind, before.options ?? [], patch.options as Opt[])
         const c = changes(before, req.body as Record<string, unknown>)
         if (c.changed) await audit(d, req, { action: `project.${what.replace(' ', '_')}.updated`, type: what, id: row.id, name: row.name ?? null, project: p, before: c.before, after: c.after })
         if (kind === 'rules' && (patch.trigger !== undefined || patch.enabled !== undefined)) await scheduleRule(d, row, req.me.workspaceId)
@@ -523,6 +516,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
       const p = await projectByKey(db, req, req.params.key)
       await requireProjectAdmin(req, p)
       const q = req.query as { fixTo?: string; affectsTo?: string; moveTo?: string }
+      if (kind === 'fields') { await tx(d => deleteProjectField(d, req, p, req.params.id)); return reply.code(204).send() }
       await tx(async d => {
         if (kind === 'releases') {
           for (const [field, to] of [['fixTo', q.fixTo], ['affectsTo', q.affectsTo]] as const) if (to) await usableRelease(d, p.id, to, req.params.id, field)
@@ -537,8 +531,6 @@ const plugin: FastifyPluginAsyncZod = async app => {
         const [gone] = await d.query(`delete from ${cfg.table} where id = $1 and project_id = $2 returning *`, [req.params.id, p.id])
         if (!gone) throw new HttpError(404, 'Not found')
         await audit(d, req, { action: `project.${what.replace(' ', '_')}.deleted`, type: what, id: gone.id, name: gone.name ?? null, project: p, before: gone })
-        // a deleted custom field takes its values with it, so no item keeps a value for a field that no longer exists
-        if (kind === 'fields') await d.query('update issues set custom = custom - $2 where project_id = $1 and custom ? $2', [p.id, req.params.id])
       })
       reply.code(204).send()
     })

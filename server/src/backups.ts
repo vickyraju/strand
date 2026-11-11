@@ -33,7 +33,9 @@ const TABLES: [table: string, where: string][] = [
   ['work_types', 'project_id = $1'],
   ['security_levels', 'project_id = $1'],
   ['transitions', 'project_id = $1'],
-  ['field_defs', 'project_id = $1'],
+  // the fields used by this project alone, and their context (spec 0503): shared fields stay where they are
+  ['custom_fields', 'id in (select field_id from field_contexts where project_ids = array[$1]::uuid[])'],
+  ['field_contexts', 'project_ids = array[$1]::uuid[]'],
   ['releases', 'project_id = $1'],
   ['components', 'project_id = $1'],
   ['item_templates', 'project_id = $1'],
@@ -165,6 +167,11 @@ async function restoreProject(p: { backupId: string; actorId: string | null; act
     const issueIds = new Set((doc.tables.issues ?? []).map(r => r.id as string))
     const existing = new Set((await c.query('select id from issues where id = any($1::uuid[])',
       [[...new Set([...(doc.tables.issue_links ?? []).flatMap(l => [l.issue_id, l.target_id]), ...(doc.tables.test_items ?? []).flatMap(l => [l.container_id, l.member_id]), ...(doc.tables.test_runs ?? []).flatMap(l => [l.execution_id, l.test_id])])]])).rows.map(r => r.id as string))
+    // a backup written before spec 0503 has the project's fields as field_defs rows: each becomes a field with a context for it
+    if (doc.tables.field_defs?.length && !doc.tables.custom_fields) {
+      doc.tables.custom_fields = doc.tables.field_defs.map(f => ({ id: f.id, workspace_id: b.workspace_id, name: f.name, kind: f.kind, position: f.position ?? 0 }))
+      doc.tables.field_contexts = doc.tables.field_defs.map(f => ({ field_id: f.id, name: `Default context for ${f.name}`, project_ids: [doc.project.id], options: f.options ?? null }))
+    }
     for (const [table] of TABLES) {
       const rows = doc.tables[table] ?? []
       if (!rows.length) continue

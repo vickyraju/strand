@@ -509,7 +509,7 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
             <Field label="Due date">
               <input className="field-input" type="date" value={issue.dueDate ?? ''} min={issue.startDate} aria-label="Due date" onChange={e => set({ dueDate: e.target.value || undefined })} />
             </Field>
-            {project.fields.map(f => (
+            {project.fields.filter(f => !f.typeKeys || f.typeKeys.includes(issue.type)).map(f => (   // a field applies to its context's work types (spec 0503)
               <Field key={f.id} label={f.name}><CustomFieldInput key={issue.id} field={f} issue={issue} /></Field>
             ))}
             <Field label="Watchers">

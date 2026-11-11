@@ -35,6 +35,12 @@ const s3Server = createServer((req, res) => {
 })
 let pool: pg.Pool
 
+/** A custom field for one project (spec 0503: a field with a context for that project), made straight in the database. */
+const projectField = async (projectId: string, name: string, kind: string, options: object[] | null = null) => {
+  const [{ id }] = (await pool.query(`insert into custom_fields (workspace_id, name, kind) select workspace_id, $2, $3 from projects where id = $1 returning id`, [projectId, name, kind])).rows
+  await pool.query(`insert into field_contexts (field_id, name, project_ids, options) values ($1, $2, array[$3::uuid], $4)`, [id, `Default context for ${name}`, projectId, options ? JSON.stringify(options) : null])
+  return { id: id as string }
+}
 const call = async (method: string, path: string, body?: unknown, who = 'owner@x.com', headers: Record<string, string> = {}) => {
   // web app calls (its Origin): rate limiting leaves it alone (spec 0706)
   const r = await app.inject({ method: method as any, url: path, payload: body as any, headers: { origin: 'http://localhost:5173', 'x-dev-user': who, ...headers } })
@@ -1331,7 +1337,7 @@ test('link types: Jira’s four (and test management’s Defect) to start with; 
 test('clone: a copy in the start status linked to the original, with its children, links and sprint when asked', { skip }, async () => {
   const p = (await call('POST', '/api/v1/projects', { name: 'Clones', key: 'CLN', template: 'scrum' })).body
   const [todo, doing] = p.statuses
-  const [{ id: f1 }] = (await pool.query(`insert into field_defs (project_id, name, kind) values ($1, 'Team', 'text') returning id`, [p.id])).rows
+  const { id: f1 } = await projectField(p.id, 'Team', 'text')
   await join('CLN', 'cln.member@x.com')
   const member = (await call('GET', '/api/v1/me', undefined, 'cln.member@x.com')).body.id
   const sprint = (await call('POST', '/api/v1/projects/CLN/sprints', { name: 'S1' })).body
@@ -2021,8 +2027,8 @@ test('JQL search: fields by name, custom fields, AND/OR/NOT, lists, empties, dat
   const [todo, doing, done] = [p.statuses[0], p.statuses[1], p.statuses.find((s: any) => s.category === 'done')]
   await join('JQL', 'jql.ann@x.com')
   const ann = (await call('GET', '/api/v1/me', undefined, 'jql.ann@x.com')).body.id
-  const [{ id: team }] = (await pool.query(`insert into field_defs (project_id, name, kind) values ($1, 'Team', 'text') returning id`, [p.id])).rows
-  const [{ id: pts }] = (await pool.query(`insert into field_defs (project_id, name, kind) values ($1, 'Risk', 'number') returning id`, [p.id])).rows
+  const { id: team } = await projectField(p.id, 'Team', 'text')
+  const { id: pts } = await projectField(p.id, 'Risk', 'number')
   const api = (await call('POST', '/api/v1/projects/JQL/components', { name: 'API' })).body
   const mk = async (title: string, b: object) => (await call('POST', '/api/v1/projects/JQL/issues', { title, ...b })).body
   const a = await mk('Login fails', { type: 'bug', priority: 'urgent', assigneeId: ann, labels: ['auth'], custom: { [team]: 'Core', [pts]: 8 }, componentIds: [api.id], dueDate: '2026-01-01' })
@@ -2188,7 +2194,7 @@ test('[0307.R3] CSV import: a dry run checks every row; the import runs as a job
   const p = (await call('POST', '/api/v1/projects', { name: 'From CSV', key: 'CSV', template: 'kanban' })).body
   await join('CSV', 'imp.ann@x.com')
   await call('POST', '/api/v1/projects/CSV/components', { name: 'API' })
-  const [{ id: team }] = (await pool.query(`insert into field_defs (project_id, name, kind, options) values ($1, 'Team', 'select', '[{"id":"o1","name":"Core","disabled":false},{"id":"o2","name":"Web","disabled":false}]') returning id`, [p.id])).rows
+  const { id: team } = await projectField(p.id, 'Team', 'select', [{"id":"o1","name":"Core","disabled":false},{"id":"o2","name":"Web","disabled":false}])
   const csv = [
     'Summary,Issue Type,Status,Priority,Assignee,Labels,Story Points,Due Date,Component/s,Team',
     'Login fails,Bug,In progress,Highest,imp.ann@x.com,"auth,ui",5,01/Oct/26,API,Core',
@@ -3235,8 +3241,8 @@ test('project backups: deleting backs up everything first, restore brings it all
   const b = (await call('GET', '/api/v1/admin/project-backups?query=BAK')).body.items.find((x: any) => x.projectKey === 'BAK')
   assert.deepEqual([b.items, b.files, b.restoredAt], [2, 1, null])
   const doc = JSON.parse(objects.get(`files/${b.objectKey}`)!.toString())
-  assert.deepEqual(Object.fromEntries(['issues', 'comments', 'worklogs', 'issue_links', 'attachments', 'field_defs', 'project_members'].map(k => [k, doc.tables[k].length])),
-    { issues: 2, comments: 1, worklogs: 1, issue_links: 1, attachments: 1, field_defs: 1, project_members: 2 })
+  assert.deepEqual(Object.fromEntries(['issues', 'comments', 'worklogs', 'issue_links', 'attachments', 'custom_fields', 'field_contexts', 'project_members'].map(k => [k, doc.tables[k].length])),
+    { issues: 2, comments: 1, worklogs: 1, issue_links: 1, attachments: 1, custom_fields: 1, field_contexts: 1, project_members: 2 })
   assert.ok(doc.tables.activity.some((a: any) => a.field === 'statusId'))
   assert.equal(objects.get(`files/${b.objectKey.replace('project.json', `files/${t.id}`)}`)!.toString(), 'hello')
   assert.equal((await call('GET', `/api/v1/admin/project-backups/${b.id}/url`)).status, 200)
@@ -3586,6 +3592,12 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     'GET /look-and-feel': ['public', '/look-and-feel'],   // 0702.R2
     'GET /project-categories': ['any', '/project-categories'],   // 0703.R5
     'POST /issues/{key}/move': ['write', `/issues/${I}/move`, { projectKey: K, dryRun: true }], 'POST /issues/bulk/move': ['write', '/issues/bulk/move', { issues: [I], projectKey: K }],   // 0501.R1
+    'GET /admin/custom-fields': ['gadmin', '/admin/custom-fields'], 'GET /admin/custom-fields/{id}': ['gadmin', `/admin/custom-fields/${none}`],   // 0503.R1
+    'POST /admin/custom-fields': ['gadmin', '/admin/custom-fields', { name: 'Matrix field', kind: 'text', context: { projectKeys: [K] } }],
+    'PATCH /admin/custom-fields/{id}': ['gadmin', `/admin/custom-fields/${none}`, { name: 'x' }], 'DELETE /admin/custom-fields/{id}': ['gadmin', `/admin/custom-fields/${none}`],
+    'POST /admin/custom-fields/{id}/contexts': ['gadmin', `/admin/custom-fields/${none}/contexts`, { name: 'x', projectKeys: null }],
+    'PATCH /admin/custom-fields/{id}/contexts/{contextId}': ['gadmin', `/admin/custom-fields/${none}/contexts/${none}`, { name: 'x' }],
+    'DELETE /admin/custom-fields/{id}/contexts/{contextId}': ['gadmin', `/admin/custom-fields/${none}/contexts/${none}`],
     'GET /admin/automation/rules': ['gadmin', '/admin/automation/rules'], 'GET /admin/automation/runs': ['gadmin', '/admin/automation/runs'],   // 0709.R3
     'POST /admin/automation/rules': ['gadmin', '/admin/automation/rules', { name: 'Matrix rule', scope: { kind: 'all' }, trigger: { kind: 'created' }, actions: [{ kind: 'label', value: 'matrix' }] }],
     'PUT /admin/automation/rules/{id}': ['gadmin', `/admin/automation/rules/${none}`, { name: 'x', scope: { kind: 'all' }, trigger: { kind: 'created' }, actions: [{ kind: 'label', value: 'x' }] }],
@@ -5543,6 +5555,61 @@ test('[0502.R1][0502.R2][0502.R4][0502.R5] custom field types: every one of Jira
   const mapping = { title: 0, [`custom.${f.multiselect}`]: 1, [`custom.${f.users}`]: 2, [`custom.${f.cascading}`]: 3, [`custom.${f.versions}`]: 4, [`custom.${f.datetime}`]: 5 }
   const dry = (await call('POST', '/api/v1/projects/CFT/import', { csv, mapping })).body
   assert.deepEqual(dry.report[0].warnings, [])
+})
+
+test('[0503.R1][0503.R2][0503.R3][0503.R4][0503.R5][0503.R6][0503.R8] global custom fields with contexts: global, a project’s own context, work types, defaults, options across projects, project admins’ own fields', { skip, timeout: 60_000 }, async () => {
+  for (const [name, key] of [['Ctx one', 'CXA'], ['Ctx two', 'CXB'], ['Ctx three', 'CXC']]) await call('POST', '/api/v1/projects', { name, key, template: 'kanban' })
+  await join('CXA', 'cx.admin@x.com', 'admin')
+  const fieldsOf = async (key: string) => (await call('GET', `/api/v1/projects/${key}`)).body.fields
+  // R1, R2: a global field with options applies in every project
+  const made = await call('POST', '/api/v1/admin/custom-fields', { name: 'Customer tier', kind: 'select', context: { projectKeys: null, options: [{ id: 'g', name: 'Gold' }, { id: 's', name: 'Silver' }], defaultValue: 'Silver' } })
+  assert.equal(made.status, 201, JSON.stringify(made.body))
+  const tier = made.body
+  for (const k of ['CXA', 'CXB', 'CXC']) assert.ok((await fieldsOf(k)).some((f: any) => f.id === tier.id && f.shared), k)
+  // R3: the default fills in
+  const a1 = (await call('POST', '/api/v1/projects/CXA/issues', { title: 'Defaulted' })).body
+  assert.equal(a1.custom[tier.id], 'Silver')
+  assert.equal((await call('POST', '/api/v1/projects/CXA/issues', { title: 'Chosen', custom: { [tier.id]: 'Gold' } })).body.custom[tier.id], 'Gold')
+  // R2: a project's own context overrides the global one, with its own options; one context per project; one global
+  const own = await call('POST', `/api/v1/admin/custom-fields/${tier.id}/contexts`, { name: 'Partners', projectKeys: ['CXB'], options: [{ id: 'p', name: 'Partner' }] })
+  assert.equal(own.status, 201, JSON.stringify(own.body))
+  assert.equal((await call('POST', `/api/v1/admin/custom-fields/${tier.id}/contexts`, { name: 'Again', projectKeys: ['cxb'] })).status, 400)
+  assert.equal((await call('POST', `/api/v1/admin/custom-fields/${tier.id}/contexts`, { name: 'Second global', projectKeys: null })).status, 400)
+  const inB = (await fieldsOf('CXB')).find((f: any) => f.id === tier.id)
+  assert.deepEqual(inB.options.map((o: any) => o.name), ['Partner'])
+  assert.equal((await call('POST', '/api/v1/projects/CXB/issues', { title: 'x', custom: { [tier.id]: 'Gold' } })).status, 400)
+  const b1 = (await call('POST', '/api/v1/projects/CXB/issues', { title: 'Partnered', custom: { [tier.id]: 'Partner' } })).body
+  // R2: work types limit a context
+  const bugsOnly = (await call('POST', '/api/v1/admin/custom-fields', { name: 'Severity note', kind: 'text', context: { projectKeys: ['CXC'], typeKeys: ['bug'] } })).body
+  assert.equal((await call('POST', '/api/v1/projects/CXC/issues', { title: 'A task', type: 'task', custom: { [bugsOnly.id]: 'x' } })).status, 400)
+  assert.equal((await call('POST', '/api/v1/projects/CXC/issues', { title: 'A bug', type: 'bug', custom: { [bugsOnly.id]: 'x' } })).status, 201)
+  // R4: renaming a global option carries to every project it covers
+  const global = tier.contexts.find((c: any) => c.projectKeys === null)
+  await call('PATCH', `/api/v1/admin/custom-fields/${tier.id}/contexts/${global.id}`, { options: [{ id: global.options[0].id, name: 'Platinum' }, global.options[1]], defaultValue: 'Silver' })
+  assert.equal((await call('GET', `/api/v1/issues/${a1.key}`)).body.custom[tier.id], 'Silver')
+  const chosen = (await call('GET', `/api/v1/search?jql=${encodeURIComponent('project = CXA AND "Customer tier" = Platinum')}`)).body.items
+  assert.equal(chosen.length, 1)
+  // R6: deleting the project's own context: CXB falls back to the global one, its values not in it are cleared
+  await call('DELETE', `/api/v1/admin/custom-fields/${tier.id}/contexts/${own.body.contexts.find((c: any) => c.name === 'Partners').id}`)
+  assert.equal((await call('GET', `/api/v1/issues/${b1.key}`)).body.custom[tier.id], undefined)
+  assert.deepEqual((await fieldsOf('CXB')).find((f: any) => f.id === tier.id).options.map((o: any) => o.name), ['Platinum', 'Silver'])
+  // R5: project admins add and change their own field, not a shared one
+  const mine = await call('POST', '/api/v1/projects/CXA/fields', { name: 'Local only', kind: 'text' }, 'cx.admin@x.com')
+  assert.equal(mine.status, 201)
+  assert.equal(mine.body.shared, false)
+  assert.equal((await call('PATCH', `/api/v1/projects/CXA/fields/${mine.body.id}`, { name: 'Local renamed' }, 'cx.admin@x.com')).status, 200)
+  assert.equal((await call('PATCH', `/api/v1/projects/CXA/fields/${tier.id}`, { name: 'Mine now' }, 'cx.admin@x.com')).status, 403)
+  assert.equal((await call('DELETE', `/api/v1/projects/CXA/fields/${tier.id}`, undefined, 'cx.admin@x.com')).status, 403)
+  assert.equal((await call('GET', '/api/v1/admin/custom-fields', undefined, 'cx.admin@x.com')).status, 403)
+  const listed = (await call('GET', '/api/v1/admin/custom-fields?query=renamed')).body.items
+  assert.deepEqual(listed.map((f: any) => [f.name, f.contexts[0].projectKeys]), [['Local renamed', ['CXA']]])
+  // R6: deleting a field clears every value
+  assert.equal((await call('DELETE', `/api/v1/admin/custom-fields/${tier.id}`)).status, 204)
+  assert.equal((await call('GET', `/api/v1/issues/${a1.key}`)).body.custom[tier.id], undefined)
+  // R8: a deleted project leaves the contexts it was in, and takes a field it alone used
+  const { db } = await import('../src/db.ts')
+  await db.query(`delete from projects where key = 'CXC'`)
+  assert.equal((await pool.query('select count(*)::int as n from custom_fields where id = $1', [bugsOnly.id])).rows[0].n, 0)
 })
 
 test('[0705.R2] a webhook never reaches private addresses, whatever its name resolves to', { skip }, async () => {

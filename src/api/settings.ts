@@ -27,7 +27,7 @@ export function itemsOf(projects: Project[], kind: Kind): Item[] {
     const mk = (v: { id: string }, body: Record<string, unknown>, released?: boolean): Item => ({ id: v.id, projectId: p.id, body, ...(released !== undefined ? { released } : {}) })
     switch (kind) {
       case 'statuses':    return p.statuses.map(s => mk(s, { wipLimit: s.wipLimit ?? null }))       // the board's WIP limit is all a project sets
-      case 'fields':      return p.fields.map((f, position) => mk(f, { name: f.name, kind: f.kind, options: f.options ?? null, position }))
+      case 'fields':      return p.fields.filter(f => !f.shared).map((f, position) => mk(f, { name: f.name, kind: f.kind, options: f.options ?? null, position }))   // shared fields are Administration's (spec 0503)
       case 'templates':   return p.templates.map(t => mk(t, { name: t.name, type: t.type, title: t.title, description: t.description, priority: t.priority, labels: t.labels, estimate: t.estimate ?? null }))
       case 'rules':       return p.rules.map(r => mk(r, { name: r.name, enabled: r.enabled, trigger: r.trigger, actions: r.actions, condition: r.condition?.trim() || null }))
       case 'components':  return (p.components ?? []).map(c => mk(c, { name: c.name, description: c.description, leadId: c.leadId ?? null, defaultAssignee: c.defaultAssignee }))
