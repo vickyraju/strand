@@ -158,7 +158,7 @@ async function body(d: Db, ws: string, event: WebhookEvent, ref: Ref, actorId: s
       id: b.id, name: b.name, self: null, filter: { id: b.id, self: null, query: b.jql ?? '' },
       columnConfig: { columns: (b.columns ?? []).map((c: any) => ({ name: c.name, statuses: (c.statusIds ?? []).map((id: string) => ({ id, self: null })), ...(c.min != null ? { min: c.min } : {}), ...(c.max != null ? { max: c.max } : {}) })),
         constraintType: (b.columns ?? []).some((c: any) => c.min != null || c.max != null) ? 'issueCount' : 'none' },
-      estimation: { type: b.estimation === 'count' ? 'issueCount' : 'field', field: b.estimation === 'time' ? { fieldId: 'timeoriginalestimate', displayName: 'Original Time Estimate' } : { displayName: 'Story Points' } },
+      estimation: { type: b.estimation === 'count' ? 'issueCount' : 'field', field: b.estimation === 'time' ? { fieldId: 'timeoriginalestimate', displayName: 'Original Time Estimate' } : b.estimation === 'field' ? { fieldId: `cf[${b.estimationFieldId}]` } : { displayName: 'Story Points' } },
       ranking: { rankCustomFieldId: null },
     }
   }

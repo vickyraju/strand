@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { api, apiEnabled, errorMessage } from './client'
 import { mapIssue, type Row } from './map'
 import { issueSync } from './sync'
-import { useStore, type Board, type BoardRef, type Project, type Sprint } from '../data/store'
+import { useStore, statistic, type Board, type BoardRef, type Project, type Sprint } from '../data/store'
 import { loadProjectByKey } from './load'
 
 /** At most this many items on one board (as in Jira, a board is for work in flight; narrow the filter for more). */
@@ -31,7 +31,7 @@ export function useBoard(id: string | undefined) {
     if (!id) return
     let live = true
     setError('')
-    api<Board>('GET', `/api/boards/${encodeURIComponent(id)}`).then(b => { if (live) setBoard(b) }, e => { if (live) setError(errorMessage(e)) })
+    api<Board & { estimationFieldId?: string | null }>('GET', `/api/boards/${encodeURIComponent(id)}`).then(b => { if (live) setBoard({ ...b, estimation: statistic(b as any) }) }, e => { if (live) setError(errorMessage(e)) })
     return () => { live = false }
   }, [id, n])
   return { board: board?.id === id ? board : null, error, reload: () => setN(x => x + 1), replace: setBoard }

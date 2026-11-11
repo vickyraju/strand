@@ -31,6 +31,21 @@ const FIELD_WORDS: Record<string, string> = { statusId: 'status', assigneeId: 'a
   fixReleaseIds: 'fix versions', affectsReleaseIds: 'affects versions', componentIds: 'components', title: 'summary' }
 const fieldWords = (f: string) => FIELD_WORDS[f] ?? f.replace(/([A-Z])/g, ' $1').toLowerCase()
 
+/** History rows for changed fields, one each. A custom field's change is one row per field that changed, `custom:<id>`,
+ *  with its value (a list as its values joined by commas), so its history and reports read it (spec 0412 R1). */
+async function recordChanges(d: Db, issueId: string, actorId: string | null, changed: string[], from: Record<string, any>, to: Record<string, any>, text: (what: string) => string) {
+  const s = (v: unknown) => v == null || v === '' ? null : Array.isArray(v) ? (v.length ? v.join(',') : null) : typeof v === 'object' ? JSON.stringify(v) : String(v)
+  const row = (f: string, a: unknown, b: unknown, what: string) => d.query('insert into activity (issue_id, actor_id, field, from_value, to_value, text) values ($1, $2, $3, $4, $5, $6)',
+    [issueId, actorId, f, s(a), s(b), text(what)])
+  for (const f of changed) {
+    if (f !== 'custom') { await row(f, from[f], to[f], fieldWords(f)); continue }
+    const a = (from.custom ?? {}) as Record<string, unknown>, b = (to.custom ?? {}) as Record<string, unknown>
+    const ids = [...new Set([...Object.keys(a), ...Object.keys(b)])].filter(k => JSON.stringify(a[k] ?? null) !== JSON.stringify(b[k] ?? null))
+    const names = new Map((await d.query<{ id: string; name: string }>('select id::text, name from custom_fields where id::text = any($1::text[])', [ids])).map(r => [r.id, r.name]))
+    for (const k of ids) await row(`custom:${k}`, a[k], b[k], names.get(k) ?? 'a field')
+  }
+}
+
 export const ISSUE_ROW = `
   select i.id, p.key || '-' || i.number as key, i.project_id, i.number, i.type, i.title, i.description,
          i.status_id, i.priority, i.flagged, i.epic_color, i.epic_status, i.assignee_id, i.reporter_id, i.labels, i.estimate, i.time_estimate, i.time_remaining, i.component_ids, i.affects_release_ids, i.security_level_id, i.test_spec, i.test_folder_id, i.test_environments, i.revision,
@@ -164,9 +179,7 @@ export async function runActions(d: Db, me: Me | null, issueId: string, t: Trans
   if (changed.length) {
     const w = pick(Object.fromEntries(changed.map(k => [k, patch[k]])), FIELDS, ['custom'])
     await d.query(`update issues set ${w.cols.map((c, i) => `${c} = $${i + 2}`).join(', ')}, version = version + 1, updated_at = now() where id = $1`, [issueId, ...w.vals])
-    for (const f of changed)
-      await d.query('insert into activity (issue_id, actor_id, field, from_value, to_value, text) values ($1, $2, $3, $4, $5, $6)',
-        [issueId, me?.id ?? null, f, now[f] == null ? null : String(now[f]), patch[f] == null ? null : String(patch[f]), `“${t.name}” changed ${fieldWords(f)}`])
+    await recordChanges(d, issueId, me?.id ?? null, changed, now, patch, what => `“${t.name}” changed ${what}`)
   }
   for (const body of comments) await d.query('insert into comments (issue_id, author_id, body) values ($1, $2, $3)', [issueId, me?.id ?? null, body])
 }
@@ -331,12 +344,8 @@ async function applyPatch(d: Db, me: Me, cur: any, patch: z.infer<typeof patchBo
     if (!updated.length) throw new HttpError(409, 'Edited elsewhere: reload to see the latest version')
   }
 
-  for (const f of changed) {
-    const to = (patch as any)[f], from = cur[f]
-    if (f === 'testSpec') { await d.query('insert into activity (issue_id, actor_id, field, text) values ($1, $2, $3, $4)', [cur.id, me.id, f, 'Changed the test steps']); continue }
-    await d.query('insert into activity (issue_id, actor_id, field, from_value, to_value, text) values ($1, $2, $3, $4, $5, $6)',
-      [cur.id, me.id, f, from == null ? null : String(from), to == null ? null : String(to), `Changed ${fieldWords(f)}`])
-  }
+  if (changed.includes('testSpec')) await d.query('insert into activity (issue_id, actor_id, field, text) values ($1, $2, $3, $4)', [cur.id, me.id, 'testSpec', 'Changed the test steps'])
+  await recordChanges(d, cur.id, me.id, changed.filter(f => f !== 'testSpec'), cur, patch as Record<string, any>, what => `Changed ${what}`)
   if (t) {
     if (!moving) await d.query('insert into activity (issue_id, actor_id, text) values ($1, $2, $3)', [cur.id, me.id, `“${t.name}”`])   // a loop: the action itself is the history
     if (o.comment?.trim()) {
@@ -631,10 +640,13 @@ const plugin: FastifyPluginAsyncZod = async app => {
         from activity a join issues i on i.id = a.issue_id
        where i.project_id = $1 and i.deleted_at is null and i.archived_at is null and ${levelOk(req.me, 2)} and a.field in ('parentId', 'fixReleaseIds') and a.to_value is not null
        order by a.created_at, a.id`, [p.id, req.me.id])
-    // estimate changes: reports count an item's estimate as it stood at each moment, as Jira's do (spec 0411 R5)
+    // estimate changes: reports count an item's estimate as it stood at each moment, as Jira's do (spec 0411 R5); the
+    // remaining estimate and number fields too, for remaining-estimate tracking and a field statistic (spec 0412)
     const estimateChanges = await db.query(`select a.issue_id, a.field, a.from_value as from, a.to_value as to, a.created_at as at
         from activity a join issues i on i.id = a.issue_id
-       where i.project_id = $1 and i.deleted_at is null and i.archived_at is null and ${levelOk(req.me, 2)} and a.field in ('estimate', 'timeEstimate')
+       where i.project_id = $1 and i.deleted_at is null and i.archived_at is null and ${levelOk(req.me, 2)}
+         and (a.field in ('estimate', 'timeEstimate', 'timeRemaining')
+              or a.field like 'custom:%' and exists (select 1 from custom_fields f where 'custom:' || f.id = a.field and f.kind = 'number'))
        order by a.created_at, a.id`, [p.id, req.me.id])
     return { issues, statusChanges, joins, estimateChanges }
   })

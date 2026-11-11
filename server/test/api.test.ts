@@ -6926,3 +6926,39 @@ test('[0310.R1][0310.R2][0310.R3] project templates: Basic software and the busi
   assert.deepEqual(names, ['Basic software development', 'Kanban', 'Process management', 'Project management', 'Scrum', 'Task management'])
   await db.query('delete from workspaces where id = $1', [ws!.id])
 })
+
+test('[0412.R1][0412.R2][0412.R3] a number field as the estimation statistic; remaining-estimate tracking; the team’s time zone; a custom field’s change kept in the history', { skip }, async () => {
+  await call('POST', '/api/v1/projects', { name: 'Valued', key: 'VAL', template: 'scrum' })
+  const value = (await call('POST', '/api/v1/admin/custom-fields', { name: 'Business value', kind: 'number', context: { projectKeys: ['VAL'] } })).body
+  const note = (await call('POST', '/api/v1/admin/custom-fields', { name: 'Value note', kind: 'text', context: { projectKeys: ['VAL'] } })).body
+  const s1 = (await call('POST', '/api/v1/projects/VAL/sprints', { name: 'Valued 1' })).body
+  const board = `/api/v1/boards/${s1.boardId}`
+  // R1: a number field, not a text one
+  assert.equal((await call('PATCH', board, { estimation: 'field', estimationFieldId: note.id })).status, 400)
+  assert.equal((await call('PATCH', board, { estimation: 'field' })).status, 400)
+  const set = (await call('PATCH', board, { estimation: 'field', estimationFieldId: value.id })).body
+  assert.deepEqual([set.estimation, set.estimationFieldId, set.timeTracking], ['field', value.id, 'none'])
+  const mk = async (title: string, v?: number) => (await call('POST', '/api/v1/projects/VAL/issues', { title, sprintId: s1.id, ...(v != null ? { custom: { [value.id]: v } } : {}) })).body
+  const a = await mk('A', 8); await mk('B', 5); await mk('C')
+  const started = (await call('POST', `/api/v1/projects/VAL/sprints/${s1.id}/start`, { endsAt: new Date(Date.now() + 864e5).toISOString() })).body
+  assert.deepEqual([started.estimation, started.estimationFieldId, Number(started.committed)], ['field', value.id, 13])
+  const panels = (await call('GET', `${board}/panels`)).body
+  assert.equal(panels.epicStats.none.estimate, 13)
+  // a custom field's change is kept with its value, field by field
+  await call('PATCH', `/api/v1/issues/${a.key}`, { custom: { [value.id]: 13 } })
+  const history = (await call('GET', `/api/v1/issues/${a.key}/activity`)).body
+  const row = (history.items ?? history).find((x: any) => x.field === `custom:${value.id}`)
+  assert.deepEqual([row.fromValue, row.toValue], ['8', '13'])
+  // R2: remaining-estimate tracking goes with the time statistic
+  assert.equal((await call('PATCH', board, { timeTracking: 'remaining' })).status, 400)
+  assert.equal((await call('PATCH', board, { estimation: 'time', timeTracking: 'remaining' })).body.timeTracking, 'remaining')
+  assert.equal((await call('PATCH', board, { estimation: 'points' })).body.timeTracking, 'none')
+  // R3: the team's time zone, or none; a zone that doesn't exist is refused
+  const wd = (await call('PATCH', board, { workingDays: { weekdays: [1, 2, 3, 4, 5], nonWorking: [], timeZone: 'Asia/Kolkata' } })).body.workingDays
+  assert.equal(wd.timeZone, 'Asia/Kolkata')
+  assert.equal((await call('PATCH', board, { workingDays: { weekdays: [1], nonWorking: [], timeZone: 'Mars/Olympus' } })).status, 400)
+  // a deleted field leaves the board on story points
+  await call('PATCH', board, { estimation: 'field', estimationFieldId: value.id })
+  await call('DELETE', `/api/v1/admin/custom-fields/${value.id}`)
+  assert.equal((await call('GET', board)).body.estimation, 'points')
+})

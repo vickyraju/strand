@@ -101,7 +101,7 @@ function Burndown({ project }: { project: Project }) {
   const sprint = sprints.find(s => s.id === id) ?? sprints[0]
   const { board } = useBoard(apiEnabled ? sprint?.boardId : undefined)        // its working days (spec 0405)
   if (!sprint) return <NoData text="Start a sprint from the backlog to see its burndown." />
-  const data = burndown(state, project, sprint, undefined, board?.workingDays)!
+  const data = burndown(state, project, sprint, undefined, board?.workingDays, board?.timeTracking)!
   const remaining = [...data.remaining].reverse().find(v => !Number.isNaN(v)) ?? data.total
   const pts = data.members.reduce((n, i) => n + statOf(i, sprint.estimation), 0)
 
@@ -164,7 +164,7 @@ function SprintReport({ project }: { project: Project }) {
   const { board } = useBoard(apiEnabled ? sprint?.boardId : undefined)        // its working days (spec 0405)
   if (!sprint) return <NoData text="Start a sprint from the backlog to see its report." />
   if (!apiEnabled) return <NoData text="The sprint report needs Strand to be connected to a server." />
-  const data = burndown(state, project, sprint, undefined, board?.workingDays)!
+  const data = burndown(state, project, sprint, undefined, board?.workingDays, board?.timeTracking)!
   const r = report?.id === sprint.id ? report : null
   const added = r?.data && SECTIONS.some(([k]) => r.data![k].some(x => x.addedAfterStart))
   return (

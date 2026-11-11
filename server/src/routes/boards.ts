@@ -14,6 +14,8 @@ import { searchWhere } from './misc.ts'
 import { parseJql, type Node } from '../shared/jql.ts'
 import { DEFAULT_QUICK, sprintManager, boardFor, boardWhere, checkQueries, colorSql, columnsOf, laneSql, type Board, type CardColors, type Lanes } from '../boards.ts'
 
+/** An IANA time zone this server knows (spec 0412). */
+const validZone = (z: string) => { try { new Intl.DateTimeFormat('en', { timeZone: z }); return true } catch { return false } }
 const T = ['Boards']
 const uuid = z.string().uuid()
 const idP = z.object({ id: uuid })
@@ -32,7 +34,9 @@ const settings = {
   quickFilters: z.array(named).max(30),
   cardFields: z.record(z.string().max(40), z.boolean()),
   doneDays: z.number().int().min(1).max(3650).nullable().describe('Kanban: leave out Done items not updated for this many days (null: show them all)'),
-  estimation: z.enum(['points', 'time', 'count']).describe('Scrum: what estimates count (story points, original time estimate, issue count); spec 0404'),
+  estimation: z.enum(['points', 'time', 'count', 'field']).describe('Scrum: what estimates count (story points, original time estimate, issue count, or the number field `estimationFieldId`); specs 0404, 0412'),
+  estimationFieldId: uuid.nullable().describe('With estimation `field`: a number custom field, such as Business value (spec 0412)'),
+  timeTracking: z.enum(['none', 'remaining']).describe('Scrum with the time statistic: remaining is Jira’s Remaining Estimate and Time Spent, the burndown following the remaining estimate (spec 0412)'),
   cardColors: z.object({
     by: z.enum(['none', 'types', 'priorities', 'assignees', 'queries']),
     types: z.record(z.string().max(40), color).optional(), priorities: z.record(z.string().max(40), color).optional(), assignees: z.record(uuid, color).optional(),
@@ -41,6 +45,7 @@ const settings = {
   workingDays: z.object({
     weekdays: z.array(z.number().int().min(0).max(6)).min(1, 'Choose at least one working day').max(7).describe('Working weekdays, 0 for Sunday'),
     nonWorking: z.array(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)).max(365).describe('Holidays and other dates nobody works (YYYY-MM-DD)'),
+    timeZone: z.string().max(64).refine(validZone, 'Not a time zone').optional().describe('The team’s time zone (IANA, such as Europe/Berlin); left out: each viewer’s own (spec 0412)'),
   }).describe('The burndown’s guideline falls only on working days (spec 0405)'),
   admins: z.object({ userIds: z.array(uuid).max(100), groupIds: z.array(uuid).max(100) }).describe('The board’s administrators besides the project’s admins'),
   kanbanBacklog: z.array(uuid).max(200).describe('Kanban boards: the statuses in the Kanban backlog, Jira’s leftmost column; none turns it off (spec 0406)'),
@@ -61,7 +66,7 @@ async function boardOut(d: Db, me: Me, id: string) {
      union all select 'group', g.id, g.display_name from board_admins a join groups g on g.id = a.group_id where a.board_id = $1 order by 1, 3`, [b.id])
   const [p] = await d.query<{ key: string }>('select key from projects where id = $1', [b.projectId])
   return { id: b.id, projectId: b.projectId, projectKey: p!.key, name: b.name, type: b.type, jql: b.jql, columns: b.columns, swimlanes: b.swimlanes, quickFilters: b.quickFilters,
-    cardFields: b.cardFields, doneDays: b.doneDays, estimation: b.estimation, workingDays: b.workingDays, cardColors: b.cardColors, kanbanBacklog: b.kanbanBacklog, position: b.position, canManage, canManageSprints: (await sprintManager(d, me, b)).ok, admins }
+    cardFields: b.cardFields, doneDays: b.doneDays, estimation: b.estimation, estimationFieldId: b.estimationFieldId, timeTracking: b.timeTracking, workingDays: b.workingDays, cardColors: b.cardColors, kanbanBacklog: b.kanbanBacklog, position: b.position, canManage, canManageSprints: (await sprintManager(d, me, b)).ok, admins }
 }
 
 /** Every status a column (or the Kanban backlog) names is one of the workspace's; a status in two places is refused. */
@@ -132,16 +137,25 @@ const plugin: FastifyPluginAsyncZod = async app => {
       swimlanes: b.swimlanes ? lanesOf(b.swimlanes) : before.swimlanes,
       quickFilters: b.quickFilters ? withIds(b.quickFilters) : before.quickFilters, cardFields: b.cardFields ?? before.cardFields,
       doneDays: b.doneDays !== undefined ? b.doneDays : before.doneDays, estimation: b.estimation ?? before.estimation,
+      estimationFieldId: b.estimationFieldId !== undefined ? b.estimationFieldId : b.estimation && b.estimation !== 'field' ? null : before.estimationFieldId,
+      timeTracking: b.timeTracking ?? (b.estimation && b.estimation !== 'time' ? 'none' : before.timeTracking),
       cardColors: b.cardColors ? { ...before.cardColors, ...b.cardColors, ...(b.cardColors.queries ? { queries: withIds(b.cardColors.queries) } : {}) } as CardColors : before.cardColors,   // switching keeps the others' colours
-      workingDays: b.workingDays ? { weekdays: [...new Set(b.workingDays.weekdays)].sort(), nonWorking: [...new Set(b.workingDays.nonWorking)].sort() } : before.workingDays,
+      workingDays: b.workingDays ? { weekdays: [...new Set(b.workingDays.weekdays)].sort(), nonWorking: [...new Set(b.workingDays.nonWorking)].sort(), ...(b.workingDays.timeZone ? { timeZone: b.workingDays.timeZone } : {}) } : before.workingDays,
       kanbanBacklog: b.kanbanBacklog ?? before.kanbanBacklog,
     }
-    if (b.estimation && before.type !== 'scrum') throw new HttpError(400, 'Only a Scrum board has an estimation statistic', { estimation: 'Kanban boards don’t estimate' })
+    if ((b.estimation || b.timeTracking === 'remaining') && before.type !== 'scrum') throw new HttpError(400, 'Only a Scrum board has an estimation statistic', { estimation: 'Kanban boards don’t estimate' })
+    // spec 0412: a number field for the field statistic; remaining-estimate tracking with the time statistic
+    if (next.estimation === 'field') {
+      if (!next.estimationFieldId) throw new HttpError(400, 'Choose the number field to estimate with', { estimationFieldId: 'Choose a field' })
+      if (!(await d.query(`select 1 from custom_fields where id = $1 and workspace_id = $2 and kind = 'number'`, [next.estimationFieldId, req.me.workspaceId])).length)
+        throw new HttpError(400, 'The estimation statistic must be a number field', { estimationFieldId: 'Not a number field' })
+    } else next.estimationFieldId = null
+    if (next.timeTracking === 'remaining' && next.estimation !== 'time') throw new HttpError(400, 'Remaining-estimate tracking goes with the Original time estimate statistic', { timeTracking: 'Use the time statistic' })
     if (b.kanbanBacklog?.length && before.type !== 'kanban') throw new HttpError(400, 'Only a Kanban board has a Kanban backlog', { kanbanBacklog: 'Scrum boards plan in their backlog' })
     await checkQueries(d, req.me, next)
     if (b.columns || b.kanbanBacklog) await checkColumns(d, req.me.workspaceId, next.columns, next.kanbanBacklog)
-    await d.query(`update boards set name = $2, jql = $3, columns = $4, swimlanes = $5, quick_filters = $6, card_fields = $7, done_days = $8, estimation = $9, working_days = $10, card_colors = $11, kanban_backlog = $12, updated_at = now() where id = $1`,
-      [before.id, next.name, next.jql, JSON.stringify(next.columns), JSON.stringify(next.swimlanes), JSON.stringify(next.quickFilters), JSON.stringify(next.cardFields), next.doneDays, next.estimation, JSON.stringify(next.workingDays), JSON.stringify(next.cardColors), JSON.stringify(next.kanbanBacklog)])
+    await d.query(`update boards set name = $2, jql = $3, columns = $4, swimlanes = $5, quick_filters = $6, card_fields = $7, done_days = $8, estimation = $9, working_days = $10, card_colors = $11, kanban_backlog = $12, estimation_field_id = $13, time_tracking = $14, updated_at = now() where id = $1`,
+      [before.id, next.name, next.jql, JSON.stringify(next.columns), JSON.stringify(next.swimlanes), JSON.stringify(next.quickFilters), JSON.stringify(next.cardFields), next.doneDays, next.estimation, JSON.stringify(next.workingDays), JSON.stringify(next.cardColors), JSON.stringify(next.kanbanBacklog), next.estimationFieldId, next.timeTracking])
     if (b.admins) await setAdmins(d, req.me.workspaceId, before.id, b.admins)
     const c = changes({ name: before.name, jql: before.jql }, { name: next.name, jql: next.jql })
     const what = Object.keys(b).filter(k => k !== 'name' && k !== 'jql')
@@ -237,7 +251,10 @@ const plugin: FastifyPluginAsyncZod = async app => {
   app.get('/boards/:id/panels', { schema: { tags: T, summary: 'The backlog’s Epics and Versions panels: open epics, and per epic and version the board’s items, completed, unestimated and estimate (in the board’s statistic)', params: idP } }, async req => {
     const { board: b } = await boardFor(db, req.me, req.params.id)
     const { where, args } = await boardWhere(db, req.me, b, { scope: 'all' })
-    const stat = b.estimation === 'time' ? 'i.time_estimate' : b.estimation === 'count' ? '1' : 'i.estimate'
+    // a number field (spec 0412): its value when it's a number; the id is a uuid from the database
+    const fid = b.estimationFieldId?.replace(/[^0-9a-f-]/gi, '')
+    const stat = b.estimation === 'time' ? 'i.time_estimate' : b.estimation === 'count' ? '1'
+      : b.estimation === 'field' && fid ? `(case when jsonb_typeof(i.custom -> '${fid}') = 'number' then (i.custom ->> '${fid}')::numeric end)` : 'i.estimate'
     const stats = (key: string) => `select ${key} as key, count(*)::int as issues, count(*) filter (where st.category = 'done')::int as completed,
         count(*) filter (where ${stat} is null)::int as unestimated, coalesce(sum(${stat}), 0)::float as estimate,
         coalesce(sum(${stat}) filter (where st.category = 'todo'), 0)::float as todo, coalesce(sum(${stat}) filter (where st.category = 'in-progress'), 0)::float as in_progress,

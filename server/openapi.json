@@ -2851,8 +2851,14 @@
                             "enum": [
                               "points",
                               "time",
-                              "count"
+                              "count",
+                              "field"
                             ]
+                          },
+                          "estimationFieldId": {
+                            "nullable": true,
+                            "description": "With estimation `field`: the number field it totals (spec 0412)",
+                            "type": "string"
                           }
                         },
                         "required": [
@@ -2870,7 +2876,8 @@
                           "completed",
                           "issueIds",
                           "createdAt",
-                          "estimation"
+                          "estimation",
+                          "estimationFieldId"
                         ],
                         "additionalProperties": false
                       }
@@ -4283,8 +4290,14 @@
                             "enum": [
                               "points",
                               "time",
-                              "count"
+                              "count",
+                              "field"
                             ]
+                          },
+                          "estimationFieldId": {
+                            "nullable": true,
+                            "description": "With estimation `field`: the number field it totals (spec 0412)",
+                            "type": "string"
                           }
                         },
                         "required": [
@@ -4302,7 +4315,8 @@
                           "completed",
                           "issueIds",
                           "createdAt",
-                          "estimation"
+                          "estimation",
+                          "estimationFieldId"
                         ],
                         "additionalProperties": false
                       }
@@ -5445,8 +5459,14 @@
                             "enum": [
                               "points",
                               "time",
-                              "count"
+                              "count",
+                              "field"
                             ]
+                          },
+                          "estimationFieldId": {
+                            "nullable": true,
+                            "description": "With estimation `field`: the number field it totals (spec 0412)",
+                            "type": "string"
                           }
                         },
                         "required": [
@@ -5464,7 +5484,8 @@
                           "completed",
                           "issueIds",
                           "createdAt",
-                          "estimation"
+                          "estimation",
+                          "estimationFieldId"
                         ],
                         "additionalProperties": false
                       }
@@ -6786,8 +6807,14 @@
                             "enum": [
                               "points",
                               "time",
-                              "count"
+                              "count",
+                              "field"
                             ]
+                          },
+                          "estimationFieldId": {
+                            "nullable": true,
+                            "description": "With estimation `field`: the number field it totals (spec 0412)",
+                            "type": "string"
                           }
                         },
                         "required": [
@@ -6805,7 +6832,8 @@
                           "completed",
                           "issueIds",
                           "createdAt",
-                          "estimation"
+                          "estimation",
+                          "estimationFieldId"
                         ],
                         "additionalProperties": false
                       }
@@ -8011,8 +8039,14 @@
                             "enum": [
                               "points",
                               "time",
-                              "count"
+                              "count",
+                              "field"
                             ]
+                          },
+                          "estimationFieldId": {
+                            "nullable": true,
+                            "description": "With estimation `field`: the number field it totals (spec 0412)",
+                            "type": "string"
                           }
                         },
                         "required": [
@@ -8030,7 +8064,8 @@
                           "completed",
                           "issueIds",
                           "createdAt",
-                          "estimation"
+                          "estimation",
+                          "estimationFieldId"
                         ],
                         "additionalProperties": false
                       }
@@ -16006,8 +16041,14 @@
                       "enum": [
                         "points",
                         "time",
-                        "count"
+                        "count",
+                        "field"
                       ]
+                    },
+                    "estimationFieldId": {
+                      "nullable": true,
+                      "description": "With estimation `field`: the number field it totals (spec 0412)",
+                      "type": "string"
                     }
                   },
                   "required": [
@@ -16025,7 +16066,8 @@
                     "completed",
                     "issueIds",
                     "createdAt",
-                    "estimation"
+                    "estimation",
+                    "estimationFieldId"
                   ],
                   "additionalProperties": false
                 }
@@ -16249,8 +16291,14 @@
                       "enum": [
                         "points",
                         "time",
-                        "count"
+                        "count",
+                        "field"
                       ]
+                    },
+                    "estimationFieldId": {
+                      "nullable": true,
+                      "description": "With estimation `field`: the number field it totals (spec 0412)",
+                      "type": "string"
                     }
                   },
                   "required": [
@@ -16268,7 +16316,8 @@
                     "completed",
                     "issueIds",
                     "createdAt",
-                    "estimation"
+                    "estimation",
+                    "estimationFieldId"
                   ],
                   "additionalProperties": false
                 }
@@ -16711,8 +16760,14 @@
                       "enum": [
                         "points",
                         "time",
-                        "count"
+                        "count",
+                        "field"
                       ]
+                    },
+                    "estimationFieldId": {
+                      "nullable": true,
+                      "description": "With estimation `field`: the number field it totals (spec 0412)",
+                      "type": "string"
                     }
                   },
                   "required": [
@@ -16730,7 +16785,8 @@
                     "completed",
                     "issueIds",
                     "createdAt",
-                    "estimation"
+                    "estimation",
+                    "estimationFieldId"
                   ],
                   "additionalProperties": false
                 }
@@ -16962,8 +17018,14 @@
                       "enum": [
                         "points",
                         "time",
-                        "count"
+                        "count",
+                        "field"
                       ]
+                    },
+                    "estimationFieldId": {
+                      "nullable": true,
+                      "description": "With estimation `field`: the number field it totals (spec 0412)",
+                      "type": "string"
                     },
                     "newSprint": {
                       "description": "The sprint made for unfinished work (moveTo \"new\")",
@@ -17041,8 +17103,14 @@
                           "enum": [
                             "points",
                             "time",
-                            "count"
+                            "count",
+                            "field"
                           ]
+                        },
+                        "estimationFieldId": {
+                          "nullable": true,
+                          "description": "With estimation `field`: the number field it totals (spec 0412)",
+                          "type": "string"
                         }
                       },
                       "required": [
@@ -17060,7 +17128,8 @@
                         "completed",
                         "issueIds",
                         "createdAt",
-                        "estimation"
+                        "estimation",
+                        "estimationFieldId"
                       ],
                       "additionalProperties": false
                     }
@@ -17080,7 +17149,8 @@
                     "completed",
                     "issueIds",
                     "createdAt",
-                    "estimation"
+                    "estimation",
+                    "estimationFieldId"
                   ],
                   "additionalProperties": false
                 }
@@ -19007,10 +19077,7 @@
                           },
                           "field": {
                             "type": "string",
-                            "enum": [
-                              "estimate",
-                              "timeEstimate"
-                            ]
+                            "description": "estimate, timeEstimate, timeRemaining or custom:<number field id>"
                           },
                           "from": {
                             "nullable": true,
@@ -51699,9 +51766,25 @@
                     "enum": [
                       "points",
                       "time",
-                      "count"
+                      "count",
+                      "field"
                     ],
-                    "description": "Scrum: what estimates count (story points, original time estimate, issue count); spec 0404"
+                    "description": "Scrum: what estimates count (story points, original time estimate, issue count, or the number field `estimationFieldId`); specs 0404, 0412"
+                  },
+                  "estimationFieldId": {
+                    "nullable": true,
+                    "description": "With estimation `field`: a number custom field, such as Business value (spec 0412)",
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  "timeTracking": {
+                    "type": "string",
+                    "enum": [
+                      "none",
+                      "remaining"
+                    ],
+                    "description": "Scrum with the time statistic: remaining is Jira’s Remaining Estimate and Time Spent, the burndown following the remaining estimate (spec 0412)"
                   },
                   "cardColors": {
                     "type": "object",
@@ -51792,6 +51875,11 @@
                           "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
                         },
                         "description": "Holidays and other dates nobody works (YYYY-MM-DD)"
+                      },
+                      "timeZone": {
+                        "description": "The team’s time zone (IANA, such as Europe/Berlin); left out: each viewer’s own (spec 0412)",
+                        "type": "string",
+                        "maxLength": 64
                       }
                     },
                     "required": [
@@ -52013,9 +52101,23 @@
                       "enum": [
                         "points",
                         "time",
-                        "count"
+                        "count",
+                        "field"
                       ],
-                      "description": "Scrum: what estimates count (spec 0404)"
+                      "description": "Scrum: what estimates count (specs 0404, 0412)"
+                    },
+                    "estimationFieldId": {
+                      "nullable": true,
+                      "description": "With estimation `field`: the number field (spec 0412)",
+                      "type": "string"
+                    },
+                    "timeTracking": {
+                      "type": "string",
+                      "enum": [
+                        "none",
+                        "remaining"
+                      ],
+                      "description": "Remaining: the burndown follows the remaining estimate (spec 0412)"
                     },
                     "workingDays": {
                       "type": "object",
@@ -52031,6 +52133,9 @@
                           "items": {
                             "type": "string"
                           }
+                        },
+                        "timeZone": {
+                          "type": "string"
                         }
                       },
                       "required": [
@@ -52038,7 +52143,7 @@
                         "nonWorking"
                       ],
                       "additionalProperties": false,
-                      "description": "Working weekdays (0 is Sunday) and non-working dates (spec 0405)"
+                      "description": "Working weekdays (0 is Sunday), non-working dates (spec 0405) and the team’s time zone (spec 0412)"
                     },
                     "cardColors": {
                       "type": "object",
@@ -52121,6 +52226,8 @@
                     "cardFields",
                     "doneDays",
                     "estimation",
+                    "estimationFieldId",
+                    "timeTracking",
                     "workingDays",
                     "cardColors",
                     "position",
@@ -52385,9 +52492,23 @@
                       "enum": [
                         "points",
                         "time",
-                        "count"
+                        "count",
+                        "field"
                       ],
-                      "description": "Scrum: what estimates count (spec 0404)"
+                      "description": "Scrum: what estimates count (specs 0404, 0412)"
+                    },
+                    "estimationFieldId": {
+                      "nullable": true,
+                      "description": "With estimation `field`: the number field (spec 0412)",
+                      "type": "string"
+                    },
+                    "timeTracking": {
+                      "type": "string",
+                      "enum": [
+                        "none",
+                        "remaining"
+                      ],
+                      "description": "Remaining: the burndown follows the remaining estimate (spec 0412)"
                     },
                     "workingDays": {
                       "type": "object",
@@ -52403,6 +52524,9 @@
                           "items": {
                             "type": "string"
                           }
+                        },
+                        "timeZone": {
+                          "type": "string"
                         }
                       },
                       "required": [
@@ -52410,7 +52534,7 @@
                         "nonWorking"
                       ],
                       "additionalProperties": false,
-                      "description": "Working weekdays (0 is Sunday) and non-working dates (spec 0405)"
+                      "description": "Working weekdays (0 is Sunday), non-working dates (spec 0405) and the team’s time zone (spec 0412)"
                     },
                     "cardColors": {
                       "type": "object",
@@ -52493,6 +52617,8 @@
                     "cardFields",
                     "doneDays",
                     "estimation",
+                    "estimationFieldId",
+                    "timeTracking",
                     "workingDays",
                     "cardColors",
                     "position",
@@ -52752,9 +52878,25 @@
                     "enum": [
                       "points",
                       "time",
-                      "count"
+                      "count",
+                      "field"
                     ],
-                    "description": "Scrum: what estimates count (story points, original time estimate, issue count); spec 0404"
+                    "description": "Scrum: what estimates count (story points, original time estimate, issue count, or the number field `estimationFieldId`); specs 0404, 0412"
+                  },
+                  "estimationFieldId": {
+                    "nullable": true,
+                    "description": "With estimation `field`: a number custom field, such as Business value (spec 0412)",
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  "timeTracking": {
+                    "type": "string",
+                    "enum": [
+                      "none",
+                      "remaining"
+                    ],
+                    "description": "Scrum with the time statistic: remaining is Jira’s Remaining Estimate and Time Spent, the burndown following the remaining estimate (spec 0412)"
                   },
                   "cardColors": {
                     "type": "object",
@@ -52845,6 +52987,11 @@
                           "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
                         },
                         "description": "Holidays and other dates nobody works (YYYY-MM-DD)"
+                      },
+                      "timeZone": {
+                        "description": "The team’s time zone (IANA, such as Europe/Berlin); left out: each viewer’s own (spec 0412)",
+                        "type": "string",
+                        "maxLength": 64
                       }
                     },
                     "required": [
@@ -53056,9 +53203,23 @@
                       "enum": [
                         "points",
                         "time",
-                        "count"
+                        "count",
+                        "field"
                       ],
-                      "description": "Scrum: what estimates count (spec 0404)"
+                      "description": "Scrum: what estimates count (specs 0404, 0412)"
+                    },
+                    "estimationFieldId": {
+                      "nullable": true,
+                      "description": "With estimation `field`: the number field (spec 0412)",
+                      "type": "string"
+                    },
+                    "timeTracking": {
+                      "type": "string",
+                      "enum": [
+                        "none",
+                        "remaining"
+                      ],
+                      "description": "Remaining: the burndown follows the remaining estimate (spec 0412)"
                     },
                     "workingDays": {
                       "type": "object",
@@ -53074,6 +53235,9 @@
                           "items": {
                             "type": "string"
                           }
+                        },
+                        "timeZone": {
+                          "type": "string"
                         }
                       },
                       "required": [
@@ -53081,7 +53245,7 @@
                         "nonWorking"
                       ],
                       "additionalProperties": false,
-                      "description": "Working weekdays (0 is Sunday) and non-working dates (spec 0405)"
+                      "description": "Working weekdays (0 is Sunday), non-working dates (spec 0405) and the team’s time zone (spec 0412)"
                     },
                     "cardColors": {
                       "type": "object",
@@ -53164,6 +53328,8 @@
                     "cardFields",
                     "doneDays",
                     "estimation",
+                    "estimationFieldId",
+                    "timeTracking",
                     "workingDays",
                     "cardColors",
                     "position",

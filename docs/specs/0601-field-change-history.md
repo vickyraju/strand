@@ -88,3 +88,5 @@ Same rules.
 None.
 
 ## Changelog
+
+- 12 Nov 2026: a custom field's change was stored as `[object Object]`. It is now recorded field by field (`custom:<id>`) with its values (spec 0412). Earlier rows keep their line but not their values.
