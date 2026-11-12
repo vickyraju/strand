@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { API_PREFIX, API_URL, api, apiEnabled } from './client'
 import { BRAND_DEFAULT, brandShades } from '../../server/src/shared/brand.ts'
 
-export interface Look { siteTitle: string; showTitle: boolean; brandColor: string; logo: string | null; favicon: string | null }
+export interface Look { siteTitle: string; showTitle: boolean; brandColor: string; logo: string | null; favicon: string | null; mark?: string | null }
 export const DEFAULT_LOOK: Look = { siteTitle: 'Strand', showTitle: true, brandColor: BRAND_DEFAULT, logo: null, favicon: null }
 
 let current = DEFAULT_LOOK

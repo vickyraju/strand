@@ -24,7 +24,7 @@ Today's importer (0802) brings projects, people, statuses, types, priorities, re
 | # | Gap | Why it matters | Proposed fix |
 |---|---|---|---|
 | B1 | ~~Wiki markup isn't converted~~ | Done: spec 0805 (descriptions, comments and multi-line fields as Markdown; tables, strike, pictures of attachments in Strand's view) | — |
-| B2 | **Old Jira links break.** `https://jira…/browse/KEY-1` in bookmarks, emails, Confluence and code | Links everywhere stop working at cutover | A `/browse/:key` route in Strand, plus a redirect rule for the old Jira host (an infrastructure step) |
+| B2 | ~~Old Jira links break~~ | Done: spec 0806 (`/browse/KEY-N`, `/browse/KEY`, `/projects/KEY`, `/issues/?jql=`, IssueNavigator, RapidBoard, Dashboard open Strand's pages) | Pointing the old Jira host name at Strand is a cutover step |
 | B3 | **No delta import for cutover.** A re-run skips what it already imported, so later changes in Jira aren't picked up | A large migration can't freeze Jira for the whole import | "Update since last run": re-read items changed after the last run (`updated >= …`) and apply their changes. Then a short freeze for the final delta |
 | B4 | ~~Only one active sprint survives~~ | Done with spec 0414: every active sprint stays when parallel sprints are on | — |
 | B5 | **Workflows arrive without transitions**: every status reachable from any, because Jira DC's REST doesn't expose transitions | Workflow rules are lost | Import the workflow XML an admin exports from Jira (Administration › Workflows › Export as XML): transitions, conditions, validators and post functions Strand has |
@@ -48,6 +48,6 @@ Today's importer (0802) brings projects, people, statuses, types, priorities, re
 
 | # | What | Notes |
 |---|---|---|
-| D1 | **Collapsed-sidebar logo**: System settings › Look and feel gets a third image, a small square logo shown when the sidebar is collapsed (and as the app icon on phones). Without one, Strand shows the favicon. | Logo and favicon upload already exist (spec 0702): PNG, JPEG or WebP, checked, audited, system administrators only. The collapsed sidebar now squeezes the full logo |
+| D1 | ~~Collapsed-sidebar logo~~ | Done: spec 0719 (System settings › Look and feel › Collapsed menu logo; else the favicon) |
 | D2 | 0803 B+: teams and capacity on plans | After the inventory |
 | D3 | 0702 P1: a logo per project | Proposal |

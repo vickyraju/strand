@@ -2449,3 +2449,37 @@ test('[0805.R2] imported text shows as Strand’s Markdown: a table, strikethrou
   await o.waitForSelector('.desc-view .md >> text=screen.png')
   assert.deepEqual(o.problems, [])
 })
+
+test('[0719.R1][0719.R2] an admin uploads a collapsed menu logo: the collapsed menu shows it, the open menu shows the logo', { skip, timeout: 90_000 }, async () => {
+  const png = Buffer.from('89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d4944415478da63f8cfc0f01f0005000201a5e1c0ad0000000049454e44ae426082', 'hex')
+  await owner('PUT', '/admin/look-and-feel/logo', { image: png.toString('base64') })
+  const o = await signIn('owner@e2e.test')
+  try {
+    await o.goto(url('/admin/settings/look-and-feel'))
+    await o.setInputFiles('input[aria-label="Upload collapsed menu logo"]', { name: 'mark.png', mimeType: 'image/png', buffer: png })
+    await o.waitForSelector('text=Collapsed menu logo saved')
+    await o.reload()
+    await o.waitForSelector('.nav-rail img.site-logo')
+    await o.click('.nav-rail [aria-label="Collapse sidebar"]')
+    await o.waitForSelector('.nav-rail.collapsed img.site-mark')
+    assert.match(await o.getAttribute('.nav-rail img.site-mark', 'src'), /look-and-feel\/mark/)
+    assert.equal(await o.locator('.nav-rail img.site-logo').count(), 0)
+    await o.click('.nav-rail [aria-label="Expand sidebar"]')
+    await o.waitForSelector('.nav-rail img.site-logo')
+    assert.deepEqual(o.problems, [])
+  } finally { await owner('DELETE', '/admin/look-and-feel') }
+})
+
+test('[0806.R1][0806.R3] Jira’s old addresses open Strand: /browse/KEY-N shows the item, /issues/?jql= the search', { skip, timeout: 60_000 }, async () => {
+  await owner('POST', '/projects', { name: 'Old links', key: 'OLDL', template: 'kanban' })
+  const item = (await owner('POST', '/projects/OLDL/issues', { title: 'Bookmarked in Jira' })).body
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url(`/browse/${item.key}?focusedCommentId=10400`))
+  await o.waitForSelector('text=Bookmarked in Jira')
+  assert.equal(new URL(o.url()).pathname, `/i/${item.key}`)
+  await o.goto(url(`/issues/?jql=${encodeURIComponent('project = OLDL ORDER BY created DESC')}`))
+  await o.waitForSelector(`text=${item.key}`)
+  assert.equal(await o.inputValue('textarea[aria-label="JQL query"]'), 'project = OLDL ORDER BY created DESC')
+  assert.equal(new URL(o.url()).pathname, '/search')
+  assert.deepEqual(o.problems, [])
+})

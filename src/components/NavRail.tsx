@@ -100,7 +100,9 @@ export default function NavRail({ collapsed, onCollapseToggle, onCmdK, route, dr
   return (
     <nav className={`nav-rail${collapsed ? ' collapsed' : ''}${drawer ? ` drawer ${drawer}` : ''}`} aria-label="Main navigation" aria-hidden={drawer === 'closed' || undefined} inert={drawer === 'closed' || undefined}>
       <div className="nav-head">
-        {look.logo ? <img className="site-logo" src={imageUrl(look.logo)!} alt={look.siteTitle} /> : <Logomark size={26} />}
+        {/* collapsed: the collapsed menu logo, else the favicon (spec 0719); open: the logo */}
+        {collapsed && (look.mark || look.favicon) ? <img className="site-mark" src={imageUrl(look.mark ?? look.favicon)!} alt={look.siteTitle} />
+          : !collapsed && look.logo ? <img className="site-logo" src={imageUrl(look.logo)!} alt={look.siteTitle} /> : <Logomark size={26} />}
         {(look.showTitle || !look.logo) && <span className="nav-label nav-workspace" title={look.siteTitle}>{look.siteTitle}</span>}
         <button className="icon-btn" onClick={onCollapseToggle} title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
           {collapsed ? <PanelLeftOpen size={16} strokeWidth={1.75} /> : <PanelLeftClose size={16} strokeWidth={1.75} />}

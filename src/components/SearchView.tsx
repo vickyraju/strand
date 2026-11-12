@@ -18,18 +18,20 @@ import { useUserSearch } from '../api/users'
 import { useRemoteList } from '../api/remoteList'
 import { useEnsureProjects, projectKeyOf } from '../api/useEnsureProjects'
 
-export default function SearchView({ query, viewId }: { query: string; viewId?: string }) {
+export default function SearchView({ query, viewId, jql }: { query: string; viewId?: string; jql?: string }) {
   const { state, dispatch } = useStore()
   const { toast } = useApp()
   const view = state.views.find(v => v.id === viewId)
-  const [f, setF] = useState<ViewFilters>(view?.filters ?? { ...EMPTY_FILTERS, q: query })
+  // a shared link's JQL (spec 0806: Strand's /search?jql= and Jira's /issues/?jql=) opens in the JQL box
+  const start = (): ViewFilters => view?.filters ?? { ...EMPTY_FILTERS, q: query, ...(jql && apiEnabled ? { jql } : {}) }
+  const [f, setF] = useState<ViewFilters>(start)
   const [groupBy, setGroupBy] = useState<TableGroup>('none')
   const [naming, setNaming] = useState<'new' | 'rename' | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [exporting, setExporting] = useState(false)
 
   // Switching views (sidebar, back button) loads that view's filters
-  useEffect(() => { setF(view?.filters ?? { ...EMPTY_FILTERS, q: query }) }, [viewId]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setF(start()) }, [viewId, jql]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const set = (patch: Partial<ViewFilters>) => setF(prev => ({ ...prev, ...patch }))
   // With an API, results come from the server's cross-project search: the app does not hold

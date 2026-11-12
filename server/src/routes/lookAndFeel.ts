@@ -10,13 +10,15 @@ import { BRAND_DEFAULT, brandReadable } from '../shared/brand.ts'
 import { requireNoToken } from './authentication.ts'
 
 const T = ['Look and feel']
-const LIMIT = { logo: 256 * 1024, favicon: 64 * 1024 }
-interface Row { siteTitle: string; showTitle: boolean; brandColor: string; logoType: string | null; faviconType: string | null; updatedAt: string }
+const LIMIT = { logo: 256 * 1024, favicon: 64 * 1024, mark: 64 * 1024 }   // mark: the collapsed menu's logo (spec 0719)
+const IMAGES = ['logo', 'favicon', 'mark'] as const
+const NAMES = { logo: 'logo', favicon: 'favicon', mark: 'collapsed menu logo' }
+interface Row { siteTitle: string; showTitle: boolean; brandColor: string; logoType: string | null; faviconType: string | null; markType: string | null; updatedAt: string }
 
 let cached: { at: number; value: Row } | null = null
 async function look(): Promise<Row> {
   if (cached && Date.now() - cached.at < 10_000) return cached.value
-  const [r] = await db.query<Row>('select site_title, show_title, brand_color, logo_type, favicon_type, updated_at from look_and_feel')
+  const [r] = await db.query<Row>('select site_title, show_title, brand_color, logo_type, favicon_type, mark_type, updated_at from look_and_feel')
   cached = { at: Date.now(), value: r! }
   return r!
 }
@@ -35,14 +37,15 @@ const view = (r: Row) => {
   return {
     siteTitle: r.siteTitle, showTitle: r.showTitle, brandColor: r.brandColor,
     logo: r.logoType ? `/look-and-feel/logo?v=${v}` : null, favicon: r.faviconType ? `/look-and-feel/favicon?v=${v}` : null,
+    mark: r.markType ? `/look-and-feel/mark?v=${v}` : null,
   }
 }
 
 /** No sign-in needed: the login page draws with it. */
 export const publicLook: FastifyPluginAsyncZod = async app => {
   app.get('/look-and-feel', { schema: { tags: T, summary: 'The site title, brand colour, and the logo’s and favicon’s addresses (no sign-in needed)' } }, async () => view(await look()))
-  for (const which of ['logo', 'favicon'] as const) {
-    app.get(`/look-and-feel/${which}`, { schema: { tags: T, summary: `The ${which} image (no sign-in needed)`, hide: true } }, async (req, reply) => {
+  for (const which of IMAGES) {
+    app.get(`/look-and-feel/${which}`, { schema: { tags: T, summary: `The ${NAMES[which]} image (no sign-in needed)`, hide: true } }, async (req, reply) => {
       const [r] = await db.query<{ data: Buffer | null; type: string | null; updatedAt: string }>(`select ${which} as data, ${which}_type as type, updated_at from look_and_feel`)
       if (!r?.data || !r.type) throw new HttpError(404, `No ${which}`)
       const etag = `"${createHash('sha1').update(r.data).digest('hex')}"`
@@ -72,14 +75,14 @@ const lookAndFeel: FastifyPluginAsyncZod = async app => {
     return view(await look())
   })
 
-  for (const which of ['logo', 'favicon'] as const) {
-    app.put(`/admin/look-and-feel/${which}`, { bodyLimit: 1024 * 1024, schema: { tags: T, summary: `Upload the ${which}: PNG, JPEG or WebP, base64 (system administrators)`,
+  for (const which of IMAGES) {
+    app.put(`/admin/look-and-feel/${which}`, { bodyLimit: 1024 * 1024, schema: { tags: T, summary: `Upload the ${NAMES[which]}: PNG, JPEG or WebP, base64 (system administrators)`,
       body: z.object({ image: z.string().max(Math.ceil(LIMIT[which] * 4 / 3) + 8).describe('The image, base64') }) } }, async req => {
       requireNoToken(req)
       const data = Buffer.from(req.body.image.replace(/^data:[^,]*,/, ''), 'base64')
       const type = imageType(data)
       if (!type) throw new HttpError(400, 'Use a PNG, JPEG or WebP image', { image: 'Not a PNG, JPEG or WebP image' })
-      if (data.length > LIMIT[which]) throw new HttpError(400, `The ${which} can be at most ${LIMIT[which] / 1024} KB`, { image: 'Too large' })
+      if (data.length > LIMIT[which]) throw new HttpError(400, `The ${NAMES[which]} can be at most ${LIMIT[which] / 1024} KB`, { image: 'Too large' })
       await tx(async d => {
         await d.query(`update look_and_feel set ${which} = $1, ${which}_type = $2, updated_at = now(), updated_by = $3`, [data, type, req.me.id])
         await audit(d, req, { action: `look_and_feel.${which}_changed`, type: 'settings', name: 'Look and feel', after: { [which]: `${type}, ${Math.ceil(data.length / 1024)} KB` } })
@@ -87,7 +90,7 @@ const lookAndFeel: FastifyPluginAsyncZod = async app => {
       clear()
       return view(await look())
     })
-    app.delete(`/admin/look-and-feel/${which}`, { schema: { tags: T, summary: `Remove the ${which}: Strand’s own shows again (system administrators)` } }, async req => {
+    app.delete(`/admin/look-and-feel/${which}`, { schema: { tags: T, summary: `Remove the ${NAMES[which]}: Strand’s own shows again (system administrators)` } }, async req => {
       requireNoToken(req)
       await tx(async d => {
         await d.query(`update look_and_feel set ${which} = null, ${which}_type = null, updated_at = now(), updated_by = $1`, [req.me.id])
@@ -101,7 +104,7 @@ const lookAndFeel: FastifyPluginAsyncZod = async app => {
   app.delete('/admin/look-and-feel', { schema: { tags: T, summary: 'Reset defaults: Strand’s title, logomark, favicon and colour (system administrators)' } }, async req => {
     requireNoToken(req)
     await tx(async d => {
-      await d.query(`update look_and_feel set site_title = 'Strand', show_title = true, brand_color = $1, logo = null, logo_type = null, favicon = null, favicon_type = null, updated_at = now(), updated_by = $2`, [BRAND_DEFAULT, req.me.id])
+      await d.query(`update look_and_feel set site_title = 'Strand', show_title = true, brand_color = $1, logo = null, logo_type = null, favicon = null, favicon_type = null, mark = null, mark_type = null, updated_at = now(), updated_by = $2`, [BRAND_DEFAULT, req.me.id])
       await audit(d, req, { action: 'look_and_feel.reset', type: 'settings', name: 'Look and feel' })
     })
     clear()

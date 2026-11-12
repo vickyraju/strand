@@ -1183,6 +1183,11 @@
                     "favicon": {
                       "nullable": true,
                       "type": "string"
+                    },
+                    "mark": {
+                      "nullable": true,
+                      "description": "The collapsed menu’s logo (spec 0719), or null",
+                      "type": "string"
                     }
                   },
                   "required": [
@@ -1190,7 +1195,8 @@
                     "showTitle",
                     "brandColor",
                     "logo",
-                    "favicon"
+                    "favicon",
+                    "mark"
                   ],
                   "additionalProperties": false
                 }
@@ -58094,6 +58100,11 @@
                     "favicon": {
                       "nullable": true,
                       "type": "string"
+                    },
+                    "mark": {
+                      "nullable": true,
+                      "description": "The collapsed menu’s logo (spec 0719), or null",
+                      "type": "string"
                     }
                   },
                   "required": [
@@ -58101,7 +58112,8 @@
                     "showTitle",
                     "brandColor",
                     "logo",
-                    "favicon"
+                    "favicon",
+                    "mark"
                   ],
                   "additionalProperties": false
                 }
@@ -58222,6 +58234,11 @@
                     "favicon": {
                       "nullable": true,
                       "type": "string"
+                    },
+                    "mark": {
+                      "nullable": true,
+                      "description": "The collapsed menu’s logo (spec 0719), or null",
+                      "type": "string"
                     }
                   },
                   "required": [
@@ -58229,7 +58246,8 @@
                     "showTitle",
                     "brandColor",
                     "logo",
-                    "favicon"
+                    "favicon",
+                    "mark"
                   ],
                   "additionalProperties": false
                 }
@@ -58331,6 +58349,11 @@
                     "favicon": {
                       "nullable": true,
                       "type": "string"
+                    },
+                    "mark": {
+                      "nullable": true,
+                      "description": "The collapsed menu’s logo (spec 0719), or null",
+                      "type": "string"
                     }
                   },
                   "required": [
@@ -58338,7 +58361,8 @@
                     "showTitle",
                     "brandColor",
                     "logo",
-                    "favicon"
+                    "favicon",
+                    "mark"
                   ],
                   "additionalProperties": false
                 }
@@ -58459,6 +58483,11 @@
                     "favicon": {
                       "nullable": true,
                       "type": "string"
+                    },
+                    "mark": {
+                      "nullable": true,
+                      "description": "The collapsed menu’s logo (spec 0719), or null",
+                      "type": "string"
                     }
                   },
                   "required": [
@@ -58466,7 +58495,8 @@
                     "showTitle",
                     "brandColor",
                     "logo",
-                    "favicon"
+                    "favicon",
+                    "mark"
                   ],
                   "additionalProperties": false
                 }
@@ -58568,6 +58598,11 @@
                     "favicon": {
                       "nullable": true,
                       "type": "string"
+                    },
+                    "mark": {
+                      "nullable": true,
+                      "description": "The collapsed menu’s logo (spec 0719), or null",
+                      "type": "string"
                     }
                   },
                   "required": [
@@ -58575,7 +58610,8 @@
                     "showTitle",
                     "brandColor",
                     "logo",
-                    "favicon"
+                    "favicon",
+                    "mark"
                   ],
                   "additionalProperties": false
                 }
@@ -58696,6 +58732,11 @@
                     "favicon": {
                       "nullable": true,
                       "type": "string"
+                    },
+                    "mark": {
+                      "nullable": true,
+                      "description": "The collapsed menu’s logo (spec 0719), or null",
+                      "type": "string"
                     }
                   },
                   "required": [
@@ -58703,7 +58744,257 @@
                     "showTitle",
                     "brandColor",
                     "logo",
-                    "favicon"
+                    "favicon",
+                    "mark"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/look-and-feel/mark": {
+      "put": {
+        "summary": "Upload the collapsed menu logo: PNG, JPEG or WebP, base64 (system administrators)",
+        "tags": [
+          "Look and feel"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "image": {
+                    "type": "string",
+                    "maxLength": 87390,
+                    "description": "The image, base64"
+                  }
+                },
+                "required": [
+                  "image"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "siteTitle": {
+                      "type": "string"
+                    },
+                    "showTitle": {
+                      "type": "boolean"
+                    },
+                    "brandColor": {
+                      "type": "string"
+                    },
+                    "logo": {
+                      "nullable": true,
+                      "description": "The logo’s address under the API, or null for Strand’s",
+                      "type": "string"
+                    },
+                    "favicon": {
+                      "nullable": true,
+                      "type": "string"
+                    },
+                    "mark": {
+                      "nullable": true,
+                      "description": "The collapsed menu’s logo (spec 0719), or null",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "siteTitle",
+                    "showTitle",
+                    "brandColor",
+                    "logo",
+                    "favicon",
+                    "mark"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input; `errors` maps each bad field to a message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Invalid input; `errors` maps each bad field to a message",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Missing or invalid credentials",
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Human-readable message"
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code",
+                      "enum": [
+                        "invalid_input",
+                        "unauthorized",
+                        "forbidden",
+                        "not_found",
+                        "conflict",
+                        "rate_limited",
+                        "internal"
+                      ]
+                    },
+                    "errors": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Validation messages by field (400 only)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Remove the collapsed menu logo: Strand’s own shows again (system administrators)",
+        "tags": [
+          "Look and feel"
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "siteTitle": {
+                      "type": "string"
+                    },
+                    "showTitle": {
+                      "type": "boolean"
+                    },
+                    "brandColor": {
+                      "type": "string"
+                    },
+                    "logo": {
+                      "nullable": true,
+                      "description": "The logo’s address under the API, or null for Strand’s",
+                      "type": "string"
+                    },
+                    "favicon": {
+                      "nullable": true,
+                      "type": "string"
+                    },
+                    "mark": {
+                      "nullable": true,
+                      "description": "The collapsed menu’s logo (spec 0719), or null",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "siteTitle",
+                    "showTitle",
+                    "brandColor",
+                    "logo",
+                    "favicon",
+                    "mark"
                   ],
                   "additionalProperties": false
                 }
