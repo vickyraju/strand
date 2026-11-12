@@ -1,6 +1,6 @@
 # 0709 Automation: conditions, schedules, global rules
 
-Status: Ported (aws-jira `b0117ce`, strand `59ebe5d`), approved by the PO on 10 Nov 2026; awaiting verification
+Status: Ported (aws-jira `91f2b52`, strand `3e92062`), approved by the PO on 10 Nov 2026, R6–R7 on 12 Nov 2026; awaiting verification
 Parity rows: AU-01
 
 ## Context and Jira reference
