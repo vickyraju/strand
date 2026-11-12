@@ -86,16 +86,16 @@ The roadmap, in order. Bugs come first, then the permission model, then the data
 | [0508](0508-archive-single-items.md) | Archive single items | 5 | Ported |
 | [0509](0509-convert-sub-items.md) | Convert to and from sub-items | 5 | Ported |
 | [0510](0510-bulk-transition-watch.md) | Bulk transition, watch and stop watching | 5 | Ported |
-| [0601](0601-field-change-history.md) | Field change history, indexed | 6 | Ported |
+| [0601](0601-field-change-history.md) | Field change history, indexed | 6 | Approved |
 | [0602](0602-jql-history-operators.md) | JQL history operators | 6 | Ported |
 | [0603](0603-jql-functions.md) | Missing JQL functions | 6 | Ported |
-| [0604](0604-filter-subscriptions.md) | Filter subscriptions | 6 | Ported |
+| [0604](0604-filter-subscriptions.md) | Filter subscriptions | 6 | Approved |
 | [0605](0605-notification-schemes.md) | Notification schemes; bulk change without notifying | 6 | Ported |
 | [0606](0606-batched-email-autowatch.md) | Batched email, autowatch preference, mentions don't make watchers | 6 | Ported |
 | [0607](0607-incoming-mail.md) | Incoming mail | 6 | Ported |
 | [0608](0608-print-xml-export.md) | Print and XML export | 6 | Ported |
 | [0609](0609-text-search-stemming.md) | Text search as Jira's: words, stemming and Lucene syntax | 6 | Ported |
-| [0701](0701-announcement-banner.md) | Announcement banner | 7 | Ported |
+| [0701](0701-announcement-banner.md) | Announcement banner | 7 | Approved |
 | [0702](0702-look-and-feel.md) | Look and feel | 7 | Ported |
 | [0703](0703-project-key-categories-avatars.md) | Project key change, categories, avatars | 7 | Ported |
 | [0704](0704-user-anonymisation.md) | User anonymisation | 7 | Ported |

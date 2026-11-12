@@ -34,7 +34,7 @@ Checked 10 Nov 2026 on [jira.atlassian.com](https://jira.atlassian.com/issues/?j
 **Proposals for the product owner** (not built until chosen):
 
 - **P1: Show or hide** with a switch, keeping the text for next time.
-- **P2: Schedule:** a start and an end time, so a maintenance notice appears and disappears by itself.
+- **P2: Schedule:** chosen by the PO on 12 Nov 2026, now R6.
 - **P3: Audience:** everyone, or chosen groups (for example only admins, or one department).
 - **P4: Severity:** Information, Warning or Critical, each with its own colour and icon. Critical can't be closed.
 
@@ -47,6 +47,12 @@ Checked 10 Nov 2026 on [jira.atlassian.com](https://jira.atlassian.com/issues/?j
 - **R3: The text.** Plain text. Line breaks are kept. Addresses starting `https://` become links that open in a new tab. **HTML is not interpreted**, so an announcement can never run a script in someone's browser.
 - **R4: Closing it.** Anyone can close the banner. It stays closed in that browser until the announcement changes, then shows again.
 - **R5: Preview.** The settings page shows the banner as it will look while it is written.
+
+- **R6: Schedule** (P2, chosen 12 Nov 2026; [JRASERVER-69880](https://jira.atlassian.com/browse/JRASERVER-69880)). The banner can have **Show from** and **Until** times, both optional.
+  - Outside that window it doesn't show, neither in the app nor on the login page.
+  - Inside it, it shows as R1–R3 say.
+  - Open pages notice the window's start and end within a minute, without a reload, so a maintenance notice appears and disappears by itself.
+  - Until must be after Show from.
 
 ## Permissions
 
@@ -80,6 +86,7 @@ Read with the other public settings (cached 10 seconds per server).
 
 | Rule | Proved by |
 |---|---|
+| R6 | Server test: a window in the past or the future hides the public banner on the login page, a current one shows it, Until before Show from is refused. Browser journey: a banner whose window has ended doesn't show |
 | R1, R2 | Server test: saved and audited; in `/settings/public`; in `/auth/config` only when Public |
 | R3 | Web unit test: links made, HTML shown as text |
 | R4, R5 | Browser journey: an admin writes one, sees the preview, it shows; closing hides it until the text changes |
