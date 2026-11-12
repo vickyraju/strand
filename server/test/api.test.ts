@@ -7339,3 +7339,30 @@ test('[0717.R5] Jira administrators: most of Administration, but not system sett
   await call('DELETE', `/api/v1/admin/global-permissions/${grant.id}`)
   assert.equal((await as('POST', '/admin/workflows', { name: 'R5 flow 2' })).status, 403)
 })
+
+test('[0310.R4] create with shared configuration: the other project’s schemes shared, its work types, template and field contexts copied; members and versions not', { skip }, async () => {
+  const src = (await call('POST', '/api/v1/projects', { name: 'Shared source', key: 'SHSRC', template: 'scrum' })).body
+  await call('POST', '/api/v1/projects/SHSRC/types', { name: 'Incident', color: '#dc2626', icon: 'zap' })
+  const field = (await call('POST', '/api/v1/admin/custom-fields', { name: 'Shared field', kind: 'text', context: { projectKeys: ['SHSRC'] } })).body
+  await call('POST', '/api/v1/projects/SHSRC/releases', { name: '1.0' })
+  await join('SHSRC', 'sh.member@x.com')
+  const made = await call('POST', '/api/v1/projects', { name: 'Shared copy', key: 'SHCPY', template: 'kanban', sharedWith: 'shsrc' })
+  assert.equal(made.status, 201, JSON.stringify(made.body))
+  const p = made.body, s = (await call('GET', '/api/v1/projects/SHSRC')).body
+  assert.equal(p.template, 'scrum')                                                    // the other project's template
+  assert.equal(p.workflowSchemeId, s.workflowSchemeId)
+  assert.deepEqual(p.types.map((t: any) => t.name).sort(), s.types.map((t: any) => t.name).sort())
+  assert.ok(p.types.some((t: any) => t.name === 'Incident'))
+  assert.ok(p.fields.some((f: any) => f.id === field.id))
+  const cols = (r: any) => [r.fieldConfigSchemeId ?? null, r.issueTypeScreenSchemeId ?? null]
+  assert.deepEqual(cols(p), cols(s))
+  assert.equal(p.releases.length, 0)
+  const members = (await pool.query(`select u.email from project_members m join users u on u.id = m.user_id join projects pr on pr.id = m.project_id where pr.key = 'SHCPY'`)).rows.map(r => r.email)
+  assert.ok(!members.includes('sh.member@x.com'))
+  assert.equal((await pool.query(`select notification_scheme_id from projects where key = 'SHCPY'`)).rows[0].notification_scheme_id,
+    (await pool.query(`select notification_scheme_id from projects where key = 'SHSRC'`)).rows[0].notification_scheme_id)
+  // only its administrators (or a Jira administrator) share it
+  const refused = await call('POST', '/api/v1/projects', { name: 'Not mine', key: 'SHNOT', template: 'kanban', sharedWith: 'SHSRC' }, 'sh.member@x.com')
+  assert.equal(refused.status, 403)
+  assert.ok((await pool.query(`select 1 from audit_log where action = 'project.shared_configuration' and target = 'SHCPY'`)).rows.length)
+})

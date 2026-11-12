@@ -2582,3 +2582,24 @@ test('[0717.R5] a Jira administrator sees Administration with workflows and peop
     assert.deepEqual(m.problems, [])
   } finally { await owner('DELETE', `/admin/global-permissions/${grant.id}`) }
 })
+
+test('[0310.R4] Create project › Share settings with an existing project: the new one has its work types and workflow', { skip, timeout: 60_000 }, async () => {
+  await owner('POST', '/projects', { name: 'Shared journey source', key: 'SJSRC', template: 'scrum' })
+  await owner('POST', '/projects/SJSRC/types', { name: 'Incident', color: '#dc2626', icon: 'zap' })
+  const page = await signIn('owner@e2e.test')
+  await page.goto(url('/projects'))
+  await page.click('button:has-text("Create project")')
+  await page.fill('#cp-name', 'Shared journey copy')
+  await page.fill('#cp-key', 'SJCPY')
+  await page.check('.modal label:has-text("Share settings with an existing project") input')
+  await page.click('.modal button[title="Project to share with"]')
+  await page.fill('.picker-menu input', 'Shared journey source')
+  await page.click('.picker-menu .picker-item:has-text("SJSRC")')
+  await page.click('button[form="create-project"]')
+  await page.waitForURL(/\/project\/SJCPY/)
+  const [copy, src] = [(await owner('GET', '/projects/SJCPY')).body, (await owner('GET', '/projects/SJSRC')).body]
+  assert.equal(copy.workflowSchemeId, src.workflowSchemeId)
+  assert.ok(copy.types.some(t => t.name === 'Incident'))
+  assert.equal(copy.template, 'scrum')
+  assert.deepEqual(page.problems, [])
+})
