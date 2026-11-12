@@ -1,6 +1,6 @@
 # 0701 Announcement banner
 
-Status: Ported (aws-jira `a5659c4`, strand `84406f7`), approved by the PO on 10 Nov 2026; awaiting verification
+Status: Ported (aws-jira `2288491`, strand `d27c6fb`), approved by the PO on 10 Nov 2026, the chosen proposal on 12 Nov 2026; awaiting verification
 Parity rows: AD-02
 
 ## Context and Jira reference

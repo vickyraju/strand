@@ -1,6 +1,6 @@
 # 0604 Filter subscriptions
 
-Status: Ported (aws-jira `f98019d`, strand `b4ad527`), approved by the PO on 10 Nov 2026; awaiting verification
+Status: Ported (aws-jira `2288491`, strand `d27c6fb`), approved by the PO on 10 Nov 2026, the chosen proposal on 12 Nov 2026; awaiting verification
 Parity rows: SR-05
 
 ## Context and Jira reference

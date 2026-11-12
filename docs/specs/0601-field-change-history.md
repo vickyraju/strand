@@ -1,6 +1,6 @@
 # 0601 Field change history, indexed
 
-Status: Ported (aws-jira `549b4f1`, strand `f020be8`), approved by the PO on 10 Nov 2026; awaiting verification
+Status: Ported (aws-jira `2288491`, strand `d27c6fb`), approved by the PO on 10 Nov 2026, the chosen proposal on 12 Nov 2026; awaiting verification
 Parity rows: SR-01 (with 0602), ISS-26
 
 ## Context and Jira reference
