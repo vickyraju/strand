@@ -378,8 +378,11 @@ function RateLimitingSection({ setting, save }: { setting: Setting<RateLimiting>
   )
 }
 
+/** A moment as the datetime-local input shows it (local time), and back. */
+const local = (iso?: string | null) => { if (!iso) return ''; const d = new Date(iso); return new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 16) }
+const exact = (v: string) => (v ? new Date(v).toISOString() : null)
 /** The announcement banner (spec 0701): its text, who sees it, and a preview as it will look. */
-function AnnouncementSection({ setting, save }: { setting: Setting<{ text: string; visibility: 'public' | 'private' }>; save: (v: object) => Promise<Record<string, string> | null> }) {
+function AnnouncementSection({ setting, save }: { setting: Setting<{ text: string; visibility: 'public' | 'private'; startsAt?: string | null; endsAt?: string | null }>; save: (v: object) => Promise<Record<string, string> | null> }) {
   const [draft, setDraft] = useState(setting.value)
   const [errors, setErrors] = useState<Record<string, string>>({})
   useEffect(() => { setDraft(setting.value) }, [setting.value])
@@ -395,6 +398,14 @@ function AnnouncementSection({ setting, save }: { setting: Setting<{ text: strin
       <select id="announcement-visibility" className="input" style={{ width: 'auto' }} value={draft.visibility} onChange={e => setDraft({ ...draft, visibility: e.target.value as 'public' | 'private' })}>
         <option value="private">Private: people signed in</option><option value="public">Public: also on the login page</option>
       </select>
+      {/* a schedule (spec 0701 R6): the browser's local time, saved as an exact moment */}
+      <div className="form-row" style={{ marginTop: 12 }}>
+        <div><label className="label" htmlFor="announcement-from">Show from (optional)</label>
+          <input id="announcement-from" type="datetime-local" className="input" value={local(draft.startsAt)} onChange={e => setDraft({ ...draft, startsAt: exact(e.target.value) })} /></div>
+        <div><label className="label" htmlFor="announcement-until">Until (optional)</label>
+          <input id="announcement-until" type="datetime-local" className="input" value={local(draft.endsAt)} onChange={e => setDraft({ ...draft, endsAt: exact(e.target.value) })} aria-invalid={!!errors.endsAt} /></div>
+      </div>
+      {errors.endsAt && <p className="hint error">{errors.endsAt}</p>}
       {draft.text.trim() && <>
         <p className="label" style={{ marginTop: 14 }}>Preview</p>
         <div className="announcement-preview"><AnnouncementBanner text={draft.text} preview /></div>

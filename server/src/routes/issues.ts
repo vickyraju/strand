@@ -1131,12 +1131,24 @@ const plugin: FastifyPluginAsyncZod = async app => {
   }
   app.patch('/comments/:id', { schema: { tags: ['Comments & work logs'], summary: 'Edit a comment: your own, or anyone’s as a project admin (audited)', params: idP, body } }, async req => tx(async d => {
     const c = await commentFor(d, req, req.params.id, 'editOwnComments', 'editAllComments')
+    // the text this edit replaces is kept (spec 0601 R6)
+    await d.query('insert into comment_versions (comment_id, body, edited_by) select id, body, $2 from comments where id = $1 and body is distinct from $3', [c.id, req.me.id, req.body.body])
     const [row] = await d.query('update comments set body = $2, edited_at = now() where id = $1 returning *', [c.id, req.body.body])
     await emit(d, req.me.workspaceId, 'comment_updated', { issueId: c.issueId, projectId: c.projectId, commentId: c.id }, req.me.id)
     await emit(d, req.me.workspaceId, 'jira:issue_updated', { issueId: c.issueId, projectId: c.projectId, commentId: c.id, type: 'issue_comment_edited' }, req.me.id)
     if (c.authorId !== req.me.id) await audit(d, req, { action: 'comment.moderated', type: 'comment', id: c.id, name: c.key, project: { id: c.projectId, key: c.key.split('-')[0]! }, after: { edited: true } })
     return row
   }))
+  // spec 0601 R6: a comment's earlier versions, for its author, the project's admins and system administrators
+  app.get('/comments/:id/versions', { schema: { tags: ['Comments & work logs'], summary: 'An edited comment’s earlier versions, newest first: its author, the project’s admins and system administrators', params: idP } }, async req => {
+    const [c] = await db.query<{ id: string; authorId: string; projectId: string }>(
+      `select c.id, c.author_id, i.project_id from comments c join issues i on i.id = c.issue_id where c.id = $1 and i.workspace_id = $2 and i.deleted_at is null`, [req.params.id, req.me.workspaceId])
+    const a = c ? await accessTo(db, req.me, c.projectId) : null
+    if (!c || !a || !(await db.query(`select 1 from comments c where c.id = $1 and ${commentShown(req.me, c.projectId, 2)}`, [c.id, req.me.id])).length) throw new HttpError(404, 'Comment not found')
+    if (c.authorId !== req.me.id && a.role !== 'admin' && !req.me.admin) throw new HttpError(403, 'Only its author and the project’s admins see a comment’s earlier versions')
+    return db.query(`select v.body, v.edited_at, v.edited_by, u.name as edited_by_name from comment_versions v left join users u on u.id = v.edited_by
+      where v.comment_id = $1 order by v.edited_at desc, v.id desc`, [c.id])
+  })
   app.delete('/comments/:id', { schema: { tags: ['Comments & work logs'], summary: 'Delete a comment: your own, or anyone’s as a project admin (audited)', params: idP } }, async (req, reply) => {
     await tx(async d => {
       const c = await commentFor(d, req, req.params.id, 'deleteOwnComments', 'deleteAllComments')

@@ -17,8 +17,8 @@ const DOMAINS = [
   { key: 'projects', title: 'Projects & workflow', c: '#82B366', f: '#EFF7EA', cols: [['statuses', 'transitions', 'custom_fields', 'field_contexts', 'field_configurations', 'field_config_schemes', 'screens', 'screen_schemes', 'issue_type_screen_schemes', 'stars', 'work_types', 'workflow_versions', 'workflows', 'workflow_schemes', 'wf_statuses'], ['projects', 'project_members', 'project_group_roles', 'rules', 'item_templates', 'components', 'rule_runs', 'test_folders', 'test_items', 'test_runs']] },
   { key: 'planning', title: 'Planning', c: '#9673A6', f: '#F4EDF7', cols: [['sprints', 'releases', 'boards', 'board_admins']] },
   { key: 'work', title: 'Work items', c: '#D79B00', f: '#FFF6E5', cols: [['issues'], ['issue_links', 'issue_watchers', 'issue_votes', 'remote_links', 'issue_editors', 'mail_message_ids', 'jira_import_links', 'attachments', 'file_deletions', 'worklogs', 'labels', 'moved_issue_keys']] },
-  { key: 'collab', title: 'Collaboration', c: '#B85450', f: '#FBEDEC', cols: [['comments', 'activity', 'notifications', 'email_batch_items']] },
-  { key: 'personal', title: 'Views & personal', c: '#0E8088', f: '#E6F4F5', cols: [['saved_views', 'filter_subscriptions', 'plans', 'issue_views']] },
+  { key: 'collab', title: 'Collaboration', c: '#B85450', f: '#FBEDEC', cols: [['comments', 'comment_versions', 'activity', 'notifications', 'email_batch_items']] },
+  { key: 'personal', title: 'Views & personal', c: '#0E8088', f: '#E6F4F5', cols: [['saved_views', 'filter_subscriptions', 'filter_subscription_sent', 'plans', 'issue_views']] },
 ]
 const rows1 = ['people', 'projects', 'planning', 'work']
 

@@ -28,6 +28,7 @@ import { api, apiEnabled, errorMessage } from '../api/client'
 import { commentDeps } from '../api/comments'
 import IssueRow from './IssueRow'
 import Attachments from './Attachments'
+import { Popover } from './ui'
 import TestSpecEditor from './TestSpecEditor'
 import { TestsPanel, TestContainers } from './testing/TestsPanel'
 import { ExecutionPanel, PlanExecutions, TestRuns } from './testing/Executions'
@@ -427,7 +428,10 @@ export default function WorkItemDetail({ issueId, mode, navList }: { issueId: st
                     <div className="comment-main">
                       <div className="comment-meta">
                         <b>{who?.name ?? 'Someone'}</b>
-                        <span className="muted sm" title={new Date(t.at).toLocaleString()}>{timeAgo(t.at)}{t.edited ? ' · edited' : ''}</span>
+                        <span className="muted sm" title={new Date(t.at).toLocaleString()}>{timeAgo(t.at)}</span>
+                        {t.edited ? (apiEnabled && t.kind === 'comment' && (mine || project.role === 'admin' || state.isAdmin)
+                          ? <Popover title="Earlier versions" className="link sm muted" align="left" width={360} trigger={<>· edited</>}><CommentVersions id={t.id} /></Popover>
+                          : <span className="muted sm">· edited</span>) : null}
                         {t.kind === 'comment' && t.limited && <span className="lozenge lozenge-todo" title="Only some people can read this comment"><Lock size={10} /> {t.limited.kind === 'role' ? `${t.limited.role === 'admin' ? 'Project admins' : t.limited.role === 'member' ? 'Members' : 'Viewers'} only` : 'A group only'}</span>}
                       </div>
                       {editing ? (
@@ -744,3 +748,15 @@ function WebLinks({ issue, canLink }: { issue: Issue; canLink: boolean }) {
   )
 }
 
+/** An edited comment's earlier versions (spec 0601 R6), for its author and the project's admins. */
+function CommentVersions({ id }: { id: string }) {
+  const [versions, setVersions] = useState<{ body: string; editedAt: string; editedByName: string | null }[] | null>(null)
+  const [error, setError] = useState('')
+  useEffect(() => { api<typeof versions>('GET', `/api/comments/${id}/versions`).then(setVersions, e => setError(errorMessage(e))) }, [id])
+  if (error) return <p className="hint error">{error}</p>
+  if (!versions) return <p className="muted sm">Loading…</p>
+  if (!versions.length) return <p className="muted sm">No earlier versions kept.</p>
+  return <ol className="comment-versions" aria-label="Earlier versions">{versions.map((v, k) => (
+    <li key={k}><div className="muted sm">Replaced {new Date(v.editedAt).toLocaleString()}{v.editedByName ? ` by ${v.editedByName}` : ''}</div><div className="comment-version-body">{v.body}</div></li>
+  ))}</ol>
+}

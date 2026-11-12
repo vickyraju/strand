@@ -8,7 +8,7 @@ import { DEFAULT_KEY_RULE, type KeyRule } from '../../server/src/shared/projectK
 import { DEFAULT_TIME, parseDuration, formatDuration, statLabel, type TimeSettings } from '../data/time'
 
 export interface PublicSettings {
-  announcement: { text: string; visibility: 'public' | 'private' }
+  announcement: { text: string; visibility: 'public' | 'private'; startsAt?: string | null; endsAt?: string | null }
   attachments: { enabled: boolean; maxSizeMb: number }
   voting: { enabled: boolean }
   accessTokens: { enabled: boolean; maxPerUser: number; maxExpiryDays: number; defaultExpiryDays: number }

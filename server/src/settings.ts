@@ -42,8 +42,10 @@ export const SETTINGS = {
     schema: z.object({
       text: z.string().max(2000).describe('The announcement; empty for none'),
       visibility: z.enum(['public', 'private']).describe('public: everyone, also on the login page; private: people signed in'),
-    }),
-    default: { text: '', visibility: 'private' },
+      startsAt: z.string().datetime({ offset: true }).nullable().default(null).describe('Show from this time (spec 0701 R6); null: at once'),
+      endsAt: z.string().datetime({ offset: true }).nullable().default(null).describe('Until this time; null: until it is changed'),
+    }).refine(a => !a.startsAt || !a.endsAt || Date.parse(a.endsAt) > Date.parse(a.startsAt), { message: 'Until must be after Show from', path: ['endsAt'] }),
+    default: { text: '', visibility: 'private', startsAt: null, endsAt: null } as { text: string; visibility: 'public' | 'private'; startsAt: string | null; endsAt: string | null },
   },
   attachments: {
     label: 'Attachments',

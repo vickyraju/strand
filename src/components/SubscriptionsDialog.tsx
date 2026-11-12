@@ -6,12 +6,12 @@ import { useApp } from '../appContext'
 import { Modal } from './ui'
 
 /** A subscription as the server gives it (spec 0604). */
-interface Sub { id: string; createdBy: string; createdByName: string; groupId: string | null; groupName: string | null; cron: string; emailWhenEmpty: boolean; nextRunAt: string | null; lastRunAt: string | null }
+interface Sub { id: string; createdBy: string; createdByName: string; groupId: string | null; groupName: string | null; cron: string; onlyWhenChanged?: boolean; emailWhenEmpty: boolean; nextRunAt: string | null; lastRunAt: string | null }
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 const EVERY = [['', 'Once'], ['m15', 'Every 15 minutes'], ['m30', 'Every 30 minutes'], ['h1', 'Every hour'], ['h2', 'Every 2 hours'], ['h3', 'Every 3 hours'], ['h4', 'Every 4 hours'], ['h6', 'Every 6 hours'], ['h12', 'Every 12 hours']] as const
-type Form = { mode: 'daily' | 'weekly' | 'monthly' | 'advanced'; time: string; every: string; days: number[]; monthly: string; cron: string; groupId: string; emailWhenEmpty: boolean }
-const BLANK: Form = { mode: 'daily', time: '07:00', every: '', days: [2], monthly: '1', cron: '0 0 7 ? * *', groupId: '', emailWhenEmpty: false }
+type Form = { mode: 'daily' | 'weekly' | 'monthly' | 'advanced'; time: string; every: string; days: number[]; monthly: string; cron: string; groupId: string; emailWhenEmpty: boolean; onlyWhenChanged: boolean }
+const BLANK: Form = { mode: 'daily', time: '07:00', every: '', days: [2], monthly: '1', cron: '0 0 7 ? * *', groupId: '', emailWhenEmpty: false, onlyWhenChanged: false }
 
 /** Jira's schedule choices as the Quartz cron Jira stores (spec 0604 R2). Days: 1 is Sunday. */
 export function cronOf(f: Form): string {
@@ -39,7 +39,7 @@ export default function SubscriptionsDialog({ view, onClose }: { view: SavedView
 
   const save = async () => {
     const f = editing!.form
-    const body = { cron: cronOf(f), groupId: f.groupId || null, emailWhenEmpty: f.emailWhenEmpty }
+    const body = { cron: cronOf(f), groupId: f.groupId || null, emailWhenEmpty: f.emailWhenEmpty, onlyWhenChanged: f.onlyWhenChanged }
     try {
       await api(editing!.id ? 'PATCH' : 'POST', editing!.id ? `/api/subscriptions/${editing!.id}` : `/api/views/${view.id}/subscriptions`, body)
       setEditing(null); setError(''); load()
@@ -96,6 +96,9 @@ export default function SubscriptionsDialog({ view, onClose }: { view: SavedView
         <label className="sm" style={{ display: 'block', marginTop: 12 }}>
           <input type="checkbox" checked={f.emailWhenEmpty} onChange={e => set({ emailWhenEmpty: e.target.checked })} /> Email even if there are no work items
         </label>
+        <label className="sm" style={{ display: 'block', marginTop: 6 }}>
+          <input type="checkbox" checked={f.onlyWhenChanged} onChange={e => set({ onlyWhenChanged: e.target.checked })} /> Email only when the results changed since the last email
+        </label>
         <p className="hint">Times are the server’s. Each recipient gets the work items they can see.</p>
         {error && <p className="hint error" role="alert">{error}</p>}
       </Modal>
@@ -117,7 +120,7 @@ export default function SubscriptionsDialog({ view, onClose }: { view: SavedView
               <td className="sm muted">{s.nextRunAt ? new Date(s.nextRunAt).toLocaleString() : '—'}</td>
               <td className="nowrap">
                 <button className="icon-btn sm" aria-label="Run now" title="Run now" onClick={() => run(s)}><Play size={14} /></button>
-                <button className="icon-btn sm" aria-label="Change" title="Change" onClick={() => setEditing({ id: s.id, form: { ...BLANK, mode: 'advanced', cron: s.cron, groupId: s.groupId ?? '', emailWhenEmpty: s.emailWhenEmpty } })}><Pencil size={14} /></button>
+                <button className="icon-btn sm" aria-label="Change" title="Change" onClick={() => setEditing({ id: s.id, form: { ...BLANK, mode: 'advanced', cron: s.cron, groupId: s.groupId ?? '', emailWhenEmpty: s.emailWhenEmpty, onlyWhenChanged: !!s.onlyWhenChanged } })}><Pencil size={14} /></button>
                 <button className="icon-btn sm" aria-label="Remove" title="Remove" onClick={() => remove(s)}><Trash2 size={14} /></button>
               </td>
             </tr>
