@@ -35,6 +35,26 @@ Parity rows: PRM-10
 - **R3: The person's own.** `GET /me` lists the person's global permissions. The app hides what they can't use: bulk actions, sharing, and group subscriptions.
 - **R4: Records.** Every grant and removal is audited.
 
+- **R5: Jira administrators** (P1, chosen 12 Nov 2026). A sixth global permission, **Jira administrators**, granted to groups like the others and held by every system administrator. Its holders get **Administration** with:
+  - **Groups:** every group except the system groups.
+  - **People:** they see everyone, and create, edit, activate, deactivate and set passwords, but not for a system administrator.
+  - **Configuration:**
+    - Project categories.
+    - Workflows and workflow schemes.
+    - Custom fields, field configurations and screens.
+    - Notification schemes.
+    - Global automation rules.
+    - Link types, priorities and resolutions.
+
+  System administrators keep the rest, as Jira keeps them for its System administrators:
+  - Global permissions;
+  - Authentication methods and user directories;
+  - System settings, look and feel, and webhooks;
+  - Incoming mail and the Jira importer;
+  - Development tools, backups and the audit log.
+
+  A Jira administrator doesn't see every project: Browse projects stays per project, as in Jira.
+
 ## Permissions
 
 - Grants and removals: system administrators.
@@ -64,6 +84,7 @@ Administration › **Global permissions**: one section per permission, with its 
 
 | Rule | Proved by |
 |---|---|
+| R5 | Server test: a member of a group granted Jira administrators makes a workflow, a custom field, a priority, a link type and a category, edits a person and a group, but not a system administrator, not system settings, global permissions or webhooks; a non-holder gets 403. Browser journey: a Jira administrator sees Administration with its sections and not System settings |
 | R1–R4 | Server test: defaults; removing each grant refuses its action (person search beyond exact email, group list, share, group subscription, bulk edit) and granting it back allows it; a group granted System administrators makes its members admins; the system-administrators group can't be removed; a non-admin can't grant; audit |
 | R1, R3 | Browser journey: an admin removes Bulk change from the default users group; a member's selection bar says so |
 
@@ -73,13 +94,12 @@ Same rules.
 
 ## Out of scope and deliberate divergences
 
-- **Jira administrators** (the lesser admin): see P1. Until then, Strand's system administrators do everything Jira's two admin permissions do.
 - **Anyone on the web:** Strand has no anonymous access.
 - **Create shared objects and boards:** Strand's boards are made by project administrators and named board admins (decided 4 Nov 2026, AG-15), not through this permission.
 
 ## Proposals (not built until chosen)
 
-- **P1: Jira administrators.** A second admin permission for most administration (people, groups, projects, schemes), leaving to system administrators what Jira keeps for them: mail servers, directories, look and feel, backups, the importer, settings and global permissions.
+- **P1: Jira administrators:** chosen by the PO on 12 Nov 2026, now R5.
 
 ## Open questions
 
