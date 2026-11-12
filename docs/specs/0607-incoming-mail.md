@@ -84,7 +84,7 @@ At most 50 messages a run per handler; a handler runs at most once at a time acr
 |---|---|
 | R1, R2, R3, R4, R5, R7, R8 | Server test (message files): create and comment; key in the subject and replies; default reporter; CC watchers; priority; bulk ignored; unknown sender fails and stays; the spoofing guard (verified, unverified, a failed verdict); the marker handler; refused parameters; secrets required; the folder kept inside the mail folder; audited; non-admins refused |
 | R3, R4 | Unit test: which verdicts verify a sender (only the trusted host's; none set: nobody; DMARC for the From domain; DKIM for it or a parent; comments ignored; Exchange's verdict and internal mark only from Microsoft 365); what each handler keeps of the text |
-| R6 | Not yet proved by a test: the suites run without file storage |
+| R6 | Server test (the server suite's stand-in file storage): an email's attached file becomes an attachment; a picture inside its HTML doesn't |
 | R1, R2 | Browser journey: an admin adds a message-file server and a handler; an email becomes a work item |
 
 ## Strand branch

@@ -2073,7 +2073,7 @@ test('JQL search: fields by name, custom fields, AND/OR/NOT, lists, empties, dat
   assert.deepEqual(await (async () => (await call('GET', `/api/v1/search?jql=${encodeURIComponent('project = JQL')}`, undefined, 'jql.out@x.com')).body.items)(), [])
 })
 
-test('automation audit log: every run is recorded; a failing rule undoes only itself and tells its owner; a dry run changes nothing', { skip }, async () => {
+test('[0709.R5] automation audit log: every run is recorded; a failing rule undoes only itself and tells its owner; a dry run changes nothing', { skip }, async () => {
   await call('POST', '/api/v1/projects', { name: 'Audited', key: 'AAL', template: 'kanban' })
   await join('AAL', 'aal.admin@x.com', 'admin'); await join('AAL', 'aal.member@x.com')
   const good = (await call('POST', '/api/v1/projects/AAL/rules', { name: 'Triage', trigger: { kind: 'created' }, actions: [{ kind: 'label', value: 'new' }, { kind: 'assign', to: '0192f0c0-0000-7000-8000-000000000000' }] }, 'aal.admin@x.com')).body
@@ -5005,7 +5005,7 @@ test('[0406.R1][0406.R2][0406.R3][0406.R8] a Kanban backlog: its statuses leave 
   assert.deepEqual((await call('GET', `/api/v1/boards/${b.id}`)).body.kanbanBacklog, [])
 })
 
-test('[0407.R2][0407.R6][0407.R7][0407.R11] the backlog’s panels: open epics with their counts, versions’ counts; an epic’s colour; a Kanban backlog keeps epics off the board', { skip }, async () => {
+test('[0407.R2][0407.R6][0407.R7][0407.R11][0716.R1][0716.R2][0716.R6] the backlog’s panels: open epics with their counts, versions’ counts; an epic’s colour; a Kanban backlog keeps epics off the board', { skip }, async () => {
   assert.equal((await call('POST', '/api/v1/projects', { name: 'Panels', key: 'PNL', template: 'scrum' })).status, 201)
   const [board] = (await call('GET', '/api/v1/projects/PNL/boards')).body
   const make = async (b: object) => (await call('POST', '/api/v1/projects/PNL/issues', b)).body
@@ -6473,7 +6473,7 @@ test('[0608.R1][0608.R2][0608.R3][0608.R4][0608.R5] print and XML export: Jira\'
   for (const x of ['export.xml', 'export.rss', 'export.printable', 'export.full-content', 'export.doc']) assert.ok(actions.includes(x), x)
 })
 
-test('[0802.R1][0802.R2][0802.R3][0802.R4][0802.R5][0802.R6][0802.R7] the Jira importer: a dry run that writes nothing, an import that keeps keys, people, history and links, run again safely', { skip }, async () => {
+test('[0802.R1][0802.R2][0802.R3][0802.R4][0802.R5][0802.R6][0802.R7][0802.R8][0803.R7] the Jira importer: a dry run that writes nothing, an import that keeps keys, people, history and links, run again safely', { skip }, async () => {
   const { createServer } = await import('node:http')
   const { runJobs } = await import('../src/jobs.ts')
   process.env.STRAND_SECRET_KEY ??= 'jira-import-test-secret-key-0802-at-least-32'   // the token is sealed
@@ -6641,6 +6641,12 @@ test('[0802.R1][0802.R2][0802.R3][0802.R4][0802.R5][0802.R6][0802.R7] the Jira i
     // the token went to Jira (only GETs) and is never returned
     assert.ok(seen.every(x => x === 'GET Bearer pat-123'))
     assert.ok(!JSON.stringify((await call('GET', '/api/v1/admin/jira-imports')).body).includes('pat-123'))
+    // R8: every run audited; each run's report kept with it
+    const audited = (await pool.query(`select action from audit_log where action like 'jira_import.%'`)).rows.map(r => r.action)
+    assert.ok(audited.includes('jira_import.dry_run') && audited.includes('jira_import.started'))
+    const runs = (await call('GET', '/api/v1/admin/jira-imports')).body
+    const kept = (await call('GET', `/api/v1/admin/jira-imports/${(runs.items ?? runs)[0].id}`)).body
+    assert.ok(kept.report?.projects?.length)
   } finally { jiraServer.close() }
 })
 
@@ -7365,4 +7371,33 @@ test('[0310.R4] create with shared configuration: the other project’s schemes 
   const refused = await call('POST', '/api/v1/projects', { name: 'Not mine', key: 'SHNOT', template: 'kanban', sharedWith: 'SHSRC' }, 'sh.member@x.com')
   assert.equal(refused.status, 403)
   assert.ok((await pool.query(`select 1 from audit_log where action = 'project.shared_configuration' and target = 'SHCPY'`)).rows.length)
+})
+
+test('[0607.R6] incoming mail: the email’s files become attachments, within the size limit; pictures inside its own text don’t', { skip }, async () => {
+  const { mkdtempSync, writeFileSync } = await import('node:fs')
+  const { tmpdir } = await import('node:os')
+  const { runJobs } = await import('../src/jobs.ts')
+  const dir = mkdtempSync(`${tmpdir()}/strand-mail-att-`)
+  process.env.STRAND_MAIL_DIR = dir
+  await call('POST', '/api/v1/projects', { name: 'Mail files', key: 'MLF', template: 'kanban' })
+  await join('MLF', 'mlf.ann@x.com')
+  const srv = (await call('POST', '/api/v1/admin/mail-servers', { name: 'Files box', config: { kind: 'files', folder: '' } })).body
+  const h = (await call('POST', '/api/v1/admin/mail-handlers', { name: 'Files', serverId: srv.id, kind: 'create_or_comment', enabled: false,
+    params: { project: 'MLF', verifiedSenders: false } })).body
+  const b64 = (s: string | Buffer) => Buffer.from(s).toString('base64')
+  const png = Buffer.from('89504e470d0a1a0a0000000d4948445200000001000000010806000000', 'hex')
+  writeFileSync(`${dir}/001.eml`, [
+    'Message-ID: <att1@mail.test>', `Date: ${new Date().toUTCString()}`, 'From: Ann <mlf.ann@x.com>', 'To: support@x.com', 'Subject: Logs attached',
+    'MIME-Version: 1.0', 'Content-Type: multipart/mixed; boundary="outer"', '',
+    '--outer', 'Content-Type: multipart/related; boundary="inner"', '',
+    '--inner', 'Content-Type: text/html; charset=utf-8', '', '<p>See the log.<img src="cid:logo1"></p>',
+    '--inner', 'Content-Type: image/png', 'Content-ID: <logo1>', 'Content-Disposition: inline; filename="logo.png"', 'Content-Transfer-Encoding: base64', '', b64(png),
+    '--inner--',
+    '--outer', 'Content-Type: text/plain; name="server.log"', 'Content-Disposition: attachment; filename="server.log"', 'Content-Transfer-Encoding: base64', '', b64('ERROR at 10:02\n'),
+    '--outer--', ''].join('\r\n'))
+  await call('POST', `/api/v1/admin/mail-handlers/${h.id}/run`); await runJobs()
+  const r = (await call('GET', '/api/v1/admin/mail-handlers')).body.find((x: any) => x.id === h.id).lastResult
+  assert.equal(r.counts.created, 1, JSON.stringify(r))
+  const item = (await call('GET', `/api/v1/issues/${r.messages[0].key}`)).body
+  assert.deepEqual(item.attachments.map((a: any) => a.name), ['server.log'])          // the inline picture is part of the email's text
 })

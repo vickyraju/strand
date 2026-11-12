@@ -73,6 +73,7 @@ System admins for Administration › Custom fields; project admins for fields of
 
 | Rule | Proved by |
 |---|---|
+| R7 | Browser journey: a field made the old way, per project, is searched with JQL as before |
 | R1, R2, R7 | Server test: a global field shows in every project; a project context overrides it with its own options; one context per project; work types limit it |
 | R3, R4, R6 | Server test: defaults on create; option renames carried across a shared context's projects; deleting a context clears its values |
 | R5 | Server test: project admins add and change their own field, not a shared one |

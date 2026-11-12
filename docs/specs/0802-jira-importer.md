@@ -56,6 +56,7 @@ A job per run; 100 work items a page; each item's watchers, votes, web links and
 
 | Rule | Proved by |
 |---|---|
+| R8 | Server test: the dry run and the import are audited; a run's report is kept with it |
 | R1, R2 | Server test (a made-up Jira): Test; a metadata address refused; an answer pointing elsewhere not followed; the dry run's report (existing, new, left out, matched and new people) and that it writes nothing |
 | R3, R4, R5, R7 | Server test: an import makes the project, workflow, types, versions, components, sprint, custom field, people (matched and new) and items with their fields, history, comments (with visibility), work logs, watchers, votes, web links and links; the reconciliation matches |
 | R6 | Server test: run again imports nothing twice; a link to an item in a later project is made when that project comes |

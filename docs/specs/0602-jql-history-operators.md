@@ -63,6 +63,7 @@ Without predicates, an index lookup per value; with predicates, per-item history
 
 | Rule | Proved by |
 |---|---|
+| R5 | Not a test: speed comes from the indexes of spec 0601 (field, value) and from reading the history only of the items the rest of the query keeps; the query plans were checked by hand when built, and no suite measures time |
 | R1, R2 | Server test: WAS, WAS IN, WAS NOT, WAS NOT IN, CHANGED on status, assignee and priority; by the old name after a rename, by id; other fields refused; NOT |
 | R3 | Server test: AFTER, BEFORE, ON, DURING, BY (and currentUser()), FROM and TO |
 | R4 | Server test: fix version WAS, WAS EMPTY, CHANGED FROM … TO … |
