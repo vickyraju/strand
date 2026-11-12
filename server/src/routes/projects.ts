@@ -21,7 +21,7 @@ import { TEST_TYPES } from './issues.ts'
 import { checkImport } from '../csvImport.ts'
 import { getSetting } from '../settings.ts'
 import { describeKeyRule, keyFits } from '../shared/projectKeys.ts'
-import { EXTRA_TYPES, TEMPLATES, TEMPLATE_IDS } from '../shared/templates.ts'
+import { EXTRA_TYPES, TEMPLATES, TEMPLATE_IDS, type Template } from '../shared/templates.ts'
 import { KIND_LIST, type FieldKind } from '../shared/customFields.ts'
 import { carryOptions, clearValues, rulesFor, screensFor, withOptionIds, type Opt } from '../fields.ts'
 
@@ -202,6 +202,15 @@ async function replaceIn(d: Db, projectId: string, col: 'fix_release_ids' | 'aff
 }
 const T = { me: ['Account'], projects: ['Projects'], config: ['Project settings'], sprints: ['Sprints'] }
 
+/** The project a new one shares its configuration with (spec 0310 R4): one I administer, or any as a Jira administrator. */
+async function sharedConfig(req: { me: Me; method: string }, key: string) {
+  const p = await projectByKey(db, req, key)
+  if (p.role !== 'admin' && !(await hasGlobal(req.me, 'jira-admin')))
+    throw new HttpError(403, `Only ${p.key}’s administrators, or a Jira administrator, can share its configuration`, { sharedWith: 'Not your project' })
+  const [r] = await db.query<{ id: string; key: string; template: Template; workflowSchemeId: string }>('select id, key, template, workflow_scheme_id from projects where id = $1', [p.id])
+  return r!
+}
+
 const plugin: FastifyPluginAsyncZod = async app => {
   // A sign-in: the app calls this once when it starts. Puts the person back in users-access (and, with Entra's Strand.Admin
   // role, system-administrators) and records the time. Scripts' tokens aren't sign-ins.
@@ -349,6 +358,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
   const createProject = projectBody.required({ name: true }).extend({
     key: z.string().trim().min(1).max(255).transform(k => k.toUpperCase()).describe('Checked against System settings › Project keys (Jira’s default: two or more capital letters, at most 10)'), template: z.enum(TEMPLATE_IDS).describe('Software: kanban, scrum, basic; business: task, project, process (spec 0310)'),
     workflowSchemeId: uuid.optional().describe('Its workflow scheme (Administration › Workflows); by default the one named after the template'),
+    sharedWith: z.string().trim().toUpperCase().optional().describe('Jira’s Create with shared configuration (spec 0310 R4): this project’s key; its schemes are shared, its template, work types and field contexts copied'),
   })
   app.post('/projects', { schema: { tags: T.projects, summary: 'Create a project, with the workflows of a workflow scheme', body: createProject } }, async req => {
     const b = req.body
@@ -356,11 +366,14 @@ const plugin: FastifyPluginAsyncZod = async app => {
     const rule = await getSetting(req.me.workspaceId, 'projectKeys')
     if (!keyFits(b.key, rule))
       throw new HttpError(400, `A project key must match ${rule.pattern} and be at most ${rule.maxLength} characters`, { key: describeKeyRule(rule) })
+    // spec 0310 R4: another project's configuration, for those who administer it (or Jira administrators)
+    const from = b.sharedWith ? await sharedConfig(req, b.sharedWith) : null
+    if (from) b.template = from.template
     return tx(async d => {
       // a key another project had is still its (spec 0703 R1, Jira's rule)
       if ((await d.query('select 1 from project_key_history where workspace_id = $1 and key = $2', [req.me.workspaceId, b.key])).length)
         throw new HttpError(409, `${b.key} was another project’s key`, { key: 'Already used' })
-      const [sc] = await d.query<{ id: string }>(`select id from workflow_schemes where workspace_id = $1 and ${b.workflowSchemeId ? 'id = $2' : 'lower(name) = $2'}`,
+      const [sc] = from ? [{ id: from.workflowSchemeId }] : await d.query<{ id: string }>(`select id from workflow_schemes where workspace_id = $1 and ${b.workflowSchemeId ? 'id = $2' : 'lower(name) = $2'}`,
         [req.me.workspaceId, b.workflowSchemeId ?? TEMPLATES[b.template].scheme.toLowerCase()])
       if (!sc) throw new HttpError(400, 'Choose a workflow scheme', { workflowSchemeId: 'Not found' })
       const [p] = await d.query<{ id: string }>(
@@ -375,9 +388,20 @@ const plugin: FastifyPluginAsyncZod = async app => {
       await audit(d, req, { action: 'project.created', type: 'project', id: p!.id, name: b.key, project: { id: p!.id, key: b.key }, after: { name: b.name, template: b.template, workflowSchemeId: sc.id } })
       // the template's work types (spec 0310): Strand's four are seeded; others go, Basic's extra ones come
       const tpl = TEMPLATES[b.template]
-      await d.query('delete from work_types where project_id = $1 and not (key = any($2::text[]))', [p!.id, tpl.types])
-      for (const [i, k] of tpl.types.entries()) if (EXTRA_TYPES[k])
-        await d.query('insert into work_types (project_id, key, name, color, icon, position) values ($1, $2, $3, $4, $5, $6) on conflict do nothing', [p!.id, k, EXTRA_TYPES[k].name, EXTRA_TYPES[k].color, EXTRA_TYPES[k].icon, i])
+      if (from) {
+        // R4: the other project's schemes shared, its work types, switches and field contexts copied
+        await d.query(`update projects n set field_config_scheme_id = o.field_config_scheme_id, issue_type_screen_scheme_id = o.issue_type_screen_scheme_id,
+            notification_scheme_id = o.notification_scheme_id, testing = o.testing, requirement_types = o.requirement_types, initiatives = o.initiatives
+          from projects o where n.id = $1 and o.id = $2`, [p!.id, from.id])
+        await d.query('delete from work_types where project_id = $1', [p!.id])
+        await d.query('insert into work_types (project_id, key, name, color, icon, position) select $1, key, name, color, icon, position from work_types where project_id = $2', [p!.id, from.id])
+        await d.query('update field_contexts set project_ids = array_append(project_ids, $1) where $2 = any(project_ids)', [p!.id, from.id])
+        await audit(d, req, { action: 'project.shared_configuration', type: 'project', id: p!.id, name: b.key, project: { id: p!.id, key: b.key }, after: { sharedWith: from.key } })
+      } else {
+        await d.query('delete from work_types where project_id = $1 and not (key = any($2::text[]))', [p!.id, tpl.types])
+        for (const [i, k] of tpl.types.entries()) if (EXTRA_TYPES[k])
+          await d.query('insert into work_types (project_id, key, name, color, icon, position) values ($1, $2, $3, $4, $5, $6) on conflict do nothing', [p!.id, k, EXTRA_TYPES[k].name, EXTRA_TYPES[k].color, EXTRA_TYPES[k].icon, i])
+      }
       await applyScheme(d, req, p!.id)
       await firstBoard(d, { id: p!.id, workspaceId: req.me.workspaceId, key: b.key, template: tpl.board }, req.me.id)
       return projectDetail(d, req.me.workspaceId, b.key, 'admin')

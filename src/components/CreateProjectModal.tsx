@@ -8,6 +8,8 @@ import { Modal } from './ui'
 import { api, apiEnabled } from '../api/client'
 import { mapProject } from '../api/map'
 import { adoptProject } from '../api/settings'
+import { searchProjects, type ProjectOption } from '../api/work'
+import { Picker } from './ui'
 
 const ICONS: Record<Template, typeof Columns2> = { kanban: Columns2, scrum: ListChecks, basic: Code, task: ListTodo, project: FolderKanban, process: Workflow }
 // Jira's Software and Business templates (spec 0310); the browser-only demo has Kanban and Scrum
@@ -23,6 +25,12 @@ export default function CreateProjectModal({ onClose, onCreated }: {
   const [key, setKey]             = useState('')
   const [keyEdited, setKeyEdited] = useState(false)
   const [template, setTemplate]   = useState<Template>('kanban')
+  // Jira's Create with shared configuration (spec 0310 R4): another project's settings instead of a template
+  const [sharing, setSharing]     = useState(false)
+  const [shared, setShared]       = useState<ProjectOption | null>(null)
+  const [query, setQuery]         = useState('')
+  const [found, setFound]         = useState<ProjectOption[]>([])
+  useEffect(() => { if (!sharing) return; const t = setTimeout(() => searchProjects(query).then(setFound, () => {}), 200); return () => clearTimeout(t) }, [sharing, query])
   const [color, setColor]         = useState(PROJECT_COLORS[state.projects.length % PROJECT_COLORS.length])
   // Its workflow scheme (Administration › Workflows): by default the one named after the template
   const [schemes, setSchemes]     = useState<{ id: string; name: string; description: string }[]>([])
@@ -39,7 +47,7 @@ export default function CreateProjectModal({ onClose, onCreated }: {
     : null
   const [busy, setBusy]   = useState(false)
   const [error, setError] = useState('')
-  const canCreate = name.trim().length > 0 && keyFits(key, keyRule) && !keyTaken && !busy
+  const canCreate = name.trim().length > 0 && keyFits(key, keyRule) && !keyTaken && !busy && (!sharing || !!shared)
 
   const submit = async () => {
     if (!canCreate) return
@@ -47,7 +55,8 @@ export default function CreateProjectModal({ onClose, onCreated }: {
       // The server owns the project's workflow (status ids), so wait for it instead of creating a local stand-in
       setBusy(true); setError('')
       try {
-        const created = mapProject(await api('POST', '/api/projects', { name: name.trim(), key, color, template, ...(scheme ? { workflowSchemeId: scheme.id } : {}) }))
+        const created = mapProject(await api('POST', '/api/projects', { name: name.trim(), key, color, template,
+          ...(sharing && shared ? { sharedWith: shared.key } : scheme ? { workflowSchemeId: scheme.id } : {}) }))
         adoptProject(created)          // its default workflow is already on the server: do not send it back
         dispatch({ type: 'upsertProject', project: created })
         onCreated(created.key)
@@ -91,6 +100,19 @@ export default function CreateProjectModal({ onClose, onCreated }: {
         </div>
         {error && <p role="alert" className="text-danger" style={{ marginTop: 8 }}>{error}</p>}
 
+        {apiEnabled && (
+          <label className="check-row" style={{ marginTop: 18 }}>
+            <input type="checkbox" checked={sharing} onChange={e => setSharing(e.target.checked)} />Share settings with an existing project
+          </label>
+        )}
+        {sharing && <>
+          <Picker value={shared?.id} search remote={{ onSearch: setQuery, searching: false }} className="btn btn-secondary" title="Project to share with"
+            options={found.map(p => ({ value: p.id as string | undefined, label: `${p.name} (${p.key})` }))}
+            onChange={id => setShared(found.find(p => p.id === id) ?? null)}
+            trigger={shared ? `${shared.name} (${shared.key})` : 'Choose a project…'} />
+          <div className="hint">The new project uses its workflows, fields, screens and notifications (changes reach both) and copies its work types. Its members, versions and work aren’t carried over.</div>
+        </>}
+        {!sharing && <>
         <label className="label" style={{ marginTop: 18 }}>Template</label>
         <div role="radiogroup" aria-label="Template">
           {(['Software', 'Business'] as const).filter(g => offered.some(t => t.group === g)).map(g => (
@@ -111,7 +133,8 @@ export default function CreateProjectModal({ onClose, onCreated }: {
           ))}
         </div>
 
-        {scheme && <>
+        </>}
+        {!sharing && scheme && <>
           <label className="label" htmlFor="cp-scheme" style={{ marginTop: 18 }}>Workflow</label>
           <select id="cp-scheme" className="input" value={scheme.id} onChange={e => setSchemeId(e.target.value)}>
             {schemes.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
