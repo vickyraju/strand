@@ -41,7 +41,7 @@ Today's importer (0802) brings projects, people, statuses, types, priorities, re
 - Run the inventory (0801) on the real Jira DC. It decides B11 and whether the Team field is used, which decides 0803 B+ (teams and capacity).
 - Compare Strand with the real Jira, screen by screen.
 - Verify the 63 specs marked "awaiting verification".
-- Review the 71 proposals (P1…) written into the specs and choose which to build.
+- Review the remaining proposals (P1…) in the specs. Built on 12 Nov 2026 at the PO's choice: 0709 P2–P3 (smart values, branches), 0601 P1 (comment edit history), 0604 P2 (only when changed), 0701 P2 (scheduled banner), 0717 P1 (Jira administrators), 0310 P1 (shared configuration). Excel export (0608 P1) was declined.
 - Build 0804 (Xray test data import) on the PO's system with Jira and Xray installed, then port it here.
 
 ## D. To develop later
