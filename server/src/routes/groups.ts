@@ -27,6 +27,9 @@ async function canManage(d: Db, me: Me, g: G) {
   if (g.source === 'directory') return false                                         // the directory manages it (spec 0104 R7, a read-only directory in Jira)
   if (me.admin) return true
   if (g.systemRole) return false
+  // a Jira administrator (spec 0717 R5): every group but those that make system administrators
+  if (await hasGlobal(me, 'jira-admin', d))
+    return !(await d.query(`select 1 from global_permissions where group_id = $1 and permission = 'system-admin'`, [g.id])).length
   return (await d.query('select 1 from group_owners where group_id = $1 and user_id = $2', [g.id, me.id])).length > 0
 }
 async function groupFor(d: Db, me: Me, id: string, manage: boolean, lock = false) {
@@ -41,12 +44,14 @@ const ROW = `select g.id, g.display_name as name, g.description, g.system_role, 
   (select count(*)::int from group_members gm join users u on u.id = gm.user_id where gm.group_id = g.id and u.active) as members,
   coalesce((select jsonb_agg(jsonb_build_object('id', u.id, 'name', u.name) order by lower(u.name)) from group_owners o join users u on u.id = o.user_id where o.group_id = g.id), '[]') as owners,
   exists (select 1 from group_members gm where gm.group_id = g.id and gm.user_id = $1) as is_member,
-  exists (select 1 from group_owners o where o.group_id = g.id and o.user_id = $1) as is_owner
+  exists (select 1 from group_owners o where o.group_id = g.id and o.user_id = $1) as is_owner,
+  exists (select 1 from global_permissions gp where gp.group_id = g.id and gp.permission = 'system-admin') as makes_admins
   from groups g`
-const shape = (me: Me) => (r: any) => ({
+/** `jiraAdmin`: I'm a Jira administrator (spec 0717 R5), who manages every group but those that make system administrators. */
+const shape = (me: Me, jiraAdmin = false) => (r: any) => ({
   id: r.id, name: r.name, description: r.description, kind: r.systemRole ? 'system' : r.directory ? 'directory' : 'strand',
   systemRole: r.systemRole, members: r.members, owners: r.owners, isMember: r.isMember, isOwner: r.isOwner,
-  canManage: !(r.directory && !r.systemRole) && (me.admin || (!r.systemRole && r.isOwner)), createdAt: r.createdAt,
+  canManage: !(r.directory && !r.systemRole) && (me.admin || (!r.systemRole && (r.isOwner || (jiraAdmin && !r.makesAdmins)))), createdAt: r.createdAt,
 })
 
 /** A page of a group's members, by name (keyset on name and id). */
@@ -88,7 +93,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
       order by g.system_role is null, lower(g.display_name), g.id limit $${args.length}`, args)
     const more = rows.length > req.query.limit, items = more ? rows.slice(0, req.query.limit) : rows
     const last = items.at(-1)
-    return { items: items.map(shape(req.me)), next: more ? Buffer.from(JSON.stringify([last.systemRole == null, last.name.toLowerCase(), last.id])).toString('base64url') : null }
+    return { items: items.map(shape(req.me, await hasGlobal(req.me, 'jira-admin'))), next: more ? Buffer.from(JSON.stringify([last.systemRole == null, last.name.toLowerCase(), last.id])).toString('base64url') : null }
   })
 
   app.get('/groups/:id', { schema: { tags: T, summary: 'A group: its members, owners, and the roles it has in projects you can see', params: idP } }, async req => {
@@ -99,7 +104,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     const args: unknown[] = [req.params.id]
     const projects = await db.query(`select p.key, p.name, pg.role from project_group_roles pg join projects p on p.id = pg.project_id
                                       where pg.group_id = $1 and ${visible(req.me, 'p.id', args)} order by p.key`, args)
-    const g = shape(req.me)(row)
+    const g = shape(req.me, await hasGlobal(req.me, 'jira-admin'))(row)
     // spec 0106: how many comments a delete would have to move (for those who may delete it)
     const restrictedComments = g.canManage ? (await db.query<{ n: number }>(`select count(*)::int as n from comments where visibility->>'kind' = 'group' and visibility->>'id' = $1`, [req.params.id]))[0]!.n : null
     return { ...g, people: members.items, morePeople: members.next, projects, restrictedComments }
@@ -126,7 +131,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
       await d.query('insert into group_members (group_id, user_id) values ($1, $2)', [g!.id, req.me.id])
       await audit(d, req, { action: 'group.created', type: 'group', id: g!.id, name: req.body.name, after: req.body })
       reply.code(201)
-      return shape(req.me)((await d.query<any>(`${ROW} where g.id = $2`, [req.me.id, g!.id]))[0])
+      return shape(req.me, await hasGlobal(req.me, 'jira-admin'))((await d.query<any>(`${ROW} where g.id = $2`, [req.me.id, g!.id]))[0])
     })
   })
 
@@ -140,7 +145,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
       await d.query('update groups set description = $2 where id = $1', [g.id, description])
       const c = changes({ description: g.description }, { description })
       if (c.changed) await audit(d, req, { action: 'group.updated', type: 'group', id: g.id, name: g.displayName, before: c.before, after: c.after })
-      return shape(req.me)((await d.query<any>(`${ROW} where g.id = $2`, [req.me.id, g.id]))[0])
+      return shape(req.me, await hasGlobal(req.me, 'jira-admin'))((await d.query<any>(`${ROW} where g.id = $2`, [req.me.id, g.id]))[0])
     })
   })
 
@@ -214,7 +219,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
       if (ok.length !== new Set(req.body.userIds).size) throw new HttpError(400, 'Owners must be active people in this workspace', { userIds: 'Unknown or deactivated' })
       await d.query(`insert into group_owners (group_id, user_id) select $1, x from unnest($2::uuid[]) x on conflict do nothing`, [g.id, ok.map(u => u.id)])
       await audit(d, req, { action: 'group.owners_added', type: 'group', id: g.id, name: g.displayName, after: { owners: ok.map(u => u.email) } })
-      return shape(req.me)((await d.query<any>(`${ROW} where g.id = $2`, [req.me.id, g.id]))[0])
+      return shape(req.me, await hasGlobal(req.me, 'jira-admin'))((await d.query<any>(`${ROW} where g.id = $2`, [req.me.id, g.id]))[0])
     })
   })
   app.delete('/groups/:id/owners/:userId', { schema: { tags: T, summary: 'Stop someone owning a group (its owners and system administrators). A group keeps at least one owner unless a system administrator removes the last', params: idP.extend({ userId: uuid }) } }, async (req, reply) => {

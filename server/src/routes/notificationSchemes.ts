@@ -1,9 +1,10 @@
 // Notification schemes (spec 0605), as Jira's: for each of Jira's events on a work item, who hears about it. Every project
 // has a scheme (or None). Events reach here from emit() (webhooks.ts), the one place every change to a work item passes.
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
+import { requireJiraAdmin } from './globalPermissions.ts'
 import { z } from 'zod'
 import { db, tx, type Db } from '../db.ts'
-import { HttpError, requireAdmin, type Me } from '../auth.ts'
+import { HttpError, type Me } from '../auth.ts'
 import { audit } from '../audit.ts'
 import { getSetting } from '../settings.ts'
 import { projectByKey } from './projects.ts'
@@ -98,13 +99,13 @@ const plugin: FastifyPluginAsyncZod = async app => {
   }
 
   app.get('/admin/notification-schemes', { schema: { tags: T, summary: 'Notification schemes, with how many projects use each (system administrators)' } }, async req => {
-    requireAdmin(req)
+    await requireJiraAdmin(req)
     return db.query(`${LIST} where s.workspace_id = $1 order by s.is_default desc, lower(s.name)`, [req.me.workspaceId])
   })
-  app.get('/admin/notification-schemes/:id', { schema: { tags: T, summary: 'A scheme and its events’ recipients', params: idP } }, async req => { requireAdmin(req); return scheme(db, req.me, req.params.id) })
+  app.get('/admin/notification-schemes/:id', { schema: { tags: T, summary: 'A scheme and its events’ recipients', params: idP } }, async req => { await requireJiraAdmin(req); return scheme(db, req.me, req.params.id) })
   const head = z.object({ name: z.string().trim().min(1).max(255), description: z.string().max(2000).default('') })
   app.post('/admin/notification-schemes', { schema: { tags: T, summary: 'A new, empty scheme', body: head } }, async (req, reply) => {
-    requireAdmin(req)
+    await requireJiraAdmin(req)
     const s = await tx(async d => {
       const [{ id }] = await d.query<{ id: string }>('insert into notification_schemes (workspace_id, name, description) values ($1, $2, $3) returning id', [req.me.workspaceId, req.body.name, req.body.description]) as any
       await audit(d, req, { action: 'notification_scheme.created', type: 'notification_scheme', id, name: req.body.name })
@@ -113,7 +114,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     reply.code(201); return s
   })
   app.post('/admin/notification-schemes/:id/copy', { schema: { tags: T, summary: 'Copy a scheme with its recipients', params: idP, body: head.partial() } }, async (req, reply) => {
-    requireAdmin(req)
+    await requireJiraAdmin(req)
     const s = await tx(async d => {
       const from = await scheme(d, req.me, req.params.id)
       const name = req.body.name ?? `Copy of ${from.name}`
@@ -125,7 +126,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     reply.code(201); return s
   })
   app.patch('/admin/notification-schemes/:id', { schema: { tags: T, summary: 'Rename a scheme, or make it the default for new projects', params: idP, body: head.extend({ isDefault: z.literal(true) }).partial() } }, async req => {
-    requireAdmin(req)
+    await requireJiraAdmin(req)
     return tx(async d => {
       const s = await scheme(d, req.me, req.params.id)
       if (req.body.isDefault) await d.query('update notification_schemes set is_default = false where workspace_id = $1 and is_default', [req.me.workspaceId])
@@ -136,7 +137,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     }).catch(e => { if (e.code === '23505') throw new HttpError(409, 'A scheme already has that name'); throw e })
   })
   app.delete('/admin/notification-schemes/:id', { schema: { tags: T, summary: 'Delete a scheme no project uses (not the default)', params: idP } }, async (req, reply) => {
-    requireAdmin(req)
+    await requireJiraAdmin(req)
     await tx(async d => {
       const s = await scheme(d, req.me, req.params.id)
       if (s.isDefault) throw new HttpError(409, 'The default scheme can’t be deleted: make another the default first')
@@ -147,7 +148,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     reply.code(204).send()
   })
   app.post('/admin/notification-schemes/:id/entries', { schema: { tags: T, summary: 'Add a recipient to an event', params: idP, body: entry } }, async (req, reply) => {
-    requireAdmin(req)
+    await requireJiraAdmin(req)
     const s = await tx(async d => {
       const s = await scheme(d, req.me, req.params.id)
       await checkValue(d, req.me, req.body)
@@ -158,7 +159,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     reply.code(201); return s
   })
   app.delete('/admin/notification-schemes/:id/entries/:entryId', { schema: { tags: T, summary: 'Remove a recipient from an event', params: idP.extend({ entryId: uuid }) } }, async req => {
-    requireAdmin(req)
+    await requireJiraAdmin(req)
     return tx(async d => {
       const s = await scheme(d, req.me, req.params.id)
       const [gone] = await d.query('delete from notification_scheme_entries where id = $1 and scheme_id = $2 returning event, recipient, value', [req.params.entryId, s.id])
@@ -179,7 +180,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
   })
   app.put('/projects/:key/notification-scheme', { schema: { tags: T, summary: 'Give the project a notification scheme, or None (system administrators)', params: keyP,
     body: z.object({ schemeId: uuid.nullable() }) } }, async req => {
-    requireAdmin(req)
+    await requireJiraAdmin(req)
     return tx(async d => {
       const p = await projectByKey(d, req, req.params.key, 'administer')
       if (req.body.schemeId && !(await d.query('select 1 from notification_schemes where id = $1 and workspace_id = $2', [req.body.schemeId, req.me.workspaceId])).length)

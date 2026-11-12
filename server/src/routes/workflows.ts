@@ -1,9 +1,10 @@
 // Administration › Workflows (Jira's statuses, workflows and workflow schemes): system administrators keep them, and a
 // change applies to every project that uses it. Projects only choose a scheme (projects.ts).
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
+import { requireJiraAdmin } from './globalPermissions.ts'
 import { z } from 'zod'
 import { db, tx, type Db } from '../db.ts'
-import { HttpError, requireAdmin } from '../auth.ts'
+import { HttpError } from '../auth.ts'
 import { audit, changes } from '../audit.ts'
 import { rulesSchema } from '../transitions.ts'
 import { kickJobs } from '../jobs.ts'
@@ -83,13 +84,13 @@ const plugin: FastifyPluginAsyncZod = async app => {
   // Which projects a workflow or scheme reaches: a count, and the projects a page at a time (there can be thousands)
   for (const [path, what] of [['/admin/workflows/:id/projects', 'workflow'], ['/admin/workflow-schemes/:id/projects', 'scheme']] as const)
     app.get(path, { schema: { tags: T, summary: `Projects using a ${what}, by key, a page at a time; with query, those whose key or name contains it (system administrators)`, params: idP, querystring: pageQ } }, async req => {
-      requireAdmin(req)
+      await requireJiraAdmin(req)
       const r = what === 'workflow' ? { workflowId: req.params.id } : { schemeId: req.params.id }
       const page = await pageUsing(db, req.me.workspaceId, r, { query: req.query.query, after: req.query.cursor, limit: req.query.limit })
       return { ...page, total: await countUsing(db, req.me.workspaceId, r) }
     })
   app.get('/admin/workflows/applying', { schema: { tags: T, summary: 'The workflow change being applied to projects right now, if any, and how far it has got (system administrators)' } }, async req => {
-    requireAdmin(req)
+    await requireJiraAdmin(req)
     const j = await runningApply(db, req.me.workspaceId)
     return j && { jobId: j.id, workflowId: j.payload.workflowId ?? null, schemeId: j.payload.schemeId ?? null, name: j.payload.name ?? null,
       done: j.progress?.done ?? 0, total: j.progress?.total ?? 0, startedAt: j.createdAt }
@@ -97,11 +98,11 @@ const plugin: FastifyPluginAsyncZod = async app => {
 
   // ── Statuses ──
   app.get('/admin/statuses', { schema: { tags: T, summary: 'Global statuses and the workflows using each (system administrators)' } }, async req => {
-    requireAdmin(req)
+    await requireJiraAdmin(req)
     return db.query(`select ${STATUS_ROW} from wf_statuses s where s.workspace_id = $1 order by s.position, lower(s.name)`, [req.me.workspaceId])
   })
   app.post('/admin/statuses', { schema: { tags: T, summary: 'Add a global status (system administrators)', body: statusBody } }, async (req, reply) => {
-    requireAdmin(req)
+    await requireJiraAdmin(req)
     return tx(async d => {
       const [s] = await d.query<{ id: string }>(`insert into wf_statuses (workspace_id, name, description, color, category, position)
         values ($1, $2, $3, $4, $5, (select coalesce(max(position), -1) + 1 from wf_statuses where workspace_id = $1)) returning id`,
@@ -112,7 +113,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     })
   })
   app.patch('/admin/statuses/:id', { schema: { tags: T, summary: 'Rename or restyle a global status: every workflow and project using it changes (system administrators)', params: idP, body: z.object(statusFields).partial() } }, async req => {
-    requireAdmin(req)
+    await requireJiraAdmin(req)
     return tx(async d => {
       const [before] = await d.query<any>('select name, description, color, category from wf_statuses where id = $1 and workspace_id = $2 for update', [req.params.id, req.me.workspaceId])
       if (!before) throw new HttpError(404, 'No such status')
@@ -125,7 +126,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     })
   })
   app.delete('/admin/statuses/:id', { schema: { tags: T, summary: 'Remove a global status no workflow uses (system administrators)', params: idP } }, async (req, reply) => {
-    requireAdmin(req)
+    await requireJiraAdmin(req)
     await tx(async d => {
       const [s] = await d.query<any>(`select ${STATUS_ROW} from wf_statuses s where s.id = $1 and s.workspace_id = $2 for update`, [req.params.id, req.me.workspaceId])
       if (!s) throw new HttpError(404, 'No such status')
@@ -139,7 +140,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
   // ── Workflows ──
   app.post('/admin/workflows', { schema: { tags: T, summary: 'Add a workflow, as a copy of another or with a first and a last status (system administrators)',
     body: z.object({ name, description: z.string().max(500).default(''), copyFrom: uuid.optional() }) } }, async (req, reply) => {
-    requireAdmin(req)
+    await requireJiraAdmin(req)
     return tx(async d => {
       const ws = req.me.workspaceId
       let from: { statuses: string[]; transitions: unknown[]; layout: unknown; resolutionOnDone?: boolean }
@@ -163,7 +164,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
   app.patch('/admin/workflows/:id', { schema: { tags: T, summary: 'Rename a workflow, change its description, or say how its items get a resolution (system administrators)', params: idP,
     body: z.object({ name, description: z.string().max(500),
       resolutionOnDone: z.boolean().describe('true: reaching a Done status sets the default resolution (Jira Software’s simplified workflows); false: only transition rules set it (classic workflows)') }).partial() } }, async req => {
-    requireAdmin(req)
+    await requireJiraAdmin(req)
     return tx(async d => {
       const [before] = await d.query<any>('select name, description, resolution_on_done from workflows where id = $1 and workspace_id = $2 for update', [req.params.id, req.me.workspaceId])
       if (!before) throw new HttpError(404, 'No such workflow')
@@ -178,7 +179,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     })
   })
   app.delete('/admin/workflows/:id', { schema: { tags: T, summary: 'Remove a workflow no scheme uses (system administrators)', params: idP } }, async (req, reply) => {
-    requireAdmin(req)
+    await requireJiraAdmin(req)
     await tx(async d => {
       const w = await workflowOut(d, req.me.workspaceId, req.params.id)
       if (w.schemes.length) throw new HttpError(409, `Workflow schemes use this workflow: ${w.schemes.map((s: any) => s.name).join(', ')}`)
@@ -191,7 +192,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
   app.post('/admin/workflows/:id/publish', { schema: { tags: T,
     summary: 'Save a workflow’s statuses, transitions and layout (system administrators). A changed workflow is recorded as a new version, and a background job applies it to every project using it (follow it at GET /jobs/:id). With dryRun, only reports what would change',
     params: idP, body: publishBody } }, async req => {
-    requireAdmin(req)
+    await requireJiraAdmin(req)
     const b = req.body, ws = req.me.workspaceId
     if (b.statusMap !== undefined) throw new HttpError(400, 'Items aren’t moved by publishing a workflow: move them to another status first, or copy the workflow and switch the projects to it', { statusMap: 'Not accepted' })
     if (!b.dryRun) await notWhileApplying(db, ws)
@@ -277,7 +278,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
       (select count(*)::int from projects p where p.workflow_scheme_id = sc.id and p.deleting_at is null) as projects
       from workflow_schemes sc join workflows w on w.id = sc.default_workflow_id where sc.id = $1`, [id]))[0]
   app.post('/admin/workflow-schemes', { schema: { tags: T, summary: 'Add a workflow scheme (system administrators)', body: schemeBody } }, async (req, reply) => {
-    requireAdmin(req)
+    await requireJiraAdmin(req)
     return tx(async d => {
       await checkScheme(d, req.me.workspaceId, req.body)
       const [s] = await d.query<{ id: string }>('insert into workflow_schemes (workspace_id, name, description, default_workflow_id, mappings) values ($1, $2, $3, $4, $5) returning id',
@@ -290,7 +291,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
   app.patch('/admin/workflow-schemes/:id', { schema: { tags: T,
     summary: 'Change a workflow scheme (system administrators). A background job applies it to every project using it (follow it at GET /jobs/:id). With dryRun, only reports what would change',
     params: idP, body: z.object(schemeFields).partial().extend({ statusMap, dryRun }) } }, async req => {
-    requireAdmin(req)
+    await requireJiraAdmin(req)
     const { statusMap: map, dryRun: dry, ...b } = req.body
     if (!dry) await notWhileApplying(db, req.me.workspaceId)
     const out = await previewing(tx, dry, async d => {
@@ -311,7 +312,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     return out
   })
   app.delete('/admin/workflow-schemes/:id', { schema: { tags: T, summary: 'Remove a workflow scheme no project uses (system administrators)', params: idP } }, async (req, reply) => {
-    requireAdmin(req)
+    await requireJiraAdmin(req)
     await tx(async d => {
       const [s] = await d.query<any>('select id, name from workflow_schemes where id = $1 and workspace_id = $2 for update', [req.params.id, req.me.workspaceId])
       if (!s) throw new HttpError(404, 'No such workflow scheme')

@@ -9,6 +9,7 @@ import { requireNoToken } from './authentication.ts'
 
 export const GLOBAL_PERMISSIONS = {
   'system-admin': 'System administrators',
+  'jira-admin': 'Jira administrators',
   'browse-users': 'Browse users and groups',
   'shared-objects': 'Create shared objects',
   'group-subscriptions': 'Manage group filter subscriptions',
@@ -26,6 +27,12 @@ export async function globalPermissions(me: Me, d: Db = db): Promise<GlobalPermi
 export async function hasGlobal(me: Me, p: GlobalPermission, d: Db = db) {
   return me.admin || (await d.query(`select 1 from global_permissions gp join group_members gm on gm.group_id = gp.group_id
     where gp.workspace_id = $1 and gp.permission = $2 and gm.user_id = $3 limit 1`, [me.workspaceId, p, me.id])).length > 0
+}
+/** Jira administrators (spec 0717 R5): most administration; system administrators hold it too. `noToken`: as
+ *  requireNoToken, not from a script's access token. */
+export async function requireJiraAdmin(req: { me: Me }, o: { noToken?: boolean } = {}) {
+  if (!(await hasGlobal(req.me, 'jira-admin'))) throw new HttpError(403, 'Admin only')
+  if (o.noToken && req.me.via === 'pat') throw new HttpError(403, 'Sign in with your account to change this')
 }
 /** Refuses unless I hold `p`, naming it (Jira's wording). */
 export async function needGlobal(me: Me, p: GlobalPermission, d: Db = db) {

@@ -2536,3 +2536,18 @@ test('[0701.R6] a banner whose window has ended doesn’t show; a current one do
     assert.deepEqual(o.problems, [])
   } finally { await owner('PUT', '/admin/settings/announcement', { text: '', visibility: 'private', startsAt: null, endsAt: null }) }
 })
+
+test('[0717.R5] a Jira administrator sees Administration with workflows and people, not System settings', { skip, timeout: 90_000 }, async () => {
+  const team = (await owner('POST', '/groups', { name: 'e2e-jira-admins' })).body
+  await owner('POST', `/groups/${team.id}/members`, { userIds: [await idOf('maya@e2e.test')] })
+  const grant = (await owner('POST', '/admin/global-permissions', { permission: 'jira-admin', groupId: team.id })).body
+  try {
+    const m = await signIn('maya@e2e.test')
+    await m.goto(url('/admin/workflows'))
+    const nav = m.locator('nav.admin-nav[aria-label="Administration"]')
+    await nav.waitFor()
+    for (const label of ['Workflows', 'People', 'Custom fields', 'Priorities']) assert.equal(await nav.locator(`text=${label}`).count() > 0, true, label)
+    for (const label of ['System settings', 'Global permissions', 'Webhooks', 'Audit log']) assert.equal(await nav.locator(`text=${label}`).count(), 0, label)
+    assert.deepEqual(m.problems, [])
+  } finally { await owner('DELETE', `/admin/global-permissions/${grant.id}`) }
+})

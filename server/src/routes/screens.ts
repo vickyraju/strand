@@ -1,11 +1,11 @@
 // Administration › Screens (spec 0505), as Jira's: screens (tabs and their fields), screen schemes (a screen for Create,
 // Edit and View) and issue type screen schemes (a screen scheme per work type). System administrators, signed in themselves.
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
+import { requireJiraAdmin } from './globalPermissions.ts'
 import { z } from 'zod'
 import { db, tx, type Db } from '../db.ts'
 import { HttpError } from '../auth.ts'
 import { audit, changes } from '../audit.ts'
-import { requireNoToken } from './authentication.ts'
 import { defaultScreenScheme } from '../fields.ts'
 import { SYSTEM_FIELDS } from '../shared/fieldRules.ts'
 
@@ -55,13 +55,13 @@ const plugin: FastifyPluginAsyncZod = async app => {
   }
   // —— Screens ——
   app.get('/admin/screens', { schema: { tags: T, summary: 'Screens, the default first, with the screen schemes using each' } }, async req => {
-    requireNoToken(req)
+    await requireJiraAdmin(req, { noToken: true })
     await defaultScreenScheme(db, req.me.workspaceId)
     return db.query(`${SCREENS} where s.workspace_id = $1 order by s.is_default desc, lower(s.name)`, [req.me.workspaceId])
   })
-  app.get('/admin/screens/:id', { schema: { tags: T, summary: 'A screen', params: idP } }, async req => { requireNoToken(req); return one(SCREENS, 's', req.me.workspaceId, req.params.id, 'Screen') })
+  app.get('/admin/screens/:id', { schema: { tags: T, summary: 'A screen', params: idP } }, async req => { await requireJiraAdmin(req, { noToken: true }); return one(SCREENS, 's', req.me.workspaceId, req.params.id, 'Screen') })
   app.post('/admin/screens', { schema: { tags: T, summary: 'Add a screen', body: screenBody } }, async (req, reply) => {
-    requireNoToken(req)
+    await requireJiraAdmin(req, { noToken: true })
     const b = req.body
     const id = await tx(async d => {
       await checkTabs(d, req.me.workspaceId, b.tabs)
@@ -73,7 +73,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     return one(SCREENS, 's', req.me.workspaceId, id, 'Screen')
   })
   app.patch('/admin/screens/:id', { schema: { tags: T, summary: 'Change a screen: its tabs and their fields', params: idP, body: screenBody.partial() } }, async req => {
-    requireNoToken(req)
+    await requireJiraAdmin(req, { noToken: true })
     const before = await one(SCREENS, 's', req.me.workspaceId, req.params.id, 'Screen')
     await tx(async d => {
       const b = req.body
@@ -86,7 +86,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     return one(SCREENS, 's', req.me.workspaceId, req.params.id, 'Screen')
   })
   app.delete('/admin/screens/:id', { schema: { tags: T, summary: 'Delete a screen no scheme uses (not the default)', params: idP } }, async (req, reply) => {
-    requireNoToken(req)
+    await requireJiraAdmin(req, { noToken: true })
     const s = await one(SCREENS, 's', req.me.workspaceId, req.params.id, 'Screen')
     if (s.isDefault) throw new HttpError(400, 'The Default Screen can’t be deleted')
     if (s.schemes.length) throw new HttpError(409, `Used by ${s.schemes.join(', ')}`)
@@ -96,13 +96,13 @@ const plugin: FastifyPluginAsyncZod = async app => {
 
   // —— Screen schemes ——
   app.get('/admin/screen-schemes', { schema: { tags: T, summary: 'Screen schemes' } }, async req => {
-    requireNoToken(req)
+    await requireJiraAdmin(req, { noToken: true })
     await defaultScreenScheme(db, req.me.workspaceId)
     return db.query(`${SCHEMES} where ss.workspace_id = $1 order by ss.is_default desc, lower(ss.name)`, [req.me.workspaceId])
   })
-  app.get('/admin/screen-schemes/:id', { schema: { tags: T, summary: 'A screen scheme', params: idP } }, async req => { requireNoToken(req); return one(SCHEMES, 'ss', req.me.workspaceId, req.params.id, 'Screen scheme') })
+  app.get('/admin/screen-schemes/:id', { schema: { tags: T, summary: 'A screen scheme', params: idP } }, async req => { await requireJiraAdmin(req, { noToken: true }); return one(SCHEMES, 'ss', req.me.workspaceId, req.params.id, 'Screen scheme') })
   app.post('/admin/screen-schemes', { schema: { tags: T, summary: 'Add a screen scheme', body: schemeBody } }, async (req, reply) => {
-    requireNoToken(req)
+    await requireJiraAdmin(req, { noToken: true })
     const b = req.body
     const id = await tx(async d => {
       await owned(d, 'screens', req.me.workspaceId, [b.defaultScreenId, b.createScreenId, b.editScreenId, b.viewScreenId])
@@ -115,7 +115,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     return one(SCHEMES, 'ss', req.me.workspaceId, id, 'Screen scheme')
   })
   app.patch('/admin/screen-schemes/:id', { schema: { tags: T, summary: 'Change a screen scheme', params: idP, body: schemeBody.partial() } }, async req => {
-    requireNoToken(req)
+    await requireJiraAdmin(req, { noToken: true })
     const before = await one(SCHEMES, 'ss', req.me.workspaceId, req.params.id, 'Screen scheme')
     await tx(async d => {
       const b = { ...before, ...req.body }
@@ -128,7 +128,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     return one(SCHEMES, 'ss', req.me.workspaceId, req.params.id, 'Screen scheme')
   })
   app.delete('/admin/screen-schemes/:id', { schema: { tags: T, summary: 'Delete a screen scheme no issue type screen scheme uses (not the default)', params: idP } }, async (req, reply) => {
-    requireNoToken(req)
+    await requireJiraAdmin(req, { noToken: true })
     const s = await one(SCHEMES, 'ss', req.me.workspaceId, req.params.id, 'Screen scheme')
     if (s.isDefault) throw new HttpError(400, 'The Default Screen Scheme can’t be deleted')
     if (s.usedBy.length) throw new HttpError(409, `Used by ${s.usedBy.join(', ')}`)
@@ -138,12 +138,12 @@ const plugin: FastifyPluginAsyncZod = async app => {
 
   // —— Issue type screen schemes ——
   app.get('/admin/issue-type-screen-schemes', { schema: { tags: T, summary: 'Issue type screen schemes, with the projects using each' } }, async req => {
-    requireNoToken(req)
+    await requireJiraAdmin(req, { noToken: true })
     return db.query(`${ITS} where i.workspace_id = $1 order by lower(i.name)`, [req.me.workspaceId])
   })
-  app.get('/admin/issue-type-screen-schemes/:id', { schema: { tags: T, summary: 'An issue type screen scheme', params: idP } }, async req => { requireNoToken(req); return one(ITS, 'i', req.me.workspaceId, req.params.id, 'Issue type screen scheme') })
+  app.get('/admin/issue-type-screen-schemes/:id', { schema: { tags: T, summary: 'An issue type screen scheme', params: idP } }, async req => { await requireJiraAdmin(req, { noToken: true }); return one(ITS, 'i', req.me.workspaceId, req.params.id, 'Issue type screen scheme') })
   app.post('/admin/issue-type-screen-schemes', { schema: { tags: T, summary: 'Add an issue type screen scheme', body: itsBody } }, async (req, reply) => {
-    requireNoToken(req)
+    await requireJiraAdmin(req, { noToken: true })
     const b = req.body
     const id = await tx(async d => {
       await owned(d, 'screen_schemes', req.me.workspaceId, [b.defaultSchemeId, ...Object.values(b.mappings)])
@@ -156,7 +156,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     return one(ITS, 'i', req.me.workspaceId, id, 'Issue type screen scheme')
   })
   app.patch('/admin/issue-type-screen-schemes/:id', { schema: { tags: T, summary: 'Change an issue type screen scheme', params: idP, body: itsBody.partial() } }, async req => {
-    requireNoToken(req)
+    await requireJiraAdmin(req, { noToken: true })
     const before = await one(ITS, 'i', req.me.workspaceId, req.params.id, 'Issue type screen scheme')
     await tx(async d => {
       const b = { ...before, ...req.body }
@@ -168,7 +168,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     return one(ITS, 'i', req.me.workspaceId, req.params.id, 'Issue type screen scheme')
   })
   app.delete('/admin/issue-type-screen-schemes/:id', { schema: { tags: T, summary: 'Delete an issue type screen scheme; its projects go back to the Default Screen Scheme', params: idP } }, async (req, reply) => {
-    requireNoToken(req)
+    await requireJiraAdmin(req, { noToken: true })
     const s = await one(ITS, 'i', req.me.workspaceId, req.params.id, 'Issue type screen scheme')
     await tx(async d => { await d.query('delete from issue_type_screen_schemes where id = $1', [s.id]); await audit(d, req, { action: 'issue_type_screen_scheme.deleted', type: 'issue type screen scheme', id: s.id, name: s.name, before: { projects: s.projects } }) })
     reply.code(204).send()

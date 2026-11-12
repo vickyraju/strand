@@ -5,7 +5,7 @@ import {
 } from 'lucide-react'
 import { useStore } from '../data/store'
 import { plansInBacklog } from '../data/reducer'
-import { isGlobalAdmin } from '../data/access'
+import { isJiraAdmin } from '../data/access'
 import { apiEnabled } from '../api/client'
 import { useApp } from '../appContext'
 import { href, navigate, type Route, type ProjectTab } from '../router'
@@ -167,7 +167,7 @@ export default function NavRail({ collapsed, onCollapseToggle, onCmdK, route, dr
       </div>
 
       <div className="nav-foot">
-        {apiEnabled && item(route.name === 'admin', isGlobalAdmin(state) ? 'Administration' : 'Configuration', isGlobalAdmin(state) ? ShieldCheck : SlidersHorizontal, () => goTo('admin'))}
+        {apiEnabled && item(route.name === 'admin', isJiraAdmin(state) ? 'Administration' : 'Configuration', isJiraAdmin(state) ? ShieldCheck : SlidersHorizontal, () => goTo('admin'))}
       </div>
     </nav>
   )
