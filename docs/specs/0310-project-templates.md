@@ -44,6 +44,13 @@ Parity rows: PRJ-06
   - The project's type shows where Strand showed Scrum or Kanban: in the projects list, Your work and the project's details.
 - **R3: Workspaces.** Every workspace has the four new workflows and schemes, the new ones included. Administrators can edit or copy them like any other. A template whose scheme an administrator deleted asks for a scheme, as Scrum and Kanban already do.
 
+- **R4: Create with shared configuration** (P1, chosen 12 Nov 2026; Jira DC's option of the same name). Create project can name an existing project. The new project then shares its configuration instead of a template's:
+  - **Shared, not copied:** the same workflow scheme, field configuration scheme, screen scheme and notification scheme. A change to them is a change for both, as in Jira.
+  - **Copied:** its template (and so its board's kind), work types, testing and initiatives switches.
+  - **Custom fields:** the new project joins every custom field context that names the existing project.
+  - **Not carried over:** members, components, versions, sprints, boards' settings and work. The new project gets its creator as admin and a first board, as any new project does.
+  - The person must administer the existing project, or be a Jira administrator.
+
 ## Permissions
 
 As for creating a project.
@@ -70,6 +77,7 @@ Nothing new.
 
 | Rule | Proved by |
 |---|---|
+| R4 | Server test: a project created with another's configuration has its schemes, work types, template and field contexts, shares a later workflow change, and none of its members or versions; someone who doesn't administer the other project is refused. Browser journey: Create project › Share settings with an existing project |
 | R1, R2, R3 | Server test: each new template's workflow, statuses, work types and board; no sprints outside Scrum; a new workspace gets the schemes |
 | R1 | Browser journey: create a Process management project and see its board columns |
 
@@ -85,7 +93,7 @@ Same rules.
 
 ## Proposals (not built until chosen)
 
-- **P1: Create with shared configuration** (Jira DC). A new project uses another project's workflow, notification, field configuration and screen schemes, its work types, and its custom field contexts.
+- **P1: Create with shared configuration:** chosen by the PO on 12 Nov 2026, now R4.
 
 ## Open questions
 
