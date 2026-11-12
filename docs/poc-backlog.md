@@ -17,6 +17,8 @@ There are 65 specs: 63 are built and ported to both branches, 0101 is verified, 
 
 ## B. Making the Jira DC import complete (needed to move real data)
 
+**Parked (PO, 12 Nov 2026):** built on the PO's system with Jira Data Center, where real data can be reviewed. B1 is done (spec 0805); B4 came with spec 0414.
+
 Today's importer (0802) brings projects, people, statuses, types, priorities, resolutions, custom fields, versions, components, sprints and items with their history, comments (with visibility), work logs, watchers, votes, links, web links, attachments, rank, flags and Parent Link. These are missing:
 
 | # | Gap | Why it matters | Proposed fix |
