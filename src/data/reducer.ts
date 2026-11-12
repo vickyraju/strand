@@ -220,6 +220,8 @@ export type RuleAction =
   | { kind: 'label'; value: string }
   | { kind: 'status'; value: string; /** a global rule names the status (spec 0709) */ name?: string }
   | { kind: 'comment'; body: string }
+  /** For each related item, its own actions (spec 0709 R7) */
+  | { kind: 'branch'; target: 'children' | 'parent' | 'linked'; linkType?: string | null; actions: Exclude<RuleAction, { kind: 'branch' }>[] }
 export interface Rule {
   id:      string
   name:    string

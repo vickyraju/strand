@@ -25,6 +25,13 @@ import { EXTRA_TYPES, TEMPLATES, TEMPLATE_IDS } from '../shared/templates.ts'
 import { KIND_LIST, type FieldKind } from '../shared/customFields.ts'
 import { carryOptions, clearValues, rulesFor, screensFor, withOptionIds, type Opt } from '../fields.ts'
 
+/** An automation action; a branch (spec 0709 R7) holds actions of its own, but no branch. */
+const plainAction = z.object({ kind: z.enum(['assign', 'priority', 'label', 'status', 'comment']) }).passthrough()
+export const ruleAction = z.union([
+  z.object({ kind: z.literal('branch'), target: z.enum(['children', 'parent', 'linked']).describe('Sub-items or an epic’s items; the parent or epic; linked items'),
+    linkType: z.string().max(100).nullable().optional().describe('Linked items: only this link type (its id)'), actions: z.array(plainAction).min(1).max(20) }),
+  plainAction.refine(a => (a.kind as string) !== 'branch'),
+])
 const uuid = z.string().uuid()
 const color = z.string().regex(/^#[0-9a-fA-F]{6}$/)
 
@@ -120,8 +127,7 @@ const childPatch = {
       jql: z.string().trim().max(2000).optional().describe('Scheduled: the work items it acts on'),
       changedSinceLastRun: z.boolean().optional().describe('Scheduled: only items changed since its last run') }),
     condition: z.string().trim().max(2000).nullable().describe('JQL the item must match for the rule to act (spec 0709)'),
-    actions: z.array(z.object({ kind: z.enum(['assign', 'priority', 'label', 'status', 'comment']) }).passthrough()
-      .refine(a => a.kind !== 'label' || label.safeParse(a.value).success, 'A label is one word: no spaces')),
+    actions: z.array(ruleAction.refine(a => a.kind !== 'label' || String(a.value).includes('{{') || label.safeParse(a.value).success, 'A label is one word: no spaces')),
   }).partial(),
   releases: z.object({ name: z.string().min(1), description: z.string(), startDate: z.string().nullable(), releaseDate: z.string().nullable(),
     archived: z.boolean().describe('Hidden from pickers and the Releases view; items keep it (spec 0304)'), released: z.literal(false).describe('Unrelease it (release it with POST …/release)') }).partial(),

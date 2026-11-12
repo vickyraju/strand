@@ -1,6 +1,7 @@
 // Global automation (spec 0709 R3): rules over every project, a project category (including projects added to it later),
 // or chosen projects. System administrators, signed in themselves. Statuses are named, since each project has its own.
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
+import { ruleAction } from './projects.ts'
 import { z } from 'zod'
 import { db, tx } from '../db.ts'
 import { HttpError } from '../auth.ts'
@@ -23,8 +24,8 @@ const body = z.object({
   trigger: z.object({ kind: z.enum(['created', 'status', 'assigned', 'scheduled']), toName: z.string().trim().min(1).max(100).optional().describe('Status: its name'),
     everyMinutes: z.number().int().min(1).max(525_600).optional(), jql: z.string().trim().max(2000).optional(), changedSinceLastRun: z.boolean().optional() })
     .refine(t => t.kind !== 'status' || !!t.toName, 'Name the status'),
-  actions: z.array(z.object({ kind: z.enum(['assign', 'priority', 'label', 'status', 'comment']) }).passthrough()
-    .refine(a => a.kind !== 'status' || typeof a.name === 'string', 'A status action names its status')).min(1).max(20),
+  actions: z.array(ruleAction.refine(a => a.kind !== 'status' || typeof (a as { name?: unknown }).name === 'string', 'A status action names its status')
+    .refine(a => a.kind !== 'branch' || a.actions.every(x => x.kind !== 'status' || typeof x.name === 'string'), 'A status action names its status')).min(1).max(20),
   condition: z.string().trim().max(2000).nullable().default(null),
 })
 /** A global rule as the API shows it: its scope with project keys and the category's name. */

@@ -7188,3 +7188,48 @@ test('[0719.R1][0719.R3] a logo for the collapsed menu: uploaded, served as an i
   const actions = (await pool.query(`select action from audit_log where action like 'look_and_feel.mark%' order by at`)).rows.map(r => r.action)
   assert.deepEqual([...new Set(actions)].sort(), ['look_and_feel.mark_changed', 'look_and_feel.mark_removed'])
 })
+
+test('[0709.R6][0709.R7] automation smart values and branches: comments and labels filled in, unknown values empty; For each on sub-items, the parent and linked items, in scope only', { skip }, async () => {
+  await call('POST', '/api/v1/projects', { name: 'Smart', key: 'SMV', template: 'kanban' })
+  await call('POST', '/api/v1/projects', { name: 'Smart elsewhere', key: 'SMVX', template: 'kanban' })
+  await join('SMV', 'smv.ann@x.com')
+  const ann = (await call('GET', '/api/v1/me', undefined, 'smv.ann@x.com')).body
+  const comments = async (key: string) => (await call('GET', `/api/v1/issues/${key}/comments`)).body.items.map((c: any) => c.body)
+  // R6: a comment and a label from smart values; the initiator is whoever's change fired it
+  assert.equal((await call('POST', '/api/v1/projects/SMV/rules', { name: 'Hello', enabled: true, trigger: { kind: 'created' }, actions: [
+    { kind: 'comment', body: 'Thanks {{initiator.displayName}}: {{issue.key}} “{{issue.summary}}” is {{issue.status.name}}, {{issue.priority.name}}; {{issue.nonsense}}{{reporter.x}}|' },
+    { kind: 'label', value: 'from-{{issue.project.key}}' }] })).status, 201)
+  const a = (await call('POST', '/api/v1/projects/SMV/issues', { title: 'Parent work', priority: 'high' }, 'smv.ann@x.com')).body
+  assert.deepEqual(await comments(a.key), [`Thanks ${ann.name}: ${a.key} “Parent work” is To do, High; |`])
+  assert.deepEqual((await call('GET', `/api/v1/issues/${a.key}`)).body.labels, ['from-SMV'])
+  const rules = (await call('GET', '/api/v1/projects/SMV')).body.rules
+  for (const r of rules) await call('DELETE', `/api/v1/projects/SMV/rules/${r.id}`)
+  // R7: For each sub-item, the parent, and linked items of one type; an item in another project is outside the rule's scope
+  const kid1 = (await call('POST', '/api/v1/projects/SMV/issues', { title: 'Kid one', parentId: a.id })).body
+  const kid2 = (await call('POST', '/api/v1/projects/SMV/issues', { title: 'Kid two', parentId: a.id })).body
+  const blocked = (await call('POST', '/api/v1/projects/SMV/issues', { title: 'Blocked one' })).body
+  const related = (await call('POST', '/api/v1/projects/SMV/issues', { title: 'Related one' })).body
+  const outside = (await call('POST', '/api/v1/projects/SMVX/issues', { title: 'Outside' })).body
+  const other = (await call('POST', '/api/v1/admin/link-types', { name: 'Smart related', outward: 'smart-relates to', inward: 'smart-related to' })).body.id
+  for (const [t, type] of [[blocked, 'blocks'], [related, other], [outside, 'blocks']] as const)
+    assert.equal((await call('POST', `/api/v1/issues/${a.key}/links`, { type, targetKey: t.key })).status, 204)
+  const rule = (await call('POST', '/api/v1/projects/SMV/rules', { name: 'Fan out', enabled: true, trigger: { kind: 'assigned' }, actions: [
+    { kind: 'branch', target: 'children', actions: [{ kind: 'comment', body: 'Parent {{triggerIssue.key}} was assigned to {{triggerIssue.assignee.displayName}}' }] },
+    { kind: 'branch', target: 'linked', linkType: 'blocks', actions: [{ kind: 'label', value: 'waiting-on-{{triggerIssue.key}}' }] }] })).body
+  assert.ok(rule.id)
+  await call('PATCH', `/api/v1/issues/${a.key}`, { assigneeId: ann.id })
+  for (const k of [kid1, kid2]) assert.deepEqual(await comments(k.key), [`Parent ${a.key} was assigned to ${ann.name}`])
+  assert.deepEqual((await call('GET', `/api/v1/issues/${blocked.key}`)).body.labels, [`waiting-on-${a.key}`])
+  assert.deepEqual((await call('GET', `/api/v1/issues/${related.key}`)).body.labels, [])                 // another link type
+  assert.deepEqual((await call('GET', `/api/v1/issues/${outside.key}`)).body.labels, [])                 // another project: out of scope
+  const run = (await pool.query(`select steps from rule_runs where rule_id = $1 order by at desc limit 1`, [rule.id])).rows[0].steps
+  assert.ok(run.some((s: any) => s.action === `branch ${outside.key}` && s.outcome === 'skipped'))
+  // the parent: a sub-item's rule comments on it
+  await call('POST', '/api/v1/projects/SMV/rules', { name: 'Up', enabled: true, trigger: { kind: 'created' }, condition: `parent = ${a.key}`,
+    actions: [{ kind: 'branch', target: 'parent', actions: [{ kind: 'comment', body: 'New sub-item {{triggerIssue.key}} on {{issue.key}}' }] }] })
+  const kid3 = (await call('POST', '/api/v1/projects/SMV/issues', { title: 'Kid three', parentId: a.id })).body
+  assert.equal((await comments(a.key)).at(-1), `New sub-item ${kid3.key} on ${a.key}`)
+  // a branch inside a branch is refused when saved
+  assert.equal((await call('POST', '/api/v1/projects/SMV/rules', { name: 'Nested', enabled: true, trigger: { kind: 'created' },
+    actions: [{ kind: 'branch', target: 'children', actions: [{ kind: 'branch', target: 'parent', actions: [{ kind: 'comment', body: 'x' }] }] }] })).status, 400)
+})
