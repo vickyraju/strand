@@ -3645,6 +3645,7 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     'DELETE /admin/look-and-feel': ['gadmin', '/admin/look-and-feel'],
     'PUT /admin/look-and-feel/logo': ['gadmin', '/admin/look-and-feel/logo', { image: 'eA==' }], 'DELETE /admin/look-and-feel/logo': ['gadmin', '/admin/look-and-feel/logo'],
     'PUT /admin/look-and-feel/favicon': ['gadmin', '/admin/look-and-feel/favicon', { image: 'eA==' }], 'DELETE /admin/look-and-feel/favicon': ['gadmin', '/admin/look-and-feel/favicon'],
+    'PUT /admin/look-and-feel/mark': ['gadmin', '/admin/look-and-feel/mark', { image: 'eA==' }], 'DELETE /admin/look-and-feel/mark': ['gadmin', '/admin/look-and-feel/mark'],   // 0719.R1
     'GET /boards/{id}/panels': ['read', `/boards/${board}/panels`],   // 0407.R2
     'GET /boards/{id}/reports/control': ['read', `/boards/${board}/reports/control?statuses=${none}`],   // 0410.R1
     'GET /admin/directories': ['gadmin', '/admin/directories'], 'GET /admin/directories/presets': ['gadmin', '/admin/directories/presets'],   // 0712.R13
@@ -5106,7 +5107,7 @@ test('[0701.R1][0701.R2] the announcement banner: saved and audited; signed-in p
 
 test('[0702.R1][0702.R2][0702.R3][0702.R4][0702.R5] look and feel: title and colour saved, audited and public; images checked by content and served safely; reset', { skip }, async () => {
   const pub = async () => JSON.parse((await app.inject({ method: 'GET', url: '/api/v1/look-and-feel' })).body)
-  assert.deepEqual(await pub(), { siteTitle: 'Strand', showTitle: true, brandColor: '#368727', logo: null, favicon: null })
+  assert.deepEqual(await pub(), { siteTitle: 'Strand', showTitle: true, brandColor: '#368727', logo: null, favicon: null, mark: null })
   // R1, R4: saved and audited; a colour too light for white text is refused
   const saved = await call('PUT', '/api/v1/admin/look-and-feel', { siteTitle: 'Acme Work', showTitle: false, brandColor: '#1d4ed8' })
   assert.deepEqual([saved.status, saved.body.brandColor], [200, '#1D4ED8'])
@@ -5130,7 +5131,7 @@ test('[0702.R1][0702.R2][0702.R3][0702.R4][0702.R5] look and feel: title and col
   const pat = (await call('POST', '/api/v1/me/tokens', { name: 'look' })).body.token
   assert.equal((await app.inject({ method: 'DELETE', url: '/api/v1/admin/look-and-feel', headers: { authorization: `Bearer ${pat}` } })).statusCode, 403)
   // R5: reset defaults
-  assert.deepEqual((await call('DELETE', '/api/v1/admin/look-and-feel')).body, { siteTitle: 'Strand', showTitle: true, brandColor: '#368727', logo: null, favicon: null })
+  assert.deepEqual((await call('DELETE', '/api/v1/admin/look-and-feel')).body, { siteTitle: 'Strand', showTitle: true, brandColor: '#368727', logo: null, favicon: null, mark: null })
   assert.equal((await app.inject({ method: 'GET', url: '/api/v1/look-and-feel/logo' })).statusCode, 404)
 })
 
@@ -7167,4 +7168,23 @@ test('[0713.R1][0713.R2][0713.R3][0713.R4] incremental directory synchronisation
   assert.equal((await pool.query('select payload from jobs where id = $1', [started.body.jobId])).rows[0].payload.full, true)
   await call('PUT', `/api/v1/admin/directories/${dir.id}`, { name: dir.name, enabled: false, config: dir.config })
   Object.assign(other, saved)
+})
+
+test('[0719.R1][0719.R3] a logo for the collapsed menu: uploaded, served as an image with nosniff, checked, removed, reset, audited', { skip }, async () => {
+  const png = Buffer.from('89504e470d0a1a0a0000000d4948445200000001000000010806000000', 'hex')
+  const pub = async () => (await app.inject({ method: 'GET', url: '/api/v1/look-and-feel' })).json()
+  const up = await call('PUT', '/api/v1/admin/look-and-feel/mark', { image: png.toString('base64') })
+  assert.equal(up.status, 200)
+  const url = (await pub()).mark
+  assert.match(url, /^\/look-and-feel\/mark\?v=/)
+  const img = await app.inject({ method: 'GET', url: `/api/v1${url}` })
+  assert.deepEqual([img.statusCode, img.headers['content-type'], img.headers['x-content-type-options']], [200, 'image/png', 'nosniff'])
+  assert.equal((await call('PUT', '/api/v1/admin/look-and-feel/mark', { image: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>').toString('base64') })).status, 400)
+  const big = await call('PUT', '/api/v1/admin/look-and-feel/mark', { image: Buffer.concat([png, Buffer.alloc(70 * 1024)]).toString('base64') })
+  assert.equal(big.status, 400)
+  assert.equal((await call('DELETE', '/api/v1/admin/look-and-feel/mark')).body.mark, null)
+  await call('PUT', '/api/v1/admin/look-and-feel/mark', { image: png.toString('base64') })
+  assert.equal((await call('DELETE', '/api/v1/admin/look-and-feel')).body.mark, null)                 // Reset defaults removes it
+  const actions = (await pool.query(`select action from audit_log where action like 'look_and_feel.mark%' order by at`)).rows.map(r => r.action)
+  assert.deepEqual([...new Set(actions)].sort(), ['look_and_feel.mark_changed', 'look_and_feel.mark_removed'])
 })

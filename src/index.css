@@ -1623,6 +1623,7 @@ h2.empty-title, h2.section-title, h2.side-title { margin: 0 }
 .announcement-preview { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden }
 .site-logo { height: 26px; max-width: 140px; object-fit: contain; flex-shrink: 0 }
 .site-logo.lg { height: 40px; max-width: 220px; align-self: flex-start }
+.site-mark { width: 26px; height: 26px; object-fit: contain; border-radius: 6px; flex-shrink: 0 }   /* the collapsed menu's logo (spec 0719) */
 .favicon-preview { width: 24px; height: 24px; object-fit: contain }
 .brand-sample { color: #fff; padding: 4px 10px; border-radius: var(--radius); font-size: 13px; font-weight: 600 }
 .proj-avatar { object-fit: cover; flex-shrink: 0 }

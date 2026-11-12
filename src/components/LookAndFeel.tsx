@@ -7,6 +7,8 @@ import { ConfirmDialog, Toggle } from './ui'
 
 // System settings › Look and feel (spec 0702): the site title, logo, favicon and brand colour, with Reset defaults.
 
+/** The uploadable images (spec 0702; mark: the collapsed menu's logo, spec 0719). */
+type Which = 'logo' | 'favicon' | 'mark'
 export default function LookAndFeel() {
   const { toast } = useApp()
   const look = useLook()
@@ -19,17 +21,18 @@ export default function LookAndFeel() {
   const valid = /^#[0-9a-fA-F]{6}$/.test(draft.brandColor)
   const readable = valid && brandReadable(draft.brandColor)
 
-  const upload = (which: 'logo' | 'favicon', file: File) => {
+  const upload = (which: Which, label: string, file: File) => {
     const r = new FileReader()
-    r.onload = () => api<Look>('PUT', `/api/admin/look-and-feel/${which}`, { image: String(r.result) }).then(l => done(l, `${which === 'logo' ? 'Logo' : 'Favicon'} saved`), fail)
+    r.onload = () => api<Look>('PUT', `/api/admin/look-and-feel/${which}`, { image: String(r.result) }).then(l => done(l, `${label} saved`), fail)
     r.readAsDataURL(file)
   }
-  const image = (which: 'logo' | 'favicon', label: string, hint: string) => (
+  const image = (which: Which, label: string, hint: string) => (
     <div className="settings-row">
       <span className="settings-label">{label}<span className="muted sm">{hint}</span></span>
-      {look[which] ? <img src={imageUrl(look[which])!} alt={`Current ${which}`} className={which === 'logo' ? 'site-logo' : 'favicon-preview'} /> : <span className="muted sm">Strand’s own</span>}
-      <label className="btn btn-secondary btn-sm">Upload…<input type="file" accept="image/png,image/jpeg,image/webp" hidden aria-label={`Upload ${which}`}
-        onChange={e => { const f = e.target.files?.[0]; if (f) upload(which, f); e.target.value = '' }} /></label>
+      {look[which] ? <img src={imageUrl(look[which])!} alt={`Current ${label.toLowerCase()}`} className={which === 'logo' ? 'site-logo' : which === 'mark' ? 'site-mark' : 'favicon-preview'} />
+        : <span className="muted sm">{which === 'mark' ? 'The favicon, else Strand’s' : 'Strand’s own'}</span>}
+      <label className="btn btn-secondary btn-sm">Upload…<input type="file" accept="image/png,image/jpeg,image/webp" hidden aria-label={`Upload ${label.toLowerCase()}`}
+        onChange={e => { const f = e.target.files?.[0]; if (f) upload(which, label, f); e.target.value = '' }} /></label>
       {look[which] && <button className="btn btn-ghost btn-sm" onClick={() => api<Look>('DELETE', `/api/admin/look-and-feel/${which}`).then(l => done(l, `${label} removed`), fail)}>Remove</button>}
     </div>
   )
@@ -64,6 +67,7 @@ export default function LookAndFeel() {
       <div className="settings-grid" style={{ marginTop: 18 }}>
         {image('logo', 'Logo', 'PNG, JPEG or WebP, up to 256 KB; shown 26 px high')}
         {image('favicon', 'Favicon', 'PNG, JPEG or WebP, up to 64 KB; square works best')}
+        {image('mark', 'Collapsed menu logo', 'Shown when the menu is collapsed; PNG, JPEG or WebP, up to 64 KB; square works best')}
       </div>
       <div className="btn-row" style={{ marginTop: 18 }}>
         <button className="btn btn-secondary" onClick={() => setResetting(true)}>Reset defaults</button>

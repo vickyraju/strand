@@ -21,7 +21,8 @@ const EntraConfig = z.object({ enabled: z.boolean(), name: z.string(), tenantId:
 const PanelStat = z.object({ issues: z.number(), completed: z.number(), unestimated: z.number(), estimate: z.number(), todo: z.number(), inProgress: z.number(), done: z.number() })
 const ProjectCategory = z.object({ id, name: z.string(), description: z.string(), projects: z.number().describe('Projects in it') })
 const LookAndFeel = z.object({ siteTitle: z.string(), showTitle: z.boolean(), brandColor: z.string(),
-  logo: nullable(z.string()).describe('The logo’s address under the API, or null for Strand’s'), favicon: nullable(z.string()) })
+  logo: nullable(z.string()).describe('The logo’s address under the API, or null for Strand’s'), favicon: nullable(z.string()),
+  mark: nullable(z.string()).describe('The collapsed menu’s logo (spec 0719), or null') })
 const Webhook = z.object({ id, name: z.string(), description: z.string(), url: z.string(), events: z.array(z.string()).describe('Jira’s event names; empty: every event'),
   jql: nullable(z.string()), excludeBody: z.boolean(), enabled: z.boolean(), createdAt: ts, updatedAt: ts,
   lastCall: nullable(z.object({ event: z.string(), state: z.string(), statusCode: nullable(z.number()), at: ts })) })
@@ -385,6 +386,7 @@ export const RESPONSES: Record<string, z.ZodType> = {
   'GET /look-and-feel': LookAndFeel, 'PUT /admin/look-and-feel': LookAndFeel, 'DELETE /admin/look-and-feel': LookAndFeel,
   'PUT /admin/look-and-feel/logo': LookAndFeel, 'DELETE /admin/look-and-feel/logo': LookAndFeel,
   'PUT /admin/look-and-feel/favicon': LookAndFeel, 'DELETE /admin/look-and-feel/favicon': LookAndFeel,
+  'PUT /admin/look-and-feel/mark': LookAndFeel, 'DELETE /admin/look-and-feel/mark': LookAndFeel,
   'GET /boards/:id/reports/control': z.object({
     items: z.array(z.object({ id, key: z.string(), title: z.string(), type: z.string(), leftAt: ts.describe('When it last left the chosen columns'), minutes: z.number().describe('Cycle time: minutes spent in the chosen columns, every visit') })),
     truncated: z.boolean().describe('More than 5000 items: the most recent are returned'),

@@ -9,7 +9,7 @@ const ADMIN: AdminSection[] = ['people', 'groups', 'global-permissions', 'auth-m
 export type Route =
   | { name: 'home' }
   | { name: 'inbox' }
-  | { name: 'search'; q: string; view?: string }
+  | { name: 'search'; q: string; view?: string; jql?: string }
   | { name: 'projects' }
   /** Plans (spec 0803): the list, or one plan */
   | { name: 'plans'; id?: string }
@@ -32,7 +32,7 @@ export function parse(pathname: string, search: string): { route: Route; peek?: 
 
   if (!a)                         route = { name: 'home' }
   else if (a === 'inbox')         route = { name: 'inbox' }
-  else if (a === 'search')        route = { name: 'search', q: params.get('q') ?? '', view: params.get('view') ?? undefined }
+  else if (a === 'search')        route = { name: 'search', q: params.get('q') ?? '', view: params.get('view') ?? undefined, ...(params.get('jql') ? { jql: params.get('jql')! } : {}) }
   else if (a === 'dashboards')    route = { name: 'home' }   // old bookmarks: the Dashboards page is gone, a project's Summary replaces it
   else if (a === 'projects' && !b) route = { name: 'projects' }
   else if (a === 'plans')         route = { name: 'plans', ...(b ? { id: b } : {}) }
@@ -42,7 +42,21 @@ export function parse(pathname: string, search: string): { route: Route; peek?: 
   else if (a === 'i' && b)        route = { name: 'issue', key: b.toUpperCase() }
   else if ((a === 'project' || a === 'p') && b &&(!c || (TABS as string[]).includes(c)))
     route = { name: 'project', key: b.toUpperCase(), tab: c as ProjectTab | undefined, sub: d, ...(params.get('quick') ? { quick: params.get('quick')! } : {}) }
+  else route = jiraRoute(parts, params) ?? route
   return { route, peek }
+}
+
+/** Jira DC's addresses, from bookmarks and emails made before the move (spec 0806); null: not one of Jira's. */
+function jiraRoute([a, b]: string[], params: URLSearchParams): Route | null {
+  const project = (k: string): Route => ({ name: 'project', key: k.toUpperCase() })
+  const search = (jql: string | null): Route => ({ name: 'search', q: '', ...(jql ? { jql } : {}) })
+  if (a === 'browse' && b) return /^[A-Za-z][A-Za-z0-9_]*-\d+$/.test(b) ? { name: 'issue', key: b.toUpperCase() } : project(b)
+  if (a === 'projects' && b) return project(b)
+  if (a === 'issues') return search(params.get('jql'))
+  if (a === 'secure' && b === 'IssueNavigator.jspa') return search(params.get('jqlQuery') ?? params.get('jql'))
+  if (a === 'secure' && b === 'RapidBoard.jspa') return params.get('projectKey') ? { name: 'project', key: params.get('projectKey')!.toUpperCase(), tab: 'board' } : { name: 'projects' }
+  if (a === 'secure' && b === 'Dashboard.jspa') return { name: 'home' }
+  return null
 }
 
 export function href(route: Route, peek?: string): string {
@@ -54,6 +68,7 @@ export function href(route: Route, peek?: string): string {
       const qs = new URLSearchParams()
       if (route.view) qs.set('view', route.view)
       if (route.q) qs.set('q', route.q)
+      if (route.jql) qs.set('jql', route.jql)
       if (peek) qs.set('peek', peek)
       const str = qs.toString()
       return `/search${str ? `?${str}` : ''}`
@@ -78,6 +93,11 @@ export function href(route: Route, peek?: string): string {
 
 // Legacy /p/KEY links → canonical /project/KEY (before first render)
 if (location.pathname.startsWith('/p/')) history.replaceState(null, '', '/project' + location.pathname.slice(2) + location.search)
+// Jira's addresses (spec 0806) → Strand's own, so the address bar shows where people are
+else if (/^\/(browse|projects\/[^/]+|issues|secure)(\/|$)/.test(location.pathname)) {
+  const { route } = parse(location.pathname, location.search)
+  if (route.name !== 'not-found') history.replaceState(null, '', href(route))
+}
 
 const listeners = new Set<() => void>()
 const emit = () => listeners.forEach(l => l())
