@@ -113,9 +113,9 @@ The roadmap, in order. Bugs come first, then the permission model, then the data
 | [0716](0716-epic-status.md) | Epic Status (Mark as Done) | 7 | Ported |
 | [0717](0717-global-permissions.md) | Global permissions | 7 | Ported |
 | [0718](0718-workflow-triggers.md) | Workflow triggers from development tools | 7 | Ported |
-| [0719](0719-collapsed-menu-logo.md) | A logo for the collapsed menu | 7 | Approved |
+| [0719](0719-collapsed-menu-logo.md) | A logo for the collapsed menu | 7 | Ported |
 | [0801](0801-jira-inventory.md) | Jira inventory tool, run by the product owner | 8 | Ported |
 | [0802](0802-jira-importer.md) | Jira DC importer with dry run and reconciliation | 8 | Ported |
 | [0803](0803-planning.md) | Planning like Advanced Roadmaps: initiatives and plans | 8 | Ported |
 | [0805](0805-jira-text-formatting.md) | Jira's text formatting, imported | 8 | Ported |
-| [0806](0806-jira-addresses.md) | Jira's addresses open in Strand | 8 | Approved |
+| [0806](0806-jira-addresses.md) | Jira's addresses open in Strand | 8 | Ported |

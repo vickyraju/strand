@@ -1,6 +1,6 @@
 # 0806 Jira's addresses open in Strand
 
-Status: Approved (PO, 12 Nov 2026)
+Status: Ported (aws-jira `690bdbd`, strand `c182386`), asked for by the PO on 12 Nov 2026; awaiting verification
 Parity rows: (importer, spec 0802)
 
 ## Context and Jira reference

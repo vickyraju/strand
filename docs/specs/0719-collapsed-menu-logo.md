@@ -1,6 +1,6 @@
 # 0719 A logo for the collapsed menu
 
-Status: Approved (PO, 12 Nov 2026)
+Status: Ported (aws-jira `690bdbd`, strand `c182386`), asked for by the PO on 12 Nov 2026; awaiting verification
 Parity rows: AD-03
 
 ## Context and Jira reference
