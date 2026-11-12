@@ -9,7 +9,7 @@ A project holds work items, boards, versions and settings. Who may see and chang
 - **Jira DC:** [Managing project permissions](https://confluence.atlassian.com/adminjiraserver/managing-project-permissions-938847145.html). A permission scheme grants each project permission to project roles, groups or people. People without Browse projects don't see the project at all. Project administrators add people and groups to the project's roles (Project settings › Users and roles).
 - **The app** keeps three fixed roles, Viewer, Member and Admin, which hold what Jira's default permission scheme gives (spec 0201).
 - **Where it differs:**
-  - Anyone signed in may create a project. In Jira only Jira administrators create projects.
+  - Only Jira administrators create projects; the app follows Jira (R4).
   - Roles and permission schemes can't be edited (spec 0201).
 
 ## Rules
@@ -22,7 +22,7 @@ A project holds work items, boards, versions and settings. Who may see and chang
 
   What each role may do is spec 0201's table. A refusal is a 403 that names the permission. The web app hides what the role can't do: a viewer's item page says "You have view-only access to this project. You can comment, but not change the work item." and its fields are read-only.
 - **R3: Global admins.** System administrators (spec 0005) see and administer every project in their workspace without being listed in it. `GET /projects/:key` gives them the role `admin`. They aren't in the project's people list. In the web app, a person is a global admin when the server says so; in a workspace kept in the browser, everyone is.
-- **R4: Creating a project.** Anyone signed in creates a project. Its creator, and its lead when that is someone else, become its admins. The new project opens in the web app at `/project/KEY`. The creation is audited (`project.created`).
+- **R4: Creating a project.** As Jira's Create project, only administrators create projects: people with the Jira administrators global permission, which system administrators hold too (spec 0717). Anyone else is refused (403 "Only administrators can create projects"), and the web app doesn't offer Create project to them. Its creator, and its lead when that is someone else, become its admins. The new project opens in the web app at `/project/KEY`. The creation is audited (`project.created`).
 - **R5: Adding people.** A project admin adds up to 100 people at once, all with one role. Everyone added must be an active person in the workspace; otherwise nothing is added and the answer is 400 "Everyone you add must be an active member of the workspace". Someone already in the project keeps their role. A project admin changes a person's role. Each addition, role change and removal is audited (`project.member.added`, `.role_changed`, `.removed`, `.left`), with the role before and after.
 - **R6: A project keeps an admin.** A project always has at least one active admin, through a person's own role or a group's. Demoting or removing the last one is refused with 409 "A project needs at least one admin. Make someone else an admin first."
 - **R7: Leaving.** Anyone in a project may remove themselves (leave it). Removing someone else needs a project admin (403). The person loses access at once. Their stars of the project and their "recently viewed" entries for its items are deleted.
@@ -42,7 +42,7 @@ A project holds work items, boards, versions and settings. Who may see and chang
 | Create and change work | – (404) | – (403) | ✓ | ✓ | ✓ |
 | Change settings, people and groups | – (404) | – (403) | – (403) | ✓ | ✓ |
 | Leave the project | – | ✓ | ✓ | ✓ (not the last admin) | ✓ (when listed) |
-| Create a project | anyone signed in | | | | |
+| Create a project | – (403) | – (403) | – (403) | – (403) | ✓ (and Jira administrators) |
 
 Every other project permission: spec 0201's table.
 
@@ -63,7 +63,7 @@ Every other project permission: spec 0201's table.
 
 ## Screens
 
-- **Create** in the menu opens the new-project dialog (name, key, template).
+- **Create** in the menu opens the new-project dialog (name, key, template), for administrators. Others are told to ask an administrator.
 - **Project settings › People:** everyone with a role and a role picker for each (project admins change them), **Add people** (search, pick several, one role), and "What each role can do".
 - **Item page:** the view-only notice for viewers.
 - **Jira equivalent:** Project settings › Users and roles.
@@ -79,7 +79,7 @@ Project and people searches page with a keyset on `(lower(name), id)`, backed by
 | R1 | Server test: an outsider gets 404 for the project, its item, its people and a comment, and doesn't see it or its labels. Server test: the permission matrix refuses outsiders on every project route with 404 |
 | R2 | Server test: a viewer reads and comments but can't create or edit; a member works but can't manage people. Server test: the permission matrix. Web unit test: `canEdit` and `canAdmin` per role. Browser journey: a viewer added in the app reads and comments, and is refused an edit |
 | R3 | Server test: the workspace owner is admin of a project without being listed in it. Web unit test: global admin from the server, everyone in a browser workspace |
-| R4 | Browser journey: a project created in the app opens at its address. Server test: the backup of a deleted project holds its creator's membership. Server test: the permission matrix lets anyone signed in create one. Server test: the audit log has `project.created` |
+| R4 | Browser journey: a project created in the app opens at its address; a newcomer isn't offered Create project. Server test: the backup of a deleted project holds its creator's membership. Server test: the permission matrix lets only administrators create one. Server test: the audit log has `project.created` |
 | R5 | Server test: a project admin adds an outsider, who can then see the project, and changes their role; bulk add keeps existing roles and refuses an unknown person. Server test: the audit log has the additions and role changes. Browser journey: Add people as a viewer |
 | R6 | Server test: the last admin can't demote or remove themselves (409) |
 | R7 | Server test: a member can't remove the admin (403); leaving removes the person's stars and recently viewed items, and the project is then 404 for them |
@@ -93,3 +93,7 @@ Project and people searches page with a keyset on `(lower(name), id)`, backed by
 - **Project keys, categories, avatars:** specs 0308 and 0703. **Templates:** spec 0310.
 - **Who may be assigned work:** spec 0203 R7.
 - **Editable roles and permission schemes:** not built (spec 0201).
+
+## Changelog
+
+- R4: creating a project is for administrators only, as in Jira DC; before, anyone signed in could.

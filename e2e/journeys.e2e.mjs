@@ -728,7 +728,7 @@ test('[0005.R12] Administration asks before removing: a group member (saying wha
   assert.deepEqual(o.problems, [])
 })
 
-test('[0005.R2][0005.R3][0028.R2] system groups: a newcomer is in users-access and sees no Administration; someone with Entra’s admin role does', { skip, timeout: 60_000 }, async () => {
+test('[0004.R4][0005.R2][0005.R3][0028.R2] system groups: a newcomer is in users-access and sees no Administration or Create project; someone with Entra’s admin role does', { skip, timeout: 60_000 }, async () => {
   const n = await signIn('sam@e2e.test')
   await n.waitForSelector('nav :text("Configuration")')                     // not an admin: the area is Configuration, with only Groups
   assert.equal(await n.locator('nav :text("Administration")').count(), 0)
@@ -738,6 +738,10 @@ test('[0005.R2][0005.R3][0028.R2] system groups: a newcomer is in users-access a
   assert.equal(await n.locator('nav[aria-label="Configuration"]').count(), 0)            // only one page: no menu
   await n.goto(url('/admin/settings'))
   await n.waitForSelector('section[aria-label="Groups"], .groups')            // an admin-only section falls back to Groups
+  // nor Create project: only administrators create projects (spec 0004 R4)
+  await n.goto(url('/projects'))
+  await n.waitForSelector('h1:has-text("Projects")')
+  assert.equal(await n.locator('button:has-text("Create project")').count(), 0)
   const me = (await as('sam@e2e.test')('GET', '/me')).body
   const groups = (await as('owner@e2e.test')('GET', '/admin/users')).status
   assert.equal(groups, 200)

@@ -28,7 +28,7 @@ function dayBucket(ts: number) {
   return 'Older'
 }
 
-export default function YourWork({ onCreateProject }: { onCreateProject: () => void }) {
+export default function YourWork({ onCreateProject }: { onCreateProject?: () => void }) {
   const { state } = useStore()
   const { openProject, openProjectByKey, createIssue, goTo } = useApp()
   const [tab, setTab] = useState<Tab>('assigned')
@@ -96,7 +96,7 @@ export default function YourWork({ onCreateProject }: { onCreateProject: () => v
           icon={<FolderPlus size={22} strokeWidth={1.5} />}
           title="Let’s set up your first project"
           body={apiEnabled ? 'Projects hold your team’s work items, board, backlog and reports. Create one now.' : 'Projects hold your team’s work items, board, backlog and reports. Create one now, or load a sample workspace to explore everything it can do.'}
-          action={<><button className="btn btn-primary" onClick={onCreateProject}><Plus size={15} />Create project</button></>}
+          action={onCreateProject ? <><button className="btn btn-primary" onClick={onCreateProject}><Plus size={15} />Create project</button></> : <p className="muted">Ask an administrator to create one, or to add you to a project.</p>}
         />
       </div>
     )

@@ -14,7 +14,7 @@ People discuss an item in its comments, call someone in with an `@mention`, and 
 
 - **R1: Comments.** `POST /issues/:key/comments` adds a comment of 1 to 20,000 characters. Viewers may comment.
 - **R2: Who reads a limited comment.**
-  - A comment limited to a role is read by people with that role in the project and by its author. A comment limited to Administrators is also read by system administrators.
+  - A comment limited to a role is read by the people in that role and by its author, as in Jira. Roles stack as when limiting one (spec 0203 R4): a project admin is in Members too, and a global admin is a project admin in every project. So Members is read by members and admins, Administrators by admins; viewers read neither.
   - A comment limited to a group is read by the group's members and its author.
   - The item's detail, the comments list and notifications all follow this: a person mentioned in a comment they can't read isn't told.
   - A group that doesn't exist is refused: 400 "No such group". Who may limit a comment to what: spec 0203 R4.
@@ -93,7 +93,7 @@ Everyone signed in reads their own notifications and chooses their own settings;
 | Rule | Test |
 |---|---|
 | R1 | Server test: comments are added and read back. Browser journey: Maya mentions Sam in a comment |
-| R2 | Server test: a comment limited to Administrators is read by its author and an admin, not by a member; an unknown group is refused |
+| R2 | Server test: a comment limited to Administrators is read by its author and an admin, not by a member; one limited to Members by members, project admins and global admins, not by viewers; an unknown group is refused |
 | R3 | Server test: whole names only, odd characters, a deactivated person, no such person. Browser journey: the mention reaches Sam's Inbox |
 | R4 | Unit test (web): an assignment notifies the assignee only; a mention gives "mentioned", not also "commented" |
 | R5 | Browser journey: the mentioned person's Inbox lists the item |
@@ -107,3 +107,7 @@ Everyone signed in reads their own notifications and chooses their own settings;
 
 - **The Inbox and due reminders** are additions; Jira DC notifies by email.
 - **Email format** (HTML or text) is not a choice: each email carries both.
+
+## Changelog
+
+- Reading a role-limited comment stacks roles as limiting one does: project admins read comments limited to Members, as Jira's Administrators do when they are also in the role the comment names.

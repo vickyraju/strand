@@ -8,7 +8,7 @@ import { Avatar, Menu } from './ui'
 export interface Crumb { label: string; onClick?: () => void }
 
 export default function TopBar({ crumbs, onCreateProject, onShortcuts, onMenu }: {
-  crumbs: Crumb[]; onCreateProject: () => void; onShortcuts: () => void; onMenu?: () => void
+  crumbs: Crumb[]; onCreateProject?: () => void; onShortcuts: () => void; onMenu?: () => void
 }) {
   const { state } = useStore()
   const { createIssue, goTo } = useApp()
@@ -32,11 +32,11 @@ export default function TopBar({ crumbs, onCreateProject, onShortcuts, onMenu }:
       </nav>
 
       <div className="topbar-actions">
-        <button className="btn btn-primary" onClick={() => hasProjects ? createIssue() : onCreateProject()}
+        {(hasProjects || onCreateProject) && <button className="btn btn-primary" onClick={() => hasProjects ? createIssue() : onCreateProject?.()}
           title={hasProjects ? 'Create work item (C)' : 'Create a project first'}>
           <Plus size={15} strokeWidth={2.25} />
           <span className="create-label">{hasProjects ? 'Create' : 'Create project'}</span>
-        </button>
+        </button>}
         <button className="icon-btn" onClick={() => goTo('inbox')} title="Inbox" aria-label={`Inbox, ${unread} unread`}>
           <Bell size={17} strokeWidth={1.75} />
           {unread > 0 && <span className="dot-badge" />}

@@ -73,13 +73,15 @@ export async function canJoinWork(d: Db, projectId: string, userId: string): Pro
 }
 
 /** An SQL condition: comment `c` is shown to me. A comment limited to a project role or a group (Jira's comment
- *  visibility) is shown to that role's or group's people, and to its author. */
+ *  visibility) is shown to the people in that role or group, and to its author. Roles stack as when limiting one
+ *  (spec 0203 R4): a project admin is in Members too, and a global admin is a project admin everywhere. */
 export const commentShown = (me: Me, projectId: string, userParam: number): string =>
   commentShownIn(me, `'${projectId.replace(/[^0-9a-f-]/gi, '')}'`, userParam)      // a uuid from the database, inlined as a literal
 /** Like `commentShown`, with the project as an SQL expression (a search over many projects, spec 0609). */
 export const commentShownIn = (me: Me, projectSql: string, userParam: number): string => {
   return `(c.visibility is null or c.author_id = $${userParam}::uuid
-    or (c.visibility->>'kind' = 'role' and (${me.admin ? `c.visibility->>'role' = 'admin' or ` : ''}exists (select 1 from project_access pa where pa.project_id = ${projectSql} and pa.user_id = $${userParam}::uuid and pa.role = c.visibility->>'role')))
+    or (c.visibility->>'kind' = 'role' and (${me.admin ? 'true' : `exists (select 1 from project_access pa where pa.project_id = ${projectSql} and pa.user_id = $${userParam}::uuid
+          and array_position(array['viewer', 'member', 'admin'], pa.role) >= array_position(array['viewer', 'member', 'admin'], c.visibility->>'role'))`}))
     or (c.visibility->>'kind' = 'group' and exists (select 1 from group_members g where g.group_id = (c.visibility->>'id')::uuid and g.user_id = $${userParam}::uuid)))`
 }
 

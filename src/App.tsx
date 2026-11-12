@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, lazy, Suspense } from 'react'
-import { canEdit, isGlobalAdmin } from './data/access'
+import { canEdit, isGlobalAdmin, isJiraAdmin } from './data/access'
 import { X, CheckCircle2, AlertTriangle, SearchX } from 'lucide-react'
 import NavRail from './components/NavRail'
 import TopBar, { type Crumb } from './components/TopBar'
@@ -63,6 +63,8 @@ export default function App() {
 
 function Shell() {
   const { state, dispatch, undoType } = useStore()
+  // as Jira's Create project: administrators only (spec 0004 R4); a workspace kept in this browser has no limits
+  const createProject = !apiEnabled || isJiraAdmin(state) ? () => setCreateProjectOpen(true) : undefined
   const publicSettings = usePublicSettings()
   const look = useLook()   // the screens re-render when the priority and resolution lists arrive or change (spec 0305); the announcement (0701)
   const { route, peek } = useLocation()
@@ -173,7 +175,7 @@ function Shell() {
       else navigate(href(route))
     },
     createIssue: (defaults = {}) => {
-      if (!state.projects.length) { setCreateProjectOpen(true); return }
+      if (!state.projects.length) { createProject?.(); return }
       // Viewers cannot create work: refuse an explicit viewer-only project, and otherwise start from one they can write to
       const open = state.projects.filter(canEdit)
       const named = defaults.projectId ? state.projects.find(p => p.id === defaults.projectId) : undefined
@@ -287,20 +289,20 @@ function Shell() {
           onCollapseToggle={() => phone ? setDrawerOpen(false) : setRailCollapsed(v => !v)}
           onCmdK={() => setPaletteOpen(true)}
           route={route}
-          onCreateProject={() => setCreateProjectOpen(true)}
+          onCreateProject={createProject}
         />
 
         <main className="main">
           {apiEnabled && <AnnouncementBanner text={publicSettings.announcement.text} startsAt={publicSettings.announcement.startsAt} endsAt={publicSettings.announcement.endsAt} />}
-          <TopBar crumbs={crumbs} onCreateProject={() => setCreateProjectOpen(true)} onShortcuts={() => setShortcutsOpen(true)} onMenu={phone ? () => setDrawerOpen(true) : undefined} />
+          <TopBar crumbs={crumbs} onCreateProject={createProject} onShortcuts={() => setShortcutsOpen(true)} onMenu={phone ? () => setDrawerOpen(true) : undefined} />
           {state.recovery && state.isAdmin && <div className="apply-banner warn recovery-banner" role="status"><span>Jira Build POC is running in recovery mode. Sign in normally once access is restored, and ask whoever runs the server to remove RECOVERY_PASSWORD.</span></div>}
 
           <div className="content">
             <ErrorBoundary resetKey={location.pathname}>
-            {route.name === 'home'     && <YourWork onCreateProject={() => setCreateProjectOpen(true)} />}
+            {route.name === 'home'     && <YourWork onCreateProject={createProject} />}
             {route.name === 'inbox'    && <InboxView />}
             {route.name === 'search'   && <SearchView query={route.q} viewId={route.view} jql={route.jql} />}
-            {route.name === 'projects' && <ProjectsView onCreate={() => setCreateProjectOpen(true)} />}
+            {route.name === 'projects' && <ProjectsView onCreate={createProject} />}
             {route.name === 'plans'    && <PlansView id={route.id} />}
             {route.name === 'settings' && <SettingsView />}
             {route.name === 'admin' && <Suspense fallback={<div className="loading" role="status">Loading…</div>}><AdminView section={route.section} item={route.item} /></Suspense>}
@@ -351,7 +353,7 @@ function Shell() {
           />
         )}
         {createDefaults && <CreateIssueModal defaults={createDefaults} onClose={() => setCreateDefaults(null)} />}
-        {paletteOpen && <CommandPalette onClose={() => setPaletteOpen(false)} onCreateProject={() => setCreateProjectOpen(true)} />}
+        {paletteOpen && <CommandPalette onClose={() => setPaletteOpen(false)} onCreateProject={createProject} />}
         {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
         {pendingMove && <TransitionDialog pending={pendingMove} onClose={() => setPendingMove(null)} onDone={text => { setPendingMove(null); actions.toast(text) }} />}
       </div>

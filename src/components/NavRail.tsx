@@ -39,7 +39,7 @@ export default function NavRail({ collapsed, onCollapseToggle, onCmdK, route, dr
   onCollapseToggle: () => void
   onCmdK:           () => void
   route:            Route
-  onCreateProject:  () => void
+  onCreateProject?: () => void
 }) {
   const { state, dispatch } = useStore()
   const { goTo, openIssue } = useApp()

@@ -8,7 +8,7 @@ import { TypeIcon } from './ui'
 
 interface Item { id: string; section: string; icon: ReactNode; label: ReactNode; hint?: string; run: () => void }
 
-export default function CommandPalette({ onClose, onCreateProject }: { onClose: () => void; onCreateProject: () => void }) {
+export default function CommandPalette({ onClose, onCreateProject }: { onClose: () => void; onCreateProject?: () => void }) {
   const { state } = useStore()
   const { openIssue, openProject, createIssue, goTo } = useApp()
   const [query, setQuery]   = useState('')
@@ -22,7 +22,7 @@ export default function CommandPalette({ onClose, onCreateProject }: { onClose: 
 
   const items: Item[] = [
     ...(state.projects.length ? [{ id: 'new-issue', section: 'Actions', icon: <Plus size={14} />, label: 'Create work item', hint: 'C', run: () => createIssue() }] : []),
-    { id: 'new-project', section: 'Actions', icon: <FolderPlus size={14} />, label: 'Create project', run: onCreateProject },
+    ...(onCreateProject ? [{ id: 'new-project', section: 'Actions', icon: <FolderPlus size={14} />, label: 'Create project', run: onCreateProject }] : []),
     go('home',     'Go to Your work',     <LayoutGrid size={14} />),
     go('inbox',    'Go to Inbox',         <Inbox size={14} />),
     go('projects', 'Go to All projects',  <FolderKanban size={14} />),

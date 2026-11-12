@@ -48,7 +48,7 @@ Status: Implemented
   - **Copied:** its template (and so its board's kind), work types, testing and initiatives switches.
   - **Custom fields:** the new project joins every custom field context that names the existing project.
   - **Not carried over:** members, components, versions, sprints, boards' settings and work. The new project gets its creator as admin and a first board, as any new project does.
-  - The person must administer the existing project, or be a Jira administrator.
+  - Only Jira administrators create projects (spec 0004 R4), and they may share any project's configuration. The server still checks that the person administers the existing project or is a Jira administrator.
 
 ## Permissions
 

@@ -324,7 +324,8 @@ test('[0003.R6] comments, sprints and settings items accept client ids', { skip 
 })
 
 test('[0010.R6][0010.R7] workflow override: refused for plain members, honored for the project lead and admins', { skip }, async () => {
-  const p = (await call('POST', '/api/v1/projects', { name: 'Override', key: 'OVR', template: 'kanban' }, 'lead@x.com')).body
+  const p = (await call('POST', '/api/v1/projects', { name: 'Override', key: 'OVR', template: 'kanban' })).body
+  await join('OVR', 'lead@x.com', 'admin')
   const [todo, doing, done] = p.statuses
   await flow('OVR', [{ name: 'Start', fromIds: [todo.id], toId: doing.id }])
   await call('POST', '/api/v1/projects/OVR/issues', { title: 'stuck', statusId: doing.id }, 'lead@x.com')
@@ -898,7 +899,8 @@ test('[0002.R3] tokens: a token acts as its owner, with the owner\'s role, and r
   assert.equal(me.body.email, 'tok.ben@x.com')
   const ownRole = (await call('GET', '/api/v1/me', undefined, 'tok.ben@x.com')).body.role
   assert.equal(me.body.role, ownRole)
-  assert.equal((await viaToken(body.token, 'POST', '/api/v1/projects', { name: 'By token', key: 'BYT', template: 'kanban' })).status, 201)
+  // the owner's rights, no more: only administrators create projects (spec 0004 R4)
+  assert.equal((await viaToken(body.token, 'POST', '/api/v1/projects', { name: 'By token', key: 'BYT', template: 'kanban' })).status, me.body.admin ? 201 : 403)
   const [used] = (await call('GET', '/api/v1/me/tokens', undefined, 'tok.ben@x.com')).body
   assert.ok(used.lastUsedAt)
   const first = used.lastUsedAt
@@ -2351,7 +2353,7 @@ test('[0009.R9][0009.R10] notification settings: each kind in the Inbox and/or b
   await call('PUT', '/api/v1/admin/settings/email', { enabled: false, from: '', appUrl: '' })
 })
 
-test('[0009.R1][0009.R2] comment visibility: a comment limited to a role is read only by that role and its author', { skip }, async () => {
+test('[0009.R1][0009.R2] comment visibility: a comment limited to a role is read by the people in it (roles stack: admins are in Members) and its author', { skip }, async () => {
   await call('POST', '/api/v1/projects', { name: 'Commented', key: 'CMV', template: 'kanban' })
   await join('CMV', 'cmv.ann@x.com', 'admin'); await join('CMV', 'cmv.bob@x.com')   // since 0203 only a role you hold
   const item = (await call('POST', '/api/v1/projects/CMV/issues', { title: 'Discussed' })).body
@@ -2363,6 +2365,12 @@ test('[0009.R1][0009.R2] comment visibility: a comment limited to a role is read
   assert.deepEqual(await bodies('owner@x.com'), ['For admins only', 'For everyone'])            // an admin
   assert.deepEqual((await call('GET', `/api/v1/issues/${item.key}?expand=comments`, undefined, 'cmv.bob@x.com')).body.comments.map((c: any) => c.body), ['For everyone'])
   assert.equal((await call('POST', `/api/v1/issues/${item.key}/comments`, { body: 'x', visibility: { kind: 'group', id: '00000000-0000-4000-8000-000000000000' } })).status, 400)
+  // limited to Members: members read it, and so do project admins (they're in Members too), not viewers
+  await join('CMV', 'cmv.vic@x.com', 'viewer'); await join('CMV', 'cmv.ada@x.com', 'admin')
+  await call('POST', `/api/v1/issues/${item.key}/comments`, { body: 'For members', visibility: { kind: 'role', role: 'member' } }, 'cmv.bob@x.com')
+  assert.ok((await bodies('cmv.ada@x.com')).includes('For members'))
+  assert.ok((await bodies('owner@x.com')).includes('For members'))
+  assert.ok(!(await bodies('cmv.vic@x.com')).includes('For members'))
 })
 
 test('[0030.R1][0030.R2] testing: turning it on adds the Xray work types; Tests hold steps, Gherkin or a definition; it turns off only when unused', { skip }, async () => {
@@ -3604,7 +3612,7 @@ test('[0004.R1][0004.R2][0004.R4][0028.R5] permission matrix: every API route re
   const PRESET_AD = (await import('../src/directories.ts')).PRESETS.ad
   const M: Record<string, [Rule, string, object?]> = {
     'GET /me': ['any', '/me'], 'GET /users': ['any', '/users'], 'GET /users/search': ['any', '/users/search'],
-    'GET /projects': ['any', '/projects'], 'POST /projects': ['any', '/projects', { name: 'M', key: 'MTXNEW', template: 'kanban' }],
+    'GET /projects': ['any', '/projects'], 'POST /projects': ['gadmin', '/projects', { name: 'M', key: 'MTXNEW', template: 'kanban' }],   // 0004.R4
     'GET /projects/search': ['any', '/projects/search'],
     'POST /projects/{key}/archive': ['gadmin', `/projects/${K}/archive`], 'POST /projects/{key}/restore': ['gadmin', `/projects/${K}/restore`],   // 0102.R1
     'GET /admin/archived-projects': ['gadmin', '/admin/archived-projects'],   // 0102.R7
@@ -7329,7 +7337,7 @@ test('[0310.R4] create with shared configuration: the other project’s schemes 
     (await pool.query(`select notification_scheme_id from projects where key = 'SHSRC'`)).rows[0].notification_scheme_id)
   // only its administrators (or a Jira administrator) share it
   const refused = await call('POST', '/api/v1/projects', { name: 'Not mine', key: 'SHNOT', template: 'kanban', sharedWith: 'SHSRC' }, 'sh.member@x.com')
-  assert.equal(refused.status, 403)
+  assert.deepEqual([refused.status, refused.body.error], [403, 'Only administrators can create projects'])   // spec 0004 R4
   assert.ok((await pool.query(`select 1 from audit_log where action = 'project.shared_configuration' and target = 'SHCPY'`)).rows.length)
 })
 

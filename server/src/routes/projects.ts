@@ -362,6 +362,8 @@ const plugin: FastifyPluginAsyncZod = async app => {
   })
   app.post('/projects', { schema: { tags: T.projects, summary: 'Create a project, with the workflows of a workflow scheme', body: createProject } }, async req => {
     const b = req.body
+    // as Jira's Create project: Jira administrators (system administrators hold it too), spec 0004 R4
+    if (!(await hasGlobal(req.me, 'jira-admin'))) throw new HttpError(403, 'Only administrators can create projects')
     // the key follows System settings › Project keys (Jira's project key pattern and maximum size, spec 0308 R2)
     const rule = await getSetting(req.me.workspaceId, 'projectKeys')
     if (!keyFits(b.key, rule))

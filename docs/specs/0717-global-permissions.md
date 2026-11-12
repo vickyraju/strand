@@ -38,6 +38,7 @@ Status: Implemented (approved 10 Nov 2026)
   - **Groups:** every group except the system groups and the groups granted System administrators.
   - **Groups that make administrators:** a group's owners can't change the members or owners of a group granted System administrators (only system administrators can) or Jira administrators (only Jira administrators can). Otherwise an owner could make anyone an administrator.
   - **People:** they see everyone, and create, edit, activate, deactivate and set passwords, but not for a system administrator.
+  - **Projects:** create them (spec 0004 R4).
   - **Configuration:**
     - Project categories.
     - Workflows and workflow schemes.

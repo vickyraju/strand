@@ -140,7 +140,7 @@ function RemoteProjectSearch() {
   )
 }
 
-export function ProjectsView({ onCreate }: { onCreate: () => void }) {
+export function ProjectsView({ onCreate }: { onCreate?: () => void }) {
   const { state } = useStore()
   const { openProject } = useApp()
 
@@ -149,7 +149,7 @@ export function ProjectsView({ onCreate }: { onCreate: () => void }) {
       <div className="page-hdr">
         <h1 className="page-title">Projects</h1>
         <div style={{ flex: 1 }} />
-        {(state.projects.length > 0 || apiEnabled) && <button className="btn btn-primary" onClick={onCreate}><Plus size={15} />Create project</button>}
+        {(state.projects.length > 0 || apiEnabled) && onCreate && <button className="btn btn-primary" onClick={onCreate}><Plus size={15} />Create project</button>}
       </div>
 
       {apiEnabled && <RemoteProjectSearch />}
@@ -162,7 +162,7 @@ export function ProjectsView({ onCreate }: { onCreate: () => void }) {
           icon={<FolderPlus size={22} strokeWidth={1.5} />}
           title="Create your first project"
           body={apiEnabled ? 'Projects hold your team’s work items, board, backlog and reports. Start with one.' : 'Projects hold your team’s work items, board, backlog and reports. Start with one, or explore a sample workspace first.'}
-          action={<><button className="btn btn-primary" onClick={onCreate}><Plus size={15} />Create project</button></>}
+          action={onCreate ? <><button className="btn btn-primary" onClick={onCreate}><Plus size={15} />Create project</button></> : <p className="muted">Ask an administrator to create one, or to add you to a project.</p>}
         />
       ) : (
         <div className="card-table">
