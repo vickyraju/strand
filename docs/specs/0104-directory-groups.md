@@ -1,0 +1,114 @@
+# 0104 Groups from the directory are read-only in the app; unique group names
+
+Status: Implemented (approved 5 Nov 2026)
+
+## Context and Jira reference
+
+Groups made in the app have a fixed name. Groups from Entra (SCIM) have gaps:
+- SCIM can rename any group, including one made in the app.
+- SCIM can create a second group with a name that's already taken; nothing in the database stops it.
+- SCIM can delete a group made in the app.
+- A SCIM-made group that arrives without an `externalId` looks like an app group.
+
+`membersOf("name")` in JQL finds groups by name, so a duplicate name makes queries ambiguous.
+
+- **Jira DC:**
+  - **Names:** a group is identified by its name.
+  - **Directory rename:** a rename in the directory (LDAP or Active Directory) looks to Jira like a new group, and the old one like a deleted group. "Any permissions relying on the old group are broken." Atlassian's workaround is to grant the new name first, then remove the old group once it's empty ([Community answer on renaming LDAP groups](https://community.atlassian.com/forums/Crowd-questions/Renaming-LDAP-Groups-and-consequences-for-Confluence-JIRA/qaq-p/2221342); [JRASERVER-76143](https://jira.atlassian.com/browse/JRASERVER-76143); checked 5 Nov 2026).
+  - **Group names:** Jira's own groups can't be renamed ([JRASERVER-1391](https://jira.atlassian.com/browse/JRASERVER-1391)).
+  - **Deleting a group** ([View, create or delete a group](https://confluence.atlassian.com/adminjiraserver110/view-create-or-delete-a-group-1627460049.html), DC 11.0, checked 5 Nov 2026): members are removed, and "the users themselves will not be deleted". Admins should check where the group is used (permission schemes, notification schemes, security levels, saved filters) before deleting it. The only default group of an application can't be deleted.
+  - **Directories are separate:** a directory sync never changes groups of Jira's internal directory.
+  - **Read-only directory groups** ([Connecting to an LDAP directory](https://confluence.atlassian.com/adminjiraserver/connecting-to-an-ldap-directory-938847052.html), DC 11.3, checked 5 Nov 2026):
+    - "LDAP users, groups and memberships are retrieved from your directory server and can only be modified via your directory server. You cannot modify LDAP users, groups or memberships via the application administration screens."
+    - With "Read Only, with Local Groups", "you can add groups to the internal directory and add LDAP users to those groups".
+    - Jira's data is brought back in line with the directory at each sync (every 60 minutes by default) and at sign-in.
+- **Before this spec:**
+  - **SCIM group routes** are in `server/src/routes/scim.ts`. They list, change and delete every group that isn't a system group, app-made ones included. `POST /Groups` doesn't check the name. `PATCH` "replace displayName" renames in place.
+  - **Kind of group:** it's worked out from `external_id` (`kindOf` in `server/src/routes/groups.ts`).
+  - **Name uniqueness** is checked only when a group is made in the app (`POST /groups`), case-insensitively. There is no database constraint (`server/migrations/20261030090000_groups.sql`).
+
+## Rules
+
+- **R1:** Group names are unique across the workspace, ignoring case, whatever the group's kind (made here, from the directory, or a system group). The database enforces it. Groups that already share a name keep the oldest's name. The others become "Name (2)", "Name (3)" and so on, each change recorded in the audit log.
+- **R2:** Every group records where it came from: made in the app, from the directory (SCIM), or a system group. A group SCIM creates is a directory group even when Entra sends no `externalId`. Existing groups:
+  - groups with an `externalId` are directory groups;
+  - groups with no creator that aren't system groups are directory groups (The app never deletes people, so only SCIM leaves the creator empty).
+- **R3:** SCIM sees and changes only directory groups.
+  - Groups made in the app and system groups aren't listed by `GET /Groups`. Reading, changing or deleting one returns 404.
+  - The directory never changes the app's own groups, as Jira's directory sync never changes its internal groups.
+- **R4:** SCIM `POST /Groups` with a name that's already taken is refused with 409 (SCIM's status for a uniqueness conflict), and nothing is made. Entra then matches the existing directory group by name, as it does for users.
+- **R5:** A rename from the directory (SCIM "replace displayName") isn't expected; the product owner confirmed groups aren't renamed in the directory. If one comes, the group takes the directory's name and keeps its members and roles:
+  - **New name taken:** if the new name already belongs to another group, the rename is refused with 409, and nothing changes.
+  - **Searches:** `membersOf("old name")` stops matching and `membersOf("new name")` matches, as in Jira after a directory rename.
+  - **Audit:** the rename is recorded (`group.renamed`, before and after).
+  - **In the app:** the name still can’t be changed in the app. Only the directory renames its groups.
+- **R6:** A delete from the directory (SCIM `DELETE /Groups/:id`) removes the group, as in Jira: the directory is the source.
+  - **Effect:** its members lose the roles it gave and are not removed from the app.
+  - **Audit:** it's recorded with the projects where the group had a role, and those left with no project admin, so a system administrator can fix them. It is not refused, because Entra would keep retrying.
+- **R7:** A directory group and its memberships can't be changed in the app, by anyone, global admins included, as with a read-only directory in Jira. Only the directory adds or removes its members, renames it or deletes it.
+  - **Groups page:** a directory group can't be deleted, and people can't be added to it or removed from it (as today).
+  - **People › bulk changes:** "add to group" and "remove from group" refuse a directory group (as today).
+  - **Why:** Jira undoes such a change at its next sync. Entra sends the app only its own changes, so a change made in the app would never be undone. Refusing it keeps the app the same as the directory, which is what Jira's sync achieves.
+  - **Groups made in the app:** directory users can be added to them, as Jira's local groups allow.
+
+## Permissions
+
+| Action | SCIM (Entra) | System admin in the app | Group owner | Others |
+|---|---|---|---|---|
+| Create a directory group, change its members and name, delete it | ✓ | – (members and name come from the directory) | – | – |
+| See, change or delete a group made in the app, or a system group | – (404) | as today | as today | as today |
+
+## Data model and migration
+
+- `groups.source text not null check (source in ('local', 'directory', 'system'))`, set for existing rows as R2 describes.
+- A unique index on `lower(display_name)`. Before creating it, the migration renames duplicates as R1 describes and writes one audit row for each renamed group.
+
+## API
+
+SCIM (`/scim/v2/Groups`):
+- `GET`, `GET :id`, `PATCH :id` and `DELETE :id`: directory groups only (R3).
+- `POST`: 409 for a taken name (R4).
+- `PATCH` with a taken name: 409 (R5).
+
+The app's own `/groups` API shows `kind` from `source` instead of `external_id`, with no change of shape. `POST /groups` with a taken name stays a 409, now backed by the database.
+
+## Screens
+
+None change. Administration › Groups already shows each group's kind and keeps directory groups read-only.
+
+## System settings
+
+None.
+
+## Scale
+
+- The `lower(display_name)` index makes the name checks a single lookup.
+- SCIM's list filters on `source = 'directory'`. Thousands of directory groups page as today.
+
+## Acceptance
+
+| Rule | Proved by |
+|---|---|
+| R1 | Migration test: two groups named "Ops" and "ops" become "Ops" and "ops (2)", with an audit row. Server test: making a group in the app with a taken name is refused by the database too |
+| R2 | Migration test: groups with an `externalId`, or made with no creator, are directory groups; a SCIM group made without `externalId` is a directory group |
+| R3 | Server test: an app-made group and a system group are absent from SCIM's list; SCIM `GET`, `PATCH` and `DELETE` on them return 404 and change nothing |
+| R4 | Server test: SCIM `POST` with a name taken by an app group returns 409 |
+| R5 | Server test: a SCIM rename keeps members and project roles; `membersOf` matches the new name and not the old; a rename to a taken name returns 409; the audit has `group.renamed` |
+| R6 | Server test: SCIM deleting the only group giving a project admin removes it; the audit lists that project as left without an admin; members are still in the app |
+| R7 | Server tests: a global admin can't delete a directory group or change its members (403 or 400) |
+
+## Out of scope and deliberate divergences
+
+- **Comments restricted to a deleted group:** today they become visible to their author only. Jira's documentation doesn't say what happens, so this is left as it is (PRM-18).
+- **Default groups of an application:** The app's system groups already can't be deleted.
+- **No pull sync:** Jira polls the directory; Entra pushes changes to the app. A full re-sync is started in Entra (restart provisioning), not in the app.
+
+## Open questions
+
+None. The product owner decided on 5 Nov 2026: the directory is the source of truth for its groups and their members (R7), and groups aren't renamed there (R5).
+
+## Changelog
+
+- 10 Nov 2026: License cleanup was removed (spec 0710), with its part of R7.
+
+- 5 Nov 2026, in review: R7 added (directory groups and memberships are read-only in the app, as Jira's read-only directory); R5 reworded (renames aren't expected); the open question closed.
