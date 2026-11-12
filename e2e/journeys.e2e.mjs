@@ -2529,7 +2529,8 @@ test('[0709.R6][0709.R7] a rule with a For each action: when the parent is assig
   await o.fill('.modal .rule-branch input[aria-label="Comment"]', 'Parent {{triggerIssue.key}} is now {{triggerIssue.assignee.displayName}}’s')
   await o.click('.modal button:has-text("Save rule")')
   await o.waitForSelector('text=Tell the sub-items')
-  const me = (await owner('GET', '/me')).body
+  const meId = (await owner('GET', '/me')).body.id
+  const [me] = (await owner('GET', `/users?ids=${meId}`)).body                   // the person's name, as smart values use it
   await owner('PATCH', `/issues/${parent.key}`, { assigneeId: me.id })
   const bodies = (await owner('GET', `/issues/${kid.key}/comments`)).body.items.map(c => c.body)
   assert.deepEqual(bodies, [`Parent ${parent.key} is now ${me.name}’s`])
