@@ -14,7 +14,7 @@ import { sendEmail } from '../email.ts'
 import { searchWhere, viewSeenBy } from './misc.ts'
 
 const uuid = z.string().uuid()
-const ROW = `select s.id, s.view_id, s.created_by, cu.name as created_by_name, s.group_id, g.display_name as group_name, s.cron, s.email_when_empty,
+const ROW = `select s.id, s.view_id, s.created_by, cu.name as created_by_name, s.group_id, g.display_name as group_name, s.cron, s.email_when_empty, s.only_when_changed,
     s.next_run_at, s.last_run_at, s.created_at
   from filter_subscriptions s join users cu on cu.id = s.created_by left join groups g on g.id = s.group_id`
 
@@ -82,6 +82,14 @@ registerJob('email.filter-subscription', async (p: { id: string; userId: string 
   }, args)
   const [{ total }] = await db.query<{ total: number }>(`select count(*)::int as total from issues i join projects p on p.id = i.project_id join statuses st on st.id = i.status_id where ${where.join(' and ')}`, args) as any
   if (!total && !s.emailWhenEmpty) return { skipped: 'no work items' }
+  // R7: only when this person's results changed since their last email (which items, and when each last changed)
+  let fingerprint: string | null = null
+  if (s.onlyWhenChanged) {
+    ;[{ fingerprint }] = await db.query<{ fingerprint: string }>(`select md5(coalesce(string_agg(i.id::text || ':' || i.updated_at::text, ',' order by i.id), '')) as fingerprint
+      from issues i join projects p on p.id = i.project_id join statuses st on st.id = i.status_id where ${where.join(' and ')}`, args) as [{ fingerprint: string }]
+    const [last] = await db.query<{ fingerprint: string }>('select fingerprint from filter_subscription_sent where subscription_id = $1 and user_id = $2', [s.id, u.id])
+    if (last?.fingerprint === fingerprint) return { skipped: 'unchanged since the last email' }
+  }
   args.push(maxItems)
   const rows = await db.query<{ key: string; title: string; status: string; assignee: string | null; priority: string | null }>(
     `select p.key || '-' || i.number as key, i.title, st.name as status, a.name as assignee,
@@ -100,6 +108,8 @@ registerJob('email.filter-subscription', async (p: { id: string; userId: string 
       + rows.map(r => `<tr><td>${base ? `<a href="${esc(`${base}/i/${r.key}`)}">${esc(r.key)}</a>` : esc(r.key)}</td><td>${esc(r.title)}</td><td>${esc(r.status)}</td><td>${esc(r.assignee ?? 'Unassigned')}</td><td>${esc(r.priority ?? '')}</td></tr>`).join('')
       + `</table>${more > 0 ? `<p>… and ${more.toLocaleString('en')} more${base ? ` in <a href="${esc(`${base}/search?view=${s.viewId}`)}">the view</a>` : ''}</p>` : ''}<p style="color:#78716c;font-size:12px">${esc(footer)}</p>`,
   })
+  if (fingerprint !== null) await db.query(`insert into filter_subscription_sent (subscription_id, user_id, fingerprint) values ($1, $2, $3)
+    on conflict (subscription_id, user_id) do update set fingerprint = excluded.fingerprint, sent_at = now()`, [s.id, u.id, fingerprint])
   return { sent: u.email, items: rows.length }
 })
 
@@ -108,6 +118,7 @@ const body = z.object({
   groupId: uuid.nullable().default(null).describe('A group: each member who can see the view gets it (null: just you)'),
   cron: z.string().trim().min(1).max(200).describe('Quartz cron, as Jira stores schedules: seconds minutes hours day-of-month month day-of-week [year]'),
   emailWhenEmpty: z.boolean().default(false).describe('Email even when nothing matches'),
+  onlyWhenChanged: z.boolean().default(false).describe('Email each person only when their results changed since their last email (spec 0604 R7)'),
 })
 
 const plugin: FastifyPluginAsyncZod = async app => {
@@ -135,8 +146,8 @@ const plugin: FastifyPluginAsyncZod = async app => {
     const row = await tx(async d => {
       await seen(d, req.me, req.params.id)
       await checkGroup(d, req.me, b.groupId)
-      const [s] = await d.query<{ id: string }>('insert into filter_subscriptions (workspace_id, view_id, created_by, group_id, cron, email_when_empty) values ($1, $2, $3, $4, $5, $6) returning id',
-        [req.me.workspaceId, req.params.id, req.me.id, b.groupId, b.cron, b.emailWhenEmpty])
+      const [s] = await d.query<{ id: string }>('insert into filter_subscriptions (workspace_id, view_id, created_by, group_id, cron, email_when_empty, only_when_changed) values ($1, $2, $3, $4, $5, $6, $7) returning id',
+        [req.me.workspaceId, req.params.id, req.me.id, b.groupId, b.cron, b.emailWhenEmpty, b.onlyWhenChanged])
       await schedule(d, s!.id)
       if (b.groupId) await audit(d, req, { action: 'subscription.group_added', type: 'view', id: req.params.id, after: { groupId: b.groupId, cron: b.cron } })
       return mine(d, req.me, s!.id)
@@ -150,8 +161,8 @@ const plugin: FastifyPluginAsyncZod = async app => {
     return tx(async d => {
       const s = await mine(d, req.me, req.params.id)
       if (b.groupId !== undefined && b.groupId !== s.groupId) await checkGroup(d, req.me, b.groupId)
-      await d.query('update filter_subscriptions set group_id = $2, cron = $3, email_when_empty = $4 where id = $1',
-        [s.id, b.groupId === undefined ? s.groupId : b.groupId, b.cron ?? s.cron, b.emailWhenEmpty ?? s.emailWhenEmpty])
+      await d.query('update filter_subscriptions set group_id = $2, cron = $3, email_when_empty = $4, only_when_changed = $5 where id = $1',
+        [s.id, b.groupId === undefined ? s.groupId : b.groupId, b.cron ?? s.cron, b.emailWhenEmpty ?? s.emailWhenEmpty, b.onlyWhenChanged ?? s.onlyWhenChanged])
       await schedule(d, s.id)
       if (s.createdBy !== req.me.id || (b.groupId && b.groupId !== s.groupId))
         await audit(d, req, { action: 'subscription.changed', type: 'view', id: s.viewId, before: { createdBy: s.createdBy, groupId: s.groupId, cron: s.cron }, after: b })

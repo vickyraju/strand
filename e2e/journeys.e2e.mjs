@@ -2063,7 +2063,7 @@ test('[0603.R3] JQL: watchedIssues() finds the items you watch', { skip, timeout
   assert.deepEqual(o.problems, [])
 })
 
-test('[0604.R1][0604.R5] a saved view is subscribed to daily; Run now sends the email', { skip, timeout: 120_000 }, async () => {
+test('[0604.R1][0604.R5][0604.R7] a saved view is subscribed to daily, only when changed; Run now sends the email', { skip, timeout: 120_000 }, async () => {
   assert.equal((await owner('PUT', '/admin/settings/email', { enabled: true, from: 'Strand <strand@e2e.test>', appUrl: 'https://strand.e2e.test' })).status, 200)
   await owner('POST', '/projects', { name: 'Subscription journey', key: 'SBJ', template: 'kanban' })
   await owner('POST', '/projects/SBJ/issues', { title: 'In the email' })
@@ -2073,8 +2073,10 @@ test('[0604.R1][0604.R5] a saved view is subscribed to daily; Run now sends the 
   await o.click('button:has-text("Subscribe")')
   await o.click('.modal button:has-text("New subscription")')
   await o.selectOption('#sub-mode', 'daily')
+  await o.check('.modal label:has-text("Email only when the results changed") input')
   await o.click('.modal button:has-text("Subscribe")')
   await o.waitForSelector('.modal td:has-text("Just me")')
+  assert.equal((await owner('GET', `/views/${view.id}/subscriptions`)).body[0].onlyWhenChanged, true)
   assert.equal(await o.locator('.modal code').innerText(), '0 0 7 ? * *')
   await o.click('.modal [aria-label="Run now"]')
   await o.waitForSelector('text=Sending it now')
@@ -2535,4 +2537,33 @@ test('[0709.R6][0709.R7] a rule with a For each action: when the parent is assig
   const bodies = (await owner('GET', `/issues/${kid.key}/comments`)).body.items.map(c => c.body)
   assert.deepEqual(bodies, [`Parent ${parent.key} is now ${me.name}’s`])
   assert.deepEqual(o.problems, [])
+})
+
+test('[0601.R6] an edited comment’s Edited marker shows the text it replaced', { skip, timeout: 60_000 }, async () => {
+  await owner('POST', '/projects', { name: 'Edit history', key: 'EDJ', template: 'kanban' })
+  const item = (await owner('POST', '/projects/EDJ/issues', { title: 'Discussed' })).body
+  const c = (await owner('POST', `/issues/${item.key}/comments`, { body: 'Ship on Friday' })).body
+  await owner('PATCH', `/comments/${c.id}`, { body: 'Ship on Monday' })
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url(`/i/${item.key}`))
+  await o.waitForSelector('text=Ship on Monday')
+  await o.click('button[title="Earlier versions"]')
+  await o.waitForSelector('[aria-label="Earlier versions"] >> text=Ship on Friday')
+  assert.deepEqual(o.problems, [])
+})
+
+test('[0701.R6] a banner whose window has ended doesn’t show; a current one does', { skip, timeout: 60_000 }, async () => {
+  const at = h => new Date(Date.now() + h * 3_600_000).toISOString()
+  await owner('PUT', '/admin/settings/announcement', { text: 'Old maintenance window', visibility: 'private', startsAt: at(-3), endsAt: at(-2) })
+  try {
+    await new Promise(r => setTimeout(r, 10_500))                                    // the settings cache
+    const o = await signIn('owner@e2e.test')
+    await o.waitForSelector('nav')
+    assert.equal(await o.locator('[aria-label="Announcement"]').count(), 0)
+    await owner('PUT', '/admin/settings/announcement', { text: 'Current maintenance window', visibility: 'private', startsAt: at(-1), endsAt: at(1) })
+    await new Promise(r => setTimeout(r, 10_500))
+    await o.reload()
+    await o.waitForSelector('[aria-label="Announcement"] >> text=Current maintenance window')
+    assert.deepEqual(o.problems, [])
+  } finally { await owner('PUT', '/admin/settings/announcement', { text: '', visibility: 'private', startsAt: null, endsAt: null }) }
 })

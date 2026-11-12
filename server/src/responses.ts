@@ -90,7 +90,7 @@ const PlanItem = z.object({ id, key: z.string(), projectId: id, projectKey: z.st
 export const Plan = z.object({ id, name: z.string(), ownerId: id, ownerName: z.string(), projectIds: nullable(z.array(id)), viewId: nullable(id), viewName: nullable(z.string()),
   doneDays: z.number(), createdAt: ts, updatedAt: ts, projects: z.array(z.object({ id, key: z.string(), name: z.string() })) })
 export const Subscription = z.object({ id, viewId: id, createdBy: id, createdByName: z.string(), groupId: nullable(id), groupName: nullable(z.string()),
-  cron: z.string().describe('Quartz cron, as Jira stores schedules'), emailWhenEmpty: z.boolean(), nextRunAt: nullable(ts), lastRunAt: nullable(ts), createdAt: ts })
+  cron: z.string().describe('Quartz cron, as Jira stores schedules'), emailWhenEmpty: z.boolean(), onlyWhenChanged: z.boolean().describe('Spec 0604 R7'), nextRunAt: nullable(ts), lastRunAt: nullable(ts), createdAt: ts })
 export const Release = z.object({ id, workspaceId: id, projectId: id, name: z.string(), description: z.string(), startDate: nullable(day), releaseDate: nullable(day), released: z.boolean(), releasedAt: nullable(ts), archived: z.boolean().describe('Hidden from pickers; items keep it') })
 export const Sprint = z.object({
   id, workspaceId: id, projectId: id, boardId: id.describe('The board it belongs to'), name: z.string(), goal: z.string(), state: z.enum(['planned', 'active', 'closed']),
@@ -277,6 +277,7 @@ export const CREATED = new Set([
 ])
 
 export const RESPONSES: Record<string, z.ZodType> = {
+  'GET /comments/:id/versions': z.array(z.object({ body: z.string(), editedAt: ts, editedBy: nullable(id), editedByName: nullable(z.string()) })).describe('Spec 0601 R6'),
   'GET /me': Me,
   'GET /auth/config': z.object({ announcement: nullable(z.string()).describe('A Public announcement banner (spec 0701)'), loginForm: z.boolean(), fallback: z.boolean(), dev: z.boolean().describe('Strand’s developer login is on (AUTH_DEV)'),
     entra: nullable(z.object({ name: z.string(), tenantId: z.string(), clientId: z.string(), authority: z.string(), scope: z.string() })).describe('Null when Microsoft sign-in is off') }),

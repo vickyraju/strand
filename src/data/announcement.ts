@@ -21,3 +21,4 @@ export function fingerprint(text: string) {
   for (let i = 0; i < text.length; i++) h = ((h * 33) ^ text.charCodeAt(i)) >>> 0
   return h.toString(36)
 }
+export { scheduledNow } from '../../server/src/shared/announcement.ts'

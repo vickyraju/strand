@@ -1,6 +1,7 @@
 // Signing in, as Jira's Authentication methods (spec 0711). Public: the login page's configuration, the login form, and
 // signing out. Admin: showing or hiding the login form, the fallback, and Microsoft Entra's configuration.
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
+import { scheduledNow } from '../shared/announcement.ts'
 import type { FastifyRequest } from 'fastify'
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
@@ -57,7 +58,7 @@ async function publicAnnouncement() {
   const [w] = await db.query<{ id: string }>('select id from workspaces order by created_at limit 1')
   if (!w) return null
   const a = await getSetting(w.id, 'announcement')
-  return a.visibility === 'public' && a.text.trim() ? a.text : null
+  return a.visibility === 'public' && a.text.trim() && scheduledNow(a) ? a.text : null   // and within its schedule (spec 0701 R6)
 }
 
 const publicConfig = async () => {

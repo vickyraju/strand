@@ -3749,6 +3749,7 @@ test('permission matrix: every API route refuses outsiders, and refuses viewers 
     'PUT /issues/{key}/watchers/{userId}': ['padmin', `/issues/${I}/watchers/${ownerId}`], 'DELETE /issues/{key}/watchers/{userId}': ['padmin', `/issues/${I}/watchers/${ownerId}`],   // 0203.R8
     'POST /issues/{key}/presence': ['write', `/issues/${I}/presence`], 'DELETE /issues/{key}/presence': ['viewer', `/issues/${I}/presence`],
     'PATCH /comments/{id}': ['own', `/comments/${comment}`, { body: 'x' }], 'DELETE /comments/{id}': ['own', `/comments/${comment}`],
+    'GET /comments/{id}/versions': ['own', `/comments/${comment}/versions`],   // 0601.R6: its author and admins
     'POST /issues/{key}/worklogs': ['write', `/issues/${I}/worklogs`, { minutes: 5, date: '2026-10-01' }],
     'PATCH /worklogs/{id}': ['own', `/worklogs/${worklog}`, { note: 'x' }],
     'DELETE /worklogs/{id}': ['own', `/worklogs/${worklog}`],
@@ -7232,4 +7233,72 @@ test('[0709.R6][0709.R7] automation smart values and branches: comments and labe
   // a branch inside a branch is refused when saved
   assert.equal((await call('POST', '/api/v1/projects/SMV/rules', { name: 'Nested', enabled: true, trigger: { kind: 'created' },
     actions: [{ kind: 'branch', target: 'children', actions: [{ kind: 'branch', target: 'parent', actions: [{ kind: 'comment', body: 'x' }] }] }] })).status, 400)
+})
+
+test('[0601.R6] comment edit history: each edit keeps the text it replaced; its author and the project’s admins read it', { skip }, async () => {
+  await call('POST', '/api/v1/projects', { name: 'Edited', key: 'EDH', template: 'kanban' })
+  await join('EDH', 'edh.ann@x.com'); await join('EDH', 'edh.bob@x.com'); await join('EDH', 'edh.lead@x.com', 'admin')
+  const item = (await call('POST', '/api/v1/projects/EDH/issues', { title: 'Talked about' })).body
+  const c = (await call('POST', `/api/v1/issues/${item.key}/comments`, { body: 'First draft' }, 'edh.ann@x.com')).body
+  assert.equal((await call('PATCH', `/api/v1/comments/${c.id}`, { body: 'Second draft' }, 'edh.ann@x.com')).status, 200)
+  assert.equal((await call('PATCH', `/api/v1/comments/${c.id}`, { body: 'Final' }, 'edh.lead@x.com')).status, 200)
+  const ann = (await call('GET', '/api/v1/me', undefined, 'edh.ann@x.com')).body
+  const versions = (await call('GET', `/api/v1/comments/${c.id}/versions`, undefined, 'edh.ann@x.com')).body
+  assert.deepEqual(versions.map((v: any) => v.body), ['Second draft', 'First draft'])
+  assert.equal(versions[1].editedBy, ann.id)
+  assert.equal((await call('GET', `/api/v1/comments/${c.id}/versions`, undefined, 'edh.lead@x.com')).status, 200)    // a project admin
+  assert.equal((await call('GET', `/api/v1/comments/${c.id}/versions`, undefined, 'edh.bob@x.com')).status, 403)     // a member
+  assert.equal((await call('GET', `/api/v1/comments/${c.id}/versions`, undefined, 'edh.nobody@x.com')).status, 404)  // can't see it
+  // the same text again isn't a version
+  await call('PATCH', `/api/v1/comments/${c.id}`, { body: 'Final' }, 'edh.ann@x.com')
+  assert.equal((await call('GET', `/api/v1/comments/${c.id}/versions`)).body.length, 2)
+  await call('DELETE', `/api/v1/comments/${c.id}`, undefined, 'edh.ann@x.com')
+  assert.equal((await pool.query('select count(*)::int as n from comment_versions where comment_id = $1', [c.id])).rows[0].n, 0)
+})
+
+test('[0604.R7] a subscription sent only when the results changed: same results, no email; a changed item, an email', { skip }, async () => {
+  process.env.EMAIL_TRANSPORT = 'memory'
+  const { sentEmails } = await import('../src/email.ts')
+  const { runJobs } = await import('../src/jobs.ts')
+  await call('PUT', '/api/v1/admin/settings/email', { enabled: true, from: 'Strand <strand@example.com>', appUrl: 'https://strand.example.com' })
+  await call('POST', '/api/v1/projects', { name: 'Changed only', key: 'SBC', template: 'kanban' })
+  const item = (await call('POST', '/api/v1/projects/SBC/issues', { title: 'Watched closely' })).body
+  const view = (await call('POST', '/api/v1/views', { name: 'Changed only view', filters: { q: '', resolution: 'open', jql: 'project = SBC' } })).body
+  const sub = (await call('POST', `/api/v1/views/${view.id}/subscriptions`, { cron: '0 0 7 ? * *', onlyWhenChanged: true })).body
+  assert.equal(sub.onlyWhenChanged, true)
+  const mails = () => sentEmails.filter(m => m.subject === '[Strand] Subscription: Changed only view').length
+  const run = async () => { await call('POST', `/api/v1/subscriptions/${sub.id}/run`); await runJobs(); await runJobs() }
+  await run()
+  assert.equal(mails(), 1)                                                              // the first run always sends
+  await run()
+  assert.equal(mails(), 1)                                                              // nothing changed
+  await call('PATCH', `/api/v1/issues/${item.key}`, { title: 'Watched closely, renamed' })
+  await run()
+  assert.equal(mails(), 2)
+  await call('POST', '/api/v1/projects/SBC/issues', { title: 'A new one' })
+  await run()
+  assert.equal(mails(), 3)
+  // switched off: every run sends again
+  await call('PATCH', `/api/v1/subscriptions/${sub.id}`, { onlyWhenChanged: false })
+  await run()
+  assert.equal(mails(), 4)
+  await call('PUT', '/api/v1/admin/settings/email', { enabled: false, from: '', appUrl: '' })
+})
+
+test('[0701.R6] a scheduled announcement: hidden before Show from and after Until, shown between; Until before Show from refused', { skip }, async () => {
+  const { clearSettingsCache } = await import('../src/settings.ts')
+  const pub = async () => { clearSettingsCache(); return JSON.parse((await app.inject({ method: 'GET', url: '/api/v1/auth/config' })).body).announcement }
+  const put = (startsAt: string | null, endsAt: string | null) => call('PUT', '/api/v1/admin/settings/announcement', { text: 'Maintenance window', visibility: 'public', startsAt, endsAt })
+  const at = (h: number) => new Date(Date.now() + h * 3_600_000).toISOString()
+  assert.equal((await put(at(1), at(2))).status, 200)
+  assert.equal(await pub(), null)                                                           // not yet
+  await put(at(-2), at(-1))
+  assert.equal(await pub(), null)                                                           // over
+  await put(at(-1), at(1))
+  assert.equal(await pub(), 'Maintenance window')                                           // now
+  const s = (await call('GET', '/api/v1/settings/public')).body.announcement
+  assert.deepEqual([s.startsAt !== null, s.endsAt !== null], [true, true])                  // the app checks the window too
+  const bad = await put(at(2), at(1))
+  assert.equal(bad.status, 400); assert.ok(bad.body.errors.endsAt)
+  await call('PUT', '/api/v1/admin/settings/announcement', { text: '', visibility: 'private', startsAt: null, endsAt: null }); clearSettingsCache()
 })

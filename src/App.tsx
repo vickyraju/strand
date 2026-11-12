@@ -291,7 +291,7 @@ function Shell() {
         />
 
         <main className="main">
-          {apiEnabled && <AnnouncementBanner text={publicSettings.announcement.text} />}
+          {apiEnabled && <AnnouncementBanner text={publicSettings.announcement.text} startsAt={publicSettings.announcement.startsAt} endsAt={publicSettings.announcement.endsAt} />}
           <TopBar crumbs={crumbs} onCreateProject={() => setCreateProjectOpen(true)} onShortcuts={() => setShortcutsOpen(true)} onMenu={phone ? () => setDrawerOpen(true) : undefined} />
           {state.recovery && state.isAdmin && <div className="apply-banner warn recovery-banner" role="status"><span>Strand is running in recovery mode. Sign in normally once access is restored, and ask whoever runs the server to remove STRAND_RECOVERY_PASSWORD.</span></div>}
 
