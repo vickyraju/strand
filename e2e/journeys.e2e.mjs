@@ -380,7 +380,7 @@ test('saved views: shared with a project to edit, a member of it finds the view 
   assert.deepEqual([...o.problems, ...m.problems], [])
 })
 
-test('JQL search: switching keeps the filters as JQL; a query on a custom field finds its items; mistakes show where', { skip, timeout: 60_000 }, async () => {
+test('[0503.R7] JQL search: switching keeps the filters as JQL; a query on a custom field (made the old way, per project) finds its items; mistakes show where', { skip, timeout: 60_000 }, async () => {
   const p = (await owner('POST', '/projects', { name: 'Query', key: 'QRY', template: 'kanban' })).body
   const team = (await owner('POST', '/projects/QRY/fields', { name: 'Team', kind: 'text', options: null, position: 0 })).body
   const core = (await owner('POST', '/projects/QRY/issues', { title: 'Core work', priority: 'high', custom: { [team.id]: 'Core' } })).body
@@ -1777,7 +1777,7 @@ test('[0709.R1][0709.R3] a system admin makes a global rule for a category with 
   assert.deepEqual(o.problems, [])
 })
 
-test('[0716.R3][0716.R5] Mark as Done: the epic leaves the Epics panel and keeps its workflow status; its details show the Epic Status', { skip, timeout: 120_000 }, async () => {
+test('[0716.R3][0716.R4][0716.R5] Mark as Done: the epic leaves the Epics panel and keeps its workflow status; its details show the Epic Status; a done epic isn’t offered as a parent', { skip, timeout: 120_000 }, async () => {
   await owner('POST', '/projects', { name: 'Epic status', key: 'EPS', template: 'scrum' })
   const epic = (await owner('POST', '/projects/EPS/issues', { title: 'Old theme', type: 'epic' })).body
   const o = await signIn('owner@e2e.test')
@@ -1792,6 +1792,13 @@ test('[0716.R3][0716.R5] Mark as Done: the epic leaves the Epics panel and keeps
   let now
   for (let n = 0; n < 50 && now?.epicStatus !== 'Done'; n++) { now = (await owner('GET', `/issues/${epic.key}`)).body; if (now.epicStatus !== 'Done') await new Promise(r => setTimeout(r, 200)) }
   assert.deepEqual([now.epicStatus, now.statusId], ['Done', epic.statusId])
+  // R4: an item's Parent picker leaves out the done epic, and offers an open one
+  await owner('POST', '/projects/EPS/issues', { title: 'Live theme', type: 'epic' })
+  const story = (await owner('POST', '/projects/EPS/issues', { title: 'Needs a parent' })).body
+  await o.goto(url(`/i/${story.key}`))
+  await o.click('button.field-btn[title="Parent"]')
+  await o.waitForSelector('.picker-menu .picker-item:has-text("Live theme")')
+  assert.equal(await o.locator('.picker-menu .picker-item:has-text("Old theme")').count(), 0)
   assert.deepEqual(o.problems, [])
 })
 
@@ -2571,4 +2578,14 @@ test('[0310.R4] Create project › Share settings with an existing project: the 
   assert.ok(copy.types.some(t => t.name === 'Incident'))
   assert.equal(copy.template, 'scrum')
   assert.deepEqual(page.problems, [])
+})
+
+test('[0806.R2] a Jira address with an old key opens the item: /browse/OLD-1 after the project’s key changed', { skip, timeout: 60_000 }, async () => {
+  await owner('POST', '/projects', { name: 'Renamed key', key: 'RKOLD', template: 'kanban' })
+  const item = (await owner('POST', '/projects/RKOLD/issues', { title: 'Bookmarked before the rename' })).body
+  assert.equal((await owner('PATCH', '/projects/RKOLD', { key: 'RKNEW' })).status, 200)
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url(`/browse/${item.key}`))
+  await o.waitForSelector('text=Bookmarked before the rename')
+  assert.deepEqual(o.problems, [])
 })

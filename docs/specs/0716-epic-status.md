@@ -51,7 +51,7 @@ The Epics panel's query compares one column.
 |---|---|
 | R1, R2, R6 | Server test: new epics start at To Do; only epics have it; a workflow move leaves it; JQL |
 | R3 | Server test: an epic marked Done leaves the panel. Browser journey: Mark as Done from the panel |
-| R4, R5 | Browser journey: the epic's details show and change it |
+| R4, R5 | Browser journey: the epic's details show the Epic Status; a done epic isn't offered in another item's Parent picker |
 
 ## Strand branch
 

@@ -79,3 +79,13 @@ test('[0411.R5] estimates count as they stood: the scope moves when one changes,
   const bd = scopeBurndown(state([a, b], history, sprints), project, { epic: 'E' }, sprints)
   assert.deepEqual(bd.rows.map(x => [x.name, x.completed, x.remaining, x.added]), [['S1', 0, 5, 0], ['S2', 5, 2, 2]])   // 3 → 5 before it was done: 2 added
 })
+
+test('[0405.R3] the burnup’s guideline (spec 0411) rises only on the board’s working days', () => {
+  const a = item('1', { estimate: 6 })
+  // Monday to the next Monday: Saturday and Sunday are days off
+  const sprint: any = { id: 's', projectId: 'p', state: 'closed', startedAt: day(0), completedAt: day(7), endsAt: day(7), issueIds: ['1'], estimation: 'points' }
+  const r = burnup(state([a], [created(a)], [sprint]), project, sprint, day(10), { weekdays: [1, 2, 3, 4, 5], nonWorking: [] })!
+  assert.equal(r.ideal[5], r.ideal[4])                                                  // Saturday: flat
+  assert.equal(r.ideal[6], r.ideal[5])                                                  // Sunday: flat
+  assert.deepEqual([r.ideal[0], r.ideal.at(-1)], [0, 6])
+})

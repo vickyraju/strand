@@ -115,6 +115,7 @@ Checked 10 Nov 2026 on [jira.atlassian.com](https://jira.atlassian.com/issues/?j
 
 | Rule | Proved by |
 |---|---|
+| R5 | Server test: every run recorded, a failing rule undoes only itself and tells its owner |
 | R1 | Server test: a condition that matches and one that doesn't (condition not met, nothing changed); currentUser(); a bad condition refused; the dry run reports it |
 | R2 | Server test: a scheduled rule acts on the JQL's items; only changed items; the item cap; a too-short interval refused |
 | R3, R4 | Server test: global rules in each scope (a project added to the category later is covered), status by name, a project lacking the status skipped; project admins can't change them; audit; non-admins refused |

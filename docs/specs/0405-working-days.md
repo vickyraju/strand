@@ -51,6 +51,7 @@ A board's setting is small and read with the board.
 
 | Rule | Proved by |
 |---|---|
+| R3 | Web unit test: the burnup's guideline (spec 0411) is flat on days off. The Control Chart counts calendar time, as Jira's (spec 0410's divergence) |
 | R1 | Server test: a board admin sets Mon–Thu and a holiday; no working weekday is refused; a member can't |
 | R2 | Web unit test: over a sprint across a weekend and a holiday, the guideline is flat on them and reaches zero on the last working day |
 

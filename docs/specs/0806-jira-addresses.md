@@ -49,6 +49,7 @@ Nothing new.
 
 | Rule | Proved by |
 |---|---|
+| R2 | Browser journey: after a project's key changes, `/browse/OLD-1` opens the item |
 | R1, R3 | Unit test: each Jira address and the Strand address it opens |
 | R1, R2 | Browser journey: `/browse/KEY-N` opens the item and the address becomes `/i/KEY-N`; `/issues/?jql=` shows the search with its JQL |
 
