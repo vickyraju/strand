@@ -1,10 +1,11 @@
 // Priorities and resolutions, as Jira's Administration › Issues › Priorities and Resolutions (spec 0305): everyone reads
 // the lists; global admins add, rename, reorder, choose the default, and delete them, moving what used them to another.
 import { randomBytes } from 'node:crypto'
+import { requireJiraAdmin } from './globalPermissions.ts'
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
 import { db, tx } from '../db.ts'
-import { HttpError, requireAdmin } from '../auth.ts'
+import { HttpError } from '../auth.ts'
 import { audit, changes } from '../audit.ts'
 import { priorities, resolutions } from '../lists.ts'
 
@@ -30,7 +31,7 @@ const lists: FastifyPluginAsyncZod = async app => {
 
   // ── Priorities ──
   app.post('/admin/priorities', { schema: { tags: T, summary: 'Add a priority (global admins)', body: priorityBody } }, async (req, reply) => {
-    requireAdmin(req)
+    await requireJiraAdmin(req)
     const b = req.body, ws = req.me.workspaceId
     return tx(async d => {
       const key = `p-${randomBytes(6).toString('hex')}`
@@ -46,7 +47,7 @@ const lists: FastifyPluginAsyncZod = async app => {
   })
   app.patch('/admin/priorities/:key', { schema: { tags: T, summary: 'Rename, recolour, move or make a priority the default (global admins)', params: z.object({ key: z.string().max(40) }),
     body: priorityBody.partial().omit({ isDefault: true }).extend({ isDefault: z.literal(true).optional().describe('Make it the default (another one is chosen by making it the default)') }) } }, async req => {
-    requireAdmin(req)
+    await requireJiraAdmin(req)
     const ws = req.me.workspaceId, b = req.body
     return tx(async d => {
       const [before] = await d.query<any>('select key, name, description, color, icon, position, is_default from priorities where workspace_id = $1 and key = $2 for update', [ws, req.params.key])
@@ -66,7 +67,7 @@ const lists: FastifyPluginAsyncZod = async app => {
   })
   app.delete('/admin/priorities/:key', { schema: { tags: T, summary: 'Remove a priority: work items, templates and rules that have it get `moveTo` (global admins)',
     params: z.object({ key: z.string().max(40) }), querystring: z.object({ moveTo: z.string().max(40).describe('The priority that replaces it') }) } }, async (req, reply) => {
-    requireAdmin(req)
+    await requireJiraAdmin(req)
     const ws = req.me.workspaceId, { moveTo } = req.query
     await tx(async d => {
       const [p] = await d.query<{ key: string; name: string; isDefault: boolean }>('select key, name, is_default from priorities where workspace_id = $1 and key = $2 for update', [ws, req.params.key])
@@ -87,7 +88,7 @@ const lists: FastifyPluginAsyncZod = async app => {
 
   // ── Resolutions ──
   app.post('/admin/resolutions', { schema: { tags: T, summary: 'Add a resolution (global admins)', body: resolutionBody } }, async (req, reply) => {
-    requireAdmin(req)
+    await requireJiraAdmin(req)
     const b = req.body, ws = req.me.workspaceId
     return tx(async d => {
       const [{ n }] = await d.query<{ n: number }>('select count(*)::int as n from resolutions where workspace_id = $1', [ws]) as any
@@ -102,7 +103,7 @@ const lists: FastifyPluginAsyncZod = async app => {
   })
   app.patch('/admin/resolutions/:id', { schema: { tags: T, summary: 'Rename (work items follow), describe, move or make a resolution the default (global admins)', params: z.object({ id: z.string().uuid() }),
     body: resolutionBody.partial().omit({ isDefault: true }).extend({ isDefault: z.literal(true).optional() }) } }, async req => {
-    requireAdmin(req)
+    await requireJiraAdmin(req)
     const ws = req.me.workspaceId, b = req.body
     return tx(async d => {
       const [before] = await d.query<any>('select id, name, description, position, is_default from resolutions where workspace_id = $1 and id = $2 for update', [ws, req.params.id])
@@ -124,7 +125,7 @@ const lists: FastifyPluginAsyncZod = async app => {
   })
   app.delete('/admin/resolutions/:id', { schema: { tags: T, summary: 'Remove a resolution: work items that have it get `moveTo` (global admins)',
     params: z.object({ id: z.string().uuid() }), querystring: z.object({ moveTo: z.string().uuid().describe('The resolution that replaces it') }) } }, async (req, reply) => {
-    requireAdmin(req)
+    await requireJiraAdmin(req)
     const ws = req.me.workspaceId, { moveTo } = req.query
     await tx(async d => {
       const [r] = await d.query<{ id: string; name: string; isDefault: boolean }>('select id, name, is_default from resolutions where workspace_id = $1 and id = $2 for update', [ws, req.params.id])

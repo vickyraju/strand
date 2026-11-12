@@ -1,5 +1,6 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { keyFits } from '../shared/projectKeys.ts'
+import { requireJiraAdmin } from './globalPermissions.ts'
 import { z } from 'zod'
 import { GetObjectCommand } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
@@ -80,12 +81,21 @@ registerJob('users.bulk', async (payload, job) => {
 })
 
 /** The group a bulk change names (not one the directory manages). */
-async function checkGroup(d: Db, groupId?: string) {
+async function checkGroup(d: Db, groupId?: string, me?: Me) {
   if (!groupId) return null
-  const [g] = await d.query<{ id: string; displayName: string; systemRole: string | null; source: string }>('select id, display_name, system_role, source from groups where id = $1', [groupId])
+  const [g] = await d.query<{ id: string; displayName: string; systemRole: string | null; source: string; makesAdmins: boolean }>(
+    `select id, display_name, system_role, source, exists (select 1 from global_permissions gp where gp.group_id = groups.id and gp.permission = 'system-admin') as makes_admins from groups where id = $1`, [groupId])
   if (!g) throw new HttpError(400, 'No such group', { groupId: 'Unknown group' })
   if (g.source === 'directory') throw new HttpError(400, `${g.displayName} comes from the directory (Entra): change it there`)
+  // a Jira administrator (spec 0717 R5) doesn't change who are system administrators
+  if (me && !me.admin && (g.systemRole || g.makesAdmins)) throw new HttpError(403, `Only system administrators change ${g.displayName}`)
   return g
+}
+/** A Jira administrator (spec 0717 R5) doesn't change a system administrator. `where` and `args` pick the people. */
+async function spareAdmins(d: Db, me: Me, where: string, args: unknown[]) {
+  if (me.admin) return
+  const [x] = await d.query<{ name: string }>(`select u.name from memberships m join users u on u.id = m.user_id where ${where} and is_system_admin(u.id) limit 1`, args)
+  if (x) throw new HttpError(403, `Only system administrators change ${x.name}, a system administrator`)
 }
 
 /** One bulk change to these people, audited per person; never leaves Strand without an active system administrator. */
@@ -128,7 +138,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
                 where pm.user_id = u.id and p.workspace_id = $1 and p.deleting_at is null) as projects`
   app.get('/admin/users', { schema: { tags: TAG, summary: 'People in the workspace, by name, a page at a time, with role, status, last activity, groups and how many projects they are in; filtered (system administrators)',
     querystring: peopleQ.extend({ cursor: z.string().max(400).optional(), limit: z.coerce.number().int().min(1).max(200).default(50) }) } }, async req => {
-    requireAdmin(req)
+    await requireJiraAdmin(req)
     const args: unknown[] = [req.me.workspaceId]
     const where = peopleWhere(req.query, args)
     const [{ total }] = await db.query<{ total: number }>(`select count(*)::int as total from memberships m join users u on u.id = m.user_id where ${where}`, [...args]) as any
@@ -150,14 +160,15 @@ const plugin: FastifyPluginAsyncZod = async app => {
   app.post('/admin/users/bulk', { schema: { tags: TAG, summary: 'Change many people at once (system administrators): deactivate, reactivate, add to a group, remove from a group. Either `userIds`, or `filter` for everyone it matches (then a background job: 202 with its id)', body: z.object({
     userIds: z.array(z.string().uuid()).min(1).max(1000).optional(), filter: peopleQ.optional(), action: bulkAction, groupId: z.string().uuid().optional(),
   }) } }, async (req, reply) => {
-    requireAdmin(req)
+    await requireJiraAdmin(req)
     const b = req.body
     if (!b.userIds === !b.filter) throw new HttpError(400, 'Send either userIds or filter', { userIds: 'Choose people, or a filter' })
     if ((b.action === 'add-to-group' || b.action === 'remove-from-group') && !b.groupId) throw new HttpError(400, 'Choose the group', { groupId: 'Required' })
     if (b.filter) {
-      await checkGroup(db, b.groupId)
+      await checkGroup(db, b.groupId, req.me)
       const args: unknown[] = [req.me.workspaceId]
       const dirArgs: unknown[] = [req.me.workspaceId]
+      if (b.action === 'deactivate' || b.action === 'reactivate') { const a: unknown[] = [req.me.workspaceId]; await spareAdmins(db, req.me, peopleWhere(b.filter, a), a) }
       await refuseDirectoryUsers(db, b.action, peopleWhere(b.filter, dirArgs), dirArgs)
       const [{ n }] = await db.query<{ n: number }>(`select count(*)::int as n from memberships m join users u on u.id = m.user_id where ${peopleWhere(b.filter, args)}`, args) as any
       const jobId = await tx(d => enqueue(d, 'users.bulk', { filter: b.filter, action: b.action, groupId: b.groupId ?? null, actor: { id: req.me.id, email: req.me.email, workspaceId: req.me.workspaceId }, ip: req.ip },
@@ -173,7 +184,8 @@ const plugin: FastifyPluginAsyncZod = async app => {
       if (people.length !== new Set(b.userIds).size) throw new HttpError(400, 'Everyone must be in this workspace', { userIds: 'Unknown people' })
       await refuseDirectoryUsers(d, b.action, 'm.workspace_id = $1 and u.id = any($2::uuid[])', [req.me.workspaceId, b.userIds])
       if (b.action === 'deactivate' && b.userIds!.includes(req.me.id)) throw new HttpError(400, 'You can’t deactivate yourself')
-      const g = await checkGroup(d, b.groupId)
+      if (b.action === 'deactivate' || b.action === 'reactivate') await spareAdmins(d, req.me, 'm.workspace_id = $1 and u.id = any($2::uuid[])', [req.me.workspaceId, b.userIds])
+      const g = await checkGroup(d, b.groupId, req.me)
       const changed = await bulkChange(d, { me: req.me, ip: req.ip }, people, b.action, g)
       return { changed, unchanged: people.length - changed }
     })
@@ -205,7 +217,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
 
   app.post('/admin/users', { schema: { tags: TAG, summary: 'Create a user in the internal directory (system administrators): username, full name, email, and a password or an email with a link to set one',
     body: z.object({ username, name: fullName, email, password: z.string().max(1024).optional(), notify: z.boolean().default(false).describe('Send notification email: a link to set the password, valid 24 hours') }) } }, async (req, reply) => {
-    requireNoToken(req)
+    await requireJiraAdmin(req, { noToken: true })
     const b = req.body
     if (!b.password && !b.notify) throw new HttpError(400, 'Give a password, or send the notification email so they can set one', { password: 'Required without the notification email' })
     if (b.password) await checkLength(b.password)
@@ -227,11 +239,12 @@ const plugin: FastifyPluginAsyncZod = async app => {
 
   app.patch('/admin/users/:id', { schema: { tags: TAG, summary: 'Edit an internal directory user (system administrators): username, full name, email, active. Directory users answer 409', params: idP,
     body: z.object({ username: username.optional(), name: fullName.optional(), email: email.optional(), active: z.boolean().optional() }) } }, async req => {
-    requireNoToken(req)
+    await requireJiraAdmin(req, { noToken: true })
     const b = req.body
     if (b.active === false && req.params.id === req.me.id) throw new HttpError(400, 'You can’t deactivate yourself')
     await tx(async d => {
       const u = await internalUser(d, req.me.workspaceId, req.params.id)
+      await spareAdmins(d, req.me, 'm.workspace_id = $1 and u.id = $2', [req.me.workspaceId, u.id])
       await taken(d, b, u.id)
       const after = { username: b.username ?? u.username, name: b.name ?? u.name, email: b.email ?? u.email, active: b.active ?? u.active }
       const c = changes({ username: u.username, name: u.name, email: u.email, active: u.active }, after)
@@ -248,10 +261,11 @@ const plugin: FastifyPluginAsyncZod = async app => {
 
   app.put('/admin/users/:id/password', { schema: { tags: TAG, summary: 'Set the password of an internal directory user (system administrators); their login-form sessions end', params: idP,
     body: z.object({ password: z.string().max(1024) }) } }, async (req, reply) => {
-    requireNoToken(req)
+    await requireJiraAdmin(req, { noToken: true })
     await checkLength(req.body.password)
     await tx(async d => {
       const u = await internalUser(d, req.me.workspaceId, req.params.id)
+      await spareAdmins(d, req.me, 'm.workspace_id = $1 and u.id = $2', [req.me.workspaceId, u.id])
       await setPassword(d, u.id, req.body.password)
       await audit(d, req, { action: 'user.password_set', type: 'user', id: u.id, name: u.email, after: { by: 'an administrator' } })
     })
@@ -273,7 +287,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
   })
 
   app.get('/admin/users/refused-sign-ins', { schema: { tags: TAG, summary: 'Deactivated people who tried to sign in, newest first (system administrators)' } }, async req => {
-    requireAdmin(req)
+    await requireJiraAdmin(req)
     return db.query(`select a.at, a.target_id as user_id, a.target as email, a.ip, u.name, u.active from audit_log a left join users u on u.id::text = a.target_id
                       where a.action = 'auth.refused_deactivated' and a.workspace_id = $1 order by a.at desc limit 100`, [req.me.workspaceId])
   })
@@ -331,7 +345,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     return db.query(`${LINK(req.query.uses === '1')} where t.workspace_id = $1 order by t.position, t.name`, [req.me.workspaceId])
   })
   app.post('/admin/link-types', { schema: { tags: TAG, summary: 'Add a link type (global admins)', body: linkBody } }, async (req, reply) => {
-    requireAdmin(req)
+    await requireJiraAdmin(req)
     const slug = req.body.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').replace(/^(?![a-z])/, 'x-').slice(0, 40) || 'link'
     return tx(async d => {
       const taken = new Set((await d.query<{ id: string; name: string }>('select id, lower(name) as name from link_types where workspace_id = $1', [req.me.workspaceId])).flatMap(r => [r.id, r.name]))
@@ -347,7 +361,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     })
   })
   app.patch('/admin/link-types/:id', { schema: { tags: TAG, summary: 'Rename a link type or change how it reads (global admins)', params: linkP, body: linkBody.partial() } }, async req => {
-    requireAdmin(req)
+    await requireJiraAdmin(req)
     return tx(async d => {
       const [before] = await d.query<any>('select name, outward, inward from link_types where workspace_id = $1 and id = $2', [req.me.workspaceId, req.params.id])
       if (!before) throw new HttpError(404, 'No such link type')
@@ -364,7 +378,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     tags: TAG, summary: 'Remove a link type (global admins). Links of that type move to `moveTo`, or are removed with `removeLinks=1`; one in use needs either',
     params: linkP, querystring: z.object({ moveTo: z.string().max(40).optional(), removeLinks: z.enum(['1']).optional() }),
   } }, async (req, reply) => {
-    requireAdmin(req)
+    await requireJiraAdmin(req)
     await tx(async d => {
       const [t] = await d.query<any>(`${LINK(true)} where t.workspace_id = $1 and t.id = $2`, [req.me.workspaceId, req.params.id])
       if (!t) throw new HttpError(404, 'No such link type')

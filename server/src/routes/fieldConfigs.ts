@@ -1,11 +1,11 @@
 // Administration › Field configurations (spec 0504), as Jira's: configurations (each field's description, hidden, required)
 // and schemes (a configuration per work type, and a default). System administrators, signed in themselves.
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
+import { requireJiraAdmin } from './globalPermissions.ts'
 import { z } from 'zod'
 import { db, tx, type Db } from '../db.ts'
 import { HttpError } from '../auth.ts'
 import { audit, changes } from '../audit.ts'
-import { requireNoToken } from './authentication.ts'
 import { defaultConfigId } from '../fields.ts'
 import { SYSTEM_FIELDS } from '../shared/fieldRules.ts'
 
@@ -41,13 +41,13 @@ const plugin: FastifyPluginAsyncZod = async app => {
     return c
   }
   app.get('/admin/field-configurations', { schema: { tags: T, summary: 'Field configurations, the default first, with the schemes that use each' } }, async req => {
-    requireNoToken(req)
+    await requireJiraAdmin(req, { noToken: true })
     await defaultConfigId(db, req.me.workspaceId)
     return db.query(`${CONFIGS} where c.workspace_id = $1 order by c.is_default desc, lower(c.name)`, [req.me.workspaceId])
   })
-  app.get('/admin/field-configurations/:id', { schema: { tags: T, summary: 'A field configuration', params: idP } }, async req => { requireNoToken(req); return config(req.me.workspaceId, req.params.id) })
+  app.get('/admin/field-configurations/:id', { schema: { tags: T, summary: 'A field configuration', params: idP } }, async req => { await requireJiraAdmin(req, { noToken: true }); return config(req.me.workspaceId, req.params.id) })
   app.post('/admin/field-configurations', { schema: { tags: T, summary: 'Add a field configuration', body: configBody } }, async (req, reply) => {
-    requireNoToken(req)
+    await requireJiraAdmin(req, { noToken: true })
     const b = req.body
     const id = await tx(async d => {
       await checkItems(d, req.me.workspaceId, b.items)
@@ -60,7 +60,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     return config(req.me.workspaceId, id)
   })
   app.patch('/admin/field-configurations/:id', { schema: { tags: T, summary: 'Change a field configuration: its fields’ description, hidden and required', params: idP, body: configBody.partial() } }, async req => {
-    requireNoToken(req)
+    await requireJiraAdmin(req, { noToken: true })
     const before = await config(req.me.workspaceId, req.params.id)
     await tx(async d => {
       const b = req.body
@@ -73,7 +73,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     return config(req.me.workspaceId, req.params.id)
   })
   app.delete('/admin/field-configurations/:id', { schema: { tags: T, summary: 'Delete a field configuration no scheme uses (not the default)', params: idP } }, async (req, reply) => {
-    requireNoToken(req)
+    await requireJiraAdmin(req, { noToken: true })
     const c = await config(req.me.workspaceId, req.params.id)
     if (c.isDefault) throw new HttpError(400, 'The Default Field Configuration can’t be deleted')
     if (c.schemes.length) throw new HttpError(409, `Used by ${c.schemes.join(', ')}: take it out of ${c.schemes.length === 1 ? 'that scheme' : 'those schemes'} first`)
@@ -96,12 +96,12 @@ const plugin: FastifyPluginAsyncZod = async app => {
     if (n !== ids.length) throw new HttpError(400, 'No such field configuration', { mappings: 'Unknown configuration' })
   }
   app.get('/admin/field-config-schemes', { schema: { tags: T, summary: 'Field configuration schemes, with the projects using each' } }, async req => {
-    requireNoToken(req)
+    await requireJiraAdmin(req, { noToken: true })
     return db.query(`${SCHEMES} where s.workspace_id = $1 order by lower(s.name)`, [req.me.workspaceId])
   })
-  app.get('/admin/field-config-schemes/:id', { schema: { tags: T, summary: 'A field configuration scheme', params: idP } }, async req => { requireNoToken(req); return scheme(req.me.workspaceId, req.params.id) })
+  app.get('/admin/field-config-schemes/:id', { schema: { tags: T, summary: 'A field configuration scheme', params: idP } }, async req => { await requireJiraAdmin(req, { noToken: true }); return scheme(req.me.workspaceId, req.params.id) })
   app.post('/admin/field-config-schemes', { schema: { tags: T, summary: 'Add a field configuration scheme', body: schemeBody } }, async (req, reply) => {
-    requireNoToken(req)
+    await requireJiraAdmin(req, { noToken: true })
     const b = req.body
     const id = await tx(async d => {
       await checkScheme(d, req.me.workspaceId, b)
@@ -114,7 +114,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     return scheme(req.me.workspaceId, id)
   })
   app.patch('/admin/field-config-schemes/:id', { schema: { tags: T, summary: 'Change a field configuration scheme', params: idP, body: schemeBody.partial() } }, async req => {
-    requireNoToken(req)
+    await requireJiraAdmin(req, { noToken: true })
     const before = await scheme(req.me.workspaceId, req.params.id)
     await tx(async d => {
       const b = req.body
@@ -127,7 +127,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     return scheme(req.me.workspaceId, req.params.id)
   })
   app.delete('/admin/field-config-schemes/:id', { schema: { tags: T, summary: 'Delete a field configuration scheme; its projects go back to the Default Field Configuration', params: idP } }, async (req, reply) => {
-    requireNoToken(req)
+    await requireJiraAdmin(req, { noToken: true })
     const s = await scheme(req.me.workspaceId, req.params.id)
     await tx(async d => {
       await d.query('delete from field_config_schemes where id = $1', [s.id])

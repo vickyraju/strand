@@ -78702,6 +78702,7 @@
                     "type": "string",
                     "enum": [
                       "system-admin",
+                      "jira-admin",
                       "browse-users",
                       "shared-objects",
                       "group-subscriptions",

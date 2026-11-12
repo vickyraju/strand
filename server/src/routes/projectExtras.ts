@@ -1,13 +1,13 @@
 // Project categories and avatars (spec 0703), as Jira's: categories are made by system administrators and each project
 // has at most one; a project's admins give it an avatar (an uploaded image).
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
+import { requireJiraAdmin } from './globalPermissions.ts'
 import { createHash } from 'node:crypto'
 import { z } from 'zod'
 import { db, tx } from '../db.ts'
 import { HttpError } from '../auth.ts'
 import { audit, changes } from '../audit.ts'
 import { imageType } from './lookAndFeel.ts'
-import { requireNoToken } from './authentication.ts'
 import { projectByKey } from './projects.ts'
 
 const T = ['Projects']
@@ -26,7 +26,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
       throw new HttpError(409, 'A category with this name already exists', { name: 'Already used' })
   }
   app.post('/admin/project-categories', { schema: { tags: T, summary: 'Add a project category (system administrators)', body } }, async (req, reply) => {
-    requireNoToken(req)
+    await requireJiraAdmin(req, { noToken: true })
     await taken(req.me.workspaceId, req.body.name)
     const c = await tx(async d => {
       const [c] = await d.query<{ id: string; name: string; description: string }>('insert into project_categories (workspace_id, name, description) values ($1, $2, $3) returning id, name, description', [req.me.workspaceId, req.body.name, req.body.description])
@@ -37,7 +37,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     return { ...c, projects: 0 }
   })
   app.patch('/admin/project-categories/:id', { schema: { tags: T, summary: 'Rename or describe a project category (system administrators)', params: idP, body: body.partial() } }, async req => {
-    requireNoToken(req)
+    await requireJiraAdmin(req, { noToken: true })
     if (req.body.name) await taken(req.me.workspaceId, req.body.name, req.params.id)
     return tx(async d => {
       const [before] = await d.query<{ name: string; description: string }>('select name, description from project_categories where id = $1 and workspace_id = $2 for update', [req.params.id, req.me.workspaceId])
@@ -51,7 +51,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     })
   })
   app.delete('/admin/project-categories/:id', { schema: { tags: T, summary: 'Delete a project category: its projects have none afterwards (system administrators)', params: idP } }, async (req, reply) => {
-    requireNoToken(req)
+    await requireJiraAdmin(req, { noToken: true })
     await tx(async d => {
       const [c] = await d.query<{ name: string }>('delete from project_categories where id = $1 and workspace_id = $2 returning name', [req.params.id, req.me.workspaceId])
       if (!c) throw new HttpError(404, 'Category not found')

@@ -13,6 +13,8 @@ export const can = (p: Scope, permission: Permission) => !p?.role || holds(p.rol
 export const canEdit = (p: Scope) => can(p, 'editIssues')
 /** Workspace administration: delete projects, backups, the audit log (everyone in a workspace kept in this browser). */
 export const isGlobalAdmin = (s: { isAdmin?: boolean }) => s.isAdmin !== false
+/** A Jira administrator (spec 0717 R5): most of Administration. System administrators are too. */
+export const isJiraAdmin = (s: { isAdmin?: boolean; globalPermissions?: string[] }) => isGlobalAdmin(s) || !!s.globalPermissions?.includes('jira-admin')
 
 /** Change the project's settings, workflow, rules and people (Administer projects). */
 export const canAdmin = (p: Scope) => can(p, 'administer')

@@ -1,6 +1,7 @@
 // Global automation (spec 0709 R3): rules over every project, a project category (including projects added to it later),
 // or chosen projects. System administrators, signed in themselves. Statuses are named, since each project has its own.
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
+import { requireJiraAdmin } from './globalPermissions.ts'
 import { ruleAction } from './projects.ts'
 import { z } from 'zod'
 import { db, tx } from '../db.ts'
@@ -10,7 +11,6 @@ import { checkRule, scheduleRule } from '../rules.ts'
 import { projectByKey } from './projects.ts'
 import { checkPriority } from '../lists.ts'
 import { need } from '../access.ts'
-import { requireNoToken } from './authentication.ts'
 
 const T = ['Automation']
 const idP = z.object({ id: z.string().uuid() })
@@ -64,11 +64,11 @@ const plugin: FastifyPluginAsyncZod = async app => {
   }
 
   app.get('/admin/automation/rules', { schema: { tags: T, summary: 'Global automation rules (system administrators)' } }, async req => {
-    requireNoToken(req)
+    await requireJiraAdmin(req, { noToken: true })
     return db.query(`${VIEW} where r.workspace_id = $1 and r.project_id is null order by lower(r.name)`, [req.me.workspaceId])
   })
   app.post('/admin/automation/rules', { schema: { tags: T, summary: 'Add a global automation rule', body } }, async req => {
-    requireNoToken(req)
+    await requireJiraAdmin(req, { noToken: true })
     const b = req.body
     const scope = await check(req, b)
     const id = await tx(async d => {
@@ -82,7 +82,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     return one(req.me.workspaceId, id)
   })
   app.put('/admin/automation/rules/:id', { schema: { tags: T, summary: 'Change a global automation rule', params: idP, body } }, async req => {
-    requireNoToken(req)
+    await requireJiraAdmin(req, { noToken: true })
     const before = await one(req.me.workspaceId, req.params.id)
     const b = req.body
     const scope = await check(req, b)
@@ -97,7 +97,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
     return one(req.me.workspaceId, req.params.id)
   })
   app.delete('/admin/automation/rules/:id', { schema: { tags: T, summary: 'Remove a global automation rule (changes it made stay)', params: idP } }, async (req, reply) => {
-    requireNoToken(req)
+    await requireJiraAdmin(req, { noToken: true })
     const r = await one(req.me.workspaceId, req.params.id)
     await tx(async d => {
       await d.query('delete from rules where id = $1', [r.id])
@@ -108,7 +108,7 @@ const plugin: FastifyPluginAsyncZod = async app => {
   })
   app.get('/admin/automation/runs', { schema: { tags: T, summary: 'Recent runs of global rules, newest first (90 days)',
     querystring: z.object({ rule: z.string().uuid().optional(), limit: z.coerce.number().int().min(1).max(200).default(50) }) } }, async req => {
-    requireNoToken(req)
+    await requireJiraAdmin(req, { noToken: true })
     const args: unknown[] = [req.me.workspaceId]
     const byRule = req.query.rule ? `and r.rule_id = $${args.push(req.query.rule)}` : ''
     args.push(req.query.limit)

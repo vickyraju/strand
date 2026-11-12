@@ -9,6 +9,7 @@ import { Loading, LoadError } from './ui'
 interface Perm { key: string; name: string; groups: { id: string | null; groupId: string; groupName: string; fixed: boolean }[] }
 const ABOUT: Record<string, string> = {
   'system-admin': 'Everything in Administration. The system-administrators group always has it.',
+  'jira-admin': 'Most of Administration: people, groups, project categories, workflows, fields, screens, notification schemes, link types, priorities, resolutions and global automation. Not system settings, sign-in, directories, global permissions, webhooks, backups or the audit log.',
   'browse-users': 'See lists of people and groups in pickers. Without it, people are found by their exact email address, and only one’s own groups are listed.',
   'shared-objects': 'Share saved views with the workspace, projects, groups or people.',
   'group-subscriptions': 'Subscribe a group to a saved view.',

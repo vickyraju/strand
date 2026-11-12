@@ -2,7 +2,7 @@ import { Fragment, useEffect, useRef, useState } from 'react'
 import { Users, Download, RotateCcw } from 'lucide-react'
 import { api, apiEnabled, errorMessage } from '../api/client'
 import { useStore, timeAgo } from '../data/store'
-import { isGlobalAdmin } from '../data/access'
+import { isGlobalAdmin, isJiraAdmin } from '../data/access'
 import { useApp } from '../appContext'
 import { href, navigate, type AdminSection } from '../router'
 import { formatBytes } from '../data/files'
@@ -36,6 +36,10 @@ import ArchivedProjects from './admin/ArchivedProjects'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
+/** What Jira administrators administer (spec 0717 R5); system administrators keep the rest. */
+const JIRA_ADMIN_SECTIONS: string[] = ['people', 'groups', 'project-categories', 'workflows', 'custom-fields', 'field-configurations', 'screens',
+  'notification-schemes', 'link-types', 'priorities', 'resolutions', 'automation']
+
 /** Administration (system administrators: people, groups, workflows, audit, backups, settings…). For everyone else the
  *  same area is Configuration, with only what they may manage there: groups. */
 export default function AdminView({ section = 'people', item }: { section?: AdminSection; item?: string }) {
@@ -43,18 +47,20 @@ export default function AdminView({ section = 'people', item }: { section?: Admi
   if (!apiEnabled)
     return <div className="page-col"><Empty icon={<Users size={22} strokeWidth={1.5} />} title="Administration needs a server"
       body="Administration needs Strand to be connected to a server." /></div>
-  // system administrators see everything; everyone else sees Configuration with what they may manage: groups
+  // system administrators see everything; Jira administrators (spec 0717 R5) most of it; everyone else sees
+  // Configuration with what they may manage: groups
   const admin = isGlobalAdmin(state)
-  const items = admin ? ITEMS : ITEMS.filter(s => s.id === 'groups')
+  const jiraAdmin = !admin && isJiraAdmin(state)
+  const items = admin ? ITEMS : jiraAdmin ? ITEMS.filter(s => JIRA_ADMIN_SECTIONS.includes(s.id)) : ITEMS.filter(s => s.id === 'groups')
   if (!items.some(s => s.id === section)) section = 'groups'
   // a workflow open in the editor takes the whole page
   if (section === 'workflows' && item && UUID.test(item)) return <WorkflowBuilder id={item} onBack={() => navigate(href({ name: 'admin', section: 'workflows' }))} />
   const settingsPage = section === 'settings' ? (SETTINGS_PAGES.find(p => p.id === item) ?? SETTINGS_PAGES[0]).id : undefined
   return (
-    <AdminShell title={admin ? 'Administration' : 'Configuration'} items={items} section={section}
+    <AdminShell title={admin || jiraAdmin ? 'Administration' : 'Configuration'} items={items} section={section}
       sub={settingsPage ? SETTINGS_PAGES.map(p => ({ id: p.id, label: p.label, current: p.id === settingsPage })) : undefined}>
       {section === 'people' && <People />}
-      {section === 'groups' && <GroupsView admin={admin} openId={item && UUID.test(item) ? item : null} onOpen={id => navigate(href({ name: 'admin', section: 'groups', ...(id ? { item: id } : {}) }))} />}
+      {section === 'groups' && <GroupsView admin={admin || jiraAdmin} openId={item && UUID.test(item) ? item : null} onOpen={id => navigate(href({ name: 'admin', section: 'groups', ...(id ? { item: id } : {}) }))} />}
       {section === 'auth-methods' && <AuthMethods />}
       {section === 'directories' && <UserDirectories />}
       {section === 'project-categories' && <ProjectCategories />}

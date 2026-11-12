@@ -7018,10 +7018,11 @@ test('[0717.R1][0717.R2][0717.R3][0717.R4] global permissions: granted to groups
   const grantOf = async (key: string) => (await list()).find((p: any) => p.key === key).groups.find((g: any) => !g.fixed)
   // R2: by default, the default users group holds the four; the system-administrators group always administers
   const perms = await list()
-  assert.deepEqual(perms.map((p: any) => p.key), ['system-admin', 'browse-users', 'shared-objects', 'group-subscriptions', 'bulk-change'])
+  assert.deepEqual(perms.map((p: any) => p.key), ['system-admin', 'jira-admin', 'browse-users', 'shared-objects', 'group-subscriptions', 'bulk-change'])
   assert.deepEqual(perms[0].groups.map((g: any) => g.fixed), [true])
-  for (const p of perms.slice(1)) assert.equal(p.groups.length, 1, p.key)
-  const defaultUsers = perms[1].groups[0].groupId
+  assert.equal(perms[1].groups.length, 0)                                              // Jira administrators: nobody until granted
+  for (const p of perms.slice(2)) assert.equal(p.groups.length, 1, p.key)
+  const defaultUsers = perms[2].groups[0].groupId
   assert.deepEqual((await call('GET', '/api/v1/me', undefined, 'gp.ann@x.com')).body.globalPermissions.sort(), ['browse-users', 'bulk-change', 'group-subscriptions', 'shared-objects'])
   // R1: take each away, and its action is refused
   for (const key of ['browse-users', 'shared-objects', 'group-subscriptions', 'bulk-change']) await call('DELETE', `/api/v1/admin/global-permissions/${(await grantOf(key)).id}`)
@@ -7301,4 +7302,40 @@ test('[0701.R6] a scheduled announcement: hidden before Show from and after Unti
   const bad = await put(at(2), at(1))
   assert.equal(bad.status, 400); assert.ok(bad.body.errors.endsAt)
   await call('PUT', '/api/v1/admin/settings/announcement', { text: '', visibility: 'private', startsAt: null, endsAt: null }); clearSettingsCache()
+})
+
+test('[0717.R5] Jira administrators: most of Administration, but not system settings, global permissions, webhooks, or a system administrator', { skip }, async () => {
+  const team = (await call('POST', '/api/v1/groups', { name: 'jira-admins-r5' })).body
+  const jim = (await call('GET', '/api/v1/me', undefined, 'r5.jim@x.com')).body
+  await call('GET', '/api/v1/me', undefined, 'r5.plain@x.com')
+  await call('POST', `/api/v1/groups/${team.id}/members`, { userIds: [jim.id] })
+  const as = (method: string, path: string, body?: unknown, who = 'r5.jim@x.com') => call(method, `/api/v1${path}`, body, who)
+  // without it: refused
+  assert.equal((await as('POST', '/admin/priorities', { name: 'R5 urgent', color: '#dc2626', icon: 'arrow-up' }, 'r5.plain@x.com')).status, 403)
+  const grant = (await call('POST', '/api/v1/admin/global-permissions', { permission: 'jira-admin', groupId: team.id })).body
+  assert.deepEqual([(await call('GET', '/api/v1/me', undefined, 'r5.jim@x.com')).body.admin, (await call('GET', '/api/v1/me', undefined, 'r5.jim@x.com')).body.globalPermissions.includes('jira-admin')], [false, true])
+  // with it: workflows, custom fields, priorities, link types, categories, people, groups
+  assert.equal((await as('POST', '/admin/workflows', { name: 'R5 flow' })).status, 201)
+  assert.equal((await as('POST', '/admin/custom-fields', { name: 'R5 field', kind: 'text', context: { projectKeys: null } })).status, 201)
+  assert.equal((await as('POST', '/admin/priorities', { name: 'R5 urgent', color: '#dc2626', icon: 'arrow-up' })).status, 201)
+  assert.equal((await as('POST', '/admin/link-types', { name: 'R5 links', outward: 'r5-links', inward: 'r5-linked by' })).status, 201)
+  assert.equal((await as('POST', '/admin/project-categories', { name: 'R5 category' })).status, 201)
+  assert.equal((await as('GET', '/admin/users')).status, 200)
+  const made = await as('POST', '/admin/users', { email: 'r5.local@x.com', name: 'R5 Local', username: 'r5local', password: 'r5-password-123' })
+  assert.equal(made.status, 201, JSON.stringify(made.body))
+  const other = (await call('POST', '/api/v1/groups', { name: 'r5-other' })).body
+  assert.equal((await as('PATCH', `/groups/${other.id}`, { description: 'Changed by a Jira admin' })).status, 200)
+  // not the system: settings, global permissions, webhooks, the audit log
+  assert.equal((await as('PUT', '/admin/settings/voting', { enabled: false })).status, 403)
+  assert.equal((await as('POST', '/admin/global-permissions', { permission: 'bulk-change', groupId: other.id })).status, 403)
+  assert.equal((await as('GET', '/admin/webhooks')).status, 403)
+  // not a system administrator, nor the groups that make them
+  const owner = (await call('GET', '/api/v1/me')).body
+  const bulk = await as('POST', '/admin/users/bulk', { userIds: [owner.id], action: 'deactivate' })
+  assert.equal(bulk.status, 403); assert.match(bulk.body.error, /system administrator/)
+  const sys = (await call('GET', '/api/v1/admin/global-permissions')).body[0].groups[0].groupId
+  assert.equal((await as('POST', '/admin/users/bulk', { userIds: [jim.id], action: 'add-to-group', groupId: sys })).status, 403)
+  assert.equal((await as('POST', `/groups/${sys}/members`, { userIds: [jim.id] })).status, 403)
+  await call('DELETE', `/api/v1/admin/global-permissions/${grant.id}`)
+  assert.equal((await as('POST', '/admin/workflows', { name: 'R5 flow 2' })).status, 403)
 })
