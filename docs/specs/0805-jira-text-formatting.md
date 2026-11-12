@@ -1,6 +1,6 @@
 # 0805 Jira's text formatting, imported
 
-Status: Approved (pending work, 12 Nov 2026)
+Status: Ported (aws-jira `da3cec1`, strand `445e923`), pending work the PO asked to complete on 12 Nov 2026; awaiting verification
 Parity rows: (importer, spec 0802)
 
 ## Context and Jira reference
