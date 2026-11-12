@@ -10,8 +10,11 @@ import { UserSelect } from './UserPicker'
 import JqlBox from './JqlBox'
 
 const ACTION_LABEL: Record<RuleAction['kind'], string> = {
-  assign: 'Assign to', priority: 'Set priority', label: 'Add label', status: 'Move to status', comment: 'Add a comment',
+  assign: 'Assign to', priority: 'Set priority', label: 'Add label', status: 'Move to status', comment: 'Add a comment', branch: 'For each related item',
 }
+type Plain = Exclude<RuleAction, { kind: 'branch' }>
+const TARGETS = { children: 'Its sub-items (an epic’s items)', parent: 'Its parent (or epic)', linked: 'Its linked items' } as const
+const SMART_HINT = 'Smart values such as {{issue.key}}, {{issue.summary}}, {{issue.assignee.displayName}}, {{triggerIssue.key}} or {{initiator.displayName}} are filled in.'
 
 export function describeTrigger(p: Project | null, t: RuleTrigger) {
   if (t.kind === 'created') return 'a work item is created'
@@ -22,13 +25,14 @@ export function describeTrigger(p: Project | null, t: RuleTrigger) {
 /** 90 → "90 minutes", 120 → "2 hours", 1440 → "day". */
 export const every = (m: number) => m % 1440 === 0 ? (m === 1440 ? 'day' : `${m / 1440} days`) : m % 60 === 0 ? (m === 60 ? 'hour' : `${m / 60} hours`) : `${m} minutes`
 
-export function describeAction(p: Project | null, a: RuleAction, users: { id: string; name: string }[]) {
+export function describeAction(p: Project | null, a: RuleAction, users: { id: string; name: string }[]): string {
   switch (a.kind) {
     case 'assign':   return a.to === 'reporter' ? 'assign the reporter' : a.to === 'lead' ? 'assign the project lead' : a.to === 'unassign' ? 'remove the assignee' : `assign ${users.find(u => u.id === a.to)?.name ?? 'someone'}`
     case 'priority': return `set priority to ${priorityKeys().includes(a.value) ? priorityLabel(a.value) : `“${a.value}” (not a priority)`}`
     case 'label':    return `add label “${a.value}”`
     case 'status':   return `move to ${a.name ?? p?.statuses.find(s => s.id === a.value)?.name ?? 'a deleted status'}`
     case 'comment':  return 'add a comment'
+    case 'branch':   return `for each of ${TARGETS[a.target].replace(/^Its /, 'its ').replace(/ \(.*\)$/, '')}: ${a.actions.map(x => describeAction(p, x, users)).join(', ')}`
     default:         return 'do something this version of Strand doesn’t know'
   }
 }
@@ -116,15 +120,16 @@ const blankRule = (p: Project): Rule => ({
 export function RuleModal({ project, rule, onClose, onSave, extra, error }: {
   project: Project | null; rule: Rule; onClose: () => void; onSave: (r: Rule) => void; extra?: React.ReactNode; error?: string
 }) {
-  const { state } = useStore()
   const [r, setR] = useState<Rule>(rule)
   const setAction = (i: number, a: RuleAction) => setR({ ...r, actions: r.actions.map((x, k) => k === i ? a : x) })
   const blank = (kind: RuleAction['kind']): RuleAction =>
     kind === 'assign' ? { kind, to: project ? 'lead' : 'reporter' } : kind === 'priority' ? { kind, value: 'high' }
-    : kind === 'status' ? (project ? { kind, value: project.statuses[0].id } : { kind, value: '', name: '' }) : kind === 'comment' ? { kind, body: '' } : { kind: 'label', value: '' }
+    : kind === 'status' ? (project ? { kind, value: project.statuses[0].id } : { kind, value: '', name: '' }) : kind === 'comment' ? { kind, body: '' }
+    : kind === 'branch' ? { kind, target: 'children', actions: [{ kind: 'comment', body: '' }] } : { kind: 'label', value: '' }
   const t = r.trigger
-  const valid = r.name.trim() && r.actions.length > 0 && r.actions.every(a =>
-    a.kind === 'label' ? a.value.trim() : a.kind === 'comment' ? a.body.trim() : a.kind === 'status' && !project ? a.name?.trim() : true)
+  const ok = (a: RuleAction): boolean => a.kind === 'label' ? !!a.value.trim() : a.kind === 'comment' ? !!a.body.trim() : a.kind === 'status' && !project ? !!a.name?.trim()
+    : a.kind === 'branch' ? a.actions.length > 0 && a.actions.every(ok) : true
+  const valid = r.name.trim() && r.actions.length > 0 && r.actions.every(ok)
     && (t.kind !== 'scheduled' || (t.jql.trim() && t.everyMinutes > 0)) && (t.kind !== 'status' || project || t.toName?.trim())
   const unit = t.kind === 'scheduled' ? [1440, 60, 1].find(u => t.everyMinutes % u === 0)! : 60
 
@@ -185,11 +190,55 @@ export function RuleModal({ project, rule, onClose, onSave, extra, error }: {
       {r.actions.map((a, i) => (
         <div key={i} className="rule-step">
           <span className="rule-step-tag then">{i === 0 ? 'Then' : 'And'}</span>
-          <select className="input rule-kind" aria-label="Action" value={a.kind} onChange={e => setAction(i, blank(e.target.value as RuleAction['kind']))}>
-            {(Object.keys(ACTION_LABEL) as RuleAction['kind'][]).map(k => <option key={k} value={k}>{ACTION_LABEL[k]}</option>)}
+          <ActionFields a={a} project={project} blank={blank} onChange={x => setAction(i, x)} />
+          {r.actions.length > 1 && <button className="icon-btn" onClick={() => setR({ ...r, actions: r.actions.filter((_, k) => k !== i) })} aria-label="Remove action"><X size={15} /></button>}
+        </div>
+      ))}
+      <button className="btn btn-ghost btn-sm" style={{ marginTop: 8 }} onClick={() => setR({ ...r, actions: [...r.actions, blank('priority')] })}><Plus size={14} />Add another action</button>
+      {apiEnabled && valid && project && <DryRun project={project} actions={r.actions} condition={r.condition} />}
+    </Modal>
+  )
+}
+
+/** One action's fields; a branch (spec 0709 R7) holds rows of its own. */
+function ActionFields({ a, project, blank, onChange, nested }: { a: RuleAction; project: Project | null; blank: (k: RuleAction['kind']) => RuleAction; onChange: (a: RuleAction) => void; nested?: boolean }) {
+  const { state } = useStore()
+  const kinds = (Object.keys(ACTION_LABEL) as RuleAction['kind'][]).filter(k => k !== 'branch' || (apiEnabled && !nested))
+  if (a.kind === 'branch') {
+    const put = (k: number, x: Plain) => onChange({ ...a, actions: a.actions.map((y, n) => (n === k ? x : y)) })
+    return (
+      <div className="rule-branch">
+        <div className="form-row" style={{ alignItems: 'center' }}>
+          <select className="input rule-kind" aria-label="Action" value={a.kind} onChange={e => onChange(blank(e.target.value as RuleAction['kind']))}>
+            {kinds.map(k => <option key={k} value={k}>{ACTION_LABEL[k]}</option>)}
+          </select>
+          <select className="input" aria-label="Related items" value={a.target} onChange={e => onChange({ ...a, target: e.target.value as keyof typeof TARGETS, linkType: null })}>
+            {(Object.keys(TARGETS) as (keyof typeof TARGETS)[]).map(k => <option key={k} value={k}>{TARGETS[k]}</option>)}
+          </select>
+          {a.target === 'linked' && (
+            <select className="input" aria-label="Link type" value={a.linkType ?? ''} onChange={e => onChange({ ...a, linkType: e.target.value || null })}>
+              <option value="">Any link</option>
+              {(state.linkTypes ?? []).map(l => <option key={l.id} value={l.id}>{l.outward}</option>)}
+            </select>
+          )}
+        </div>
+        {a.actions.map((x, k) => (
+          <div key={k} className="rule-step rule-step-nested">
+            <span className="rule-step-tag then">Then</span>
+            <ActionFields a={x} project={project} blank={blank} nested onChange={y => put(k, y as Plain)} />
+            {a.actions.length > 1 && <button className="icon-btn" onClick={() => onChange({ ...a, actions: a.actions.filter((_, n) => n !== k) })} aria-label="Remove action"><X size={15} /></button>}
+          </div>
+        ))}
+        <button className="btn btn-ghost btn-sm" onClick={() => onChange({ ...a, actions: [...a.actions, { kind: 'comment', body: '' }] })}><Plus size={14} />Add an action for each</button>
+      </div>
+    )
+  }
+  return <>
+          <select className="input rule-kind" aria-label="Action" value={a.kind} onChange={e => onChange(blank(e.target.value as RuleAction['kind']))}>
+            {kinds.map(k => <option key={k} value={k}>{ACTION_LABEL[k]}</option>)}
           </select>
           {a.kind === 'assign' && !project && (
-            <select className="input" aria-label="Assign to" value={a.to} onChange={e => setAction(i, { kind: 'assign', to: e.target.value })}>
+            <select className="input" aria-label="Assign to" value={a.to} onChange={e => onChange({ kind: 'assign', to: e.target.value })}>
               <option value="reporter">The reporter</option>
               <option value="lead">The project’s lead</option>
               <option value="unassign">Nobody (unassign)</option>
@@ -197,14 +246,14 @@ export function RuleModal({ project, rule, onClose, onSave, extra, error }: {
           )}
           {a.kind === 'assign' && project && (
             <div className="rule-user-pick">
-              <select className="input" aria-label="Assign to" value={a.to} onChange={e => setAction(i, { kind: 'assign', to: e.target.value })}>
+              <select className="input" aria-label="Assign to" value={a.to} onChange={e => onChange({ kind: 'assign', to: e.target.value })}>
                 <option value="lead">Project lead ({userOf(state, project.leadId)?.name})</option>
                 <option value="reporter">The reporter</option>
                 <option value="unassign">Nobody (unassign)</option>
               </select>
               {a.to && a.to !== 'lead' && a.to !== 'reporter' && a.to !== 'unassign' && (
                 <UserSelect value={a.to} projectId={project.id} label="Assign to user"
-                  onChange={id => setAction(i, { kind: 'assign', to: id ?? 'unassign' })}
+                  onChange={id => onChange({ kind: 'assign', to: id ?? 'unassign' })}
                   extraOptions={[
                     { value: 'lead', label: `Project lead (${userOf(state, project.leadId)?.name ?? ''})` },
                     { value: 'reporter', label: 'The reporter' },
@@ -214,25 +263,19 @@ export function RuleModal({ project, rule, onClose, onSave, extra, error }: {
             </div>
           )}
           {a.kind === 'priority' && (
-            <select className="input" aria-label="Priority" value={priorityKeys().includes(a.value) ? a.value : defaultPriority()} onChange={e => setAction(i, { kind: 'priority', value: e.target.value as Priority })}>
+            <select className="input" aria-label="Priority" value={priorityKeys().includes(a.value) ? a.value : defaultPriority()} onChange={e => onChange({ kind: 'priority', value: e.target.value as Priority })}>
               {priorityKeys().map(p => <option key={p} value={p}>{priorityLabel(p)}</option>)}
             </select>
           )}
-          {a.kind === 'label' && <input className="input" aria-label="Label" value={a.value} placeholder="e.g. shipped" onChange={e => setAction(i, { kind: 'label', value: e.target.value })} />}
-          {a.kind === 'status' && !project && <input className="input" aria-label="Status name" placeholder="Status name, e.g. In review" value={a.name ?? ''} onChange={e => setAction(i, { kind: 'status', value: '', name: e.target.value })} />}
+          {a.kind === 'label' && <input className="input" aria-label="Label" value={a.value} placeholder="e.g. shipped" onChange={e => onChange({ kind: 'label', value: e.target.value })} />}
+          {a.kind === 'status' && !project && <input className="input" aria-label="Status name" placeholder="Status name, e.g. In review" value={a.name ?? ''} onChange={e => onChange({ kind: 'status', value: '', name: e.target.value })} />}
           {a.kind === 'status' && project && (
-            <select className="input" aria-label="Status" value={a.value} onChange={e => setAction(i, { kind: 'status', value: e.target.value })}>
+            <select className="input" aria-label="Status" value={a.value} onChange={e => onChange({ kind: 'status', value: e.target.value })}>
               {project.statuses.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           )}
-          {a.kind === 'comment' && <input className="input" aria-label="Comment" value={a.body} placeholder="e.g. Thanks! We’ll look at this today." onChange={e => setAction(i, { kind: 'comment', body: e.target.value })} />}
-          {r.actions.length > 1 && <button className="icon-btn" onClick={() => setR({ ...r, actions: r.actions.filter((_, k) => k !== i) })} aria-label="Remove action"><X size={15} /></button>}
-        </div>
-      ))}
-      <button className="btn btn-ghost btn-sm" style={{ marginTop: 8 }} onClick={() => setR({ ...r, actions: [...r.actions, blank('priority')] })}><Plus size={14} />Add another action</button>
-      {apiEnabled && valid && project && <DryRun project={project} actions={r.actions} condition={r.condition} />}
-    </Modal>
-  )
+          {a.kind === 'comment' && <input className="input" aria-label="Comment" value={a.body} placeholder="e.g. Thanks! We’ll look at this today." title={apiEnabled ? SMART_HINT : undefined} onChange={e => onChange({ kind: 'comment', body: e.target.value })} />}
+  </>
 }
 
 interface GlobalRule extends Rule { scope: { kind: 'all' | 'category' | 'projects'; categoryName?: string; projectKeys?: string[] } }

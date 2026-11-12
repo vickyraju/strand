@@ -2483,3 +2483,24 @@ test('[0806.R1][0806.R3] Jira’s old addresses open Strand: /browse/KEY-N shows
   assert.equal(new URL(o.url()).pathname, '/search')
   assert.deepEqual(o.problems, [])
 })
+
+test('[0709.R6][0709.R7] a rule with a For each action: when the parent is assigned, each sub-item gets a comment naming it', { skip, timeout: 90_000 }, async () => {
+  await owner('POST', '/projects', { name: 'Branching', key: 'BRN', template: 'kanban' })
+  const parent = (await owner('POST', '/projects/BRN/issues', { title: 'Parent' })).body
+  const kid = (await owner('POST', '/projects/BRN/issues', { title: 'Kid', parentId: parent.id })).body
+  const o = await signIn('owner@e2e.test')
+  await o.goto(url('/project/BRN/settings/automation'))
+  await o.click('button:has-text("Create rule")')
+  await o.fill('#rule-name', 'Tell the sub-items')
+  await o.selectOption('.modal select[aria-label="Trigger"]', 'assigned')
+  await o.selectOption('.modal select[aria-label="Action"] >> nth=0', 'branch')
+  await o.selectOption('.modal select[aria-label="Related items"]', 'children')
+  await o.fill('.modal .rule-branch input[aria-label="Comment"]', 'Parent {{triggerIssue.key}} is now {{triggerIssue.assignee.displayName}}’s')
+  await o.click('.modal button:has-text("Save rule")')
+  await o.waitForSelector('text=Tell the sub-items')
+  const me = (await owner('GET', '/me')).body
+  await owner('PATCH', `/issues/${parent.key}`, { assigneeId: me.id })
+  const bodies = (await owner('GET', `/issues/${kid.key}/comments`)).body.items.map(c => c.body)
+  assert.deepEqual(bodies, [`Parent ${parent.key} is now ${me.name}’s`])
+  assert.deepEqual(o.problems, [])
+})

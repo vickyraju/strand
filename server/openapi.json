@@ -10111,23 +10111,82 @@
                   "actions": {
                     "type": "array",
                     "items": {
-                      "type": "object",
-                      "properties": {
-                        "kind": {
-                          "type": "string",
-                          "enum": [
-                            "assign",
-                            "priority",
-                            "label",
-                            "status",
-                            "comment"
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": [
+                                "branch"
+                              ]
+                            },
+                            "target": {
+                              "type": "string",
+                              "enum": [
+                                "children",
+                                "parent",
+                                "linked"
+                              ],
+                              "description": "Sub-items or an epic’s items; the parent or epic; linked items"
+                            },
+                            "linkType": {
+                              "description": "Linked items: only this link type (its id)",
+                              "nullable": true,
+                              "type": "string",
+                              "maxLength": 100
+                            },
+                            "actions": {
+                              "minItems": 1,
+                              "maxItems": 20,
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "kind": {
+                                    "type": "string",
+                                    "enum": [
+                                      "assign",
+                                      "priority",
+                                      "label",
+                                      "status",
+                                      "comment"
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "kind"
+                                ],
+                                "additionalProperties": {}
+                              }
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "target",
+                            "actions"
                           ]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": [
+                                "assign",
+                                "priority",
+                                "label",
+                                "status",
+                                "comment"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "kind"
+                          ],
+                          "additionalProperties": {}
                         }
-                      },
-                      "required": [
-                        "kind"
-                      ],
-                      "additionalProperties": {}
+                      ]
                     }
                   },
                   "id": {
@@ -10382,23 +10441,82 @@
                   "actions": {
                     "type": "array",
                     "items": {
-                      "type": "object",
-                      "properties": {
-                        "kind": {
-                          "type": "string",
-                          "enum": [
-                            "assign",
-                            "priority",
-                            "label",
-                            "status",
-                            "comment"
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": [
+                                "branch"
+                              ]
+                            },
+                            "target": {
+                              "type": "string",
+                              "enum": [
+                                "children",
+                                "parent",
+                                "linked"
+                              ],
+                              "description": "Sub-items or an epic’s items; the parent or epic; linked items"
+                            },
+                            "linkType": {
+                              "description": "Linked items: only this link type (its id)",
+                              "nullable": true,
+                              "type": "string",
+                              "maxLength": 100
+                            },
+                            "actions": {
+                              "minItems": 1,
+                              "maxItems": 20,
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "kind": {
+                                    "type": "string",
+                                    "enum": [
+                                      "assign",
+                                      "priority",
+                                      "label",
+                                      "status",
+                                      "comment"
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "kind"
+                                ],
+                                "additionalProperties": {}
+                              }
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "target",
+                            "actions"
                           ]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": [
+                                "assign",
+                                "priority",
+                                "label",
+                                "status",
+                                "comment"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "kind"
+                          ],
+                          "additionalProperties": {}
                         }
-                      },
-                      "required": [
-                        "kind"
-                      ],
-                      "additionalProperties": {}
+                      ]
                     }
                   }
                 }
@@ -13508,23 +13626,82 @@
                   "actions": {
                     "type": "array",
                     "items": {
-                      "type": "object",
-                      "properties": {
-                        "kind": {
-                          "type": "string",
-                          "enum": [
-                            "assign",
-                            "priority",
-                            "label",
-                            "status",
-                            "comment"
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": [
+                                "branch"
+                              ]
+                            },
+                            "target": {
+                              "type": "string",
+                              "enum": [
+                                "children",
+                                "parent",
+                                "linked"
+                              ],
+                              "description": "Sub-items or an epic’s items; the parent or epic; linked items"
+                            },
+                            "linkType": {
+                              "description": "Linked items: only this link type (its id)",
+                              "nullable": true,
+                              "type": "string",
+                              "maxLength": 100
+                            },
+                            "actions": {
+                              "minItems": 1,
+                              "maxItems": 20,
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "kind": {
+                                    "type": "string",
+                                    "enum": [
+                                      "assign",
+                                      "priority",
+                                      "label",
+                                      "status",
+                                      "comment"
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "kind"
+                                ],
+                                "additionalProperties": {}
+                              }
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "target",
+                            "actions"
                           ]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": [
+                                "assign",
+                                "priority",
+                                "label",
+                                "status",
+                                "comment"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "kind"
+                          ],
+                          "additionalProperties": {}
                         }
-                      },
-                      "required": [
-                        "kind"
-                      ],
-                      "additionalProperties": {}
+                      ]
                     }
                   },
                   "condition": {
@@ -61634,23 +61811,82 @@
                     "maxItems": 20,
                     "type": "array",
                     "items": {
-                      "type": "object",
-                      "properties": {
-                        "kind": {
-                          "type": "string",
-                          "enum": [
-                            "assign",
-                            "priority",
-                            "label",
-                            "status",
-                            "comment"
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": [
+                                "branch"
+                              ]
+                            },
+                            "target": {
+                              "type": "string",
+                              "enum": [
+                                "children",
+                                "parent",
+                                "linked"
+                              ],
+                              "description": "Sub-items or an epic’s items; the parent or epic; linked items"
+                            },
+                            "linkType": {
+                              "description": "Linked items: only this link type (its id)",
+                              "nullable": true,
+                              "type": "string",
+                              "maxLength": 100
+                            },
+                            "actions": {
+                              "minItems": 1,
+                              "maxItems": 20,
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "kind": {
+                                    "type": "string",
+                                    "enum": [
+                                      "assign",
+                                      "priority",
+                                      "label",
+                                      "status",
+                                      "comment"
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "kind"
+                                ],
+                                "additionalProperties": {}
+                              }
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "target",
+                            "actions"
                           ]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": [
+                                "assign",
+                                "priority",
+                                "label",
+                                "status",
+                                "comment"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "kind"
+                          ],
+                          "additionalProperties": {}
                         }
-                      },
-                      "required": [
-                        "kind"
-                      ],
-                      "additionalProperties": {}
+                      ]
                     }
                   },
                   "condition": {
@@ -61979,23 +62215,82 @@
                     "maxItems": 20,
                     "type": "array",
                     "items": {
-                      "type": "object",
-                      "properties": {
-                        "kind": {
-                          "type": "string",
-                          "enum": [
-                            "assign",
-                            "priority",
-                            "label",
-                            "status",
-                            "comment"
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": [
+                                "branch"
+                              ]
+                            },
+                            "target": {
+                              "type": "string",
+                              "enum": [
+                                "children",
+                                "parent",
+                                "linked"
+                              ],
+                              "description": "Sub-items or an epic’s items; the parent or epic; linked items"
+                            },
+                            "linkType": {
+                              "description": "Linked items: only this link type (its id)",
+                              "nullable": true,
+                              "type": "string",
+                              "maxLength": 100
+                            },
+                            "actions": {
+                              "minItems": 1,
+                              "maxItems": 20,
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "kind": {
+                                    "type": "string",
+                                    "enum": [
+                                      "assign",
+                                      "priority",
+                                      "label",
+                                      "status",
+                                      "comment"
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "kind"
+                                ],
+                                "additionalProperties": {}
+                              }
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "target",
+                            "actions"
                           ]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": [
+                                "assign",
+                                "priority",
+                                "label",
+                                "status",
+                                "comment"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "kind"
+                          ],
+                          "additionalProperties": {}
                         }
-                      },
-                      "required": [
-                        "kind"
-                      ],
-                      "additionalProperties": {}
+                      ]
                     }
                   },
                   "condition": {
