@@ -1,0 +1,530 @@
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { Bookmark, Bug, SquareCheck, Zap, ChevronsUp, ChevronUp, Equal, ChevronDown, ChevronsDown, Minus, Flame, AlertTriangle, ArrowUp, ArrowDown, Check, UserRound, X, Flag, Star, Wrench, BookOpen, Shield, Lightbulb, Rocket, Circle, FlaskConical, ClipboardList, Layers, Map as MapIcon, PlayCircle } from 'lucide-react'
+import { priorityList, priorityOf } from '../data/lists'
+import type { RuleCtx } from '../data/transitionRules'
+import { errorMessage } from '../api/client'
+import { useStore, transitionsFrom, statusesFor, typesOf, BUILTIN_TYPES, type IssueType, type Priority, type Project, type Status, type User } from '../data/store'
+
+// ── Type ───────────────────────────────────────────────────
+
+/** Icons a work type can have. */
+export const TYPE_ICONS: Record<string, typeof Bug> = {
+  zap: Zap, bookmark: Bookmark, check: SquareCheck, bug: Bug, flag: Flag, star: Star, wrench: Wrench, book: BookOpen,
+  shield: Shield, lightbulb: Lightbulb, rocket: Rocket, circle: Circle,
+  flask: FlaskConical, clipboard: ClipboardList, layers: Layers, map: MapIcon, play: PlayCircle,
+}
+
+/** How a work type looks, from its project (renamed built-ins, added types) or, without one, any loaded project's. */
+export function typeMeta(type: IssueType, project?: Pick<Project, 'types'>, all: Pick<Project, 'types'>[] = []) {
+  const t = typesOf(project).find(x => x.key === type)
+    ?? (project ? undefined : all.flatMap(p => p.types ?? []).find(x => x.key === type))
+    ?? BUILTIN_TYPES.find(x => x.key === type)
+  return { label: t?.name ?? 'Work item', color: t?.color ?? '#78716C', Icon: TYPE_ICONS[t?.icon ?? ''] ?? Circle }
+}
+
+/** The work types to offer, from a project or (no project) every loaded project's, each once. */
+export function typeList(project?: Pick<Project, 'types'>, all: Pick<Project, 'types'>[] = []) {
+  if (project) return typesOf(project)
+  const seen = new Set<string>()
+  return [...BUILTIN_TYPES, ...all.flatMap(p => p.types ?? [])].filter(t => !seen.has(t.key) && !!seen.add(t.key))
+}
+
+export function TypeIcon({ type, size = 14, project }: { type: IssueType; size?: number; project?: Pick<Project, 'types'> }) {
+  const { state } = useStore()
+  const { Icon, color, label } = typeMeta(type, project ?? state.projects.find(p => p.types?.some(t => t.key === type)), state.projects)
+  return (
+    <span className="type-icon" role="img" style={{ background: color, width: size + 2, height: size + 2 }} title={label} aria-label={label}>
+      <Icon size={size - 4} strokeWidth={2.5} color="#FFFFFF" />
+    </span>
+  )
+}
+
+// ── Priority ───────────────────────────────────────────────
+
+/** The icons a priority can have (Administration › Priorities). */
+export const PRIORITY_ICONS: Record<string, typeof Bug> = {
+  'chevrons-up': ChevronsUp, 'chevron-up': ChevronUp, equal: Equal, 'chevron-down': ChevronDown, 'chevrons-down': ChevronsDown,
+  minus: Minus, flame: Flame, 'alert-triangle': AlertTriangle, 'arrow-up': ArrowUp, 'arrow-down': ArrowDown,
+}
+/** A priority's name from the workspace's list (spec 0305). */
+export const priorityLabel = (p: Priority) => priorityOf(p).name
+/** The priorities' keys, highest first. */
+export const priorityKeys = () => priorityList().map(p => p.key)
+
+export function PriorityIcon({ priority, size = 14 }: { priority: Priority; size?: number }) {
+  const { icon, color, name: label } = priorityOf(priority)
+  const Icon = PRIORITY_ICONS[icon] ?? Minus
+  return <Icon size={size} strokeWidth={2.25} color={color} style={{ flexShrink: 0 }} aria-label={label} role="img" />
+}
+
+// ── People ─────────────────────────────────────────────────
+
+/** Older, lighter avatar colors mapped to versions with enough contrast for white initials (WCAG AA). */
+const READABLE: Record<string, string> = { '#368727': '#2F7A22', '#0891B2': '#0E7490', '#EA580C': '#C2410C', '#DB2777': '#BE185D', '#0D9488': '#0F766E', '#16A34A': '#15803D' }
+
+export function Avatar({ user, size = 22 }: { user?: User | null; size?: number }) {
+  if (!user) {
+    return (
+      <span className="avatar avatar-empty" style={{ width: size, height: size }} title="Unassigned">
+        <UserRound size={size * 0.6} strokeWidth={1.5} />
+      </span>
+    )
+  }
+  return (
+    <span className="avatar" style={{ width: size, height: size, background: READABLE[user.color] ?? user.color, fontSize: Math.max(8, size * 0.4) }} title={user.name}>
+      {user.initials}
+    </span>
+  )
+}
+
+// ── Status ─────────────────────────────────────────────────
+
+/** Jira-style lozenge: grey for to do, blue for in progress, green for done. */
+export function StatusLozenge({ status }: { status?: Status }) {
+  if (!status) return null
+  return <span className={`lozenge lozenge-${status.category}`}>{status.name}</span>
+}
+
+// ── Picker: choose one value from a list ───────────────────
+
+export interface PickerOption<T> {
+  value: T
+  label: string
+  icon?: ReactNode
+  hint?:  string
+}
+
+/** Keeps a popover inside the viewport: flips up when there is no room below. */
+function usePopoverPlacement(open: boolean) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [up, setUp] = useState(false)
+  useEffect(() => {
+    if (!open || !ref.current) return
+    const r = ref.current.getBoundingClientRect()
+    setUp(r.bottom > window.innerHeight - 8 && r.top - r.height > 8)
+  }, [open])
+  return { ref, up }
+}
+
+/**
+ * Anchors a panel to its trigger with `position: fixed`, so an ancestor's `overflow: hidden`
+ * (`.rows-box`, `.content`, `.shell`, `.table-scroll`, `.detail-side`, `.modal-body`…) cannot clip
+ * it — a fixed element's containing block is the viewport, not its DOM parent.
+ *
+ * NOTE: a `transform`/`filter`/`perspective`/`contain` on any ancestor becomes the containing block
+ * for fixed descendants and would silently break this. `.bulk-bar` used to carry `transform:
+ * translateX(-50%)`; it now centres with `margin: auto` for exactly this reason.
+ *
+ * The panel should start at `visibility: hidden`; positions are written before paint so it never
+ * flashes at the wrong place.
+ */
+function useAnchoredPanel(open: boolean, align: 'left' | 'right' = 'left') {
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const panelRef   = useRef<HTMLDivElement>(null)
+
+  useLayoutEffect(() => {
+    if (!open) return
+    const t = triggerRef.current, p = panelRef.current
+    if (!t || !p) return
+
+    const place = () => {
+      const tr = t.getBoundingClientRect()
+      // offsetWidth/offsetHeight ignore the `pop-in` animation's transform, which
+      // getBoundingClientRect would otherwise fold into the measurement.
+      const w = p.offsetWidth, h = p.offsetHeight
+      const gap = 6, pad = 8
+
+      const below = window.innerHeight - tr.bottom - gap - pad
+      const above = tr.top - gap - pad
+      const up = h > below && above > below      // flip only when forced, and only if there's room
+      const top = up ? tr.top - gap - h : tr.bottom + gap
+
+      p.style.top  = Math.max(pad, Math.min(top, window.innerHeight - h - pad)) + 'px'
+      p.style.left = Math.max(pad, Math.min(
+        align === 'right' ? tr.right - w : tr.left,
+        window.innerWidth - w - pad)) + 'px'
+      p.style.visibility = 'visible'
+    }
+
+    place()
+    let frame = 0
+    const reposition = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(place) }
+    // capture: true catches scroll on every scrollable ancestor, not just the window
+    window.addEventListener('scroll', reposition, true)
+    window.addEventListener('resize', reposition)
+    return () => {
+      cancelAnimationFrame(frame)
+      window.removeEventListener('scroll', reposition, true)
+      window.removeEventListener('resize', reposition)
+    }
+  }, [open, align])
+
+  return { triggerRef, panelRef }
+}
+
+export interface PickerRemote {
+  /** Search the server as the user types (debounced). */
+  onSearch: (q: string) => void
+  /** True while a search is in flight. */
+  searching?: boolean
+  /** True when the last search failed (show a hint). */
+  failed?: boolean
+}
+
+export function Picker<T>({ value, options, onChange, trigger, title, className = 'chip', align = 'left', search, disabled, remote }: {
+  value:      T
+  options:    PickerOption<T>[]
+  onChange:   (v: T) => void
+  trigger:    ReactNode
+  title?:     string
+  className?: string
+  align?:     'left' | 'right'
+  search?:    boolean
+  disabled?:  boolean
+  /** When set, the search box queries the server (remote.onSearch) instead of filtering `options`;
+   *  `options` are shown while idle (empty query). Existing pickers are unaffected. */
+  remote?:    PickerRemote
+}) {
+  const [open, setOpen]   = useState(false)
+  const [query, setQuery] = useState('')
+  const { triggerRef, panelRef } = useAnchoredPanel(open, align)
+  // Remote: the server returns the list to show; local: filter the provided options.
+  const shown = remote && query ? options : (query ? options.filter(o => String(o.label ?? '').toLowerCase().includes(query.toLowerCase())) : options)
+
+  useEffect(() => {
+    if (!open) { if (query) { setQuery(''); remote?.onSearch('') } return }
+    remote?.onSearch('')   // seeds the list on first open (one shared request)
+    if (!search) panelRef.current?.querySelector<HTMLButtonElement>('[aria-selected=true], button')?.focus()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
+
+  const onSearchInput = (q: string) => {
+    setQuery(q)
+    if (remote) remote.onSearch(q)   // debounced by the caller (useUserSearch)
+  }
+
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') { e.stopPropagation(); setOpen(false) }
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault()
+      const items = [...(panelRef.current?.querySelectorAll<HTMLButtonElement>('.picker-item') ?? [])]
+      const i = items.indexOf(document.activeElement as HTMLButtonElement)
+      items[(i + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length]?.focus()
+    }
+    if (e.key === 'Enter' && search && document.activeElement?.tagName === 'INPUT' && shown[0]) {
+      e.preventDefault(); onChange(shown[0].value); setOpen(false)
+    }
+  }
+
+  return (
+    <span className="picker" onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}>
+      <button ref={triggerRef} type="button" className={className} onClick={() => setOpen(v => !v)} title={title} aria-label={title}
+        aria-haspopup="listbox" aria-expanded={open} disabled={disabled}>
+        {trigger}
+      </button>
+      {open && (
+        <>
+          <div className="popover-scrim" onClick={() => setOpen(false)} />
+          <div ref={panelRef} className="picker-menu picker-fixed" style={{ visibility: 'hidden' }} role="listbox" onKeyDown={onKeyDown}>
+            {search && (
+              <input className="picker-search" value={query} onChange={e => onSearchInput(e.target.value)} placeholder="Search…" autoFocus aria-label="Search options" />
+            )}
+            {remote?.searching && <div className="picker-empty">Searching…</div>}
+            {!remote?.searching && shown.length === 0 && (
+              <div className="picker-empty">{remote && query ? 'No matches' : 'No matches'}</div>
+            )}
+            {shown.map(o => {
+              const selected = o.value === value
+              return (
+                <button
+                  key={String(o.value)}
+                  type="button"
+                  role="option"
+                  aria-selected={selected}
+                  className="picker-item"
+                  onClick={() => { onChange(o.value); setOpen(false) }}
+                >
+                  {o.icon}
+                  <span className="picker-label">{o.label}</span>
+                  {o.hint && <span className="picker-hint">{o.hint}</span>}
+                  {selected && <Check size={14} strokeWidth={2} className="picker-check" />}
+                </button>
+              )
+            })}
+          </div>
+        </>
+      )}
+    </span>
+  )
+}
+
+// ── Menu: a list of actions ────────────────────────────────
+
+export interface MenuItem {
+  label:   string
+  icon?:   ReactNode
+  onClick: () => void
+  danger?: boolean
+  hint?:   string
+  divider?: boolean
+  /** Why it can't be chosen now (shown as its tooltip); unset when it can */
+  disabled?: string
+}
+
+export function Menu({ items, trigger, title, className = 'icon-btn', align = 'right' }: {
+  items: MenuItem[]; trigger: ReactNode; title: string; className?: string; align?: 'left' | 'right'
+}) {
+  const [open, setOpen] = useState(false)
+  const { ref, up } = usePopoverPlacement(open)
+  useEffect(() => { if (open) ref.current?.querySelector<HTMLButtonElement>('button')?.focus() }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <span className="picker" onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}>
+      <button type="button" className={className} onClick={() => setOpen(v => !v)} title={title} aria-label={title} aria-haspopup="menu" aria-expanded={open}>
+        {trigger}
+      </button>
+      {open && (
+        <>
+          <div className="popover-scrim" onClick={() => setOpen(false)} />
+          <div ref={ref} className={`picker-menu picker-${align}${up ? ' up' : ''}`} role="menu"
+            onKeyDown={e => {
+              if (e.key === 'Escape') setOpen(false)
+              if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                e.preventDefault()
+                const xs = [...(ref.current?.querySelectorAll<HTMLButtonElement>('button') ?? [])]
+                const i = xs.indexOf(document.activeElement as HTMLButtonElement)
+                xs[(i + (e.key === 'ArrowDown' ? 1 : -1) + xs.length) % xs.length]?.focus()
+              }
+            }}>
+            {items.map((it, i) => (
+              <span key={i} style={{ display: 'contents' }}>
+                {it.divider && <div className="menu-divider" />}
+                <button type="button" role="menuitem" className={`picker-item${it.danger ? ' danger' : ''}`} disabled={!!it.disabled} title={it.disabled}
+                  onClick={() => { setOpen(false); it.onClick() }}>
+                  {it.icon}
+                  <span className="picker-label">{it.label}</span>
+                  {it.hint && <kbd className="kbd">{it.hint}</kbd>}
+                </button>
+              </span>
+            ))}
+          </div>
+        </>
+      )}
+    </span>
+  )
+}
+
+// ── Modal ──────────────────────────────────────────────────
+
+export function Modal({ title, onClose, children, footer, width = 480 }: {
+  title: string; onClose: () => void; children: ReactNode; footer?: ReactNode; width?: number
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+  const close = useRef(onClose)
+  close.current = onClose
+  useEffect(() => {
+    // Keep keyboard focus inside the dialog, and close the topmost dialog on Escape
+    const el = ref.current
+    if (el && !el.contains(document.activeElement)) el.focus()
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      const dialogs = document.querySelectorAll('.modal')
+      if (dialogs[dialogs.length - 1] === el) { e.stopPropagation(); close.current() }
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [])
+  return (
+    <div className="modal-backdrop" onMouseDown={onClose}>
+      <div ref={ref} tabIndex={-1} className="modal" style={{ width, outline: 'none' }} role="dialog" aria-modal="true" aria-label={title}
+        onMouseDown={e => e.stopPropagation()}>
+        <div className="modal-hdr">
+          <h2 className="modal-title">{title}</h2>
+          <button className="icon-btn" onClick={onClose} aria-label="Close"><X size={16} /></button>
+        </div>
+        <div className="modal-body">{children}</div>
+        {footer && <div className="modal-ftr">{footer}</div>}
+      </div>
+    </div>
+  )
+}
+
+// ── Small controls ─────────────────────────────────────────
+
+export function Toggle({ on, onChange, label }: { on: boolean; onChange: (v: boolean) => void; label: string }) {
+  return (
+    <button type="button" role="switch" aria-checked={on} aria-label={label} className={`toggle${on ? ' on' : ''}`} onClick={() => onChange(!on)}>
+      <span className="toggle-thumb" />
+    </button>
+  )
+}
+
+export function Checkbox({ checked, indeterminate, onChange, label }: {
+  checked: boolean; indeterminate?: boolean; onChange: (v: boolean, e: React.MouseEvent) => void; label: string
+}) {
+  return (
+    <button type="button" role="checkbox" aria-checked={indeterminate ? 'mixed' : checked} aria-label={label}
+      className={`checkbox${checked || indeterminate ? ' on' : ''}`}
+      onClick={e => { e.stopPropagation(); onChange(!checked, e) }}>
+      {indeterminate ? <Minus size={11} strokeWidth={3} /> : checked ? <Check size={11} strokeWidth={3} /> : null}
+    </button>
+  )
+}
+
+// ── Option builders ────────────────────────────────────────
+
+/** Status options. With `from`, only statuses the workflow allows moving to (plus the current one); with `ctx`, only
+ *  moves this person may make (transition rules); with `type`, only the statuses of that work type's workflow. */
+export function statusOptions(project: Project, from?: string, ctx?: RuleCtx, type?: string): PickerOption<string>[] {
+  const allowed = from === undefined || !project.transitions.length ? null : new Map(transitionsFrom(project, from, ctx).map(t => [t.to, t.name]))
+  return (type ? statusesFor(project, type) : project.statuses)
+    .filter(s => !allowed || s.id === from || allowed.has(s.id))
+    .map(s => ({
+      value: s.id, label: s.name,
+      hint: allowed && s.id !== from && allowed.get(s.id) !== s.name ? allowed.get(s.id) : undefined,
+      icon: <span className="status-dot" style={{ background: s.color }} />,
+    }))
+}
+
+/** The priorities to choose from, highest first. */
+export const priorityOptions = (): PickerOption<Priority>[] =>
+  priorityList().map(p => ({ value: p.key, label: p.name, icon: <PriorityIcon priority={p.key} /> }))
+
+/** Work types to choose from: the project's (without one, every loaded project's); `allowEpic` false leaves out the parent level. */
+export const typeOptions = (project?: Pick<Project, 'types'>, allowEpic = true, all: Pick<Project, 'types'>[] = []): PickerOption<IssueType>[] =>
+  typeList(project, all).filter(t => allowEpic || (t.key !== 'epic' && t.key !== 'initiative'))
+    .map(t => ({ value: t.key, label: t.name, icon: <TypeIcon type={t.key} project={project} /> }))
+
+export const userOptions = (users: User[]): PickerOption<string | undefined>[] => [
+  { value: undefined, label: 'Unassigned', icon: <Avatar size={20} /> },
+  ...users.map(u => ({ value: u.id as string | undefined, label: u.name, icon: <Avatar user={u} size={20} /> })),
+]
+
+/** Picks several from a short list, as chips with an add menu. */
+/** Chips for the chosen keys, and a select to add one. `locked` keys show without a remove button (an archived version). */
+export function MultiSelect({ label, all, value, onChange, locked = [] }: { label: string; all: { key: string; name: string }[]; value: string[]; onChange: (v: string[]) => void; locked?: string[] }) {
+  const rest = all.filter(a => !value.includes(a.key) && !locked.includes(a.key))
+  return (
+    <span className="rule-chips">
+      {value.map(k => (
+        <span key={k} className="chip-static" title={locked.includes(k) ? 'Archived: it stays on this item' : undefined}>{all.find(a => a.key === k)?.name ?? 'Removed'}
+          {!locked.includes(k) && <button className="chip-x" aria-label={`Remove ${all.find(a => a.key === k)?.name ?? 'item'}`} onClick={() => onChange(value.filter(x => x !== k))}>×</button>}
+        </span>
+      ))}
+      {rest.length > 0 && (
+        <select className="input input-sm" aria-label={`Add to ${label.toLowerCase()}`} value="" onChange={e => e.target.value && onChange([...value, e.target.value])}>
+          <option value="">{value.length ? '+ Add' : 'Choose…'}</option>
+          {rest.map(a => <option key={a.key} value={a.key}>{a.name}</option>)}
+        </select>
+      )}
+    </span>
+  )
+}
+
+// ── Loading, failed, confirm ───────────────────────────────
+
+/** Placeholder lines while a list or page loads (announced once to screen readers). */
+export function Loading({ rows = 3 }: { rows?: number }) {
+  return (
+    <div className="skeleton-list" role="status" aria-label="Loading">
+      {Array.from({ length: rows }, (_, i) => <div key={i} className="skeleton" style={{ width: `${90 - i * 12}%` }} />)}
+    </div>
+  )
+}
+
+/** A load that failed: what went wrong, and a way to try again. */
+export function LoadError({ error, onRetry }: { error: string; onRetry: () => void }) {
+  return (
+    <div className="load-error" role="alert">
+      <span>{error}</span>
+      <button className="btn btn-secondary btn-sm" onClick={onRetry}>Try again</button>
+    </div>
+  )
+}
+
+/** Asks before something that can't simply be undone, saying what it will do. `typeToConfirm`: for the biggest ones,
+ *  the person types this (a name) first. The dialog stays open, with the error, if the action fails. */
+export function ConfirmDialog({ title, children, action, danger = true, typeToConfirm, onConfirm, onClose }: {
+  title: string; children: ReactNode; action: string; danger?: boolean; typeToConfirm?: string
+  onConfirm: () => Promise<unknown> | void; onClose: () => void
+}) {
+  const [typed, setTyped] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const ready = !typeToConfirm || typed.trim() === typeToConfirm
+  const go = async () => {
+    setBusy(true); setError('')
+    try { await onConfirm(); onClose() } catch (e) { setError(errorMessage(e)); setBusy(false) }
+  }
+  return (
+    <Modal title={title} onClose={onClose} footer={<>
+      <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
+      <button className={`btn ${danger ? 'btn-danger' : 'btn-primary'}`} disabled={!ready || busy} onClick={() => void go()}>{busy ? 'Working…' : action}</button>
+    </>}>
+      {children}
+      {typeToConfirm && <>
+        <label className="label" htmlFor="confirm-type" style={{ marginTop: 12 }}>Type <b>{typeToConfirm}</b> to confirm</label>
+        <input id="confirm-type" className="input" autoFocus value={typed} onChange={e => setTyped(e.target.value)} onKeyDown={e => e.key === 'Enter' && ready && void go()} />
+      </>}
+      {error && <p className="hint error" role="alert">{error}</p>}
+    </Modal>
+  )
+}
+
+/** Props for a table row that opens something: pointer, keyboard (Tab, Enter) and a name for screen readers. */
+export const openRow = (open: () => void, label: string) => ({
+  className: 'row-open', tabIndex: 0, 'aria-label': label, onClick: open,
+  onKeyDown: (e: { key: string; target: EventTarget; currentTarget: EventTarget; preventDefault: () => void }) => {
+    if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) { e.preventDefault(); open() }
+  },
+})
+
+// ── Empty state ────────────────────────────────────────────
+
+export function Empty({ icon, title, body, action }: {
+  icon: ReactNode; title: string; body: string; action?: ReactNode
+}) {
+  return (
+    <div className="empty">
+      <div className="empty-icon">{icon}</div>
+      <h2 className="empty-title">{title}</h2>
+      <div className="empty-body">{body}</div>
+      {action && <div className="empty-actions">{action}</div>}
+    </div>
+  )
+}
+
+export const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : /(s|x|ch|sh)$/.test(word) ? 'es' : 's'}`
+
+/** "Mar 4" for a YYYY-MM-DD date. */
+export const formatDate = (date: string) =>
+  new Date(date + 'T00:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
+export const isOverdue = (date?: string) => !!date && new Date(date + 'T23:59') < new Date()
+
+// ── Popover: free-form panel under a trigger ───────────────
+
+export function Popover({ trigger, title, className = 'btn btn-secondary', align = 'right', children, width = 280 }: {
+  trigger: ReactNode; title: string; className?: string; align?: 'left' | 'right'; children: ReactNode; width?: number
+}) {
+  const [open, setOpen] = useState(false)
+  return (
+    <span className="picker" onClick={e => e.stopPropagation()}>
+      <button type="button" className={`${className}${open ? ' active' : ''}`} onClick={() => setOpen(v => !v)} aria-expanded={open} aria-label={title} title={title}>
+        {trigger}
+      </button>
+      {open && (
+        <>
+          <div className="popover-scrim" onClick={() => setOpen(false)} />
+          <div className={`popover picker-${align}`} style={{ width }} role="dialog" aria-label={title}
+            onKeyDown={e => e.key === 'Escape' && setOpen(false)}>
+            <div className="popover-hdr">
+              <span>{title}</span>
+              <button className="icon-btn sm" onClick={() => setOpen(false)} aria-label="Close"><X size={14} /></button>
+            </div>
+            {children}
+          </div>
+        </>
+      )}
+    </span>
+  )
+}

@@ -1,0 +1,174 @@
+import { useState } from 'react'
+import {
+  LayoutGrid, Inbox, Search, ShieldCheck, PanelLeftClose, PanelLeftOpen, SearchCode, FolderKanban,
+  ChevronRight, ChevronDown, Bookmark, Columns2, ListChecks, List, BarChart3, Gauge, Hash, GanttChart, CalendarDays, Rocket, Star, SlidersHorizontal,
+} from 'lucide-react'
+import { useStore } from '../data/store'
+import { plansInBacklog } from '../data/reducer'
+import { isJiraAdmin } from '../data/access'
+import { apiEnabled } from '../api/client'
+import { useApp } from '../appContext'
+import { href, navigate, type Route, type ProjectTab } from '../router'
+import { imageUrl, useLook } from '../api/look'
+import { ProjectIcon } from './ProjectView'
+
+export function Logomark({ size = 28 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 28 28" fill="none" aria-hidden>
+      <rect width="28" height="28" rx="6" fill="var(--brand)" />
+      <path d="M11 8h7v9a5 5 0 0 1-10 0v-1h2.5v1a2.5 2.5 0 0 0 5 0v-6.5H11z" fill="white" />
+    </svg>
+  )
+}
+
+const PROJECT_LINKS: { tab: ProjectTab; label: string; Icon: typeof List; scrumOnly?: boolean }[] = [
+  { tab: 'summary', label: 'Summary', Icon: Gauge },
+  { tab: 'backlog', label: 'Backlog', Icon: ListChecks, scrumOnly: true },
+  { tab: 'board',   label: 'Board',   Icon: Columns2 },
+  { tab: 'list',    label: 'List',    Icon: List },
+  { tab: 'timeline', label: 'Timeline', Icon: GanttChart },
+  { tab: 'calendar', label: 'Calendar', Icon: CalendarDays },
+  { tab: 'releases', label: 'Releases', Icon: Rocket },
+  { tab: 'reports', label: 'Reports', Icon: BarChart3 },
+]
+
+export default function NavRail({ collapsed, onCollapseToggle, onCmdK, route, drawer }: {
+  /** Phones: the rail is an off-canvas drawer */
+  drawer?:          'open' | 'closed'
+  collapsed:        boolean
+  onCollapseToggle: () => void
+  onCmdK:           () => void
+  route:            Route
+  onCreateProject:  () => void
+}) {
+  const { state, dispatch } = useStore()
+  const { goTo, openIssue } = useApp()
+  const look = useLook()                                                       // site title and logo (spec 0702)
+  const currentKey = route.name === 'project' ? route.key : undefined
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(currentKey ? [currentKey] : []))
+  const unread = state.notifications.filter(n => n.userId === state.me?.id && !n.read && !n.archived).length
+  const starred = state.projects.filter(p => state.starred.includes(p.id) && !p.archivedAt)
+  const views = state.views
+  const recentIssues = state.viewed.slice(0, 5).map(id => state.issues.find(i => i.id === id)).filter(i => !!i)
+
+  const toggle = (key: string) => setExpanded(prev => {
+    const n = new Set(prev)
+    if (n.has(key)) n.delete(key); else n.add(key)
+    return n
+  })
+
+  const item = (active: boolean, label: string, Icon: typeof List, onClick: () => void, badge?: number) => (
+    <button className={`nav-item${active ? ' active' : ''}`} title={collapsed ? label : undefined} onClick={onClick} aria-current={active ? 'page' : undefined}>
+      <Icon size={16} strokeWidth={1.75} className="nav-icon" />
+      <span className="nav-label">{label}</span>
+      {!!badge && <span className="nav-badge" aria-label={`${badge} unread`}>{badge > 99 ? '99+' : badge}</span>}
+    </button>
+  )
+
+  const projectRow = (p: typeof state.projects[number], showStar = true) => {
+    const open = expanded.has(p.key) && !collapsed
+    const active = currentKey === p.key
+    const on = state.starred.includes(p.id)
+    return (
+      <div key={p.id}>
+        <div className={`nav-item nav-project${active && !open ? ' active' : ''}`} title={collapsed ? p.name : undefined}>
+          <button className="nav-caret" onClick={() => toggle(p.key)} aria-label={open ? `Collapse ${p.name}` : `Expand ${p.name}`} aria-expanded={open}>
+            {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+          </button>
+          <button className="nav-project-link" onClick={() => { navigate(href({ name: 'project', key: p.key })); setExpanded(s => new Set(s).add(p.key)) }}>
+            <ProjectIcon project={p} size={18} />
+            <span className="nav-label">{p.name}</span>
+          </button>
+          {showStar && (
+            <button className={`icon-btn xs nav-star${on ? ' on' : ''}`} onClick={e => { e.stopPropagation(); dispatch({ type: 'toggleStar', projectId: p.id }) }} title={on ? 'Unstar' : 'Star'} aria-label={on ? 'Remove from starred' : 'Add to starred'}>
+              <Star size={12} strokeWidth={1.75} fill={on ? 'currentColor' : 'none'} />
+            </button>
+          )}
+        </div>
+        {open && PROJECT_LINKS.filter(l => !l.scrumOnly || p.template === 'scrum' || !!p.boards?.some(plansInBacklog)).map(l => (
+          <button key={l.tab}
+            className={`nav-item nav-sub${active && route.name === 'project' && route.tab === l.tab ? ' active' : ''}`}
+            onClick={() => navigate(href({ name: 'project', key: p.key, tab: l.tab }))}>
+            <l.Icon size={14} strokeWidth={1.75} className="nav-icon" />
+            <span className="nav-label">{l.label}</span>
+          </button>
+        ))}
+      </div>
+    )
+  }
+
+  return (
+    <nav className={`nav-rail${collapsed ? ' collapsed' : ''}${drawer ? ` drawer ${drawer}` : ''}`} aria-label="Main navigation" aria-hidden={drawer === 'closed' || undefined} inert={drawer === 'closed' || undefined}>
+      <div className="nav-head">
+        {/* collapsed: the collapsed menu logo, else the favicon (spec 0719); open: the logo */}
+        {collapsed && (look.mark || look.favicon) ? <img className="site-mark" src={imageUrl(look.mark ?? look.favicon)!} alt={look.siteTitle} />
+          : !collapsed && look.logo ? <img className="site-logo" src={imageUrl(look.logo)!} alt={look.siteTitle} /> : <Logomark size={26} />}
+        {(look.showTitle || !look.logo) && <span className="nav-label nav-workspace" title={look.siteTitle}>{look.siteTitle}</span>}
+        <button className="icon-btn" onClick={onCollapseToggle} title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
+          {collapsed ? <PanelLeftOpen size={16} strokeWidth={1.75} /> : <PanelLeftClose size={16} strokeWidth={1.75} />}
+        </button>
+      </div>
+
+      <button className="nav-search" onClick={onCmdK} title="Search or jump to (⌘K)">
+        <Search size={14} strokeWidth={1.75} />
+        <span className="nav-label">Search or jump to…</span>
+        <kbd className="kbd nav-label">⌘K</kbd>
+      </button>
+
+      <div className="nav-body">
+        {item(route.name === 'home', 'Your work', LayoutGrid, () => goTo('home'))}
+        {item(route.name === 'inbox', 'Inbox', Inbox, () => goTo('inbox'), unread)}
+        {item(route.name === 'search' && !route.view, 'Search', SearchCode, () => goTo('search'))}
+        {item(route.name === 'projects', 'All projects', FolderKanban, () => goTo('projects'))}
+        {item(route.name === 'plans', 'Plans', GanttChart, () => goTo('plans'))}
+
+        {views.length > 0 && !collapsed && <div className="nav-section">Views</div>}
+        {!collapsed && views.map(v => (
+          <button key={v.id} className={`nav-item nav-recent${route.name === 'search' && route.view === v.id ? ' active' : ''}`}
+            onClick={() => navigate(href({ name: 'search', q: '', view: v.id }))} title={v.shared ? `${v.name} (shared)` : v.name}>
+            <Bookmark size={14} strokeWidth={1.75} className="nav-icon" />
+            <span className="nav-label">{v.name}</span>
+          </button>
+        ))}
+
+        {starred.length > 0 && <div className="nav-section">Starred</div>}
+        {starred.map(p => projectRow(p, true))}
+
+        {(() => {
+          const recentProjectIds = new Set<string>()
+          const recentProjects: typeof state.projects = []
+          for (const issueId of state.viewed) {
+            const i = state.issues.find(iss => iss.id === issueId)
+            if (i && !recentProjectIds.has(i.projectId)) {
+              recentProjectIds.add(i.projectId)
+              const p = state.projects.find(pr => pr.id === i.projectId)
+              if (p && !p.archivedAt) recentProjects.push(p)
+            }
+            if (recentProjects.length >= 4) break
+          }
+          return recentProjects.length > 0 ? (
+            <>
+              <div className="nav-section">Recent projects</div>
+              {recentProjects.map(p => {
+                if (starred.find(sp => sp.id === p.id)) return null
+                return projectRow(p, true)
+              })}
+            </>
+          ) : null
+        })()}
+
+        {recentIssues.length > 0 && !collapsed && <div className="nav-section">Recent issues</div>}
+        {!collapsed && recentIssues.map(i => (
+          <button key={i.id} className="nav-item nav-recent" onClick={() => openIssue(i.id)} title={`${i.key} ${i.title}`}>
+            <Hash size={13} strokeWidth={1.75} className="nav-icon" />
+            <span className="nav-label"><span className="mono">{i.key}</span> {i.title}</span>
+          </button>
+        ))}
+      </div>
+
+      <div className="nav-foot">
+        {apiEnabled && item(route.name === 'admin', isJiraAdmin(state) ? 'Administration' : 'Configuration', isJiraAdmin(state) ? ShieldCheck : SlidersHorizontal, () => goTo('admin'))}
+      </div>
+    </nav>
+  )
+}

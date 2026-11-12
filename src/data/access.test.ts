@@ -1,0 +1,22 @@
+import { test } from 'node:test'
+import assert from 'node:assert/strict'
+import { canAdmin, canEdit, isGlobalAdmin } from './access.ts'
+
+test('[0004.R2] viewers read only, members work, admins also manage; a local workspace has no limits', () => {
+  assert.deepEqual([canEdit({ role: 'viewer' }), canEdit({ role: 'member' }), canEdit({ role: 'admin' }), canEdit({})], [false, true, true, true])
+  assert.deepEqual([canAdmin({ role: 'viewer' }), canAdmin({ role: 'member' }), canAdmin({ role: 'admin' }), canAdmin({})], [false, false, true, true])
+  assert.equal(canEdit(undefined), true)
+})
+
+test('[0004.R3] global admin: from the server when connected; everyone in a workspace kept in this browser', () => {
+  assert.deepEqual([isGlobalAdmin({ isAdmin: true }), isGlobalAdmin({ isAdmin: false }), isGlobalAdmin({})], [true, false, true])
+})
+
+test('[0201.R4] the screens ask the same table as the server; a local workspace may do everything', async () => {
+  const { can } = await import('./access.ts')
+  const { PERMISSIONS, holds } = await import('../../server/src/shared/permissions.ts')
+  for (const k of Object.keys(PERMISSIONS) as (keyof typeof PERMISSIONS)[]) {
+    for (const role of ['viewer', 'member', 'admin'] as const) assert.equal(can({ role }, k), holds(role, k), `${role} ${k}`)
+    assert.equal(can({}, k), true)
+  }
+})

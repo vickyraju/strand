@@ -1,0 +1,212 @@
+// Converts API payloads (camelCased rows, ISO dates, nullable columns) into the app's own types
+// (epoch-millisecond numbers, optional fields). Pure: no React, no fetch, so it is unit-tested.
+import {
+  DEFAULT_BOARD_PREFS, statistic, type Project, type Sprint, type State, type User,
+  type Notification, type SavedView, type Activity, type Attachment, type Comment, type IssueLink, type Worklog, type Issue, type Status, type Transition, type Rule, type FieldDef, type Release, type ItemTemplate,
+} from '../data/reducer.ts'
+
+export type Row = Record<string, any>
+
+const ms = (iso: unknown): number | undefined => (iso ? new Date(String(iso)).getTime() : undefined)
+
+export const mapUser = (u: Row): User => ({
+  id: u.id, name: u.name, initials: u.initials, color: u.color, ...(u.title ? { title: u.title } : {}),
+})
+
+const mapStatus = (s: Row): Status => ({
+  id: s.id, name: s.name, color: s.color, category: s.category,
+  ...(s.description ? { description: s.description } : {}), ...(s.wipLimit ? { wipLimit: s.wipLimit } : {}),
+  ...(s.globalStatusId ? { globalStatusId: s.globalStatusId } : {}),
+})
+const mapTransition = (t: Row): Transition => ({
+  id: t.id, name: t.name, from: t.fromIds ?? 'any', to: t.toId ?? null, ...(t.rules && Object.keys(t.rules).length ? { rules: t.rules } : {}),
+  ...(t.typeKeys?.length ? { types: t.typeKeys } : {}),
+})
+const mapRule = (r: Row): Rule => ({
+  id: r.id, name: r.name, enabled: r.enabled, trigger: r.trigger, actions: r.actions, runs: r.runs ?? 0, ...(r.condition ? { condition: r.condition } : {}),
+  ...(r.failures ? { failures: r.failures } : {}), ...(r.ownerId ? { ownerId: r.ownerId } : {}),
+})
+const mapField = (f: Row): FieldDef => ({ id: f.id, name: f.name, kind: f.kind, ...(f.options ? { options: f.options } : {}),
+  ...(f.shared ? { shared: true } : {}), ...(f.typeKeys ? { typeKeys: f.typeKeys } : {}), ...(f.defaultValue != null ? { defaultValue: f.defaultValue } : {}), ...(f.description ? { description: f.description } : {}) })
+const mapRelease = (r: Row): Release => ({
+  id: r.id, name: r.name, description: r.description ?? '', released: !!r.released,
+  ...(r.startDate ? { startDate: r.startDate } : {}), ...(r.releaseDate ? { releaseDate: r.releaseDate } : {}),
+  ...(r.releasedAt ? { releasedAt: ms(r.releasedAt) } : {}), ...(r.archived ? { archived: true } : {}),
+})
+const mapTemplate = (t: Row): ItemTemplate => ({
+  id: t.id, name: t.name, type: t.type, title: t.title, description: t.description ?? '', priority: t.priority,
+  labels: t.labels ?? [], ...(t.estimate != null ? { estimate: t.estimate } : {}),
+})
+
+export const mapSprint = (s: Row): Sprint => ({
+  id: s.id, projectId: s.projectId, name: s.name, goal: s.goal ?? '', state: s.state,
+  ...(s.boardId ? { boardId: s.boardId } : {}),
+  startedAt: ms(s.startedAt), endsAt: ms(s.endsAt), completedAt: ms(s.completedAt),
+  ...(s.committed != null ? { committed: s.committed } : {}), ...(s.completed != null ? { completed: s.completed } : {}),
+  ...(s.issueIds ? { issueIds: s.issueIds } : {}), ...(s.estimation ? { estimation: statistic(s) } : {}),
+})
+
+/** `GET /api/projects/:key` → Project. Server-side `{}` board prefs fall back to the app defaults. */
+export function mapProject(p: Row): Project {
+  const prefs = p.boardPrefs ?? {}
+  return {
+    id: p.id, key: p.key, name: p.name, description: p.description ?? '', color: p.color, template: p.template,
+    leadId: p.leadId ?? '',
+    ...(p.keys?.length > 1 ? { oldKeys: p.keys.slice(1) } : {}), ...(p.category !== undefined ? { category: p.category } : {}), ...(p.avatar ? { avatar: p.avatar } : {}),
+    statuses: (p.statuses ?? []).map(mapStatus),
+    transitions: (p.transitions ?? []).map(mapTransition),
+    layout: p.layout ?? {},
+    boardPrefs: { ...DEFAULT_BOARD_PREFS, ...prefs, fields: { ...DEFAULT_BOARD_PREFS.fields, ...(prefs.fields ?? {}) } },
+    nextNumber: p.nextNumber ?? 1,
+    ...(p.testing ? { testing: true } : {}),
+    ...(p.initiatives ? { initiatives: true } : {}),
+    ...(p.requirementTypes ? { requirementTypes: p.requirementTypes } : {}),
+    createdAt: ms(p.createdAt) ?? Date.now(),
+    rules: (p.rules ?? []).map(mapRule),
+    fields: (p.fields ?? []).map(mapField),
+    releases: (p.releases ?? []).map(mapRelease),
+    templates: (p.templates ?? []).map(mapTemplate),
+    ...(p.components?.length ? { components: p.components.map((c: Row) => ({ id: c.id, name: c.name, description: c.description ?? '', defaultAssignee: c.defaultAssignee, ...(c.leadId ? { leadId: c.leadId } : {}) })) } : {}),
+    ...(p.types?.length ? { types: p.types.map((t: Row) => ({ key: t.key, name: t.name, color: t.color, icon: t.icon })) } : {}),
+    ...(p.role ? { role: p.role } : {}),
+    ...(p.workflowSchemeId ? { workflowSchemeId: p.workflowSchemeId, workflows: p.workflows ?? [] } : {}),
+    ...(p.fieldRules ? { fieldRules: p.fieldRules, fieldConfigScheme: p.fieldConfigScheme ?? null } : {}),
+    ...(p.screens ? { screens: p.screens, issueTypeScreenScheme: p.issueTypeScreenScheme ?? null } : {}),
+    ...(p.archivedAt ? { archivedAt: ms(p.archivedAt) } : {}),
+    ...(p.boards ? { boards: p.boards.map((b: Row) => ({ id: b.id, name: b.name, type: b.type, jql: b.jql, position: b.position, hasBacklog: !!b.hasBacklog })) } : {}),
+  }
+}
+
+/** Everything slice 2 loads: who you are, the people, and the projects with their sprints. */
+export function mapWorkspace(me: Row, users: Row[], projects: Row[], starredIds: string[], extras: { views?: Row[]; notifications?: Row[] } = {}): State {
+  return {
+    version: 4, workspaceName: 'Jira Build POC',
+    ownerId: me.id, isAdmin: !!me.admin, recovery: !!me.recovery, groupIds: me.groupIds ?? [], ...(me.globalPermissions ? { globalPermissions: me.globalPermissions } : {}),
+    users: users.map(mapUser),
+    projects: projects.map(mapProject),
+    sprints: projects.flatMap(p => (p.sprints ?? []).map(mapSprint)),
+    issues: [], comments: [], activity: [], notifications: (extras.notifications ?? []).map(mapNotification),
+    starred: starredIds, viewed: [],
+    views: (extras.views ?? []).map(mapView), editors: {},
+  }
+}
+
+/** One row of `GET /api/projects/:key/issues` or the list endpoints that return issue rows
+ *  (search, my work, my recent): no description/created, status is the row's `statusId`.
+ *  Watchers, links, work logs and attachments start empty. */
+export const mapIssue = (i: Row): Issue => ({
+  id: i.id, key: i.key, projectId: i.projectId, type: i.type, title: i.title, description: i.description ?? '',
+  status: i.statusId, priority: i.priority, reporterId: i.reporterId ?? '', labels: i.labels ?? [],
+  ...(i.assigneeId ? { assigneeId: i.assigneeId } : {}),
+  ...(i.estimate != null ? { estimate: i.estimate } : {}),
+  ...(i.timeEstimate != null ? { timeEstimate: i.timeEstimate } : {}),
+  ...(i.timeRemaining != null ? { timeRemaining: i.timeRemaining } : {}),
+  ...(i.componentIds?.length ? { componentIds: i.componentIds } : {}),
+  ...(i.testSpec ? { testSpec: i.testSpec } : {}),
+  ...(i.testFolderId ? { testFolderId: i.testFolderId } : {}),
+  ...(i.testEnvironments?.length ? { testEnvironments: i.testEnvironments } : {}),
+  ...(i.revision ? { revision: i.revision } : {}),
+  ...(i.affectsReleaseIds?.length ? { affectsReleaseIds: i.affectsReleaseIds } : {}),
+  ...(i.dueDate ? { dueDate: i.dueDate } : {}), ...(i.startDate ? { startDate: i.startDate } : {}),
+  ...(i.sprintId ? { sprintId: i.sprintId } : {}), ...(i.fixReleaseIds?.length ? { fixReleaseIds: i.fixReleaseIds } : {}), ...(i.flagged != null ? { flagged: !!i.flagged } : {}), ...(i.epicColor ? { epicColor: i.epicColor } : {}), ...(i.epicStatus ? { epicStatus: i.epicStatus } : {}),
+  ...(i.parentId ? { parentId: i.parentId } : {}),
+  ...(i.parentLinkId ? { parentLinkId: i.parentLinkId } : {}),
+  ...(i.resolution ? { resolution: i.resolution, resolvedAt: ms(i.resolvedAt) } : {}),
+  ...(i.archivedAt ? { archivedAt: ms(i.archivedAt) } : {}),
+  watcherIds: [], links: [], attachments: [], worklogs: [],
+  custom: i.custom ?? {}, rank: i.rank ?? 0, createdAt: ms(i.createdAt) ?? Date.now(), updatedAt: ms(i.updatedAt) ?? Date.now(),
+})
+
+/** A search-list row: no description/created, status is the row's `statusId`. Unknown keys (cursorTs…) are dropped. */
+export const mapSearchRow = (i: Row): Issue => ({
+  id: i.id, key: i.key, projectId: i.projectId, type: i.type, title: i.title, description: '',
+  status: i.statusId, priority: i.priority, reporterId: '', labels: i.labels ?? [],
+  ...(i.assigneeId ? { assigneeId: i.assigneeId } : {}),
+  ...(i.estimate != null ? { estimate: i.estimate } : {}),
+  ...(i.dueDate ? { dueDate: i.dueDate } : {}),
+  watcherIds: [], links: [], attachments: [], worklogs: [],
+  custom: {}, rank: 0, createdAt: 0, updatedAt: ms(i.updatedAt) ?? Date.now(),
+})
+
+/** `GET /api/notifications` rows: the server joins the issue's key, title and project key, so inbox rows
+ *  never need the issue itself loaded. */
+export const mapNotification = (n: Row): Notification => ({
+  id: n.id, userId: n.userId, actorId: n.actorId ?? '', issueId: n.issueId, kind: n.kind, text: n.text,
+  read: !!n.read, archived: !!n.archived, createdAt: ms(n.createdAt) ?? Date.now(),
+  ...(n.issueKey ? { issueKey: n.issueKey } : {}),
+  ...(n.issueTitle ? { issueTitle: n.issueTitle } : {}),
+  ...(n.projectKey ? { projectKey: n.projectKey } : {}),
+})
+
+/** The sentence shown for a notification. The server stores a phrase ("commented on a work item", "is due on 2026-10-25");
+ *  the browser-only store writes whole sentences ("Maya commented on PAY-3"). Both read as one sentence: a phrase gets the person's
+ *  name in front, or the item's key when nobody caused it (a due date). */
+export function notificationReason(text: string, actorName: string | undefined, issueKey?: string): string {
+  if (actorName && text.startsWith(actorName)) return text
+  if (actorName) return `${actorName} ${text}`
+  return issueKey && !text.includes(issueKey) ? `${issueKey} ${text}` : text
+}
+
+export const mapComment = (c: Row): Comment => ({
+  id: c.id, issueId: c.issueId, authorId: c.authorId ?? '', body: c.body, createdAt: ms(c.createdAt) ?? Date.now(),
+  ...(c.visibility ? { visibility: c.visibility } : {}),
+  ...(c.editedAt ? { editedAt: ms(c.editedAt) } : {}),
+})
+const own = (a: Row, k: string): unknown => (Object.prototype.hasOwnProperty.call(a, k) ? a[k] : undefined)   // toString is also every object's method
+export const mapActivity = (a: Row): Activity => ({
+  id: a.id, issueId: a.issueId, actorId: a.actorId ?? 'automation', text: a.text, createdAt: ms(a.createdAt) ?? Date.now(),
+  // the server names the column (statusId); the app records status changes as 'status'
+  ...(a.field ? { field: a.field === 'statusId' ? 'status' : a.field } : {}), ...(a.fromValue != null ? { from: a.fromValue } : {}), ...(a.toValue != null ? { to: a.toValue } : {}),
+  // the names as they read at the time (spec 0601 R1)
+  ...(a.fromString != null ? { fromName: a.fromString } : {}), ...(typeof own(a, 'toString') === 'string' ? { toName: own(a, 'toString') as string } : {}),
+})
+export const mapWorklog = (w: Row): Worklog => ({
+  id: w.id, userId: w.userId ?? '', minutes: w.minutes, date: w.date, note: w.note ?? '', at: ms(w.createdAt) ?? Date.now(),
+})
+
+/** `GET /api/issues/:key` → the pieces the reducer keeps next to an issue. Links are the issue's own (outgoing) ones. */
+export function mapIssueDetail(d: Row) {
+  return {
+    comments: (d.comments ?? []).map(mapComment),
+    activity: (d.activity ?? []).map(mapActivity),
+    worklogs: (d.worklogs ?? []).map(mapWorklog),
+    links: (d.links ?? []).filter((l: Row) => l.dir === 'out').map((l: Row): IssueLink => ({ type: l.type, issueId: l.issueId })),
+    watcherIds: (d.watcherIds ?? []) as string[],
+    attachments: (d.attachments ?? []).map((a: Row): Attachment => ({
+      id: a.id, name: a.name, size: a.size, type: a.type, addedBy: a.addedBy ?? '', addedAt: ms(a.addedAt) ?? Date.now(),
+    })),
+  }
+}
+
+export const mapView = (v: Row): SavedView => ({
+  id: v.id, name: v.name, ownerId: v.ownerId, shared: !!v.shared, filters: v.filters,
+  ...(v.share?.length ? { share: v.share } : {}), ...(v.canEdit !== undefined ? { canEdit: !!v.canEdit } : {}),
+})
+
+// ── Reports (GET /projects/:key/report-data) ──
+export interface StatusChange { issueId: string; fromId: string | null; toId: string; at: string }
+
+/** Server rows → the issues and status history the report maths read. Each item gets a first entry for the
+ *  status it was created in (the first change's "from", or its status now if it never moved), as the local store records it. */
+/** The status an item was created in: where its first recorded change started from. A first record without a "from" is
+ *  the creation itself (imported history has one), so its "to" is the starting status. No changes: it never moved. */
+const initialStatus = (first: StatusChange | undefined, now: string) => (first ? first.fromId ?? first.toId : now)
+
+export function toReportData(rows: Row[], changes: StatusChange[], joins: { issueId: string; field: string; value: string; at: string }[] = [],
+  estimates: { issueId: string; field: string; from: string | null; to: string | null; at: string }[] = []): { issues: Issue[]; activity: Activity[] } {
+  const issues = rows.map(mapIssue)
+  const first = new Map<string, StatusChange>()
+  for (const c of changes) if (!first.has(c.issueId)) first.set(c.issueId, c)
+  const activity: Activity[] = issues.map(i => ({
+    id: `created-${i.id}`, issueId: i.id, actorId: i.reporterId, text: 'created the work item', field: 'status',
+    to: initialStatus(first.get(i.id), i.status), createdAt: i.createdAt,
+  }))
+  for (const c of changes) activity.push({
+    id: `${c.issueId}-${c.at}`, issueId: c.issueId, actorId: '', text: 'changed status', field: 'status',
+    ...(c.fromId ? { from: c.fromId } : {}), to: c.toId, createdAt: Date.parse(c.at),
+  })
+  for (const j of joins) activity.push({ id: `${j.issueId}-${j.field}-${j.at}`, issueId: j.issueId, actorId: '', text: `changed ${j.field}`, field: j.field, to: j.value, createdAt: Date.parse(j.at) })
+  for (const e of estimates) activity.push({ id: `${e.issueId}-${e.field}-${e.at}`, issueId: e.issueId, actorId: '', text: `changed ${e.field}`, field: e.field,
+    ...(e.from != null ? { from: e.from } : {}), ...(e.to != null ? { to: e.to } : {}), createdAt: Date.parse(e.at) })
+  return { issues, activity }
+}

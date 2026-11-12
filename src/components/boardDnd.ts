@@ -1,0 +1,122 @@
+// Drag and drop for the board and its swimlanes. The rules (what a drop does) are plain functions so they are unit-tested;
+// the rest wires dnd-kit so cards move with a mouse, a finger (press and hold) or the keyboard (Space, arrows, Space).
+import {
+  KeyboardSensor, MouseSensor, TouchSensor, pointerWithin, rectIntersection, useSensor, useSensors,
+  type Announcements, type CollisionDetection, type KeyboardCoordinateGetter,
+} from '@dnd-kit/core'
+import { canTransition, statusOf, type Issue, type IssuePatch, type Project } from '../data/reducer.ts'
+import type { RuleCtx } from '../data/transitionRules.ts'
+
+// ── The rules ────────────────────────────────────────────
+
+export type DropPlan = { patch: IssuePatch } | { blocked: string }
+
+/** A board column: the global statuses it shows (in a local workspace, the project's own statuses stand for themselves). */
+export interface BoardColumn { name: string; statusIds: string[] }
+
+/** The statuses of `project` a column shows, in the project's order. */
+export const statusesIn = (project: Project, col: BoardColumn) =>
+  project.statuses.filter(s => col.statusIds.includes(s.globalStatusId ?? s.id)).map(s => s.id)
+
+/** What dropping a card into a cell does: move it into the first of the column's statuses that its own project's workflow
+ *  allows (for this person, given `ctx`: a transition's Restrict rules), and, when the cell is in another swimlane, also
+ *  change the field the board is grouped by. A move the workflow forbids does nothing at all. */
+export function planDrop(o: { project: Project; issue: Issue; column: BoardColumn; lanePatch?: IssuePatch; moveLane: boolean; ctx?: RuleCtx }): DropPlan {
+  const patch: IssuePatch = {}
+  const targets = statusesIn(o.project, o.column)
+  if (!targets.includes(o.issue.status)) {
+    const to = targets.find(t => canTransition(o.project, o.issue.status, t, o.ctx))
+    if (!to) {
+      return { blocked: targets.length
+        ? `The ${o.project.name} workflow doesn’t allow ${statusOf(o.project, o.issue.status)?.name} → ${o.column.name}`
+        : `${o.column.name} has no status of the ${o.project.name} workflow` }
+    }
+    patch.status = to
+  }
+  if (o.moveLane && o.lanePatch) Object.assign(patch, o.lanePatch)
+  return { patch }
+}
+
+// ── Collisions and the keyboard ──────────────────────────
+
+/** Under the pointer when there is one (mouse, finger); otherwise whichever cell the card overlaps most (keyboard). */
+export const boardCollision: CollisionDetection = args => {
+  const under = pointerWithin(args)
+  return under.length ? under : rectIntersection(args)
+}
+
+const ARROWS: Record<string, [number, number]> = { ArrowRight: [1, 0], ArrowLeft: [-1, 0], ArrowDown: [0, 1], ArrowUp: [0, -1] }
+
+/** Arrow keys jump the card to the next cell in that direction, staying in the same swimlane for left and right.
+ *  (dnd-kit's own getter assumes sortable lists, where the dragged item is itself a drop target; a kanban card is not.) */
+export const boardKeyboard: KeyboardCoordinateGetter = (event, { context: { active, collisionRect, droppableRects, droppableContainers, over } }) => {
+  const dir = ARROWS[event.code]
+  if (!dir || !active || !collisionRect || !over) return
+  event.preventDefault()
+  const here = droppableRects.get(over.id)
+  if (!here) return
+  const hx = here.left + here.width / 2, hy = here.top + here.height / 2
+  let best: { left: number; top: number } | undefined, bestScore = Infinity
+  for (const cell of droppableContainers.getEnabled()) {
+    const r = droppableRects.get(cell.id)
+    if (!r || cell.id === over.id) continue
+    const dx = r.left + r.width / 2 - hx, dy = r.top + r.height / 2 - hy
+    const ahead = dx * dir[0] + dy * dir[1]
+    if (ahead <= 1) continue                                    // behind, or the same place
+    const aside = dir[0] ? Math.abs(dy) : Math.abs(dx)          // prefer the same row (or column)
+    const score = ahead + aside * 3
+    if (score < bestScore) { bestScore = score; best = r }
+  }
+  return best ? { x: best.left + 12, y: best.top + 12 } : undefined
+}
+
+/** Mouse after a 6 px move (so a click still opens the card), finger after a short hold (so the page still scrolls),
+ *  keyboard with Space. Enter is left alone: it opens the card. The backlog passes its own arrow-key getter. */
+const NO_SENSORS: ReturnType<typeof useSensors> = []
+
+/** Mouse, touch and keyboard sensors; `enabled = false` (a viewer) leaves nothing that can start a drag. */
+export function useBoardSensors(coordinateGetter: KeyboardCoordinateGetter = boardKeyboard, enabled = true) {
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 220, tolerance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter, keyboardCodes: { start: ['Space'], cancel: ['Escape'], end: ['Space'] } }),
+  )
+  return enabled ? sensors : NO_SENSORS
+}
+
+// ── What a screen reader hears ───────────────────────────
+
+export const BOARD_INSTRUCTIONS = 'To move a work item, press Space on it, use the arrow keys to choose a column or swimlane, then press Space to drop it. Press Escape to cancel.'
+
+export interface Describe {
+  key: (cardId: unknown) => string
+  status: (cardId: unknown) => string
+  column: (cellId: unknown) => string
+  /** What dropping this card in that cell would do. */
+  verdict: (cardId: unknown, cellId: unknown) => 'moves' | 'stays' | 'blocked'
+}
+
+// Lifting a card reports "over its own column" straight away, which would replace "Picked up" before it is heard. So that
+// first report is skipped; only one card is ever carried at a time, so a single flag is enough.
+let wandered = false
+
+export function boardAnnouncements(d: Describe): Announcements {
+  return {
+    onDragStart: ({ active }) => { wandered = false; return `Picked up ${d.key(active.id)}. It is in ${d.status(active.id)}.` },
+    onDragOver: ({ active, over }) => {
+      if (!over) return `${d.key(active.id)} is not over a column.`
+      const v = d.verdict(active.id, over.id)
+      if (v === 'stays' && !wandered) return undefined
+      wandered = true
+      if (v === 'blocked') return `${d.key(active.id)} is over ${d.column(over.id)}. The workflow does not allow that move.`
+      return v === 'stays' ? `${d.key(active.id)} is back over ${d.column(over.id)}, where it started.` : `${d.key(active.id)} is over ${d.column(over.id)}.`
+    },
+    onDragEnd: ({ active, over }) => {
+      if (!over) return `${d.key(active.id)} was dropped outside the board and did not move.`
+      const v = d.verdict(active.id, over.id)
+      if (v === 'blocked') return `${d.key(active.id)} did not move: the workflow does not allow that move.`
+      return v === 'stays' ? `${d.key(active.id)} stays in ${d.status(active.id)}.` : `${d.key(active.id)} was moved to ${d.column(over.id)}.`
+    },
+    onDragCancel: ({ active }) => `Cancelled. ${d.key(active.id)} did not move.`,
+  }
+}

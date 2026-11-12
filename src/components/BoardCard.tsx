@@ -1,0 +1,121 @@
+import { useState } from 'react'
+import { useDraggable } from '@dnd-kit/core'
+import { can } from '../data/access'
+import DeleteItemsDialog from './DeleteItemsDialog'
+import { MoreHorizontal, CalendarDays, Flag, Ban, UserCheck, Link2, Trash2, ArrowRight, Eye, RefreshCw } from 'lucide-react'
+import { useStore, userOf, blockersOf, indexOf, transitionsFrom, loopsFrom, moveContext, type Issue, type Project, type CardField } from '../data/store'
+import { useApp } from '../appContext'
+import { href } from '../router'
+import { TypeIcon, PriorityIcon, Avatar, Menu, formatDate, isOverdue, type MenuItem } from './ui'
+import { epicColor } from './panelRules'
+import { useFlagActions } from './FlagActions'
+
+/** "Move to Done", or "Approve → Done" when the transition has its own name. */
+export function transitionLabel(project: Project, t: { name: string; to: string }) {
+  const target = project.statuses.find(s => s.id === t.to)?.name ?? ''
+  return t.name === target ? `Move to ${target}` : `${t.name} → ${target}`
+}
+
+interface CardProps {
+  issue:     Issue
+  project:   Project
+  fields:    Record<CardField, boolean>
+  /** This is the card being dragged (its place on the board shows it faded). */
+  dragging?: boolean
+  /** The board's card colour for it, shown on its left edge (spec 0409). */
+  stripe?: string
+}
+
+/** A card on the board: click or press Enter to open it; drag it, or press Space and use the arrow keys, to move it. */
+export default function BoardCard(props: CardProps) {
+  const drag = useDraggable({ id: props.issue.id })
+  return <CardView {...props} drag={drag} />
+}
+
+/** The copy that follows the pointer while dragging: looks like the card, does nothing. */
+export function CardGhost(props: Omit<CardProps, 'dragging'>) {
+  return <CardView {...props} ghost />
+}
+
+function CardView({ issue, project, fields, dragging, ghost, drag, stripe }: CardProps & { ghost?: boolean; drag?: ReturnType<typeof useDraggable> }) {
+  const { state, dispatch } = useStore()
+  const { openIssue, toast, moveIssue, runTransition } = useApp()
+  const [deleting, setDeleting] = useState(false)
+  const status   = project.statuses.find(s => s.id === issue.status)
+  const done     = status?.category === 'done'
+  const index    = indexOf(state)
+  const parent   = issue.parentId ? index.byId.get(issue.parentId) : undefined
+  const epic     = parent?.type === 'epic' ? parent : undefined
+  const subItems = index.children.get(issue.id) ?? []
+  const subDone  = subItems.filter(i => project.statuses.find(s => s.id === i.status)?.category === 'done').length
+  const blocked  = blockersOf(state, issue).length > 0
+  const assignee = userOf(state, issue.assigneeId)
+
+  const flag = useFlagActions(issue, !ghost && can(project, 'editIssues'))       // Jira's Add flag / Remove flag (spec 0408)
+  const menu: MenuItem[] = [
+    { label: 'Open', icon: <Eye size={14} />, onClick: () => openIssue(issue.id) },
+    ...transitionsFrom(project, issue.status, moveContext(state, issue)).map((t, i) => ({
+      label: transitionLabel(project, t),
+      icon: <ArrowRight size={14} />, divider: i === 0,
+      onClick: () => moveIssue(issue.id, t.to),
+    })),
+    ...loopsFrom(project, issue.status, moveContext(state, issue)).map(t => ({ label: t.name, icon: <RefreshCw size={14} />, onClick: () => runTransition(issue.id, t.id) })),
+    ...(issue.assigneeId !== state.me?.id ? [{ label: 'Assign to me', icon: <UserCheck size={14} />, divider: true,
+      onClick: () => dispatch({ type: 'updateIssues', ids: [issue.id], patch: { assigneeId: state.me?.id } }) }] : []),
+    { label: 'Copy link', icon: <Link2 size={14} />, divider: issue.assigneeId === state.me?.id,
+      onClick: () => { navigator.clipboard?.writeText(location.origin + href({ name: 'issue', key: issue.key })); toast('Link copied') } },
+    ...flag.items,
+    ...(can(project, 'deleteIssues') ? [{ label: 'Delete', icon: <Trash2 size={14} />, danger: true, divider: true, onClick: () => setDeleting(true) }] : []),
+  ]
+
+  return (
+    <div
+      ref={drag?.setNodeRef} {...drag?.attributes} {...drag?.listeners}
+      className={`card${dragging ? ' dragging' : ''}${ghost ? ' ghost' : ''}${blocked && !done ? ' blocked' : ''}${issue.flagged ? ' flagged' : ''}${stripe ? ' striped' : ''}`}
+      style={stripe ? { '--stripe': stripe } as React.CSSProperties : undefined}
+      data-card={ghost ? undefined : issue.id}
+      onClick={ghost ? undefined : () => openIssue(issue.id)}
+      onKeyDown={ghost ? undefined : e => {
+        drag?.listeners?.onKeyDown?.(e)                                           // Space starts a keyboard drag
+        if (e.key === 'Enter' && e.target === e.currentTarget && !dragging) openIssue(issue.id)   // not when Enter was pressed on the menu button inside
+      }}
+      tabIndex={ghost ? -1 : 0}
+      aria-hidden={ghost || undefined}
+      aria-label={`${issue.key}: ${issue.title}. ${status?.name}${assignee ? `, assigned to ${assignee.name}` : ''}`}
+    >
+      <div className="card-title">{issue.title}</div>
+
+      {(blocked && !done) || (fields.epic && epic) || (fields.labels && issue.labels.length > 0) ? (
+        <div className="card-tags">
+          {blocked && !done && <span className="tag tag-danger"><Ban size={11} />Blocked</span>}
+          {fields.epic && epic && <span className="tag tag-epic" style={{ color: epicColor(epic), background: `${epicColor(epic)}1f` }} title={`Epic: ${epic.title}`}>{epic.title}</span>}
+          {fields.labels && issue.labels.slice(0, 3).map(l => <span key={l} className="tag">{l}</span>)}
+        </div>
+      ) : null}
+
+      {fields.due && issue.dueDate && (
+        <div className={`due${isOverdue(issue.dueDate) && !done ? ' overdue' : ''}`}>
+          <CalendarDays size={12} />{formatDate(issue.dueDate)}
+        </div>
+      )}
+
+      <div className="card-foot">
+        {fields.type && <TypeIcon type={issue.type} size={14} />}
+        {fields.key && <span className={`card-key${done ? ' done' : ''}`}>{issue.key}</span>}
+        {fields.subitems && subItems.length > 0 && (
+          <span className="card-sub" title={`${subDone} of ${subItems.length} sub-items done`}>
+            <span className="mini-bar"><span style={{ width: `${(subDone / subItems.length) * 100}%` }} /></span>{subDone}/{subItems.length}
+          </span>
+        )}
+        <div style={{ flex: 1 }} />
+        {fields.estimate && issue.estimate != null && <span className="points" title="Story points">{issue.estimate}</span>}
+        {issue.flagged ? <Flag size={14} className="flag-icon" aria-label="Flagged" role="img" />                 /* Jira: the flag replaces the priority (spec 0408) */
+          : fields.priority && issue.priority !== 'none' && <PriorityIcon priority={issue.priority} />}
+        {!ghost && <span className="card-menu"><Menu title={`Actions for ${issue.key}`} className="icon-btn sm" trigger={<MoreHorizontal size={15} />} items={menu} /></span>}
+        {fields.assignee && <Avatar user={assignee} size={24} />}
+      </div>
+      {deleting && <span onClick={e => e.stopPropagation()} onPointerDown={e => e.stopPropagation()}><DeleteItemsDialog ids={[issue.id]} onClose={() => setDeleting(false)} /></span>}
+      {flag.dialog && <span onClick={e => e.stopPropagation()} onPointerDown={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}>{flag.dialog}</span>}
+    </div>
+  )
+}

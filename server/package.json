@@ -1,0 +1,39 @@
+{
+  "name": "jira-build-poc-server",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "NODE_ENV=development node --env-file-if-exists=.env --watch src/index.ts",
+    "start": "node src/index.ts",
+    "test": "node --test test/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "openapi": "node scripts/openapi.ts",
+    "smoke": "node --env-file-if-exists=.env scripts/smoke.ts",
+    "migrate": "node --env-file-if-exists=.env scripts/migrate.ts"
+  },
+  "engines": {
+    "node": ">=24.22.3"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1149.0",
+    "@aws-sdk/client-sesv2": "^3.1155.0",
+    "@aws-sdk/s3-request-presigner": "^3.1149.0",
+    "@fastify/cors": "^11.3.1",
+    "@fastify/swagger": "^9.9.2",
+    "@fastify/swagger-ui": "^6.1.2",
+    "fastify": "^5.12.5",
+    "fastify-type-provider-zod": "^7.0.0",
+    "imapflow": "^2.11.0",
+    "jose": "^6.2.12",
+    "ldapts": "^9.2.0",
+    "mailparser": "^3.14.2",
+    "pg": "^8.23.1",
+    "zod": "^4.6.6"
+  },
+  "devDependencies": {
+    "@types/mailparser": "^3.9.0",
+    "@types/node": "^26.6.5",
+    "@types/pg": "^8.23.1",
+    "typescript": "^7.0.2"
+  }
+}

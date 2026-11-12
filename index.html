@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Jira Build POC</title>
+    <script>
+      // Set the theme before first paint so dark mode doesn't flash white
+      try { var p = localStorage.getItem('jbp:theme') || 'system'; var d = p === 'dark' || (p === 'system' && matchMedia('(prefers-color-scheme: dark)').matches); document.documentElement.dataset.theme = d ? 'dark' : 'light' } catch (e) {}
+    </script>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 28 28%27%3E%3Crect width=%2728%27 height=%2728%27 rx=%276%27 fill=%27%23368727%27/%3E%3Cpath d=%27M11%208h7v9a5%205%200%200%201-10%200v-1h2.5v1a2.5%202.5%200%200%200%205%200v-6.5H11z%27 fill=%27white%27/%3E%3C/svg%3E" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

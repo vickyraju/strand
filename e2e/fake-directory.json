@@ -1,0 +1,18 @@
+{
+  "host": "dc1.e2e.test",
+  "passwords": {
+    "CN=svc-app,OU=Service,DC=e2e,DC=test": "svc-pass",
+    "CN=Corp Carla,OU=People,DC=e2e,DC=test": "carla-pass"
+  },
+  "entries": [
+    {
+      "dn": "CN=Corp Carla,OU=People,DC=e2e,DC=test", "objectClass": ["top", "person", "organizationalPerson", "user"], "objectCategory": "Person",
+      "sAMAccountName": "ccarla", "givenName": "Corp", "sn": "Carla", "displayName": "Corp Carla", "mail": "carla@corp.e2e.test",
+      "objectGUID": "c0ffee0000000001", "memberOf": ["CN=Corp Engineers,OU=Groups,DC=e2e,DC=test"], "userAccountControl": "512"
+    },
+    {
+      "dn": "CN=Corp Engineers,OU=Groups,DC=e2e,DC=test", "objectClass": ["top", "group"], "objectCategory": "Group",
+      "cn": "Corp Engineers", "description": "Engineering", "objectGUID": "c0ffee0000000002", "member": []
+    }
+  ]
+}

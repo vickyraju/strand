@@ -1,0 +1,46 @@
+import { test } from 'node:test'
+import assert from 'node:assert/strict'
+import { itemsOf, optionsCarried, releaseMoveTo } from './settings.ts'
+import { DEFAULT_BOARD_PREFS, type Issue, type Project } from '../data/reducer.ts'
+
+const project = (over: Partial<Project> = {}): Project => ({
+  id: 'p1', key: 'PAY', name: 'Pay', description: '', color: '#000000', template: 'scrum', leadId: 'u1',
+  statuses: [{ id: 's1', name: 'To do', color: '#111111', category: 'todo' }, { id: 's2', name: 'Done', color: '#222222', category: 'done', wipLimit: 3, description: 'Work is finished' }],
+  transitions: [{ id: 't1', name: 'Finish', from: 'any', to: 's2' }, { id: 't2', name: 'Start', from: ['s1'], to: 's2' }],
+  layout: {}, boardPrefs: DEFAULT_BOARD_PREFS, nextNumber: 1, createdAt: 1,
+  rules: [{ id: 'r1', name: 'Auto', enabled: true, trigger: { kind: 'created' }, actions: [{ kind: 'priority', value: 'high' }], runs: 4 }],
+  fields: [{ id: 'f1', name: 'Team', kind: 'select', options: [{ id: 'oa', name: 'A' }, { id: 'ob', name: 'B' }] }, { id: 'f2', name: 'Note', kind: 'text' }],
+  releases: [{ id: 'rel1', name: '1.0', description: '', released: false, releaseDate: '2026-12-01' }],
+  templates: [{ id: 'tp', name: 'Bug', type: 'bug', title: 'Bug: ', description: '', priority: 'high', labels: ['bug'] }], ...over,
+})
+
+test('[0008.R9] settings items serialize exactly what the server stores (positions, null for absent; of a status, only its WIP limit)', () => {
+  const p = project()
+  assert.deepEqual(itemsOf([p], 'statuses').map(i => i.body), [{ wipLimit: null }, { wipLimit: 3 }])
+  assert.deepEqual(itemsOf([p], 'fields').map(i => [i.body.options, i.body.position]), [[[{ id: 'oa', name: 'A' }, { id: 'ob', name: 'B' }], 0], [null, 1]])
+  assert.equal(itemsOf([p], 'templates')[0]!.body.estimate, null)
+  assert.deepEqual(Object.keys(itemsOf([p], 'rules')[0]!.body), ['name', 'enabled', 'trigger', 'actions', 'condition'])   // `runs` is the server's
+  assert.deepEqual([itemsOf([p], 'releases')[0]!.released, itemsOf([p], 'releases')[0]!.body.startDate], [false, null])
+})
+
+const issue = (id: string, releaseId?: string, status = 'todo'): Issue => ({
+  id, key: id, projectId: 'p1', type: 'task', title: id, description: '', status, priority: 'none', reporterId: 'u', labels: [],
+  watcherIds: [], links: [], attachments: [], custom: {}, worklogs: [], rank: 1, createdAt: 1, updatedAt: 1, ...(releaseId ? { fixReleaseIds: releaseId.split(',') } : {}),
+})
+
+test('[0008.R10] releaseMoveTo finds the release unfinished work was moved to, ignoring finished work', () => {
+  const unfinished = (i: Issue) => i.status !== 'done'
+  const before = [issue('a', 'r1'), issue('b', 'r1', 'done'), issue('c', 'r1'), issue('z', 'r9')]
+  assert.equal(releaseMoveTo('r1', before, [issue('a', 'r2'), issue('b', 'r1', 'done'), issue('c', 'r2'), issue('z', 'r9')], unfinished), 'r2')
+  assert.equal(releaseMoveTo('r1', before, [issue('a'), issue('b', 'r1', 'done'), issue('c'), issue('z', 'r9')], unfinished), null)
+  // an item with two fix versions: the one that replaced the released one (spec 0301 R5)
+  assert.equal(releaseMoveTo('r1', [issue('a', 'r0,r1')], [issue('a', 'r0,r2')], unfinished), 'r2')
+})
+
+test('[0105.R3][0105.R5] a field change that renames or deletes an option reloads the project (the server changed its items); adding, disabling or reordering doesn’t', () => {
+  const a = [{ id: 'oa', name: 'A' }, { id: 'ob', name: 'B' }]
+  assert.equal(optionsCarried(a, [{ id: 'oa', name: 'A2' }, { id: 'ob', name: 'B' }]), true)
+  assert.equal(optionsCarried(a, [{ id: 'ob', name: 'B' }]), true)
+  assert.equal(optionsCarried(a, [{ id: 'ob', name: 'B' }, { id: 'oa', name: 'A', disabled: true }, { id: 'oc', name: 'C' }]), false)
+  assert.equal(optionsCarried(null, a), false)
+})

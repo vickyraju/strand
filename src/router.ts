@@ -1,0 +1,120 @@
+import { useSyncExternalStore } from 'react'
+
+/** `boards`: a board's settings (Configure board), or the list of the project's boards; not a tab of its own */
+export type ProjectTab = 'summary' | 'board' | 'boards' | 'backlog' | 'list' | 'timeline' | 'calendar' | 'releases' | 'reports' | 'tests' | 'settings'
+
+export type AdminSection = 'people' | 'groups' | 'global-permissions' | 'auth-methods' | 'directories' | 'project-categories' | 'webhooks' | 'development' | 'automation' | 'custom-fields' | 'field-configurations' | 'screens' | 'notification-schemes' | 'incoming-mail' | 'jira-import' | 'archived-items' | 'workflows' | 'link-types' | 'priorities' | 'resolutions' | 'test-statuses' | 'settings' | 'audit' | 'archived' | 'backups' | 'views'
+const ADMIN: AdminSection[] = ['people', 'groups', 'global-permissions', 'auth-methods', 'directories', 'workflows', 'project-categories', 'webhooks', 'development', 'automation', 'custom-fields', 'field-configurations', 'screens', 'notification-schemes', 'incoming-mail', 'jira-import', 'archived-items', 'link-types', 'priorities', 'resolutions', 'test-statuses', 'settings', 'audit', 'archived', 'backups', 'views']
+
+export type Route =
+  | { name: 'home' }
+  | { name: 'inbox' }
+  | { name: 'search'; q: string; view?: string; jql?: string }
+  | { name: 'projects' }
+  /** Plans (spec 0803): the list, or one plan */
+  | { name: 'plans'; id?: string }
+  | { name: 'settings' }
+  /** `item`: a page within the section (a group, a workflow, a settings page, a Workflows tab) */
+  | { name: 'admin'; section?: AdminSection; item?: string }
+  /** `quick`: a board's quick filters that are on (ids, comma-separated), so a filtered board can be shared */
+  | { name: 'project'; key: string; tab?: ProjectTab; sub?: string; quick?: string }
+  | { name: 'issue'; key: string }
+  | { name: 'not-found' }
+
+const TABS: ProjectTab[] = ['summary', 'board', 'boards', 'backlog', 'list', 'timeline', 'calendar', 'releases', 'reports', 'tests', 'settings']
+
+export function parse(pathname: string, search: string): { route: Route; peek?: string } {
+  const parts = pathname.split('/').filter(Boolean).map(decodeURIComponent)
+  const params = new URLSearchParams(search)
+  const peek = params.get('peek') ?? undefined
+  const [a, b, c, d] = parts
+  let route: Route = { name: 'not-found' }
+
+  if (!a)                         route = { name: 'home' }
+  else if (a === 'inbox')         route = { name: 'inbox' }
+  else if (a === 'search')        route = { name: 'search', q: params.get('q') ?? '', view: params.get('view') ?? undefined, ...(params.get('jql') ? { jql: params.get('jql')! } : {}) }
+  else if (a === 'dashboards')    route = { name: 'home' }   // old bookmarks: the Dashboards page is gone, a project's Summary replaces it
+  else if (a === 'projects' && !b) route = { name: 'projects' }
+  else if (a === 'plans')         route = { name: 'plans', ...(b ? { id: b } : {}) }
+  else if (a === 'settings')      route = { name: 'settings' }
+  else if (a === 'groups')        route = { name: 'admin', section: 'groups' }   // old address: groups live in Administration / Configuration
+  else if (a === 'admin' && (!b || (ADMIN as string[]).includes(b))) route = { name: 'admin', section: b as AdminSection | undefined, ...(b && c ? { item: c } : {}) }
+  else if (a === 'i' && b)        route = { name: 'issue', key: b.toUpperCase() }
+  else if ((a === 'project' || a === 'p') && b &&(!c || (TABS as string[]).includes(c)))
+    route = { name: 'project', key: b.toUpperCase(), tab: c as ProjectTab | undefined, sub: d, ...(params.get('quick') ? { quick: params.get('quick')! } : {}) }
+  else route = jiraRoute(parts, params) ?? route
+  return { route, peek }
+}
+
+/** Jira DC's addresses, from bookmarks and emails made before the move (spec 0806); null: not one of Jira's. */
+function jiraRoute([a, b]: string[], params: URLSearchParams): Route | null {
+  const project = (k: string): Route => ({ name: 'project', key: k.toUpperCase() })
+  const search = (jql: string | null): Route => ({ name: 'search', q: '', ...(jql ? { jql } : {}) })
+  if (a === 'browse' && b) return /^[A-Za-z][A-Za-z0-9_]*-\d+$/.test(b) ? { name: 'issue', key: b.toUpperCase() } : project(b)
+  if (a === 'projects' && b) return project(b)
+  if (a === 'issues') return search(params.get('jql'))
+  if (a === 'secure' && b === 'IssueNavigator.jspa') return search(params.get('jqlQuery') ?? params.get('jql'))
+  if (a === 'secure' && b === 'RapidBoard.jspa') return params.get('projectKey') ? { name: 'project', key: params.get('projectKey')!.toUpperCase(), tab: 'board' } : { name: 'projects' }
+  if (a === 'secure' && b === 'Dashboard.jspa') return { name: 'home' }
+  return null
+}
+
+export function href(route: Route, peek?: string): string {
+  const q = peek ? `?peek=${encodeURIComponent(peek)}` : ''
+  switch (route.name) {
+    case 'home':      return `/${q}`
+    case 'inbox':     return `/inbox${q}`
+    case 'search': {
+      const qs = new URLSearchParams()
+      if (route.view) qs.set('view', route.view)
+      if (route.q) qs.set('q', route.q)
+      if (route.jql) qs.set('jql', route.jql)
+      if (peek) qs.set('peek', peek)
+      const str = qs.toString()
+      return `/search${str ? `?${str}` : ''}`
+    }
+    case 'projects':  return `/projects${q}`
+    case 'plans':     return `/plans${route.id ? `/${encodeURIComponent(route.id)}` : ''}${q}`
+    case 'settings':  return `/settings${q}`
+    case 'admin':     return `/admin${route.section ? `/${route.section}` : ''}${route.section && route.item ? `/${route.item}` : ''}`
+    case 'issue':     return `/i/${route.key}`
+    case 'project': {
+      const qs = new URLSearchParams()
+      if (route.quick) qs.set('quick', route.quick)
+      if (peek) qs.set('peek', peek)
+      const str = qs.toString()
+      return `/project/${route.key}${route.tab ? `/${route.tab}` : ''}${route.sub ? `/${route.sub}` : ''}${str ? `?${str}` : ''}`
+    }
+    case 'not-found': return '/'
+  }
+}
+
+// ── History plumbing ───────────────────────────────────────
+
+// Legacy /p/KEY links → canonical /project/KEY (before first render)
+if (location.pathname.startsWith('/p/')) history.replaceState(null, '', '/project' + location.pathname.slice(2) + location.search)
+// Jira's addresses (spec 0806) → the app's own, so the address bar shows where people are
+else if (/^\/(browse|projects\/[^/]+|issues|secure)(\/|$)/.test(location.pathname)) {
+  const { route } = parse(location.pathname, location.search)
+  if (route.name !== 'not-found') history.replaceState(null, '', href(route))
+}
+
+const listeners = new Set<() => void>()
+const emit = () => listeners.forEach(l => l())
+window.addEventListener('popstate', emit)
+
+export function navigate(to: string, { replace = false } = {}) {
+  if (to === location.pathname + location.search) return
+  if (replace) history.replaceState(null, '', to)
+  else history.pushState(null, '', to)
+  emit()
+}
+
+const subscribe = (l: () => void) => { listeners.add(l); return () => { listeners.delete(l) } }
+const snapshot = () => location.pathname + location.search
+
+export function useLocation() {
+  const loc = useSyncExternalStore(subscribe, snapshot)
+  const i = loc.indexOf('?')
+  return parse(i < 0 ? loc : loc.slice(0, i), i < 0 ? '' : loc.slice(i))
+}

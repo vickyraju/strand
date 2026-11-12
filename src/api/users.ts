@@ -1,0 +1,108 @@
+// Server-backed people search for the pickers. The workspace does not hold a global user list
+// (`/users` is capped at the first 1000), so the assignee/lead pickers query `/users/search` as the
+// user types instead of filtering a local array. Without an API the pickers keep working off the store.
+import { useEffect, useRef, useState } from 'react'
+import { useStore } from '../data/store'
+import { api, apiEnabled } from './client'
+import { mapUser, type Row } from './map'
+import type { User } from '../data/reducer'
+
+/** One page of `GET /users/search` (keyset-paginated, name order). */
+export function searchUsers(query = '', limit = 30, cursor?: string | null, project?: string): Promise<{ items: User[]; next: string | null }> {
+  const q = new URLSearchParams({ limit: String(limit) })
+  if (query) q.set('query', query)
+  if (cursor) q.set('cursor', cursor)
+  if (project) q.set('project', project)   // key or id: only people who can work in that project
+  return api<{ items: Row[]; next: string | null }>('GET', `/api/users/search?${q}`)
+    .then(page => ({ items: page.items.map(mapUser), next: page.next }))
+}
+
+// The empty-query first page is the same for every picker, so they share one request (retried after a failure).
+let firstPage: ReturnType<typeof searchUsers> | undefined
+const sharedFirstPage = () => (firstPage ??= searchUsers().catch(e => { firstPage = undefined; throw e }))
+
+/** Debounced people search for a picker: shows the first page while idle, searches as the user types,
+ *  remembers every user it has seen so a selected person renders even when they are not in the page. */
+export function useUserSearch(project?: string) {
+  const [results, setResults] = useState<User[]>([])
+  const [next, setNext] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [failed, setFailed] = useState(false)
+  const cache = useRef(new Map<string, User>())   // every user seen, for the trigger label
+  const seq = useRef(0)                            // drop stale responses (a fast retype)
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined)
+
+  const remember = (users: User[]) => { for (const u of users) cache.current.set(u.id, u) }
+  const userById = (id?: string | null) => (id ? cache.current.get(id) : undefined)
+
+  const lastQuery = useRef('')
+
+  /** Call when a picker opens or the search text changes (debounced). The empty query is the shared first page,
+   *  fetched once however many pickers are on screen. */
+  const search = (query: string) => {
+    clearTimeout(timer.current)
+    if (!apiEnabled) return
+    const q = query.trim()
+    lastQuery.current = q
+    timer.current = setTimeout(() => {
+      const mySeq = ++seq.current
+      setBusy(true)
+      ;(q || project ? searchUsers(q, 30, null, project) : sharedFirstPage()).then(page => {
+        if (mySeq !== seq.current) return
+        remember(page.items); setResults(page.items); setNext(page.next); setBusy(false); setFailed(false)
+      }).catch(() => { if (mySeq === seq.current) { setBusy(false); setFailed(true) } })
+    }, q ? 150 : 0)
+  }
+
+  /** Append the next page (no-op when there is no cursor). */
+  const loadMore = () => {
+    if (!apiEnabled || !next || busy) return
+    const mySeq = ++seq.current
+    setBusy(true)
+    searchUsers(lastQuery.current, 30, next, project).then(page => {
+      if (mySeq !== seq.current) return
+      remember(page.items); setResults(prev => [...prev, ...page.items]); setNext(page.next); setBusy(false)
+    }).catch(() => { if (mySeq === seq.current) { setBusy(false); setFailed(true) } })
+  }
+
+  return { users: results, userById, search, loadMore, hasMore: !!next, busy, failed }
+}
+/** Everyone who can work in a project (its people, its groups' people, workspace admins), for @mention suggestions.
+ *  Without an API, the local people. The first 100 by name (the search's page limit); search as you type if projects get bigger. */
+export function useProjectPeople(projectId: string | undefined, local: User[]): User[] {
+  const [people, setPeople] = useState<{ id: string; users: User[] } | null>(null)
+  useEffect(() => {
+    if (!apiEnabled || !projectId) return
+    let live = true
+    searchUsers('', 100, null, projectId).then(p => { if (live) setPeople({ id: projectId, users: p.items }) }, () => {})
+    return () => { live = false }
+  }, [projectId])
+  return apiEnabled && people && people.id === projectId ? people.users : local
+}
+
+/** Fetches the people the screen shows but the app doesn't know yet (the workspace can have tens of thousands, so only
+ *  the first 1000 by name come at the start): assignees, reporters, watchers, comment authors and who did what. */
+export function useKnownPeople() {
+  const { state, dispatch } = useStore()
+  const asked = useRef(new Set<string>())
+  useEffect(() => {
+    if (!apiEnabled) return
+    const known = new Set(state.users.map(u => u.id))
+    const want = new Set<string>()
+    const add = (id?: string | null) => { if (id && id !== 'automation' && !known.has(id) && !asked.current.has(id)) want.add(id) }
+    for (const i of state.issues) { add(i.assigneeId); add(i.reporterId); for (const w of i.watcherIds) add(w) }
+    for (const c of state.comments) add(c.authorId)
+    for (const a of state.activity) add(a.actorId)
+    for (const p of state.projects) add(p.leadId)
+    if (!want.size) return
+    const ids = [...want]
+    ids.forEach(id => asked.current.add(id))
+    const t = setTimeout(async () => {
+      for (let i = 0; i < ids.length; i += 200) {
+        const rows = await api<Row[]>('GET', `/api/users?ids=${ids.slice(i, i + 200).join(',')}`).catch(() => [])
+        if (rows.length) dispatch({ type: 'knowUsers', users: rows.map(mapUser) })
+      }
+    }, 100)
+    return () => clearTimeout(t)
+  }, [state.issues, state.comments, state.activity, state.projects, state.users, dispatch])
+}

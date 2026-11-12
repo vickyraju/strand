@@ -1,0 +1,183 @@
+// Boards (Jira's boards): what a board is, who may change it, and the work items it shows. A board's items are its
+// filter (JQL, which may name several projects) AND any quick filters chosen, among the items the viewer may see;
+// on a Scrum board only its active sprint, on a Kanban board without Done items left untouched for `done_days`.
+import { randomUUID } from 'node:crypto'
+import type { Db } from './db.ts'
+import { HttpError, type Me } from './auth.ts'
+import { ARCHIVED, accessTo, rolesWith } from './access.ts'
+import { jqlToSql, parseOr400 } from './jqlSql.ts'
+import { filterProjects } from './shared/jql.ts'
+import { searchWhere } from './routes/misc.ts'
+
+export interface Column { id: string; name: string; statusIds: string[]; min?: number; max?: number }
+export interface Lanes { by: 'none' | 'assignee' | 'epic' | 'priority' | 'project' | 'queries'; queries?: { id: string; name: string; jql: string }[] }
+export interface Board {
+  id: string; workspaceId: string; projectId: string; name: string; type: 'kanban' | 'scrum'; jql: string
+  columns: Column[]; swimlanes: Lanes; quickFilters: { id: string; name: string; jql: string }[]; cardFields: Record<string, boolean>
+  doneDays: number | null; estimation: 'points' | 'time' | 'count' | 'field'; estimationFieldId: string | null; timeTracking: 'none' | 'remaining'; workingDays: { weekdays: number[]; nonWorking: string[]; timeZone?: string }; cardColors: CardColors; position: number; createdBy: string | null
+  /** Kanban: the statuses in the Kanban backlog (spec 0406); empty when it is off */
+  kanbanBacklog: string[]
+}
+
+/** Jira's two quick filters every new board starts with. */
+export const DEFAULT_QUICK = () => [
+  { id: randomUUID(), name: 'Only my issues', jql: 'assignee = currentUser()' },
+  { id: randomUUID(), name: 'Recently updated', jql: 'updated >= -1d' },
+]
+
+/** Columns for a project's statuses as they are now: one per status, in board order, keeping their WIP limits. */
+export async function columnsOf(d: Db, projectId: string): Promise<Column[]> {
+  const rows = await d.query<{ id: string; name: string; globalStatusId: string; wipLimit: number | null }>(
+    'select id, name, global_status_id, wip_limit from statuses where project_id = $1 and global_status_id is not null order by position', [projectId])
+  return rows.map(s => ({ id: randomUUID(), name: s.name, statusIds: [s.globalStatusId], ...(s.wipLimit ? { max: s.wipLimit } : {}) }))
+}
+
+/** A new project's first board: its own items, its statuses as columns, Jira's two quick filters. */
+export async function firstBoard(d: Db, p: { id: string; workspaceId: string; key: string; template: 'kanban' | 'scrum' }, by: string | null) {
+  const [b] = await d.query<{ id: string }>(
+    `insert into boards (workspace_id, project_id, name, type, jql, columns, quick_filters, done_days, created_by)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9) returning id`,
+    [p.workspaceId, p.id, `${p.key} board`, p.template, `project = ${p.key}`, JSON.stringify(await columnsOf(d, p.id)), JSON.stringify(DEFAULT_QUICK()),
+      p.template === 'kanban' ? 14 : null, by])
+  if (by) await d.query('insert into board_admins (board_id, user_id) values ($1, $2) on conflict do nothing', [b!.id, by])
+  return b!.id
+}
+
+/** A project's boards follow its workflow (Jira: new statuses appear on its boards): a status the project gains gets a
+ *  column, after the column of the status before it; on a board of only this project, a status it loses leaves its
+ *  column, and a column that leaves empty goes (unless it is the last). A status an admin took off a board stays off. */
+export async function followStatuses(d: Db, p: { id: string; key: string }, order: string[], gained: string[], lost: string[]) {
+  if (!gained.length && !lost.length) return
+  const names = new Map((await d.query<{ globalStatusId: string; name: string }>('select global_status_id, name from statuses where project_id = $1', [p.id])).map(s => [s.globalStatusId, s.name]))
+  for (const b of await d.query<Board>('select * from boards where project_id = $1 for update', [p.id])) {
+    let cols = b.columns, backlog = b.kanbanBacklog
+    if (lost.length && b.jql.trim().toLowerCase() === `project = ${p.key}`.toLowerCase()) {
+      const kept = cols.map(c => ({ ...c, statusIds: c.statusIds.filter(g => !lost.includes(g)) }))
+      cols = kept.filter((c, i) => c.statusIds.length || !cols[i]!.statusIds.length)
+      if (!cols.length) cols = kept.slice(0, 1)
+      backlog = backlog.filter(g => !lost.includes(g))                                 // the Kanban backlog too (spec 0406 R8)
+    }
+    if (backlog.length !== b.kanbanBacklog.length) await d.query('update boards set kanban_backlog = $2 where id = $1', [b.id, JSON.stringify(backlog)])
+    for (const g of gained) {
+      if (cols.some(c => c.statusIds.includes(g)) || backlog.includes(g)) continue
+      const before = order.slice(0, order.indexOf(g)).reverse().map(x => cols.findIndex(c => c.statusIds.includes(x))).find(i => i >= 0) ?? -1
+      cols = [...cols.slice(0, before + 1), { id: randomUUID(), name: names.get(g) ?? 'New status', statusIds: [g] }, ...cols.slice(before + 1)]
+    }
+    if (JSON.stringify(cols) !== JSON.stringify(b.columns)) await d.query('update boards set columns = $2, updated_at = now() where id = $1', [b.id, JSON.stringify(cols)])
+  }
+}
+
+/** Who may create, edit, start, complete and delete a board's sprints (Jira's Manage Sprints): someone who can change work
+ *  (member or admin) in every project its filter names, or in every project when the filter can't tell (in practice a
+ *  global admin). Returns the reason when not. */
+export async function sprintManager(d: Db, me: Me, b: Pick<Board, 'jql' | 'workspaceId'>): Promise<{ ok: true } | { ok: false; why: string }> {
+  if (me.admin) return { ok: true }
+  const named = filterProjects(b.jql)
+  if (!named) {
+    const [{ n }] = await d.query<{ n: number }>(
+      `select count(*)::int as n from projects p where p.workspace_id = $1 and p.deleting_at is null
+          and not exists (select 1 from project_access a where a.project_id = p.id and a.user_id = $2 and a.role = any($3))`, [b.workspaceId, me.id, rolesWith('manageSprints')]) as any
+    return n ? { ok: false, why: 'This board’s filter can include any project, so only someone who can change work in every project can manage its sprints' } : { ok: true }
+  }
+  const missing = await d.query<{ key: string; seen: boolean }>(
+    `select p.key, exists (select 1 from project_access v where v.project_id = p.id and v.user_id = $3) as seen
+       from projects p
+      where p.workspace_id = $1 and p.deleting_at is null and (lower(p.key) = any($2::text[]) or lower(p.name) = any($2::text[]))
+        and not exists (select 1 from project_access a where a.project_id = p.id and a.user_id = $3 and a.role = any($4))
+      order by p.key`, [b.workspaceId, named, me.id, rolesWith('manageSprints')])
+  if (!missing.length) return { ok: true }
+  const shown = missing.filter(m => m.seen).map(m => m.key), hidden = missing.length - shown.length
+  const why = 'You can manage this board’s sprints only if you can change work in every project it covers'
+  if (!shown.length) return { ok: false, why: `${why}, including ${hidden === 1 ? 'one' : hidden} you can’t see` }
+  const list = [...shown.slice(0, 5), ...(shown.length > 5 || hidden ? [`${shown.length > 5 ? shown.length - 5 + hidden : hidden} more`] : [])]
+  return { ok: false, why: `${why}: ${list.join(', ').replace(/, ([^,]*)$/, ' and $1')}` }
+}
+
+/** 403 unless I may manage this board's sprints. */
+export async function needSprintManager(d: Db, me: Me, b: Pick<Board, 'jql' | 'workspaceId'>) {
+  const r = await sprintManager(d, me, b)
+  if (!r.ok) throw new HttpError(403, r.why)
+}
+
+/** A board I may see (read access to its project), with my role there and whether I may change it. 404 otherwise. */
+export async function boardFor(d: Db, me: Me, id: string, opts: { manage?: boolean; lock?: boolean } = {}) {
+  const [b] = await d.query<Board>(`select * from boards where id = $1 and workspace_id = $2 ${opts.lock ? 'for update' : ''}`, [id, me.workspaceId])
+  const a = b ? await accessTo(d, me, b.projectId) : null
+  if (!b || !a) throw new HttpError(404, 'Board not found')
+  const role = a.role
+  if (opts.manage && a.archived) throw new HttpError(403, ARCHIVED)          // spec 0102: an archived project's boards don't change
+  const canManage = !a.archived && (role === 'admin' || (await d.query(
+    `select 1 from board_admins a where a.board_id = $1 and (a.user_id = $2 or a.group_id in (select group_id from group_members where user_id = $2))`, [b.id, me.id])).length > 0)
+  if (opts.manage && !canManage) throw new HttpError(403, 'Only the board’s administrators and the project’s admins can change it')
+  return { board: b, role, canManage }
+}
+
+/** Every query a board stores, parsed now: a mistake is a 400 that says where, not a board that silently shows nothing. */
+export async function checkQueries(d: Db, me: Me, b: Pick<Board, 'jql' | 'swimlanes' | 'quickFilters'> & Partial<Pick<Board, 'cardColors'>>) {
+  const check = async (jql: string, field: string) => {
+    try { await jqlToSql(d, me, parseOr400(jql), []) }
+    catch (e) { if (e instanceof HttpError) throw new HttpError(400, `${field}: ${e.message}`, { [field]: e.message }); throw e }
+  }
+  await check(b.jql, 'jql')
+  for (const q of b.quickFilters) await check(q.jql, `quickFilters.${q.id}`)
+  for (const q of b.swimlanes.queries ?? []) await check(q.jql, `swimlanes.${q.id}`)
+  for (const q of b.cardColors?.queries ?? []) await check(q.jql, `cardColors.${q.id}`)
+}
+
+/** The SQL for a board's items as `me` sees them: where, and the parameters (an ORDER BY in the board's JQL is ignored:
+ *  a board is in rank order). `quick` are quick-filter ids to AND in; `scope` narrows to the active sprint, the backlog
+ *  (Scrum) or everything. */
+export async function boardWhere(d: Db, me: Me, b: Board, o: { quick?: string[]; scope: 'board' | 'backlog' | 'all' }) {
+  const args: unknown[] = []
+  const { where } = await searchWhere(me, { q: '', resolution: 'all', jql: b.jql }, args)
+  for (const id of o.quick ?? []) {
+    const f = b.quickFilters.find(x => x.id === id)
+    if (!f) throw new HttpError(400, 'No such quick filter on this board', { quick: id })
+    const sql = await jqlToSql(d, me, parseOr400(f.jql), args)
+    if (sql.where) where.push(`(${sql.where})`)
+  }
+  args.push(b.id)
+  const boardArg = `$${args.length}`
+  const kanbanBacklog = b.type === 'kanban' && b.kanbanBacklog.length > 0
+  if (o.scope === 'board' && b.type === 'scrum') where.push(`i.sprint_id in (select id from sprints where board_id = ${boardArg} and state = 'active')`)   // every active sprint (spec 0414)
+  // a Kanban backlog (spec 0406): its items stay off the board; its Backlog tab has them and the board's first column's
+  else if (kanbanBacklog && o.scope !== 'all') {
+    args.push(o.scope === 'board' ? b.kanbanBacklog : [...b.kanbanBacklog, ...(b.columns[0]?.statusIds ?? [])])
+    // epics are in the backlog's Epics panel, not on the board (spec 0407 R11)
+    if (o.scope === 'board') where.push(`not (st.global_status_id::text = any($${args.length}::text[]))`, `i.type <> 'epic'`, `${boardArg}::uuid is not null`)
+    else where.push(`(st.global_status_id::text = any($${args.length}::text[]) or (i.type = 'epic' and st.category <> 'done'))`, `${boardArg}::uuid is not null`)
+  }
+  // the backlog: the board's open sprints (done work included, as it counts there) and unfinished work in no sprint
+  else if (o.scope === 'backlog') where.push(`(i.sprint_id in (select id from sprints where board_id = ${boardArg} and state <> 'closed') or (i.sprint_id is null and st.category <> 'done'))`)
+  else where.push(`${boardArg}::uuid is not null`)                                        // keeps the parameter used
+  if (o.scope === 'board' && b.type === 'kanban' && b.doneDays)
+    { args.push(b.doneDays); where.push(`(st.category <> 'done' or i.updated_at > now() - make_interval(days => $${args.length}))`) }
+  return { where, args }
+}
+
+/** A board's card colours (Jira's "Colors based on", spec 0409): each method keeps its own colours. */
+export interface CardColors {
+  by: 'none' | 'types' | 'priorities' | 'assignees' | 'queries'
+  types?: Record<string, string>; priorities?: Record<string, string>; assignees?: Record<string, string>
+  queries?: { id: string; jql: string; color: string }[]
+}
+
+/** Which of these queries each item matches first (its id; "" for none), as one SQL CASE. */
+async function firstMatchSql(d: Db, me: Me, queries: { id: string; jql: string }[], args: unknown[]) {
+  if (!queries.length) return `''`
+  const whens: string[] = []
+  for (const q of queries) {
+    const sql = await jqlToSql(d, me, parseOr400(q.jql), args)
+    args.push(q.id)
+    whens.push(`when ${sql.where ?? 'true'} then $${args.length}`)
+  }
+  return `case ${whens.join(' ')} else '' end`
+}
+
+/** Which swimlane query each item falls in (the first that matches; "" for none). */
+export const laneSql = (d: Db, me: Me, b: Board, args: unknown[]) =>
+  firstMatchSql(d, me, b.swimlanes.by === 'queries' ? b.swimlanes.queries ?? [] : [], args)
+
+/** Which card colour query each item takes (the first that matches; "" for none: grey). */
+export const colorSql = (d: Db, me: Me, b: Board, args: unknown[]) =>
+  firstMatchSql(d, me, b.cardColors.by === 'queries' ? b.cardColors.queries ?? [] : [], args)

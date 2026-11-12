@@ -1,0 +1,493 @@
+import { test } from 'node:test'
+import assert from 'node:assert/strict'
+import { reducer, migrate, EMPTY, isDone, moveContext, transitionsFrom, loopsFrom, itemsInRelease, doneColumn, cardColor, type Action, type State, type Issue } from './reducer.ts'
+import { withSample } from './testdata.ts'
+
+/** Do the next actions as someone else (the reducer attributes actions to the signed-in person) */
+const asUser = (s: State, userId: string): State => ({ ...s, ownerId: userId })
+
+const run = (actions: Action[], start: State = EMPTY) => actions.reduce((s, a) => reducer(s, a), start)
+
+function workspace() {
+  let s = run([
+    { type: 'setOwner', name: 'Alex Morgan' },
+    { type: 'addUser', name: 'Sam Lee' },
+    { type: 'createProject', project: { id: 'p1', name: 'Payments', key: 'PAY', color: '#000', template: 'scrum' } },
+  ])
+  const sam = s.users[1].id
+  s = run([{ type: 'createIssue', id: 'i1', issue: { projectId: 'p1', title: 'First' } }], s)
+  return { s, owner: s.ownerId!, sam }
+}
+
+test('[0007.R1] work items are numbered per project', () => {
+  const { s } = workspace()
+  const next = run([{ type: 'createIssue', id: 'i2', issue: { projectId: 'p1', title: 'Second' } }], s)
+  assert.deepEqual(next.issues.map(i => i.key), ['PAY-1', 'PAY-2'])
+})
+
+test('[0010.R6] the workflow blocks moves it does not allow', () => {
+  const { s } = workspace()
+  const p = s.projects[0]
+  const strict = run([{ type: 'updateProject', id: 'p1', patch: {
+    transitions: [{ id: 't', name: 'Start', from: ['todo'], to: 'in-progress' }],
+  } }], s)
+  const blocked = run([{ type: 'updateIssues', ids: ['i1'], patch: { status: 'done' } }], strict)
+  assert.equal(blocked.issues[0].status, p.statuses[0].id)
+  const moved = run([{ type: 'updateIssues', ids: ['i1'], patch: { status: 'in-progress' } }], strict)
+  assert.equal(moved.issues[0].status, 'in-progress')
+  assert.equal(moved.activity.at(-1)?.field, 'status')
+})
+
+test('[0010.R5] each work type keeps to its workflow: new items start where it starts, and a type change lands on a status it has', () => {
+  const { s } = workspace()
+  // bugs: Triage (a To do status of their own) and Done; everything else: the project's four
+  const triage = { id: 'triage', name: 'Triage', color: '#f97316', category: 'todo' as const }
+  const all = s.projects[0].statuses.map(x => x.id)
+  const typed = run([{ type: 'updateProject', id: 'p1', patch: { statuses: [...s.projects[0].statuses, triage],
+    workflows: [{ typeKey: 'bug', workflowId: 'b', workflow: 'Bugs', statusIds: ['triage', 'done'] }, { typeKey: 'task', workflowId: 'a', workflow: 'Main', statusIds: all }] } as any }], s)
+  const made = run([{ type: 'createIssue', id: 'b1', issue: { projectId: 'p1', title: 'Bug', type: 'bug', status: 'in-progress' } }], typed)
+  assert.equal(made.issues.find(i => i.id === 'b1')!.status, 'triage')                       // not in its workflow: where that starts
+  const doing = run([{ type: 'updateIssues', ids: ['i1'], patch: { status: 'in-progress' } }], typed)
+  assert.equal(run([{ type: 'updateIssues', ids: ['i1'], patch: { type: 'bug' } }], doing).issues[0].status, 'triage')   // nothing of its kind: the start
+  assert.equal(run([{ type: 'updateIssues', ids: ['b1'], patch: { type: 'task' } }], made).issues.find(i => i.id === 'b1')!.status, all[0])   // tasks have no Triage: their To do
+})
+
+test('[0009.R4] notifications go to the people involved, never to the actor', () => {
+  const { s, owner, sam } = workspace()
+  // Owner assigns to Sam: Sam is notified, owner is not
+  const assigned = run([{ type: 'updateIssues', ids: ['i1'], patch: { assigneeId: sam } }], s)
+  assert.deepEqual(assigned.notifications.map(n => [n.userId, n.kind]), [[sam, 'assigned']])
+  // Sam (acting) mentions the owner: owner gets one "mentioned", not also "commented"
+  const mentioned = run([{ type: 'addComment', issueId: 'i1', body: 'Can you look, @Alex Morgan?' }], asUser(assigned, sam))
+  const forOwner = mentioned.notifications.filter(n => n.userId === owner)
+  assert.deepEqual(forOwner.map(n => n.kind), ['mentioned'])
+})
+
+test('[0401.R3] completing a sprint moves unfinished work and records velocity', () => {
+  let { s } = workspace()
+  s = run([
+    { type: 'createIssue', id: 'i2', issue: { projectId: 'p1', title: 'Done one', estimate: 3 } },
+    { type: 'updateIssues', ids: ['i1'], patch: { estimate: 5 } },
+    { type: 'createSprint', projectId: 'p1' },
+  ], s)
+  const sprint = s.sprints[0].id
+  s = run([
+    { type: 'updateIssues', ids: ['i1', 'i2'], patch: { sprintId: sprint } },
+    { type: 'startSprint', id: sprint, endsAt: Date.now() },
+    { type: 'updateIssues', ids: ['i2'], patch: { status: 'done' } },
+    { type: 'completeSprint', id: sprint },
+  ], s)
+  const closed = s.sprints[0]
+  assert.equal(closed.committed, 8)
+  assert.equal(closed.completed, 3)
+  assert.equal(s.issues.find(i => i.id === 'i1')!.sprintId, undefined)
+  assert.equal(s.issues.find(i => i.id === 'i2')!.sprintId, sprint)
+})
+
+test('[0403.R1] reopening a completed sprint brings back its work, except work now in an active sprint', () => {
+  let { s } = workspace()
+  s = run([
+    { type: 'createIssue', id: 'i2', issue: { projectId: 'p1', title: 'Second' } },
+    { type: 'createSprint', projectId: 'p1', id: 'sp1' }, { type: 'createSprint', projectId: 'p1', id: 'sp2' },
+    { type: 'updateIssues', ids: ['i1', 'i2'], patch: { sprintId: 'sp1' } },
+    { type: 'startSprint', id: 'sp1', endsAt: Date.now() },
+    { type: 'completeSprint', id: 'sp1' },                                                 // both unfinished: to the backlog
+    { type: 'updateIssues', ids: ['i2'], patch: { sprintId: 'sp2' } },
+    { type: 'startSprint', id: 'sp2', endsAt: Date.now() },
+  ], s)
+  s = run([{ type: 'reopenSprint', id: 'sp1' }], s)
+  assert.equal(s.sprints.find(x => x.id === 'sp1')!.state, 'active')
+  assert.deepEqual([s.issues.find(i => i.id === 'i1')!.sprintId, s.issues.find(i => i.id === 'i2')!.sprintId], ['sp1', 'sp2'])
+})
+
+test('[0401.R2] completing a sprint on a board: completed means its rightmost column, not the Done category', () => {
+  let { s } = workspace()
+  s = run([
+    { type: 'createIssue', id: 'i2', issue: { projectId: 'p1', title: 'Ready', estimate: 2 } },
+    { type: 'createIssue', id: 'i3', issue: { projectId: 'p1', title: 'Closed', estimate: 4 } },
+    { type: 'createSprint', projectId: 'p1' },
+  ], s)
+  const sprint = s.sprints[0].id
+  s = run([
+    { type: 'updateIssues', ids: ['i2', 'i3'], patch: { sprintId: sprint } },
+    { type: 'startSprint', id: sprint, endsAt: Date.now() },
+    { type: 'updateIssues', ids: ['i2'], patch: { status: 'in-progress' } },
+    { type: 'updateIssues', ids: ['i3'], patch: { status: 'done' } },
+  ], s)
+  const board = { columns: [{ id: 'a', name: 'Done', statusIds: ['done'] }, { id: 'b', name: 'Ready to ship', statusIds: ['in-progress'] }, { id: 'c', name: 'Empty', statusIds: [] }] }
+  assert.deepEqual(doneColumn(board), ['in-progress'])
+  s = run([{ type: 'completeSprint', id: sprint, doneStatusIds: doneColumn(board) }], s)
+  assert.equal(s.sprints[0].completed, 2)
+  assert.deepEqual([s.issues.find(i => i.id === 'i2')!.sprintId, s.issues.find(i => i.id === 'i3')!.sprintId], [sprint, undefined])
+})
+
+test('[0004.R10] deleting a project removes everything inside it', () => {
+  const { s } = workspace()
+  const withComment = run([{ type: 'addComment', issueId: 'i1', body: 'hi' }], s)
+  const gone = run([{ type: 'deleteProject', id: 'p1' }], withComment)
+  assert.equal(gone.issues.length + gone.comments.length + gone.activity.length + gone.projects.length, 0)
+})
+
+test('[0022.R9] v1 saves migrate to the current version (v4)', () => {
+  const v1 = {
+    me: { id: 'u', name: 'Alex', initials: 'AL', color: '#000' }, users: [{ id: 'u', name: 'Alex', initials: 'AL', color: '#000' }],
+    projects: [{ id: 'p', key: 'AB', name: 'AB', color: '#000', template: 'kanban', leadId: 'u', nextNumber: 2, createdAt: 1,
+      statuses: [{ id: 'todo', name: 'To do', color: '#000' }, { id: 'done', name: 'Done', color: '#000', done: true }] }],
+    issues: [{ id: 'i', key: 'AB-1', projectId: 'p', type: 'task', title: 'x', description: '', status: 'done', priority: 'none',
+      reporterId: 'u', labels: [], createdAt: 1, updatedAt: 1 }],
+    activity: [{ id: 'a', issueId: 'i', actorId: 'u', text: 'created the work item', createdAt: 1 }],
+  }
+  const s = migrate(v1)
+  assert.equal(s.version, 4)
+  assert.deepEqual([s.views, s.projects[0].fields, s.issues[0].worklogs], [[], [], []])
+  assert.equal(s.issues[0].rank, 1)
+  assert.deepEqual(s.projects[0].rules, [])
+  assert.equal(s.ownerId, 'u')
+  assert.ok(isDone(s.projects[0], s.issues[0]))
+  assert.equal(s.projects[0].transitions.length, 2)
+  assert.deepEqual(s.issues[0].watcherIds, ['u'])
+})
+
+test('[0007.R12] the sample workspace used by the tests is consistent', () => {
+  const s0 = run([{ type: 'setOwner', name: 'Alex Morgan' }])
+  const owner = s0.users[0]
+  const s = withSample(s0)
+  assert.equal(s.projects.length, 3)
+  assert.ok(s.issues.length >= 50)
+  // Every status referenced exists, every parent exists, keys are unique
+  for (const i of s.issues) {
+    const p = s.projects.find(x => x.id === i.projectId)!
+    assert.ok(p.statuses.some(st => st.id === i.status), `${i.key} has unknown status`)
+    if (i.parentId) assert.ok(s.issues.some(x => x.id === i.parentId))
+  }
+  assert.equal(new Set(s.issues.map(i => i.key)).size, s.issues.length)
+  // Closed sprints have velocity numbers
+  for (const sp of s.sprints.filter(x => x.state === 'closed')) assert.ok(sp.completed! > 0 && sp.committed! >= sp.completed!)
+  assert.ok(s.notifications.some(n => n.userId === owner.id && !n.read))
+})
+
+test('[0015.R7] moving an item re-ranks only that item', () => {
+  let { s } = workspace()
+  s = run(['i2', 'i3', 'i4'].map(id => ({ type: 'createIssue', id, issue: { projectId: 'p1', title: id } }) as Action), s)
+  const before = new Map(s.issues.map(i => [i.id, i.rank]))
+  s = run([{ type: 'moveIssue', id: 'i4', beforeId: 'i2' }], s)
+  const order = [...s.issues].sort((a, b) => a.rank - b.rank).map(i => i.id)
+  assert.deepEqual(order, ['i1', 'i4', 'i2', 'i3'])
+  assert.deepEqual(s.issues.filter(i => i.rank !== before.get(i.id)).map(i => i.id), ['i4'])
+  // To the top, then into a sprint at the bottom
+  s = run([{ type: 'moveIssue', id: 'i3', beforeId: 'i1' }], s)
+  assert.equal([...s.issues].sort((a, b) => a.rank - b.rank)[0].id, 'i3')
+  s = run([{ type: 'createSprint', projectId: 'p1' }], s)
+  s = run([{ type: 'moveIssue', id: 'i2', container: s.sprints[0].id }], s)
+  assert.equal(s.issues.find(i => i.id === 'i2')!.sprintId, s.sprints[0].id)
+})
+
+test('[0020.R1][0020.R2] automation rules fire once per event and respect the enabled switch', () => {
+  let { s, sam } = workspace()
+  const rule = (enabled: boolean) => ({
+    id: 'r', name: 'Ship it', enabled, runs: 0,
+    trigger: { kind: 'status' as const, to: 'done' },
+    actions: [{ kind: 'label' as const, value: 'shipped' }, { kind: 'assign' as const, to: 'reporter' }],
+  })
+  s = run([{ type: 'updateIssues', ids: ['i1'], patch: { assigneeId: sam } }, { type: 'updateProject', id: 'p1', patch: { rules: [rule(true)] } }], s)
+  s = run([{ type: 'updateIssues', ids: ['i1'], patch: { status: 'done' } }], s)
+  const issue = s.issues[0]
+  assert.deepEqual(issue.labels, ['shipped'])
+  assert.equal(issue.assigneeId, issue.reporterId)
+  assert.equal(s.projects[0].rules[0].runs, 1)
+  assert.ok(s.activity.some(a => a.actorId === 'automation'))
+  // Disabled: nothing happens
+  let t = workspace().s
+  t = run([{ type: 'updateProject', id: 'p1', patch: { rules: [rule(false)] } }, { type: 'updateIssues', ids: ['i1'], patch: { status: 'done' } }], t)
+  assert.deepEqual(t.issues[0].labels, [])
+})
+
+test('[0020.R1][0020.R2] a rule on creation runs for new items', () => {
+  let { s } = workspace()
+  s = run([{ type: 'updateProject', id: 'p1', patch: { rules: [{
+    id: 'r', name: 'Triage', enabled: true, runs: 0, trigger: { kind: 'created' }, actions: [{ kind: 'priority', value: 'high' }, { kind: 'comment', body: 'Thanks, triaging.' }],
+  }] } }, { type: 'createIssue', id: 'i9', issue: { projectId: 'p1', title: 'New' } }], s)
+  const i9 = s.issues.find(i => i.id === 'i9')!
+  assert.equal(i9.priority, 'high')
+  assert.equal(s.comments.filter(c => c.issueId === 'i9').length, 1)
+})
+
+test('[0016.R2][0016.R6] time logs add up; on a server project only the author or a project admin can delete one', () => {
+  let { s, sam } = workspace()
+  s = run([{ type: 'logWork', issueId: 'i1', minutes: 90, date: '2026-10-01', note: 'setup' }], s)
+  s = run([{ type: 'logWork', issueId: 'i1', minutes: 30, date: '2026-10-02', note: '' }], asUser(s, sam))   // from here on Sam is the one acting
+  assert.equal(s.issues[0].worklogs.reduce((n, w) => n + w.minutes, 0), 120)
+  const ownerLog = s.issues[0].worklogs[0].id
+  s = { ...s, projects: s.projects.map(p => ({ ...p, role: 'member' as const })) }   // Sam is a member of the project, not an admin
+  s = run([{ type: 'deleteWorklog', issueId: 'i1', worklogId: ownerLog }], s) // Sam can't delete the owner's log
+  assert.equal(s.issues[0].worklogs.length, 2)
+  assert.ok(s.activity.some(a => a.text === 'logged 1h 30m'))
+})
+
+test('[0301.R5] releasing a version moves unfinished work to the next one, keeping their other fix versions', () => {
+  let { s } = workspace()
+  s = run([
+    { type: 'createIssue', id: 'i2', issue: { projectId: 'p1', title: 'Done one' } },
+    { type: 'updateProject', id: 'p1', patch: { releases: [
+      { id: 'r1', name: '1.0', description: '', released: false },
+      { id: 'r2', name: '1.1', description: '', released: false },
+    ] } },
+    { type: 'updateIssues', ids: ['i1', 'i2'], patch: { fixReleaseIds: ['r1'] } },
+    { type: 'updateIssues', ids: ['i1'], patch: { fixReleaseIds: ['r0', 'r1'] } },
+    { type: 'updateIssues', ids: ['i2'], patch: { status: 'done' } },
+    { type: 'releaseVersion', projectId: 'p1', releaseId: 'r1', moveTo: 'r2' },
+  ], s)
+  assert.ok(s.projects[0].releases[0].released)
+  assert.deepEqual(s.issues.find(i => i.id === 'i1')!.fixReleaseIds, ['r0', 'r2'])
+  assert.deepEqual(s.issues.find(i => i.id === 'i2')!.fixReleaseIds, ['r1'])
+})
+
+test('[0301.R4] a release’s work items: an item in two versions counts in both', () => {
+  const two = { id: 'a', fixReleaseIds: ['r1', 'r2'] } as Issue, one = { id: 'b', fixReleaseIds: ['r2'] } as Issue, none = { id: 'c' } as Issue
+  assert.deepEqual(itemsInRelease([two, one, none], 'r1').map(i => i.id), ['a'])
+  assert.deepEqual(itemsInRelease([two, one, none], 'r2').map(i => i.id), ['a', 'b'])
+})
+
+test('[0004.R10] deleting a project clears it from saved views', () => {
+  let { s, owner } = workspace()
+  s = run([
+    { type: 'saveView', view: { id: 'v', name: 'Mine', ownerId: owner, shared: false, filters: { q: '', projectId: 'p1', assignee: 'me', resolution: 'open' } } },
+    { type: 'deleteProject', id: 'p1' },
+  ], s)
+  assert.equal(s.views[0].filters.projectId, undefined)
+  s = run([{ type: 'deleteView', id: 'v' }], s)
+  assert.equal(s.views.length, 0)
+})
+
+test('[0008.R8] syncIssue adopts the server copy but keeps local-only parts; upsertProject adds then replaces', () => {
+  const issue = (over: Partial<Issue> = {}): Issue => ({
+    id: 'i1', key: 'PAY-local', projectId: 'p1', type: 'task', title: 'T', description: '', status: 'todo', priority: 'none', reporterId: 'u',
+    labels: [], watcherIds: ['w'], links: [], attachments: [], custom: {}, worklogs: [], rank: 1, createdAt: 1, updatedAt: 1, ...over,
+  })
+  const s0 = { ...EMPTY, issues: [issue()] }
+  const s1 = reducer(s0, { type: 'syncIssue', issue: issue({ key: 'PAY-7', watcherIds: [], priority: 'high' }) })
+  assert.equal(s1.issues[0]!.key, 'PAY-7')
+  assert.equal(s1.issues[0]!.priority, 'high')
+  assert.deepEqual(s1.issues[0]!.watcherIds, ['w'])                       // local-only part kept
+  assert.equal(reducer(s1, { type: 'syncIssue', issue: issue({ key: 'PAY-7', priority: 'high' }) }), s1)   // no change, same state
+  assert.equal(reducer(s0, { type: 'syncIssue', issue: issue({ id: 'gone' }) }), s0)
+
+  const proj = run([{ type: 'setOwner', name: 'Alex' }, { type: 'createProject', project: { id: 'p1', name: 'A', key: 'AAA', color: '#000', template: 'kanban' } }]).projects[0]!
+  const added = reducer(EMPTY, { type: 'upsertProject', project: proj })
+  assert.equal(added.projects.length, 1)
+  assert.equal(reducer(added, { type: 'upsertProject', project: { ...proj, name: 'Renamed' } }).projects[0]!.name, 'Renamed')
+})
+
+test('[0032.R7] setEditors stores live edit presence; same list is a no-op; empty clears it', () => {
+  const eds = [{ userId: 'u2', name: 'Maya', initials: 'MC', color: '#7C3AED' }]
+  const mk = (id: string): any => ({ id, key: 'PAY-' + id, projectId: 'p1', type: 'task', title: 'T', description: '', status: 'todo', priority: 'none', reporterId: 'u', labels: [], watcherIds: [], links: [], attachments: [], custom: {}, worklogs: [], rank: 1, createdAt: 1, updatedAt: 1 })
+  const s0 = { ...EMPTY, issues: [mk('i1')] }
+  const s1 = reducer(s0, { type: 'setEditors', issueId: 'i1', editors: eds })
+  assert.deepEqual(s1.editors['i1'], eds)
+  assert.equal(reducer(s1, { type: 'setEditors', issueId: 'i1', editors: eds }), s1)
+  const s2 = reducer(s1, { type: 'setEditors', issueId: 'i1', editors: [] })
+  assert.deepEqual(s2.editors['i1'], [])
+})
+
+test('[0008.R8] loadIssues replaces only that project\'s issues and is not undoable', async () => {
+  const base = run([
+    { type: 'setOwner', name: 'Alex' },
+    { type: 'createProject', project: { id: 'p1', name: 'A', key: 'AAA', color: '#000', template: 'kanban' } },
+    { type: 'createProject', project: { id: 'p2', name: 'B', key: 'BBB', color: '#000', template: 'kanban' } },
+  ])
+  const mk = (id: string, projectId: string): Issue => ({
+    id, key: id, projectId, type: 'task', title: id, description: '', status: 'todo', priority: 'none', reporterId: 'u',
+    labels: [], watcherIds: [], links: [], attachments: [], custom: {}, worklogs: [], rank: 1, createdAt: 1, updatedAt: 1,
+  })
+  const s1 = reducer(base, { type: 'loadIssues', projectId: 'p1', issues: [mk('a1', 'p1'), mk('a2', 'p1')] })
+  const s2 = reducer(s1, { type: 'loadIssues', projectId: 'p2', issues: [mk('b1', 'p2')] })
+  const s3 = reducer(s2, { type: 'loadIssues', projectId: 'p1', issues: [mk('a3', 'p1')] })
+  assert.deepEqual(s3.issues.map(i => i.id).sort(), ['a3', 'b1'])
+  const { UNDOABLE } = await import('./history.ts')
+  assert.equal(UNDOABLE.has('loadIssues'), false)
+})
+
+test('[0008.R8] loadIssueDetail replaces one issue\'s comments, history, time logs, links and watchers only', () => {
+  const mkI = (id: string): Issue => ({
+    id, key: id, projectId: 'p1', type: 'task', title: id, description: '', status: 'todo', priority: 'none', reporterId: 'u',
+    labels: [], watcherIds: ['old'], links: [], attachments: [], custom: {}, worklogs: [], rank: 1, createdAt: 1, updatedAt: 1,
+  })
+  const s0: State = { ...EMPTY, issues: [mkI('a'), mkI('b')],
+    comments: [{ id: 'c1', issueId: 'a', authorId: 'u', body: 'local', createdAt: 1 }, { id: 'c2', issueId: 'b', authorId: 'u', body: 'other', createdAt: 1 }],
+    activity: [{ id: 'x1', issueId: 'a', actorId: 'u', text: 'old', createdAt: 1 }] }
+  const s1 = reducer(s0, { type: 'loadIssueDetail', issueId: 'a',
+    comments: [{ id: 'c9', issueId: 'a', authorId: 'u', body: 'server', createdAt: 2 }], activity: [],
+    worklogs: [{ id: 'w', userId: 'u', minutes: 30, date: '2026-10-01', note: '', at: 1 }], links: [{ type: 'blocks', issueId: 'b' }], watcherIds: ['u'] })
+  assert.deepEqual(s1.comments.map(c => c.id).sort(), ['c2', 'c9'])
+  assert.equal(s1.activity.length, 0)
+  const a = s1.issues.find(i => i.id === 'a')!, b = s1.issues.find(i => i.id === 'b')!
+  assert.deepEqual([a.watcherIds, a.links.length, a.worklogs.length], [['u'], 1, 1])
+  assert.deepEqual(b.watcherIds, ['old'])
+})
+
+test('[0008.R8] syncSprint replaces the sprint with the server copy and ignores unknown ones', () => {
+  const sp = (over: object = {}) => ({ id: 's1', projectId: 'p', name: 'S', goal: '', state: 'planned' as const, ...over })
+  const s0: State = { ...EMPTY, sprints: [sp()] }
+  const s1 = reducer(s0, { type: 'syncSprint', sprint: sp({ state: 'active', committed: 8 }) })
+  assert.deepEqual([s1.sprints[0]!.state, s1.sprints[0]!.committed], ['active', 8])
+  assert.equal(reducer(s0, { type: 'syncSprint', sprint: sp({ id: 'nope' }) }), s0)
+})
+
+test('[0008.R8] setNotifications replaces the list', () => {
+  const n = { id: 'n1', userId: 'u', actorId: '', issueId: 'i', kind: 'assigned' as const, text: 't', read: false, archived: false, createdAt: 1 }
+  assert.equal(reducer({ ...EMPTY, notifications: [{ ...n, id: 'old' }] }, { type: 'setNotifications', notifications: [n] }).notifications[0]!.id, 'n1')
+})
+
+test('[0008.R8] loadProject adds a project with its sprints, then replaces both without touching other projects', () => {
+  const owner = run([{ type: 'setOwner', name: 'Alex' }, { type: 'createProject', project: { id: 'p1', name: 'A', key: 'AAA', color: '#000', template: 'scrum' } }, { type: 'createProject', project: { id: 'p2', name: 'B', key: 'BBB', color: '#000', template: 'scrum' } }])
+  const sp = (id: string, projectId: string) => ({ id, projectId, name: id, goal: '', state: 'planned' as const })
+  const s0 = { ...owner, sprints: [sp('a1', 'p1'), sp('b1', 'p2')] }
+  const p3 = { ...owner.projects[0]!, id: 'p3', key: 'CCC', name: 'C' }
+  const s1 = reducer(s0, { type: 'loadProject', project: p3, sprints: [sp('c1', 'p3')] })
+  assert.deepEqual(s1.projects.map(p => p.key), ['AAA', 'BBB', 'CCC'])
+  assert.deepEqual(s1.sprints.map(s => s.id).sort(), ['a1', 'b1', 'c1'])
+  const s2 = reducer(s1, { type: 'loadProject', project: { ...p3, name: 'C renamed' }, sprints: [sp('c2', 'p3')] })
+  assert.equal(s2.projects.length, 3); assert.equal(s2.projects[2]!.name, 'C renamed')
+  assert.deepEqual(s2.sprints.map(s => s.id).sort(), ['a1', 'b1', 'c2'])
+})
+
+test('[0008.R8] reloading a project keeps what each item’s detail had loaded (links, watchers, time logs, attachments)', () => {
+  let { s, sam } = workspace()
+  const att = { id: 'a1', name: 'spec.pdf', size: 10, type: 'application/pdf', addedBy: sam, addedAt: 1 }
+  s = run([{ type: 'loadIssueDetail', issueId: 'i1', comments: [], activity: [], worklogs: [], links: [{ type: 'relates', issueId: 'x' }], watcherIds: [sam], attachments: [att] }], s)
+  const fromList = { ...s.issues[0]!, title: 'Renamed elsewhere', watcherIds: [], links: [], attachments: [], worklogs: [] }
+  s = run([{ type: 'loadIssues', projectId: 'p1', issues: [fromList] }], s)
+  assert.equal(s.issues[0]!.title, 'Renamed elsewhere')
+  assert.deepEqual([s.issues[0]!.watcherIds, s.issues[0]!.links.length, s.issues[0]!.attachments], [[sam], 1, [att]])
+})
+
+test('[0010.R9] resolution follows the status: Done when finished (or the one chosen), kept while done, cleared on reopening', () => {
+  let { s } = workspace()
+  const todo = s.projects[0]!.statuses[0], done = s.projects[0]!.statuses.find(x => x.category === 'done')
+  s = run([{ type: 'updateIssues', ids: ['i1'], patch: { status: done!.id } }], s)
+  const first = s.issues[0]!
+  assert.equal(first.resolution, 'Done'); assert.ok(first.resolvedAt)
+  s = run([{ type: 'updateIssues', ids: ['i1'], patch: { resolution: "Won't do" } }], s)
+  assert.deepEqual([s.issues[0]!.resolution, s.issues[0]!.resolvedAt], ["Won't do", first.resolvedAt])
+  s = run([{ type: 'updateIssues', ids: ['i1'], patch: { status: todo!.id } }], s)
+  assert.deepEqual(['resolution' in s.issues[0]!, 'resolvedAt' in s.issues[0]!], [false, false])
+})
+
+test('[0012.R4][0012.R5][0012.R8][0012.R9] transition rules: hidden from those they are not for, refused until their checks pass, loops act without moving', () => {
+  const { s, owner, sam } = workspace()
+  const p = s.projects[0]!
+  const [todo, doing] = [p.statuses[0]!.id, p.statuses[1]!.id]
+  const transitions = [
+    { id: 't-start', name: 'Start', from: [todo], to: doing, rules: { restrict: { op: 'all' as const, items: [{ kind: 'person' as const, who: 'assignee' as const }] } } },
+    { id: 't-log', name: 'Log progress', from: [doing], to: null, rules: { validate: [{ kind: 'required' as const, fields: ['comment'] }], actions: [{ kind: 'set' as const, field: 'priority', value: 'urgent' }] } },
+  ]
+  let t = run([{ type: 'updateProject', id: 'p1', patch: { transitions } }, { type: 'updateIssues', ids: ['i1'], patch: { assigneeId: sam } }], s)
+  // the owner isn't the assignee: Start isn't theirs to use
+  const ownerCtx = moveContext(t, t.issues[0]!)
+  assert.deepEqual(transitionsFrom(t.projects[0]!, todo, ownerCtx), [])
+  t = run([{ type: 'updateIssues', ids: ['i1'], patch: { status: doing } }], t)
+  assert.equal(t.issues[0]!.status, todo)
+  // Sam is: the move goes through
+  t = run([{ type: 'updateIssues', ids: ['i1'], patch: { status: doing } }], asUser(t, sam))
+  assert.equal(t.issues[0]!.status, doing)
+  // the loop: no comment, nothing happens; with one, it stays put, runs its action and adds the comment
+  const before = t
+  t = run([{ type: 'runTransition', issueId: 'i1', transitionId: 't-log', patch: {} }], t)
+  assert.equal(t, before)
+  t = run([{ type: 'runTransition', issueId: 'i1', transitionId: 't-log', patch: {}, comment: 'Halfway' }], t)
+  assert.deepEqual([t.issues[0]!.status, t.issues[0]!.priority], [doing, 'urgent'])
+  assert.equal(t.comments.at(-1)!.body, 'Halfway')
+  assert.ok(t.activity.some(a => a.text === 'did “Log progress”'))
+  assert.equal(loopsFrom(t.projects[0]!, doing, moveContext(asUser(t, owner), t.issues[0]!)).length, 1)
+})
+
+test('[0007.R10] clone: a copy at the start status, linked "clones" to the original, with children and links when asked', () => {
+  const { s } = workspace()
+  const p = s.projects[0]!
+  let t = run([
+    { type: 'updateIssues', ids: ['i1'], patch: { status: p.statuses[1]!.id, priority: 'high', labels: ['ui'] } },
+    { type: 'createIssue', id: 'c1', issue: { projectId: 'p1', title: 'Child', parentId: 'i1' } },
+    { type: 'createIssue', id: 'o1', issue: { projectId: 'p1', title: 'Other' } },
+    { type: 'addLink', issueId: 'i1', link: { type: 'blocks', issueId: 'o1' } },
+  ], s)
+  t = run([{ type: 'cloneIssue', id: 'k1', sourceId: 'i1', title: 'CLONE - First', include: { children: true, links: true, sprint: false } }], t)
+  const k = t.issues.find(i => i.id === 'k1')!
+  assert.deepEqual([k.title, k.status, k.priority, k.labels], ['CLONE - First', p.statuses[0]!.id, 'high', ['ui']])
+  assert.deepEqual(k.links.map(l => [l.type, l.issueId]).sort(), [['blocks', 'o1'], ['clones', 'i1']])
+  assert.deepEqual(t.issues.filter(i => i.parentId === 'k1').map(i => i.title), ['Child'])
+})
+
+test('[0013.R4] work types: a transition limited to some types is only offered to, and only moves, items of those types', () => {
+  const { s } = workspace()
+  const p = s.projects[0]!
+  const [todo, doing] = [p.statuses[0]!.id, p.statuses[1]!.id]
+  let t = run([
+    { type: 'updateProject', id: 'p1', patch: { types: [...p.types!, { key: 't-incident1', name: 'Incident', color: '#000000', icon: 'shield' }],
+      transitions: [{ id: 'x1', name: 'Escalate', from: [todo], to: doing, types: ['t-incident1'] }] } },
+    { type: 'createIssue', id: 'inc', issue: { projectId: 'p1', title: 'Outage', type: 't-incident1' } },
+  ], s)
+  assert.deepEqual(transitionsFrom(t.projects[0]!, todo, moveContext(t, t.issues.find(i => i.id === 'i1')!)), [])
+  assert.equal(transitionsFrom(t.projects[0]!, todo, moveContext(t, t.issues.find(i => i.id === 'inc')!))[0]!.name, 'Escalate')
+  t = run([{ type: 'updateIssues', ids: ['i1', 'inc'], patch: { status: doing } }], t)
+  assert.deepEqual(t.issues.map(i => [i.id, i.status === doing]), [['i1', false], ['inc', true]])
+})
+
+test('[0016.R1][0016.R2][0016.R3][0016.R4][0016.R6] time tracking: the remaining estimate starts at the original and counts down Jira’s ways; admins change anyone’s logs', () => {
+  const { s, sam } = workspace()
+  let t = run([{ type: 'updateIssues', ids: ['i1'], patch: { timeEstimate: 600 } }], s)
+  const rem = () => t.issues[0]!.timeRemaining
+  assert.equal(rem(), 600)
+  t = run([{ type: 'logWork', issueId: 'i1', minutes: 120, date: '2026-10-20', note: '' }], t); assert.equal(rem(), 480)
+  t = run([{ type: 'logWork', issueId: 'i1', minutes: 60, date: '2026-10-20', note: '', adjust: { adjustEstimate: 'leave' } }], t); assert.equal(rem(), 480)
+  t = run([{ type: 'logWork', issueId: 'i1', minutes: 30, date: '2026-10-20', note: '', adjust: { adjustEstimate: 'new', newEstimate: 100 } }], t); assert.equal(rem(), 100)
+  const first = t.issues[0]!.worklogs[0]!
+  // someone else (Sam) changes the owner's log: in a browser workspace everyone is an admin; on a server project only admins may
+  t = run([{ type: 'updateWorklog', issueId: 'i1', worklogId: first.id, minutes: 150, date: first.date, note: 'more' }], asUser(t, sam))
+  assert.equal(rem(), 70)
+  const member = { ...t, projects: t.projects.map(p => ({ ...p, role: 'member' as const })) }
+  assert.equal(run([{ type: 'deleteWorklog', issueId: 'i1', worklogId: first.id }], member), member)
+  t = run([{ type: 'deleteWorklog', issueId: 'i1', worklogId: first.id }], t); assert.equal(rem(), 220)
+})
+
+test('[0017.R3] components: new work in one goes to its lead (or the project lead) unless someone is chosen', () => {
+  const { s, owner, sam } = workspace()
+  let t = run([{ type: 'updateProject', id: 'p1', patch: { components: [
+    { id: 'c-api', name: 'API', description: '', leadId: sam, defaultAssignee: 'component_lead' },
+    { id: 'c-web', name: 'Web', description: '', defaultAssignee: 'project_lead' }] } }], s)
+  t = run([
+    { type: 'createIssue', id: 'a', issue: { projectId: 'p1', title: 'api', componentIds: ['c-api'] } },
+    { type: 'createIssue', id: 'b', issue: { projectId: 'p1', title: 'web', componentIds: ['c-web'] } },
+    { type: 'createIssue', id: 'c', issue: { projectId: 'p1', title: 'chosen', componentIds: ['c-api'], assigneeId: undefined } },
+  ], t)
+  assert.deepEqual(['a', 'b', 'c'].map(id => t.issues.find(i => i.id === id)!.assigneeId), [sam, owner, undefined])
+})
+
+test('[0202.R3][0202.R4] deleting an item takes its sub-items at every depth; deleting an epic leaves its items, linked to it for Undo', () => {
+  const { s } = workspace()
+  const t = run([
+    { type: 'createIssue', id: 'e1', issue: { projectId: 'p1', title: 'Epic', type: 'epic' } },
+    { type: 'createIssue', id: 's1', issue: { projectId: 'p1', title: 'Story', parentId: 'e1' } },
+    { type: 'createIssue', id: 's2', issue: { projectId: 'p1', title: 'Sub', parentId: 's1' } },
+    { type: 'createIssue', id: 's3', issue: { projectId: 'p1', title: 'Sub-sub', parentId: 's2' } },
+  ], s)
+  const ids = (x: State) => x.issues.map(i => i.id).sort()
+  assert.deepEqual(ids(reducer(t, { type: 'deleteIssues', ids: ['s1'] })), ['e1', 'i1'])
+  const noEpic = reducer(t, { type: 'deleteIssues', ids: ['e1'] })
+  assert.deepEqual(ids(noEpic), ['i1', 's1', 's2', 's3'])
+  assert.equal(noEpic.issues.find(i => i.id === 's1')!.parentId, 'e1')     // the link stays; the epic is just not there
+})
+
+test('[0409.R2][0409.R3] a card’s colour by each method', () => {
+  const i = { type: 'bug', priority: 'high', assigneeId: 'u1' }
+  const o = { typeColor: '#DC2626', priorityColor: '#EA580C', match: 'q2' }
+  assert.equal(cardColor(undefined, i, o), undefined)
+  assert.equal(cardColor({ by: 'none' }, i, o), undefined)
+  assert.equal(cardColor({ by: 'types' }, i, o), '#DC2626')
+  assert.equal(cardColor({ by: 'types', types: { bug: '#000000' } }, i, o), '#000000')
+  assert.equal(cardColor({ by: 'priorities' }, i, o), '#EA580C')
+  assert.equal(cardColor({ by: 'assignees', assignees: { u1: '#16A34A' } }, i, o), '#16A34A')
+  assert.equal(cardColor({ by: 'assignees', assignees: {} }, i, o), undefined)
+  const queries = [{ id: 'q1', jql: 'a', color: '#111111' }, { id: 'q2', jql: 'b', color: '#222222' }]
+  assert.equal(cardColor({ by: 'queries', queries }, i, o), '#222222')
+  assert.equal(cardColor({ by: 'queries', queries }, i, { match: '' }), '#A8A29E')          // matches none: grey
+})

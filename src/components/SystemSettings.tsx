@@ -1,0 +1,419 @@
+import { useEffect, useState } from 'react'
+import AnnouncementBanner from './AnnouncementBanner'
+import LookAndFeel from './LookAndFeel'
+import { Plus, Trash2 } from 'lucide-react'
+import { api, ApiError, errorMessage } from '../api/client'
+import { reloadPublicSettings } from '../api/settings-public'
+import { searchUsers } from '../api/users'
+import { mapUser, type Row } from '../api/map'
+import { useApp } from '../appContext'
+import { timeAgo, type User } from '../data/store'
+import { Avatar, LoadError, Loading, Toggle } from './ui'
+
+// Administration › System settings: the policies a workspace admin controls (like Jira's Administration › System), one
+// page each. Each page edits one setting as a whole and saves it in one go; the server checks it and records the change
+// in the audit log.
+
+/** Text search's languages (spec 0609): Postgres's, as Jira's Indexing language. */
+const LANGUAGES = ['arabic', 'armenian', 'basque', 'catalan', 'danish', 'dutch', 'english', 'finnish', 'french', 'german', 'greek', 'hindi', 'hungarian', 'indonesian', 'irish',
+  'italian', 'lithuanian', 'nepali', 'norwegian', 'portuguese', 'romanian', 'russian', 'serbian', 'spanish', 'swedish', 'tamil', 'turkish', 'yiddish']
+/** System settings' pages, in menu order (the first is shown at /admin/settings). */
+export const SETTINGS_PAGES = [
+  { id: 'announcement', label: 'Announcement banner' }, { id: 'look-and-feel', label: 'Look and feel' },
+  { id: 'rate-limiting', label: 'Rate limiting' }, { id: 'attachments', label: 'Attachments' }, { id: 'access-tokens', label: 'Personal access tokens' },
+  { id: 'search-and-bulk', label: 'Search, export and bulk' }, { id: 'text-search', label: 'Text search' }, { id: 'email', label: 'Email notifications' }, { id: 'email-batching', label: 'Batched email' }, { id: 'user-defaults', label: 'Default user preferences' },
+  { id: 'filter-subscriptions', label: 'Filter subscriptions' }, { id: 'groups', label: 'Group creation' },
+  { id: 'sprints', label: 'Sprints' }, { id: 'testing', label: 'Testing' }, { id: 'due-dates', label: 'Due dates' }, { id: 'deleted-items', label: 'Deleted work items' },
+  { id: 'time-tracking', label: 'Time tracking' }, { id: 'project-keys', label: 'Project keys' }, { id: 'sign-in', label: 'Sign-in' },
+  { id: 'automation', label: 'Automation' }, { id: 'webhooks', label: 'Webhooks' }, { id: 'voting', label: 'Voting' },
+] as const
+
+interface Setting<V = any> { key: string; label: string; description: string; value: V; default: V }
+type Mode = 'limit' | 'unlimited' | 'block'
+interface RateLimiting { enabled: boolean; mode: Mode; requests: number; intervalSeconds: number; burst: number; exemptions: Exemption[] }
+interface Exemption { userId: string; mode: Mode; requests?: number; intervalSeconds?: number; burst?: number }
+
+const MODES: { id: Mode; label: string; hint: string }[] = [
+  { id: 'limit', label: 'Limit requests', hint: 'Each person (and Anonymous) gets the numbers below.' },
+  { id: 'unlimited', label: 'Allow unlimited requests', hint: 'Count nothing, refuse nothing.' },
+  { id: 'block', label: 'Block all requests', hint: 'Refuse every request that counts.' },
+]
+const INTERVALS = [{ s: 1, label: 'second' }, { s: 60, label: 'minute' }, { s: 3600, label: 'hour' }]
+
+export default function SystemSettings({ page = SETTINGS_PAGES[0].id }: { page?: string }) {
+  const { toast } = useApp()
+  const [settings, setSettings] = useState<Setting[] | null>(null)
+  const [error, setError] = useState('')
+  const load = () => { setError(''); api<Setting[]>('GET', '/api/admin/settings').then(setSettings, e => setError(errorMessage(e))) }
+  useEffect(load, [])
+
+  /** Saves one setting; field errors come back keyed by field and are shown next to it. */
+  const save = async (key: string, value: object): Promise<Record<string, string> | null> => {
+    try {
+      const saved = await api<Setting>('PUT', `/api/admin/settings/${key}`, value)
+      setSettings(all => all!.map(s => (s.key === key ? saved : s)))
+      void reloadPublicSettings()
+      toast(`${saved.label} saved`)
+      return null
+    } catch (e) {
+      toast(errorMessage(e), { tone: 'warn' })
+      return (e instanceof ApiError && e.errors) || {}
+    }
+  }
+
+  if (error) return <LoadError error={error} onRetry={load} />
+  if (!settings) return <Loading rows={5} />
+  const of = <V,>(key: string) => settings.find(s => s.key === key) as Setting<V>
+  return (
+    <section>
+      {page === 'look-and-feel' && <LookAndFeel />}
+      {page === 'announcement' && <AnnouncementSection setting={of('announcement')} save={v => save('announcement', v)} />}
+      {page === 'rate-limiting' && <RateLimitingSection setting={of<RateLimiting>('rateLimiting')} save={v => save('rateLimiting', v)} />}
+      {page === 'voting' && <SimpleSection setting={of('voting')} save={v => save('voting', v)} fields={[
+        { key: 'enabled', label: 'Allow voting', type: 'toggle', hint: 'Off: nobody can vote; votes already given are kept' },
+      ]} />}
+      {page === 'automation' && <SimpleSection setting={of('automation')} save={v => save('automation', v)} fields={[
+        { key: 'minScheduleMinutes', label: 'Shortest schedule', hint: 'Minutes between two runs of a scheduled rule, at least', type: 'number', min: 1, max: 1440 },
+        { key: 'maxItemsPerRun', label: 'Work items a scheduled run acts on', hint: 'The rest wait for the next run', type: 'number', min: 1, max: 100000 },
+      ]} />}
+      {page === 'webhooks' && (() => {
+        // Jira Software's field ids, shown flat and saved under fieldIds (spec 0715 R5)
+        const s = of<{ fieldIds: Record<string, string> }>('webhooks')
+        return <SimpleSection setting={{ ...s, value: s.value.fieldIds, default: s.default.fieldIds }} save={v => save('webhooks', { fieldIds: v })} fields={([
+          ['sprint', 'Sprint'], ['epicLink', 'Epic Link'], ['epicName', 'Epic Name'], ['epicStatus', 'Epic Status'], ['epicColour', 'Epic Colour'],
+          ['storyPoints', 'Story Points'], ['rank', 'Rank'], ['flagged', 'Flagged'],
+        ] as const).map(([key, label]) => ({ key, label, type: 'text' as const }))} />
+      })()}
+      {page === 'attachments' && <SimpleSection setting={of('attachments')} save={v => save('attachments', v)} fields={[
+        { key: 'enabled', label: 'Allow attachments', type: 'toggle' },
+        { key: 'maxSizeMb', label: 'Largest file (MB)', type: 'number', min: 1, max: 2048 },
+      ]} />}
+      {page === 'access-tokens' && <SimpleSection setting={of('accessTokens')} save={v => save('accessTokens', v)} fields={[
+        { key: 'enabled', label: 'Allow personal access tokens', type: 'toggle', hint: 'Off: no one can create one, and existing tokens stop working until this is on again.' },
+        { key: 'maxPerUser', label: 'Active tokens per person', type: 'number', min: 1, max: 100 },
+        { key: 'maxExpiryDays', label: 'Longest lifetime (days)', type: 'number', min: 1, max: 3650 },
+        { key: 'defaultExpiryDays', label: 'Lifetime offered by default (days)', type: 'number', min: 1, max: 3650 },
+      ]} />}
+      {page === 'search-and-bulk' && <SimpleSection setting={of('searchAndBulk')} save={v => save('searchAndBulk', v)} fields={[
+        { key: 'exportMaxRows', label: 'Most work items in one CSV export', type: 'number', min: 100, max: 1_000_000 },
+        { key: 'bulkMaxItems', label: 'Most work items in one bulk change', type: 'number', min: 1, max: 5000 },
+        { key: 'importMaxRows', label: 'Most rows in one CSV import', type: 'number', min: 10, max: 100_000 },
+        { key: 'viewsMaxItems', label: 'Most work items in an XML, RSS, Word or printable export', type: 'number', min: 1, max: 10_000 },
+      ]} />}
+      {page === 'email' && <EmailSection setting={of('email')} save={v => save('email', v)} />}
+      {page === 'email-batching' && <SimpleSection setting={of('emailBatching')} save={v => save('emailBatching', v)} fields={[
+        { key: 'enabled', label: 'Batch notification emails', type: 'toggle', hint: 'A person’s emails about one work item go as one; @mentions are sent at once' },
+        { key: 'minutes', label: 'Gather changes for this many minutes', type: 'number', min: 1, max: 1440 },
+      ]} />}
+      {page === 'user-defaults' && <SimpleSection setting={of('userDefaults')} save={v => save('userDefaults', v)} fields={[
+        { key: 'autowatch', label: 'Watch work you create or comment on (Autowatch)', type: 'toggle' },
+        { key: 'notifyOwnChanges', label: 'Notify people about their own changes', type: 'toggle' },
+      ]} />}
+      {page === 'sprints' && <SimpleSection setting={of('sprints')} save={v => save('sprints', v)} fields={[
+        { key: 'parallel', label: 'Parallel sprints', type: 'toggle', hint: 'A Scrum board can have more than one active sprint, for example two teams working from one backlog. It can’t be turned off while a board has more than one active sprint.' },
+      ]} />}
+      {page === 'text-search' && <SimpleSection setting={of('search')} save={v => save('search', v)} fields={[
+        { key: 'indexingLanguage', label: 'Indexing language', type: 'select', hint: 'Words are found in any of their forms in this language (customize finds customized). Other: exact words only. A change re-indexes every work item and comment in the background.',
+          options: [...LANGUAGES.map(l => [l, l[0]!.toUpperCase() + l.slice(1)] as [string, string]), ['other', 'Other']] },
+      ]} />}
+      {page === 'filter-subscriptions' && <SimpleSection setting={of('filterSubscriptions')} save={v => save('filterSubscriptions', v)} fields={[
+        { key: 'maxItems', label: 'Most work items in one email', type: 'number', min: 1, max: 1000 },
+      ]} />}
+      {page === 'groups' && <SelectSection setting={of('groups')} save={v => save('groups', v)} field="whoCanCreate" label="Who may make groups"
+        options={[['everyone', 'Everyone'], ['admins', 'System administrators only']]} />}
+      {page === 'testing' && <SimpleSection setting={of('testing')} save={v => save('testing', v)} fields={[
+        { key: 'finalStatusesHavePrecedence', label: 'A finished result outweighs a newer run that hasn’t finished', type: 'toggle', hint: 'Off: a test’s status is always its latest run’s' },
+        { key: 'resultImportMaxMb', label: 'Largest CI results file (MB)', type: 'number', min: 1, max: 20 },
+        { key: 'resultImportMaxTests', label: 'Most test results in one import', type: 'number', min: 10, max: 20000 },
+      ]} />}
+      {page === 'project-keys' && <SimpleSection setting={of('projectKeys')} save={v => save('projectKeys', v)} fields={[
+        { key: 'pattern', label: 'Key pattern', type: 'text', hint: 'A regular expression the whole key must match. Jira’s default, [A-Z][A-Z]+, is two or more capital letters; [A-Z][A-Z0-9]+ also allows digits. Every existing key must still fit.' },
+        { key: 'maxLength', label: 'Longest key (characters)', type: 'number', min: 2, max: 255 },
+      ]} />}
+      {page === 'time-tracking' && <SimpleSection setting={of('timeTracking')} save={v => save('timeTracking', v)} fields={[
+        { key: 'hoursPerDay', label: 'Working hours per day', type: 'number', min: 1, max: 24, hint: 'How long “1d” is' },
+        { key: 'daysPerWeek', label: 'Working days per week', type: 'number', min: 1, max: 7, hint: 'How long “1w” is' },
+        { key: 'format', label: 'Show time as', type: 'select', options: [['pretty', 'Pretty (1w 2d 3h 30m)'], ['days', 'Days (1.5d)'], ['hours', 'Hours (12h)']] },
+        { key: 'defaultUnit', label: 'A number typed without a unit is in', type: 'select', options: [['m', 'Minutes'], ['h', 'Hours'], ['d', 'Days'], ['w', 'Weeks']] },
+      ]} />}
+      {page === 'deleted-items' && <SimpleSection setting={of('deletedItems')} save={v => save('deletedItems', v)} fields={[
+        { key: 'retentionDays', label: 'Keep deleted work items for this many days', type: 'number', min: 1, max: 365, hint: 'Until then a project admin can restore them (Project settings › Deleted work items); after, they are removed for good' },
+      ]} />}
+      {page === 'sign-in' && <SimpleSection setting={of('signIn')} save={v => save('signIn', v)} fields={[
+        { key: 'maxFailures', label: 'Wrong passwords before a username is locked', type: 'number', min: 1, max: 20, hint: 'Keep it below your directory’s own lockout threshold' },
+        { key: 'lockMinutes', label: 'Lock for this many minutes', type: 'number', min: 1, max: 1440 },
+        { key: 'sessionIdleMinutes', label: 'Sign out after this many minutes unused', type: 'number', min: 5, max: 10080 },
+        { key: 'rememberDays', label: '“Remember my login” lasts this many days', type: 'number', min: 1, max: 365 },
+        { key: 'passwordMinLength', label: 'Shortest password (internal directory)', type: 'number', min: 1, max: 128 },
+      ]} />}
+      {page === 'due-dates' && <SimpleSection setting={of('dueReminders')} save={v => save('dueReminders', v)} fields={[
+        { key: 'enabled', label: 'Send “due” notifications', type: 'toggle' },
+        { key: 'daysAhead', label: 'Remind this many days before the due date', type: 'number', min: 0, max: 30, hint: '0: on the day it is due' },
+        { key: 'daysLate', label: 'Keep reminding for this many days after it is late', type: 'number', min: 0, max: 90 },
+        { key: 'dueSoonDays', label: '“Due soon” on Your work: within this many days', type: 'number', min: 1, max: 30 },
+      ]} />}
+    </section>
+  )
+}
+
+/** One choice from a list (a setting with a single enum field). */
+function SelectSection({ setting, save, field, label, options }: { setting?: Setting; save: (v: object) => Promise<Record<string, string> | null>; field: string; label: string; options: [string, string][] }) {
+  if (!setting) return null
+  const value = (setting.value as Record<string, string>)[field]
+  return (
+    <section className="panel" aria-label={setting.label}>
+      <h2 className="panel-title">{setting.label}</h2>
+      <p className="muted">{setting.description}</p>
+      <label className="settings-row" style={{ marginTop: 10 }}>
+        <span className="settings-label">{label}</span>
+        <select className="input" style={{ width: 280 }} aria-label={label} value={value} onChange={e => void save({ ...(setting.value as object), [field]: e.target.value })}>
+          {options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+        </select>
+      </label>
+    </section>
+  )
+}
+
+/** Email: on/off, who mail comes from, and the app's address for links (text fields, so not a SimpleSection). */
+function EmailSection({ setting, save }: { setting: Setting<{ enabled: boolean; from: string; appUrl: string }>; save: (v: object) => Promise<Record<string, string> | null> }) {
+  const [draft, setDraft] = useState(setting.value)
+  const [errors, setErrors] = useState<Record<string, string>>({})
+  useEffect(() => { setDraft(setting.value) }, [setting.value])
+  const dirty = JSON.stringify(draft) !== JSON.stringify(setting.value)
+  return (
+    <section className="panel" aria-label={setting.label}>
+      <h2 className="panel-title">{setting.label}</h2>
+      <p className="muted">{setting.description}</p>
+      <div className="settings-grid">
+        <label className="settings-row">
+          <span className="settings-label">Send notification emails</span>
+          <Toggle on={draft.enabled} onChange={enabled => setDraft({ ...draft, enabled })} label="Send notification emails" />
+        </label>
+        <label className="settings-row">
+          <span className="settings-label">From</span>
+          <input className="input" style={{ width: 320 }} placeholder="Jira Build POC <app@example.com>" value={draft.from} onChange={e => setDraft({ ...draft, from: e.target.value })} aria-invalid={!!errors.from} />
+          {errors.from && <span className="hint error">{errors.from}</span>}
+        </label>
+        <label className="settings-row">
+          <span className="settings-label">App address<span className="muted sm">For links in emails</span></span>
+          <input className="input" style={{ width: 320 }} placeholder="https://app.example.com" value={draft.appUrl} onChange={e => setDraft({ ...draft, appUrl: e.target.value })} aria-invalid={!!errors.appUrl} />
+          {errors.appUrl && <span className="hint error">{errors.appUrl}</span>}
+        </label>
+      </div>
+      <div className="btn-row" style={{ marginTop: 12 }}>
+        <button className="btn btn-primary" disabled={!dirty} onClick={async () => setErrors((await save(draft)) ?? {})}>Save</button>
+        {dirty && <button className="btn btn-ghost" onClick={() => { setDraft(setting.value); setErrors({}) }}>Discard changes</button>}
+      </div>
+    </section>
+  )
+}
+
+interface Field { key: string; label: string; type: 'toggle' | 'number' | 'select' | 'text'; min?: number; max?: number; hint?: string; options?: [string, string][] }
+
+/** A setting made of switches and numbers: edit, then Save (or Reset to the saved value). */
+function SimpleSection({ setting, fields, save }: { setting: Setting; fields: Field[]; save: (v: object) => Promise<Record<string, string> | null> }) {
+  const [draft, setDraft] = useState(setting.value)
+  const [errors, setErrors] = useState<Record<string, string>>({})
+  useEffect(() => { setDraft(setting.value) }, [setting.value])
+  const dirty = JSON.stringify(draft) !== JSON.stringify(setting.value)
+  return (
+    <section className="panel" aria-label={setting.label}>
+      <h2 className="panel-title">{setting.label}</h2>
+      <p className="muted">{setting.description}</p>
+      <div className="settings-grid">
+        {fields.map(f => (
+          <label key={f.key} className="settings-row">
+            <span className="settings-label">{f.label}{f.hint && <span className="muted sm">{f.hint}</span>}</span>
+            {f.type === 'toggle'
+              ? <Toggle on={!!draft[f.key]} onChange={on => setDraft({ ...draft, [f.key]: on })} label={f.label} />
+              : f.type === 'text'
+              ? <input className="input" style={{ width: 240 }} value={draft[f.key] ?? ''} onChange={e => setDraft({ ...draft, [f.key]: e.target.value })} aria-invalid={!!errors[f.key]} />
+              : f.type === 'select'
+              ? <select className="input" style={{ width: 'auto' }} value={draft[f.key] ?? ''} onChange={e => setDraft({ ...draft, [f.key]: e.target.value })} aria-invalid={!!errors[f.key]}>
+                  {f.options!.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                </select>
+              : <input className="input" type="number" style={{ width: 120 }} min={f.min} max={f.max} value={draft[f.key] ?? ''}
+                  onChange={e => setDraft({ ...draft, [f.key]: e.target.value === '' ? '' : Number(e.target.value) })} aria-invalid={!!errors[f.key]} />}
+            {errors[f.key] && <span className="hint error">{errors[f.key]}</span>}
+          </label>
+        ))}
+      </div>
+      <div className="btn-row" style={{ marginTop: 12 }}>
+        <button className="btn btn-primary" disabled={!dirty} onClick={async () => setErrors((await save(draft)) ?? {})}>Save</button>
+        {dirty && <button className="btn btn-ghost" onClick={() => { setDraft(setting.value); setErrors({}) }}>Discard changes</button>}
+      </div>
+    </section>
+  )
+}
+
+/** Rate limiting as in Jira: status, mode, requests per interval with a burst, per-person exemptions, and who was limited. */
+function RateLimitingSection({ setting, save }: { setting: Setting<RateLimiting>; save: (v: object) => Promise<Record<string, string> | null> }) {
+  const [draft, setDraft] = useState(setting.value)
+  const [errors, setErrors] = useState<Record<string, string>>({})
+  const [people, setPeople] = useState<Map<string, User>>(new Map())
+  const [query, setQuery] = useState('')
+  const [found, setFound] = useState<User[]>([])
+  const [limited, setLimited] = useState<{ userId: string | null; name: string; email: string; lastAt: string; times: number }[] | null>(null)
+  useEffect(() => { setDraft(setting.value) }, [setting.value])
+  useEffect(() => { api<any[]>('GET', '/api/admin/rate-limits/limited').then(setLimited, () => setLimited([])) }, [setting.value])
+  useEffect(() => {   // names for the people already exempted
+    if (!draft.exemptions.length) return
+    // by id: an exempted person may be anywhere among tens of thousands
+    const ids = draft.exemptions.map(e => e.userId).filter(id => id !== 'anonymous' && !people.has(id)).slice(0, 200)
+    if (ids.length) api<Row[]>('GET', `/api/users?ids=${ids.join(',')}`).then(rows => setPeople(m => new Map([...m, ...rows.map(r => [r.id, mapUser(r)] as const)])), () => {})
+  }, [draft.exemptions.length])
+  useEffect(() => {
+    if (!query.trim()) { setFound([]); return }
+    const t = setTimeout(() => searchUsers(query, 8).then(p => { setFound(p.items); setPeople(m => new Map([...m, ...p.items.map(u => [u.id, u] as const)])) }, () => {}), 200)
+    return () => clearTimeout(t)
+  }, [query])
+
+  const dirty = JSON.stringify(draft) !== JSON.stringify(setting.value)
+  const set = (patch: Partial<RateLimiting>) => setDraft({ ...draft, ...patch })
+  const [active, setActive] = useState(0)
+  const offered = found.filter(u => !draft.exemptions.some(e => e.userId === u.id))
+  const exempt = (userId: string) => { set({ exemptions: [...draft.exemptions, { userId, mode: 'unlimited' }] }); setQuery('') }
+  const setEx = (i: number, patch: Partial<Exemption>) => set({ exemptions: draft.exemptions.map((e, k) => (k === i ? { ...e, ...patch } : e)) })
+  const unit = [...INTERVALS].reverse().find(u => draft.intervalSeconds % u.s === 0)!   // the largest unit that fits: 3600 s → 1 hour
+  return (
+    <section className="panel" aria-label="Rate limiting">
+      <h2 className="panel-title">Rate limiting</h2>
+      <p className="muted">{setting.description}</p>
+      <div className="settings-grid">
+        <label className="settings-row">
+          <span className="settings-label">Status</span>
+          <Toggle on={draft.enabled} onChange={enabled => set({ enabled })} label="Rate limiting on" />
+          <span className="muted sm">{draft.enabled ? 'On' : 'Off: no limits at all'}</span>
+        </label>
+        {draft.enabled && <>
+          <div className="settings-row" role="radiogroup" aria-label="Mode">
+            <span className="settings-label">For everyone</span>
+            <div className="segmented">
+              {MODES.map(m => <button key={m.id} type="button" role="radio" aria-checked={draft.mode === m.id} className={draft.mode === m.id ? 'on' : ''} onClick={() => set({ mode: m.id })}>{m.label}</button>)}
+            </div>
+            <span className="muted sm">{MODES.find(m => m.id === draft.mode)!.hint}</span>
+          </div>
+          {draft.mode === 'limit' && <>
+            <div className="settings-row" role="group" aria-label="Requests allowed">
+              <span className="settings-label">Requests allowed</span>
+              <input className="input" type="number" min={1} style={{ width: 110 }} aria-label="Requests allowed" value={draft.requests} onChange={e => set({ requests: Number(e.target.value) })} aria-invalid={!!errors.requests} />
+              <span>every</span>
+              <input className="input" type="number" min={1} style={{ width: 80 }} aria-label="Interval" value={draft.intervalSeconds / unit.s}
+                onChange={e => set({ intervalSeconds: Math.max(1, Number(e.target.value)) * unit.s })} />
+              <select className="input" style={{ width: 110 }} aria-label="Interval unit" value={unit.s} onChange={e => set({ intervalSeconds: (draft.intervalSeconds / unit.s) * Number(e.target.value) })}>
+                {INTERVALS.map(u => <option key={u.s} value={u.s}>{u.label}{draft.intervalSeconds / unit.s === 1 ? '' : 's'}</option>)}
+              </select>
+            </div>
+            <label className="settings-row">
+              <span className="settings-label">Max requests<span className="muted sm">Unused requests build up to this. Same as “requests allowed”: no build-up.</span></span>
+              <input className="input" type="number" min={1} style={{ width: 110 }} value={draft.burst} onChange={e => set({ burst: Number(e.target.value) })} aria-invalid={!!errors.burst} />
+              {errors.burst && <span className="hint error">{errors.burst}</span>}
+            </label>
+          </>}
+
+          <div className="settings-row" style={{ alignItems: 'flex-start' }}>
+            <span className="settings-label">Exemptions<span className="muted sm">People (or Anonymous: every request without a sign-in) who follow their own rule instead.</span></span>
+            <div style={{ flex: 1 }}>
+              {draft.exemptions.map((ex, i) => {
+                const u = ex.userId === 'anonymous' ? { id: 'anonymous', name: 'Anonymous', initials: '?', color: '#8A8578' } : people.get(ex.userId)
+                return (
+                  <div key={ex.userId} className="form-row" style={{ alignItems: 'center', marginBottom: 6 }}>
+                    <span className="admin-person" style={{ minWidth: 180 }}><Avatar user={u} size={20} />{u?.name ?? 'Someone'}</span>
+                    <select className="input" style={{ width: 200 }} aria-label={`Rule for ${u?.name ?? 'person'}`} value={ex.mode} onChange={e => setEx(i, { mode: e.target.value as Mode })}>
+                      {MODES.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
+                    </select>
+                    {ex.mode === 'limit' && <>
+                      <input className="input" type="number" min={1} style={{ width: 90 }} aria-label="Requests allowed" placeholder={String(draft.requests)} value={ex.requests ?? ''}
+                        onChange={e => setEx(i, { requests: e.target.value ? Number(e.target.value) : undefined })} />
+                      <span className="muted sm">per {draft.intervalSeconds / unit.s} {unit.label}{draft.intervalSeconds / unit.s === 1 ? '' : 's'}, max</span>
+                      <input className="input" type="number" min={1} style={{ width: 90 }} aria-label="Max requests" placeholder={String(draft.burst)} value={ex.burst ?? ''}
+                        onChange={e => setEx(i, { burst: e.target.value ? Number(e.target.value) : undefined })} />
+                    </>}
+                    <button className="icon-btn" aria-label={`Remove exemption for ${u?.name ?? 'person'}`} onClick={() => set({ exemptions: draft.exemptions.filter((_, k) => k !== i) })}><Trash2 size={14} /></button>
+                  </div>
+                )
+              })}
+              {!draft.exemptions.some(e => e.userId === 'anonymous') && (
+                <button className="btn btn-ghost btn-sm" style={{ marginBottom: 6 }} onClick={() => exempt('anonymous')}><Plus size={13} />Anonymous</button>
+              )}
+              <div style={{ position: 'relative', maxWidth: 320 }}>
+                <input className="input" placeholder="Add a person…" aria-label="Add an exemption" role="combobox" aria-expanded={offered.length > 0} aria-controls="exempt-list"
+                  value={query} onChange={e => { setQuery(e.target.value); setActive(0) }}
+                  onKeyDown={e => {
+                    if (e.key === 'ArrowDown') { e.preventDefault(); setActive(a => Math.min(a + 1, offered.length - 1)) }
+                    else if (e.key === 'ArrowUp') { e.preventDefault(); setActive(a => Math.max(a - 1, 0)) }
+                    else if (e.key === 'Enter' && offered[active]) { e.preventDefault(); exempt(offered[active]!.id) }
+                    else if (e.key === 'Escape') setQuery('')
+                  }} />
+                {offered.length > 0 && (
+                  <ul id="exempt-list" role="listbox" className="picker-menu" style={{ position: 'absolute', zIndex: 5, listStyle: 'none', margin: 0, padding: 4, width: '100%' }}>
+                    {offered.map((u, i) => (
+                      <li key={u.id} role="option" aria-selected={i === active} className={`picker-item${i === active ? ' active' : ''}`} onMouseDown={e => { e.preventDefault(); exempt(u.id) }}>
+                        <Plus size={14} /><Avatar user={u} size={18} />{u.name}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+          </div>
+        </>}
+      </div>
+      <div className="btn-row" style={{ marginTop: 12 }}>
+        <button className="btn btn-primary" disabled={!dirty} onClick={async () => setErrors((await save(draft)) ?? {})}>Save</button>
+        {dirty && <button className="btn btn-ghost" onClick={() => { setDraft(setting.value); setErrors({}) }}>Discard changes</button>}
+      </div>
+
+      <h3 className="subhead" style={{ marginTop: 18 }}>Limited accounts</h3>
+      {!limited ? <Loading rows={2} />
+        : !limited.length ? <p className="muted">Nobody was limited in the last 24 hours.</p>
+        : <div className="card-table" style={{ marginInline: 0 }}>
+            <table className="table">
+              <thead><tr><th>Person</th><th>Last limited</th><th>Minutes limited (24 h)</th></tr></thead>
+              <tbody>{limited.map(l => (
+                <tr key={l.userId ?? 'anonymous'} style={{ cursor: 'default' }}><td>{l.name} <span className="muted sm">{l.email}</span></td><td>{timeAgo(Date.parse(l.lastAt))}</td><td>{l.times}</td></tr>
+              ))}</tbody>
+            </table>
+          </div>}
+    </section>
+  )
+}
+
+/** A moment as the datetime-local input shows it (local time), and back. */
+const local = (iso?: string | null) => { if (!iso) return ''; const d = new Date(iso); return new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 16) }
+const exact = (v: string) => (v ? new Date(v).toISOString() : null)
+/** The announcement banner (spec 0701): its text, who sees it, and a preview as it will look. */
+function AnnouncementSection({ setting, save }: { setting: Setting<{ text: string; visibility: 'public' | 'private'; startsAt?: string | null; endsAt?: string | null }>; save: (v: object) => Promise<Record<string, string> | null> }) {
+  const [draft, setDraft] = useState(setting.value)
+  const [errors, setErrors] = useState<Record<string, string>>({})
+  useEffect(() => { setDraft(setting.value) }, [setting.value])
+  const dirty = JSON.stringify(draft) !== JSON.stringify(setting.value)
+  return (
+    <section className="panel" aria-label={setting.label}>
+      <h2 className="panel-title">{setting.label}</h2>
+      <p className="muted">{setting.description}</p>
+      <label className="label" htmlFor="announcement-text" style={{ marginTop: 12 }}>Announcement</label>
+      <textarea id="announcement-text" className="input" rows={4} maxLength={2000} value={draft.text} onChange={e => setDraft({ ...draft, text: e.target.value })} aria-invalid={!!errors.text} />
+      {errors.text && <p className="hint error">{errors.text}</p>}
+      <label className="label" htmlFor="announcement-visibility" style={{ marginTop: 12 }}>Visibility</label>
+      <select id="announcement-visibility" className="input" style={{ width: 'auto' }} value={draft.visibility} onChange={e => setDraft({ ...draft, visibility: e.target.value as 'public' | 'private' })}>
+        <option value="private">Private: people signed in</option><option value="public">Public: also on the login page</option>
+      </select>
+      {/* a schedule (spec 0701 R6): the browser's local time, saved as an exact moment */}
+      <div className="form-row" style={{ marginTop: 12 }}>
+        <div><label className="label" htmlFor="announcement-from">Show from (optional)</label>
+          <input id="announcement-from" type="datetime-local" className="input" value={local(draft.startsAt)} onChange={e => setDraft({ ...draft, startsAt: exact(e.target.value) })} /></div>
+        <div><label className="label" htmlFor="announcement-until">Until (optional)</label>
+          <input id="announcement-until" type="datetime-local" className="input" value={local(draft.endsAt)} onChange={e => setDraft({ ...draft, endsAt: exact(e.target.value) })} aria-invalid={!!errors.endsAt} /></div>
+      </div>
+      {errors.endsAt && <p className="hint error">{errors.endsAt}</p>}
+      {draft.text.trim() && <>
+        <p className="label" style={{ marginTop: 14 }}>Preview</p>
+        <div className="announcement-preview"><AnnouncementBanner text={draft.text} preview /></div>
+      </>}
+      <div className="btn-row" style={{ marginTop: 12 }}>
+        <button className="btn btn-primary" disabled={!dirty} onClick={async () => setErrors((await save(draft)) ?? {})}>Save</button>
+        {dirty && <button className="btn btn-ghost" onClick={() => { setDraft(setting.value); setErrors({}) }}>Discard changes</button>}
+      </div>
+    </section>
+  )
+}
