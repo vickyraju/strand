@@ -111,7 +111,7 @@ The roadmap, in order. Bugs come first, then the permission model, then the data
 | [0714](0714-local-users.md) | Local users: Jira's internal directory (create, edit, passwords) | 7 | Ported |
 | [0715](0715-webhooks-every-jira-event.md) | Webhooks: every Jira DC event, Jira's payloads | 7 | Ported |
 | [0716](0716-epic-status.md) | Epic Status (Mark as Done) | 7 | Ported |
-| [0717](0717-global-permissions.md) | Global permissions | 7 | Approved |
+| [0717](0717-global-permissions.md) | Global permissions | 7 | Ported |
 | [0718](0718-workflow-triggers.md) | Workflow triggers from development tools | 7 | Ported |
 | [0719](0719-collapsed-menu-logo.md) | A logo for the collapsed menu | 7 | Ported |
 | [0801](0801-jira-inventory.md) | Jira inventory tool, run by the product owner | 8 | Ported |
