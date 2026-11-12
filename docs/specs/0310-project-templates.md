@@ -1,6 +1,6 @@
 # 0310 Project templates: Basic software and Business
 
-Status: Ported (aws-jira `5d0a39a`, strand `94b2d54`), approved by the PO on 10 Nov 2026; awaiting verification
+Status: Ported (aws-jira `5d0a39a`, strand `94b2d54`), pending work the PO asked to complete on 11 Nov 2026, R4 chosen on 12 Nov 2026; awaiting verification
 Parity rows: PRJ-06
 
 ## Context and Jira reference
