@@ -29,7 +29,7 @@ Checked 11 Nov 2026 on [jira.atlassian.com](https://jira.atlassian.com/issues/?j
 
 **Proposals for the product owner** (not built until chosen):
 
-- **P1: Comment edit history:** the earlier versions of an edited comment, for its author and admins.
+- **P1: Comment edit history:** chosen by the PO on 12 Nov 2026, now R6.
 - **P2: Watchers in the history:** "Started watching", "Stopped watching".
 - **P3: History search on more fields:** Sprint, Labels, Components, Type and single-choice custom fields.
 
@@ -40,6 +40,14 @@ Checked 11 Nov 2026 on [jira.atlassian.com](https://jira.atlassian.com/issues/?j
 - **R3: Indexed for history search.** Changes to Status, Assignee, Reporter, Priority, Resolution and Fix Version are indexed by field and by old and new value and name, so spec 0602's history search doesn't read every item's history.
 - **R4: Shown and served.** The History tab shows each change as the field, the old name and the new name. `GET /issues/{key}/activity` and the item's `activity` give `fromString` and `toString`.
 - **R5: Every path.** Edits, transitions, bulk changes, automation, workflow changes, moves and imports record changes the same way (the database fills names and splits lists on write).
+
+- **R6: Comment edit history** (P1, chosen 12 Nov 2026; [JRASERVER-12400](https://jira.atlassian.com/browse/JRASERVER-12400)). Each edit of a comment keeps the text it replaced, who edited it and when.
+  - An edited comment's **Edited** marker opens its versions, newest first, for:
+    - its author;
+    - the project's admins;
+    - system administrators.
+  - Others see only that it was edited, as today.
+  - The versions follow the comment's visibility. Deleting the comment deletes them.
 
 ## Permissions
 
@@ -69,6 +77,7 @@ Four partial indexes over the six fields' changes only. Splitting and naming hap
 
 | Rule | Proved by |
 |---|---|
+| R6 | Server test: two edits keep two earlier versions with who and when; the author and a project admin read them, a member gets 403, someone who can't see the comment 404; deleting the comment deletes them. Browser journey: the Edited marker shows the earlier text |
 | R1, R4 | Server test: a status, assignee and priority change keep their names; renaming the status afterwards doesn't change the history; the API returns them |
 | R2 | Server test: two fix versions added and one removed make three changes |
 | R3 | Server test: a lookup by field and value, or by field and name, uses the history indexes |

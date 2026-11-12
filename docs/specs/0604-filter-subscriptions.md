@@ -36,7 +36,7 @@ Checked 11 Nov 2026 on [jira.atlassian.com](https://jira.atlassian.com/issues/?j
 **Proposals for the product owner** (not built until chosen):
 
 - **P1: Administration › Filter subscriptions:** every subscription, a page at a time, with remove.
-- **P2: Only when changed:** send only when the results differ from the last run.
+- **P2: Only when changed:** chosen by the PO on 12 Nov 2026, now R7.
 - **P3: Attach the results as CSV.**
 - **P4: Opt out** of a group's subscription, per person.
 - **P5: Subscribe a project's role** (its admins, members or viewers).
@@ -49,6 +49,11 @@ Checked 11 Nov 2026 on [jira.atlassian.com](https://jira.atlassian.com/issues/?j
 - **R4: The email.** Subject "[Strand] Subscription: view name". The first items (System settings › Filter subscriptions: at most 200 by default) in the view's order, with key, summary, status, assignee and priority, then "and N more" and a link to the view. With no results nothing is sent unless "Email even if there are no work items" is on. Nothing is sent while email is off (spec 0105).
 - **R5: Run now** sends it straight away; the schedule carries on.
 - **R6: Records.** Each run notes when it ran; subscribing a group, and an administrator's change to someone else's subscription, are audited.
+
+- **R7: Only when changed** (P2, chosen 12 Nov 2026; [JRASERVER-12397](https://jira.atlassian.com/browse/JRASERVER-12397)). A subscription can be set to **Email only when the results changed**.
+  - Each recipient's email is then sent only when the work items they would get differ from what their last email held: other items, or items changed since.
+  - The first run always sends.
+  - "Email even if there are no work items" still applies to an empty result that is new.
 
 ## Permissions
 
@@ -77,6 +82,7 @@ Each run queues one job per recipient (a group of thousands sends a job each), a
 
 | Rule | Proved by |
 |---|---|
+| R7 | Server test: with only-when-changed, a second run with the same results sends nothing; a changed item sends again; each recipient by what they see. Browser journey: the subscription dialog's checkbox saves it |
 | R2 | Unit test: Jira's cron forms give the right next runs (daily, weekdays, day of month, 2#1, L, intervals, year) and bad ones are refused |
 | R1, R3, R4, R5, R6 | Server test: personal and group subscriptions; recipients see only their items; deactivated people and those who can't see the view skipped; empty results; the limit; Run now; the setting; who may change |
 | R1 | Browser journey: subscribe to a view daily, Run now, the email arrives |
