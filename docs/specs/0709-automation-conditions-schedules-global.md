@@ -30,8 +30,8 @@ Checked 10 Nov 2026 on [jira.atlassian.com](https://jira.atlassian.com/issues/?j
 **Proposals for the product owner** (not built until chosen):
 
 - **P1: Run as the person who triggered it**, so the workflow's and the permission table's checks apply to them.
-- **P2: Smart values** in comments (`{{issue.key}}`, `{{issue.summary}}`, `{{initiator.name}}`), then lookups.
-- **P3: Branches:** act on the item's sub-items, parent or linked items.
+- **P2: Smart values**: chosen by the PO on 12 Nov 2026, now R6 (lookups stay a proposal).
+- **P3: Branches**: chosen by the PO on 12 Nov 2026, now R7.
 - **P4: More triggers:** a field changed, a comment added, a development event (spec 0707's GitHub data).
 
 ## Rules
@@ -55,6 +55,25 @@ Checked 10 Nov 2026 on [jira.atlassian.com](https://jira.atlassian.com/issues/?j
   Status triggers and actions name a status by name, since each project has its own statuses. A project where the name doesn't exist is skipped and logged. Project admins see the global rules that apply to their project, read-only. Global rules' runs show in each project's audit log and on the admin page.
 - **R4: The API.** Project rules keep their routes, gaining `condition` and the scheduled trigger. Global rules have their own routes (below). Every change to a global rule is audited.
 - **R5: Unchanged:** rules never trigger each other; failures undo only the rule's own changes and tell its owner; runs are kept 90 days.
+
+- **R6: Smart values** (P2, chosen 12 Nov 2026). A comment's text and a label can hold Jira's smart values:
+  - `{{issue.key}}`, `{{issue.summary}}`, `{{issue.description}}`, `{{issue.url}}`;
+  - `{{issue.status.name}}`, `{{issue.priority.name}}`, `{{issue.issueType.name}}`;
+  - `{{issue.assignee.displayName}}` and `{{issue.reporter.displayName}}`, each also without `.displayName`;
+  - `{{issue.project.key}}`, `{{issue.project.name}}`;
+  - `{{issue.labels}}` and `{{issue.fixVersions.name}}`, comma-separated;
+  - `{{issue.parent.key}}`, `{{issue.duedate}}`, `{{issue.created}}`;
+  - `{{triggerIssue.…}}`, the item that fired the rule, which matters inside a branch;
+  - `{{initiator.displayName}}`, the person whose change fired it;
+  - `{{now}}`.
+
+  A smart value that has no value, or that Strand doesn't know, becomes empty, as in Jira. A label that still holds a space after its values are filled in is skipped and logged.
+- **R7: Branches** (P3, chosen 12 Nov 2026). An action **For each** runs its own actions on related items:
+  - its sub-items, or an epic's items;
+  - its parent, or the epic it's in;
+  - its linked items, of every link type or one.
+
+  Each related item gets the actions as if the rule ran on it, with `{{issue}}` the related item and `{{triggerIssue}}` the item that fired the rule. At most 100 items. Only items in the rule's scope: a project rule's own project, or the projects a global rule covers. Others are skipped and logged. A branch can't hold another branch, as in Jira.
 
 ## Permissions
 
@@ -100,6 +119,8 @@ Checked 10 Nov 2026 on [jira.atlassian.com](https://jira.atlassian.com/issues/?j
 | R2 | Server test: a scheduled rule acts on the JQL's items; only changed items; the item cap; a too-short interval refused |
 | R3, R4 | Server test: global rules in each scope (a project added to the category later is covered), status by name, a project lacking the status skipped; project admins can't change them; audit; non-admins refused |
 | R5 | Existing automation tests |
+| R6, R7 | Server test: a comment with smart values, unknown ones empty, the initiator named; a label from a smart value; a branch comments on sub-items and the parent with {{triggerIssue.key}}, and on linked items of one link type, skipping items outside the scope; nested branches refused |
+| R7 | Browser journey: a rule with a For each action on sub-items |
 | All | Browser journey: an admin makes a global rule for a category; an item created in a project of that category gets its label |
 
 ## Strand branch
@@ -109,7 +130,8 @@ Same rules.
 ## Out of scope and deliberate divergences
 
 - **Cron expressions:** intervals only.
-- **User, related-items and if/else conditions:** a JQL condition covers most of them; the rest come with P2 and P3.
+- **User, related-items and if/else conditions:** a JQL condition covers most of them.
+- **Smart value functions and lookups** (`.toUpperCase()`, `{{lookupIssues}}`): not yet.
 
 ## Open questions
 
